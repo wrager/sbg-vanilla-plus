@@ -2,6 +2,7 @@ import type { ISvpSettings } from './types';
 import { DEFAULT_SETTINGS, SETTINGS_VERSION } from './defaults';
 
 const STORAGE_KEY = 'svp_settings';
+const BACKUP_PREFIX = 'svp_settings_backup_v';
 
 type Migration = (settings: ISvpSettings) => ISvpSettings;
 
@@ -42,6 +43,7 @@ export function loadSettings(): ISvpSettings {
     const parsed: unknown = JSON.parse(raw);
     if (!isSvpSettings(parsed)) return { ...DEFAULT_SETTINGS };
     if (parsed.version < SETTINGS_VERSION) {
+      localStorage.setItem(BACKUP_PREFIX + String(parsed.version), raw);
       const migrated = migrate(parsed);
       saveSettings(migrated);
       return migrated;
@@ -54,6 +56,23 @@ export function loadSettings(): ISvpSettings {
 
 export function saveSettings(settings: ISvpSettings): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+}
+
+export function hasBackup(version: number): boolean {
+  return localStorage.getItem(BACKUP_PREFIX + String(version)) !== null;
+}
+
+export function restoreBackup(version: number): ISvpSettings {
+  const key = BACKUP_PREFIX + String(version);
+  const raw = localStorage.getItem(key);
+  if (!raw) return { ...DEFAULT_SETTINGS };
+
+  localStorage.setItem(STORAGE_KEY, raw);
+  localStorage.removeItem(key);
+
+  const parsed: unknown = JSON.parse(raw);
+  if (!isSvpSettings(parsed)) return { ...DEFAULT_SETTINGS };
+  return parsed;
 }
 
 export function isModuleEnabled(

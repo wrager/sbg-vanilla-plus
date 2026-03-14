@@ -5,6 +5,8 @@ import {
   setModuleEnabled,
   setModuleError,
   clearModuleError,
+  hasBackup,
+  restoreBackup,
 } from './storage';
 import { DEFAULT_SETTINGS } from './defaults';
 
@@ -67,5 +69,34 @@ describe('settings/storage', () => {
     expect(settings.version).toBe(2);
     expect(settings.errors).toEqual({});
     expect(settings.modules.test).toBe(true);
+  });
+
+  test('migration creates versioned backup', () => {
+    const v1 = { version: 1, modules: { test: true } };
+    localStorage.setItem('svp_settings', JSON.stringify(v1));
+    loadSettings();
+    expect(hasBackup(1)).toBe(true);
+    expect(localStorage.getItem('svp_settings_backup_v1')).toBe(JSON.stringify(v1));
+  });
+
+  test('hasBackup returns false when no backup exists', () => {
+    expect(hasBackup(1)).toBe(false);
+  });
+
+  test('restoreBackup restores pre-migration settings and removes backup', () => {
+    const v1 = { version: 1, modules: { test: true } };
+    localStorage.setItem('svp_settings', JSON.stringify(v1));
+    loadSettings();
+
+    const restored = restoreBackup(1);
+    expect(restored.version).toBe(1);
+    expect(restored.modules.test).toBe(true);
+    expect(hasBackup(1)).toBe(false);
+    expect(localStorage.getItem('svp_settings')).toBe(JSON.stringify(v1));
+  });
+
+  test('restoreBackup returns defaults when no backup exists', () => {
+    const result = restoreBackup(99);
+    expect(result).toEqual(DEFAULT_SETTINGS);
   });
 });
