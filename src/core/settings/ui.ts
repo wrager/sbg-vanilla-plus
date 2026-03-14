@@ -27,24 +27,13 @@ const PANEL_STYLES = `
   z-index: 10000;
   background: #1a1a2e;
   color: #eee;
-  overflow-y: auto;
-  padding: 8px;
   display: none;
   flex-direction: column;
-  gap: 6px;
   font-size: 13px;
 }
 
 .svp-settings-panel.svp-open {
   display: flex;
-}
-
-.svp-settings-panel.svp-scroll-top .svp-settings-header {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
-}
-
-.svp-settings-panel.svp-scroll-bottom {
-  box-shadow: inset 0 -12px 8px -8px rgba(0, 0, 0, 0.5);
 }
 
 .svp-settings-header {
@@ -53,13 +42,26 @@ const PANEL_STYLES = `
   align-items: center;
   font-size: 14px;
   font-weight: bold;
-  position: sticky;
-  top: -8px;
-  background: #1a1a2e;
-  z-index: 1;
-  padding: 4px 8px 4px;
-  margin: -8px -8px 0;
+  padding: 4px 8px;
+  flex-shrink: 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.svp-settings-header.svp-scroll-top {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+}
+
+.svp-settings-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.svp-settings-content.svp-scroll-bottom {
+  box-shadow: inset 0 -12px 8px -8px rgba(0, 0, 0, 0.5);
 }
 
 .svp-settings-close {
@@ -300,26 +302,31 @@ export function initSettingsUI(modules: readonly IFeatureModule[]): void {
   header.appendChild(closeBtn);
   panel.appendChild(header);
 
+  const content = document.createElement('div');
+  content.className = 'svp-settings-content';
+
   for (const type of SECTION_ORDER) {
     const section = document.createElement('div');
     section.className = 'svp-settings-section';
     section.dataset['svpSection'] = type;
-    panel.appendChild(section);
+    content.appendChild(section);
   }
 
-  const ownSlot = panel.querySelector<HTMLElement>(`[data-svp-section="${scriptType}"]`);
+  panel.appendChild(content);
+
+  const ownSlot = content.querySelector<HTMLElement>(`[data-svp-section="${scriptType}"]`);
   if (ownSlot) fillSection(ownSlot, modules, scriptType);
 
   function updateScrollIndicators(): void {
-    const hasTop = panel.scrollTop > 0;
-    const hasBottom = panel.scrollTop + panel.clientHeight < panel.scrollHeight - 1;
-    panel.classList.toggle('svp-scroll-top', hasTop);
-    panel.classList.toggle('svp-scroll-bottom', hasBottom);
+    const hasTop = content.scrollTop > 0;
+    const hasBottom = content.scrollTop + content.clientHeight < content.scrollHeight - 1;
+    header.classList.toggle('svp-scroll-top', hasTop);
+    content.classList.toggle('svp-scroll-bottom', hasBottom);
   }
 
-  panel.addEventListener('scroll', updateScrollIndicators);
+  content.addEventListener('scroll', updateScrollIndicators);
   const observer = new MutationObserver(updateScrollIndicators);
-  observer.observe(panel, { childList: true, subtree: true });
+  observer.observe(content, { childList: true, subtree: true });
 
   document.body.appendChild(panel);
 
