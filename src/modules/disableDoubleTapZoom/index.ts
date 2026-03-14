@@ -2,45 +2,25 @@ import type { FeatureModule } from '../../core/moduleRegistry';
 import { waitForElement } from '../../core/dom';
 
 const MODULE_ID = 'disableDoubleTapZoom';
+const DOUBLE_TAP_THRESHOLD_MS = 300;
 
-interface OlInteraction {
-  constructor: { name: string };
-  setActive: (active: boolean) => void;
-}
-
-interface OlMap {
-  getInteractions: () => { getArray: () => OlInteraction[] };
-}
-
-function getMap(): OlMap | null {
-  const win = window as unknown as Record<string, unknown>;
-  if ('map' in win && win.map && typeof win.map === 'object') {
-    return win.map as OlMap;
-  }
-  return null;
-}
-
-function findDoubleClickZoom(map: OlMap): OlInteraction[] {
-  return map
-    .getInteractions()
-    .getArray()
-    .filter((i) => i.constructor.name === 'DoubleClickZoom');
-}
-
-let mapReady = false;
+let lastTap = 0;
+let viewport: Element | null = null;
 let pendingEnabled: boolean | null = null;
-let disabledInteractions: OlInteraction[] = [];
 
-function applyEnabled(enabled: boolean): void {
-  const map = getMap();
-  if (!map) return;
+function blockDoubleTap(e: Event): void {
+  const now = Date.now();
+  if (now - lastTap < DOUBLE_TAP_THRESHOLD_MS) {
+    e.stopImmediatePropagation();
+  }
+  lastTap = now;
+}
 
+function applyEnabled(el: Element, enabled: boolean): void {
   if (enabled) {
-    for (const i of disabledInteractions) i.setActive(true);
-    disabledInteractions = [];
+    el.addEventListener('pointerdown', blockDoubleTap, { capture: true });
   } else {
-    disabledInteractions = findDoubleClickZoom(map);
-    for (const i of disabledInteractions) i.setActive(false);
+    el.removeEventListener('pointerdown', blockDoubleTap, { capture: true });
   }
 }
 
@@ -51,24 +31,24 @@ export const disableDoubleTapZoom: FeatureModule = {
   defaultEnabled: true,
   script: 'features',
   init() {
-    void waitForElement('.ol-viewport canvas').then(() => {
-      mapReady = true;
+    void waitForElement('.ol-viewport').then((el) => {
+      viewport = el;
       if (pendingEnabled !== null) {
-        applyEnabled(pendingEnabled);
+        applyEnabled(el, pendingEnabled);
         pendingEnabled = null;
       }
     });
   },
   enable() {
-    if (mapReady) {
-      applyEnabled(true);
+    if (viewport) {
+      applyEnabled(viewport, true);
     } else {
       pendingEnabled = true;
     }
   },
   disable() {
-    if (mapReady) {
-      applyEnabled(false);
+    if (viewport) {
+      applyEnabled(viewport, false);
     } else {
       pendingEnabled = false;
     }
