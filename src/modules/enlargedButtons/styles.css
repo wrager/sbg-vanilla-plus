@@ -1,4 +1,7 @@
-.info.popup button {
+.info.popup .discover-btn,
+.info.popup .deploy-btn,
+.info.popup .draw-btn,
+.info.popup .repair-btn {
   min-height: 48px;
   padding: 12px 16px;
   font-size: 16px;
