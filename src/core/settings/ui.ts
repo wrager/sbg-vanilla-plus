@@ -19,9 +19,8 @@ const PANEL_STYLES = `
   width: 36px;
   height: 36px;
   border: none;
-  background: #414141;
-  border-radius: 50%;
-  color: #fff;
+  background-color: buttonface;
+  border-radius: 4px;
   font-size: 20px;
   cursor: pointer;
   display: flex;
@@ -33,8 +32,8 @@ const PANEL_STYLES = `
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: #1a1a2e;
-  color: #eee;
+  background: var(--background);
+  color: var(--text);
   display: none;
   flex-direction: column;
   font-size: 13px;
@@ -52,11 +51,11 @@ const PANEL_STYLES = `
   font-weight: bold;
   padding: 4px 8px;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom: 1px solid var(--border-transp);
 }
 
 .svp-settings-header.svp-scroll-top {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .svp-settings-content {
@@ -69,13 +68,13 @@ const PANEL_STYLES = `
 }
 
 .svp-settings-content.svp-scroll-bottom {
-  box-shadow: inset 0 -12px 8px -8px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 -12px 8px -8px rgba(0, 0, 0, 0.2);
 }
 
 .svp-settings-close {
   background: none;
   border: none;
-  color: #eee;
+  color: var(--text);
   font-size: 18px;
   cursor: pointer;
 }
@@ -89,11 +88,11 @@ const PANEL_STYLES = `
 .svp-settings-section-title {
   font-size: 10px;
   font-weight: 600;
-  color: #888;
+  color: var(--text-disabled);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 6px 0 2px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom: 1px solid var(--border-transp);
   margin-bottom: 2px;
 }
 
@@ -102,7 +101,7 @@ const PANEL_STYLES = `
   justify-content: space-between;
   align-items: center;
   padding: 4px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--border-transp);
 }
 
 .svp-module-info {
@@ -122,18 +121,18 @@ const PANEL_STYLES = `
 
 .svp-module-id {
   font-size: 8px;
-  color: #666;
+  color: var(--text-disabled);
   font-family: monospace;
 }
 
 .svp-module-desc {
   font-size: 10px;
-  color: #aaa;
+  color: var(--text-disabled);
   margin-top: 1px;
 }
 
 .svp-module-failed {
-  color: #ff6b6b;
+  color: var(--accent);
   font-size: 10px;
 }
 
@@ -142,46 +141,12 @@ const PANEL_STYLES = `
   flex-shrink: 0;
 }
 
-.svp-toggle {
-  position: relative;
-  width: 28px;
-  height: 16px;
+.svp-module-checkbox {
   flex-shrink: 0;
-}
-
-.svp-toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.svp-toggle-slider {
-  position: absolute;
-  inset: 0;
-  background: #444;
-  border-radius: 8px;
   cursor: pointer;
-  transition: background 0.2s;
-}
+  width: 16px;
+  height: 16px;
 
-.svp-toggle-slider::before {
-  content: '';
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  left: 2px;
-  top: 2px;
-  background: #fff;
-  border-radius: 50%;
-  transition: transform 0.2s;
-}
-
-.svp-toggle input:checked + .svp-toggle-slider {
-  background: #4caf50;
-}
-
-.svp-toggle input:checked + .svp-toggle-slider::before {
-  transform: translateX(12px);
 }
 `;
 
@@ -195,30 +160,15 @@ const CATEGORY_LABELS: Record<Category, ILocalizedString> = {
   bugfix: { en: 'Bugfixes', ru: 'Багфиксы' },
 };
 
-interface ToggleHandle {
-  element: HTMLElement;
-}
-
-function createToggle(checked: boolean, onChange: (enabled: boolean) => void): ToggleHandle {
-  const label = document.createElement('label');
-  label.className = 'svp-toggle';
-
+function createCheckbox(checked: boolean, onChange: (enabled: boolean) => void): HTMLInputElement {
   const input = document.createElement('input');
   input.type = 'checkbox';
+  input.className = 'svp-module-checkbox';
   input.checked = checked;
   input.addEventListener('change', () => {
     onChange(input.checked);
   });
-
-  const slider = document.createElement('span');
-  slider.className = 'svp-toggle-slider';
-
-  label.appendChild(input);
-  label.appendChild(slider);
-
-  return {
-    element: label,
-  };
+  return input;
 }
 
 interface ModuleRowResult {
@@ -269,8 +219,8 @@ function createModuleRow(
     reload.textContent = '🔄';
     row.appendChild(reload);
   }
-  const toggle = createToggle(enabled, onChange);
-  row.appendChild(toggle.element);
+  const checkbox = createCheckbox(enabled, onChange);
+  row.appendChild(checkbox);
 
   function setError(message: string | null): void {
     if (message) {
