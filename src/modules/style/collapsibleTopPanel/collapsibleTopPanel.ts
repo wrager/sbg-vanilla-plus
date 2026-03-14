@@ -100,7 +100,7 @@ async function setup(): Promise<() => void> {
 
   setCollapsed(true);
 
-  // Раскрытие: клик по свёрнутому контейнеру (кроме OPS)
+  // Раскрытие: клик по свёрнутому контейнеру (кроме ОРПЦ)
   const onExpand = (e: Event) => {
     if (!collapsed) return;
     const target = e.target;
@@ -152,7 +152,7 @@ export const collapsibleTopPanel: IFeatureModule = {
   name: { en: 'Collapsible Top Panel', ru: 'Сворачиваемая верхняя панель' },
   description: {
     en: 'Collapses the top-left panel to show only inventory and OPS button',
-    ru: 'Сворачивает верхнюю панель, показывая только инвентарь и кнопку OPS',
+    ru: 'Сворачивает верхнюю панель, показывая только инвентарь и кнопку ОРПЦ',
   },
   defaultEnabled: true,
   category: 'style',
