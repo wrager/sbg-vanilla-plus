@@ -14,7 +14,13 @@ export interface IFeatureModule {
   disable(): void;
 }
 
-export function initModules(modules: IFeatureModule[], isEnabled: (id: string) => boolean): void {
+export type ModuleErrorCallback = (id: string, message: string) => void;
+
+export function initModules(
+  modules: IFeatureModule[],
+  isEnabled: (id: string) => boolean,
+  onError?: ModuleErrorCallback,
+): void {
   for (const mod of modules) {
     try {
       mod.init();
@@ -23,8 +29,10 @@ export function initModules(modules: IFeatureModule[], isEnabled: (id: string) =
       }
       mod.status = 'ready';
     } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
       console.warn(`[SVP] Модуль "${t(mod.name)}" не загрузился:`, e);
       mod.status = 'failed';
+      onError?.(mod.id, message);
     }
   }
 }

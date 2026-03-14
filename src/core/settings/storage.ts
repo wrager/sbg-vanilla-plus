@@ -5,7 +5,10 @@ const STORAGE_KEY = 'svp_settings';
 
 type Migration = (settings: ISvpSettings) => ISvpSettings;
 
-const migrations: Migration[] = [];
+const migrations: Migration[] = [
+  // v1 → v2: добавлено поле errors
+  (s) => ({ ...s, errors: {} }),
+];
 
 function migrate(settings: ISvpSettings): ISvpSettings {
   let current = { ...settings };
@@ -57,4 +60,16 @@ export function setModuleEnabled(
     ...settings,
     modules: { ...settings.modules, [id]: enabled },
   };
+}
+
+export function setModuleError(settings: ISvpSettings, id: string, message: string): ISvpSettings {
+  return {
+    ...settings,
+    errors: { ...settings.errors, [id]: message },
+  };
+}
+
+export function clearModuleError(settings: ISvpSettings, id: string): ISvpSettings {
+  const errors = Object.fromEntries(Object.entries(settings.errors).filter(([key]) => key !== id));
+  return { ...settings, errors };
 }

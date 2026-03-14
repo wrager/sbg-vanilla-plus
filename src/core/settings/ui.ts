@@ -1,7 +1,14 @@
 import type { IFeatureModule } from '../moduleRegistry';
 import { injectStyles } from '../dom';
 import { t } from '../l10n';
-import { loadSettings, saveSettings, isModuleEnabled, setModuleEnabled } from './storage';
+import {
+  loadSettings,
+  saveSettings,
+  isModuleEnabled,
+  setModuleEnabled,
+  setModuleError,
+  clearModuleError,
+} from './storage';
 
 const PANEL_ID = 'svp-settings-panel';
 const BTN_ID = 'svp-settings-btn';
@@ -184,7 +191,12 @@ const SECTION_LABELS: Record<string, { en: string; ru: string }> = {
   features: { en: 'Features script', ru: 'Features script' },
 };
 
-function createToggle(checked: boolean, onChange: (enabled: boolean) => void): HTMLElement {
+interface ToggleHandle {
+  element: HTMLElement;
+  setDisabled: (disabled: boolean) => void;
+}
+
+function createToggle(checked: boolean, onChange: (enabled: boolean) => void): ToggleHandle {
   const label = document.createElement('label');
   label.className = 'svp-toggle';
 
@@ -200,14 +212,28 @@ function createToggle(checked: boolean, onChange: (enabled: boolean) => void): H
 
   label.appendChild(input);
   label.appendChild(slider);
-  return label;
+
+  return {
+    element: label,
+    setDisabled(disabled: boolean) {
+      input.disabled = disabled;
+      label.style.opacity = disabled ? '0.4' : '';
+      label.style.pointerEvents = disabled ? 'none' : '';
+    },
+  };
+}
+
+interface ModuleRowResult {
+  row: HTMLElement;
+  setError: (message: string | null) => void;
 }
 
 function createModuleRow(
   mod: IFeatureModule,
   enabled: boolean,
   onChange: (enabled: boolean) => void,
-): HTMLElement {
+  errorMessage: string | null,
+): ModuleRowResult {
   const row = document.createElement('div');
   row.className = 'svp-module-row';
 
@@ -235,12 +261,8 @@ function createModuleRow(
   info.appendChild(nameLine);
   info.appendChild(desc);
 
-  if (mod.status === 'failed') {
-    const failed = document.createElement('div');
-    failed.className = 'svp-module-failed';
-    failed.textContent = t({ en: '(loading error)', ru: '(ошибка загрузки)' });
-    info.appendChild(failed);
-  }
+  const failed = document.createElement('div');
+  failed.className = 'svp-module-failed';
 
   row.appendChild(info);
   if (mod.requiresReload) {
@@ -249,8 +271,25 @@ function createModuleRow(
     reload.textContent = '🔄';
     row.appendChild(reload);
   }
-  row.appendChild(createToggle(enabled, onChange));
-  return row;
+  const toggle = createToggle(enabled, onChange);
+  row.appendChild(toggle.element);
+
+  function setError(message: string | null): void {
+    if (message) {
+      failed.textContent = message;
+      failed.style.display = '';
+      toggle.setDisabled(true);
+    } else {
+      failed.textContent = '';
+      failed.style.display = 'none';
+      toggle.setDisabled(false);
+    }
+  }
+
+  setError(errorMessage);
+  info.appendChild(failed);
+
+  return { row, setError };
 }
 
 function fillSection(
@@ -267,24 +306,40 @@ function fillSection(
 
   for (const mod of modules) {
     const enabled = isModuleEnabled(settings, mod.id, mod.defaultEnabled);
-    const row = createModuleRow(mod, enabled, (newEnabled) => {
-      settings = setModuleEnabled(settings, mod.id, newEnabled);
-      saveSettings(settings);
-      if (mod.requiresReload) {
-        location.hash = 'svp-settings';
-        location.reload();
-        return;
-      }
-      try {
-        if (newEnabled) {
-          mod.enable();
-        } else {
-          mod.disable();
+    const errorMessage = settings.errors[mod.id] ?? null;
+
+    const { row, setError } = createModuleRow(
+      mod,
+      enabled,
+      (newEnabled) => {
+        settings = setModuleEnabled(settings, mod.id, newEnabled);
+        saveSettings(settings);
+        if (mod.requiresReload) {
+          location.hash = 'svp-settings';
+          location.reload();
+          return;
         }
-      } catch (e) {
-        console.warn(`[SVP] Ошибка переключения модуля "${t(mod.name)}":`, e);
-      }
-    });
+        try {
+          if (newEnabled) {
+            mod.enable();
+          } else {
+            mod.disable();
+          }
+          mod.status = 'ready';
+          settings = clearModuleError(settings, mod.id);
+          saveSettings(settings);
+          setError(null);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.warn(`[SVP] Ошибка переключения модуля "${t(mod.name)}":`, e);
+          mod.status = 'failed';
+          settings = setModuleError(settings, mod.id, msg);
+          saveSettings(settings);
+          setError(msg);
+        }
+      },
+      errorMessage,
+    );
     section.appendChild(row);
   }
 }

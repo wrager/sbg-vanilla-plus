@@ -3,6 +3,8 @@ import {
   saveSettings,
   isModuleEnabled,
   setModuleEnabled,
+  setModuleError,
+  clearModuleError,
 } from '../../../src/core/settings/storage';
 import { DEFAULT_SETTINGS } from '../../../src/core/settings/defaults';
 
@@ -45,5 +47,25 @@ describe('settings/storage', () => {
     expect(updated.modules.test).toBe(true);
     // Original not mutated
     expect(DEFAULT_SETTINGS.modules).toEqual({});
+  });
+
+  test('setModuleError adds error message', () => {
+    const updated = setModuleError(DEFAULT_SETTINGS, 'mod-a', 'boom');
+    expect(updated.errors['mod-a']).toBe('boom');
+    expect(DEFAULT_SETTINGS.errors).toEqual({});
+  });
+
+  test('clearModuleError removes error', () => {
+    const withError = setModuleError(DEFAULT_SETTINGS, 'mod-a', 'boom');
+    const cleared = clearModuleError(withError, 'mod-a');
+    expect(cleared.errors).toEqual({});
+  });
+
+  test('migration from v1 adds errors field', () => {
+    localStorage.setItem('svp_settings', JSON.stringify({ version: 1, modules: { test: true } }));
+    const settings = loadSettings();
+    expect(settings.version).toBe(2);
+    expect(settings.errors).toEqual({});
+    expect(settings.modules.test).toBe(true);
   });
 });

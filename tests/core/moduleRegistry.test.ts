@@ -48,4 +48,27 @@ describe('initModules', () => {
     expect(healthy.status).toBe('ready');
     expect(healthy.init).toHaveBeenCalledTimes(1);
   });
+
+  test('calls onError callback with module id and error message', () => {
+    const onError = jest.fn();
+    const failing = createMockModule({
+      id: 'err-cb',
+      init: jest.fn(() => {
+        throw new Error('kaboom');
+      }),
+    });
+
+    initModules([failing], () => true, onError);
+
+    expect(onError).toHaveBeenCalledWith('err-cb', 'kaboom');
+  });
+
+  test('does not call onError for successful modules', () => {
+    const onError = jest.fn();
+    const mod = createMockModule({ id: 'ok-mod' });
+
+    initModules([mod], () => true, onError);
+
+    expect(onError).not.toHaveBeenCalled();
+  });
 });
