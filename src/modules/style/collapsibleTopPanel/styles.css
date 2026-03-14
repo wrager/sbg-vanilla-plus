@@ -35,7 +35,7 @@
 /* Кнопка сворачивания — fixed в правом верхнем углу, вне DOM игры */
 #svp-top-toggle {
   position: fixed;
-  z-index: 10000;
+  z-index: 1;
   font-size: 10px;
   line-height: 1;
   cursor: pointer;
