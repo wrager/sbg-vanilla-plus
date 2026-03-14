@@ -48,10 +48,16 @@ Dev-скрипт имеет пометку `[DEV]` в названии. Прод
 
 ## Добавление фичи
 
-1. Создать `src/modules/<name>/index.ts`, реализующий `FeatureModule`
+1. Создать `src/modules/<name>/<name>.ts`, реализующий `IFeatureModule`
 2. Если нужен CSS — создать `src/modules/<name>/styles.css`
 3. Импортировать модуль в `src/entryStyle.ts` или `src/entryFeatures.ts`
 4. Добавить дефолт в `src/core/settings/defaults.ts`
+
+## Отладка
+
+Добавить `#svp-disabled=1` к URL страницы игры — скрипт полностью отключится (удобно для сравнения поведения с оригинальным интерфейсом). Состояние сохраняется в `sessionStorage` на время сессии. Для повторного включения — `#svp-disabled=0`.
+
+Пример: `https://sbg-game.ru/app/#svp-disabled=1`
 
 ## Совместимость
 
