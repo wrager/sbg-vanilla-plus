@@ -10,12 +10,24 @@ const migrations: Migration[] = [
   (s) => ({ ...s, errors: {} }),
 ];
 
+function isSvpSettings(val: unknown): val is ISvpSettings {
+  return (
+    typeof val === 'object' &&
+    val !== null &&
+    'version' in val &&
+    typeof val.version === 'number' &&
+    'modules' in val &&
+    typeof val.modules === 'object' &&
+    val.modules !== null
+  );
+}
+
 function migrate(settings: ISvpSettings): ISvpSettings {
   let current = { ...settings };
   for (let v = current.version; v < SETTINGS_VERSION; v++) {
-    const migration = migrations[v - 1] as Migration | undefined;
-    if (migration) {
-      current = migration(current);
+    const idx = v - 1;
+    if (idx >= 0 && idx < migrations.length) {
+      current = migrations[idx](current);
     }
     current.version = v + 1;
   }
@@ -27,7 +39,8 @@ export function loadSettings(): ISvpSettings {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
 
-    const parsed = JSON.parse(raw) as ISvpSettings;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isSvpSettings(parsed)) return { ...DEFAULT_SETTINGS };
     if (parsed.version < SETTINGS_VERSION) {
       const migrated = migrate(parsed);
       saveSettings(migrated);

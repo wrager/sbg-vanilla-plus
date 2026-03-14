@@ -30,14 +30,20 @@ function createSummary(container: Element): HTMLSpanElement {
   return summary;
 }
 
-async function setup(): Promise<() => void> {
-  const container = (await waitForElement('.topleft-container')) as HTMLElement;
-  const selfInfo = $('.self-info', container) as HTMLElement;
+function isHTMLElement(el: unknown): el is HTMLElement {
+  return el instanceof HTMLElement;
+}
 
-  const allEntries = $$('.self-info__entry', container) as HTMLElement[];
-  const extraButtons = $$('.game-menu button:not(#ops)', container) as HTMLElement[];
-  const effects = $('.effects', container) as HTMLElement | null;
-  const hiddenEls = [...allEntries, ...extraButtons, ...(effects ? [effects] : [])];
+async function setup(): Promise<() => void> {
+  const container = await waitForElement('.topleft-container');
+  if (!isHTMLElement(container)) return () => {};
+  const selfInfo = $('.self-info', container);
+  if (!isHTMLElement(selfInfo)) return () => {};
+
+  const allEntries = $$('.self-info__entry', container).filter(isHTMLElement);
+  const extraButtons = $$('.game-menu button:not(#ops)', container).filter(isHTMLElement);
+  const effects = $('.effects', container);
+  const hiddenEls = [...allEntries, ...extraButtons, ...(isHTMLElement(effects) ? [effects] : [])];
 
   // Кнопка сворачивания — в body, чтобы игра не перехватывала клики
   const toggle = document.createElement('div');
@@ -75,7 +81,8 @@ async function setup(): Promise<() => void> {
   // Раскрытие: клик по свёрнутому контейнеру (кроме OPS)
   const onExpand = (e: Event) => {
     if (!collapsed) return;
-    const target = e.target as Element;
+    const target = e.target;
+    if (!(target instanceof Element)) return;
     if (target.closest('#ops')) return;
     e.stopPropagation();
     e.preventDefault();

@@ -21,8 +21,7 @@ describe('dom', () => {
 
     const styles = document.querySelectorAll('#svp-test');
     expect(styles.length).toBe(1);
-    const style = styles[0] as HTMLStyleElement;
-    expect(style.textContent).toBe('body { color: blue; }');
+    expect(styles[0].textContent).toBe('body { color: blue; }');
   });
 
   test('removeStyles removes the style element', () => {

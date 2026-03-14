@@ -27,7 +27,8 @@ function mousedown(el: Element): void {
 }
 
 function getEntryFor(id: string): HTMLElement | null {
-  return document.getElementById(id)?.closest('.self-info__entry') as HTMLElement | null;
+  const el = document.getElementById(id)?.closest('.self-info__entry');
+  return el instanceof HTMLElement ? el : null;
 }
 
 describe('collapsibleTopPanel', () => {
@@ -83,8 +84,8 @@ describe('collapsibleTopPanel', () => {
     await flushPromises();
 
     const summary = document.getElementById('svp-inv-summary');
-    expect(summary).not.toBeNull();
-    mousedown(summary as Element);
+    if (!summary) throw new Error('summary not found');
+    mousedown(summary);
 
     const container = document.querySelector('.topleft-container');
     expect(container?.classList.contains('svp-collapsed')).toBe(false);
@@ -99,8 +100,8 @@ describe('collapsibleTopPanel', () => {
     await flushPromises();
 
     const ops = document.getElementById('ops');
-    expect(ops).not.toBeNull();
-    mousedown(ops as Element);
+    if (!ops) throw new Error('ops not found');
+    mousedown(ops);
 
     const container = document.querySelector('.topleft-container');
     expect(container?.classList.contains('svp-collapsed')).toBe(true);
@@ -112,16 +113,17 @@ describe('collapsibleTopPanel', () => {
 
     // Expand first
     const summary = document.getElementById('svp-inv-summary');
-    mousedown(summary as Element);
+    if (!summary) throw new Error('summary not found');
+    mousedown(summary);
 
     // Collapse via toggle
     const toggle = document.getElementById('svp-top-toggle');
-    expect(toggle).not.toBeNull();
-    mousedown(toggle as Element);
+    if (!toggle) throw new Error('toggle not found');
+    mousedown(toggle);
 
     const container = document.querySelector('.topleft-container');
     expect(container?.classList.contains('svp-collapsed')).toBe(true);
-    expect(toggle?.style.display).toBe('none');
+    expect(toggle.style.display).toBe('none');
   });
 
   test('cleans up on disable', async () => {

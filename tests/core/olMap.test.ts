@@ -1,8 +1,18 @@
-type Win = Record<string, unknown>;
-type OlProto = { Map: { prototype: { getView: () => unknown } } };
+import type { IOlView } from '../../src/core/olMap';
 
-function getProto(): OlProto['Map']['prototype'] {
-  return ((window as unknown as Win).ol as OlProto).Map.prototype;
+function createFakeView(): IOlView {
+  return {
+    padding: [0, 0, 0, 0],
+    getCenter: () => undefined,
+    setCenter: () => {},
+    changed: () => {},
+  };
+}
+
+function getProto(): { getView: () => IOlView } {
+  const ol = window.ol;
+  if (!ol) throw new Error('ol not set');
+  return ol.Map.prototype;
 }
 
 let originalOlDescriptor: PropertyDescriptor | undefined;
@@ -16,17 +26,17 @@ afterEach(() => {
   if (originalOlDescriptor) {
     Object.defineProperty(window, 'ol', originalOlDescriptor);
   } else {
-    delete (window as unknown as Win).ol;
+    delete window.ol;
   }
 });
 
 test('captures map instance when ol is already available', async () => {
   const { getOlMap, initOlMapCapture } = await import('../../src/core/olMap');
 
-  const fakeView = { padding: [0, 0, 0, 0] };
+  const fakeView = createFakeView();
   const fakeMap = { getView: () => fakeView };
 
-  (window as unknown as Win).ol = {
+  window.ol = {
     Map: { prototype: { getView: fakeMap.getView } },
   };
 
@@ -41,7 +51,7 @@ test('captures map instance when ol is already available', async () => {
 });
 
 test('waits for ol and captures when it becomes available', async () => {
-  delete (window as unknown as Win).ol;
+  delete window.ol;
 
   const { getOlMap, initOlMapCapture } = await import('../../src/core/olMap');
 
@@ -50,10 +60,10 @@ test('waits for ol and captures when it becomes available', async () => {
   const promise = getOlMap();
 
   // Simulate game loading OL later
-  const fakeView = { padding: [0, 0, 0, 0] };
+  const fakeView = createFakeView();
   const fakeMap = { getView: () => fakeView };
 
-  (window as unknown as Win).ol = {
+  window.ol = {
     Map: { prototype: { getView: fakeMap.getView } },
   };
 
@@ -65,14 +75,14 @@ test('waits for ol and captures when it becomes available', async () => {
 });
 
 test('restores window.ol as a normal property after interception', async () => {
-  delete (window as unknown as Win).ol;
+  delete window.ol;
 
   const { initOlMapCapture } = await import('../../src/core/olMap');
 
   initOlMapCapture();
 
-  const fakeView = { padding: [0, 0, 0, 0] };
-  (window as unknown as Win).ol = {
+  const fakeView = createFakeView();
+  window.ol = {
     Map: { prototype: { getView: () => fakeView } },
   };
 
@@ -84,11 +94,11 @@ test('restores window.ol as a normal property after interception', async () => {
 test('restores original getView after capture', async () => {
   const { initOlMapCapture } = await import('../../src/core/olMap');
 
-  const fakeView = { padding: [0, 0, 0, 0] };
+  const fakeView = createFakeView();
   const originalGetView = () => fakeView;
   const fakeMap = { getView: originalGetView };
 
-  (window as unknown as Win).ol = {
+  window.ol = {
     Map: { prototype: { getView: originalGetView } },
   };
 
@@ -103,7 +113,7 @@ test('restores original getView after capture', async () => {
 test('does not throw when ol is undefined', async () => {
   const { initOlMapCapture } = await import('../../src/core/olMap');
 
-  (window as unknown as Win).ol = undefined;
+  window.ol = undefined;
   expect(() => {
     initOlMapCapture();
   }).not.toThrow();

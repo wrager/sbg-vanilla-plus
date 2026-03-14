@@ -1,20 +1,17 @@
 import { keepScreenOn } from '../../src/modules/keepScreenOn/keepScreenOn';
 
-function createMockSentinel(): WakeLockSentinel {
-  const sentinel = new EventTarget() as WakeLockSentinel;
-  Object.defineProperty(sentinel, 'released', { value: false, configurable: true });
-  Object.defineProperty(sentinel, 'type', { value: 'screen' });
-  (sentinel as unknown as { release: () => Promise<void> }).release = jest
-    .fn()
-    .mockResolvedValue(undefined);
-  return sentinel;
+class MockSentinel extends EventTarget {
+  readonly released = false;
+  readonly type: WakeLockType = 'screen';
+  onrelease: ((this: WakeLockSentinel, ev: Event) => unknown) | null = null;
+  release = jest.fn().mockResolvedValue(undefined);
 }
 
 const mockRequest = jest.fn();
 
 beforeEach(() => {
   mockRequest.mockReset();
-  mockRequest.mockResolvedValue(createMockSentinel());
+  mockRequest.mockResolvedValue(new MockSentinel());
   Object.defineProperty(navigator, 'wakeLock', {
     value: { request: mockRequest },
     configurable: true,
@@ -37,22 +34,26 @@ describe('keepScreenOn', () => {
   });
 
   test('releases wake lock on disable', async () => {
+    const sentinel = new MockSentinel();
+    mockRequest.mockResolvedValueOnce(sentinel);
+
     keepScreenOn.enable();
     await Promise.resolve();
-    const sentinel = (await mockRequest.mock.results[0].value) as WakeLockSentinel;
     keepScreenOn.disable();
     await Promise.resolve();
-    expect((sentinel as unknown as { release: jest.Mock }).release).toHaveBeenCalledTimes(1);
+    expect(sentinel.release).toHaveBeenCalledTimes(1);
   });
 
   test('re-requests wake lock when tab becomes visible after browser releases lock', async () => {
+    const sentinel = new MockSentinel();
+    mockRequest.mockResolvedValueOnce(sentinel);
+
     keepScreenOn.enable();
     await Promise.resolve();
-    const sentinel = (await mockRequest.mock.results[0].value) as WakeLockSentinel;
     mockRequest.mockClear();
 
     // Browser releases the lock (e.g. tab goes to background)
-    (sentinel as EventTarget).dispatchEvent(new Event('release'));
+    sentinel.dispatchEvent(new Event('release'));
     await Promise.resolve();
 
     // Tab becomes visible again

@@ -83,7 +83,7 @@ describe('bootstrap', () => {
     bootstrap([failing]);
 
     expect(lastSaved).toBeDefined();
-    expect((lastSaved as ISvpSettings).errors['fail-mod']).toBe('test error');
+    expect(lastSaved?.errors['fail-mod']).toBe('test error');
   });
 
   test('clears previous error for successful module', () => {
@@ -99,6 +99,6 @@ describe('bootstrap', () => {
     bootstrap([mod]);
 
     expect(lastSaved).toBeDefined();
-    expect((lastSaved as ISvpSettings).errors['ok-mod']).toBeUndefined();
+    expect(lastSaved?.errors['ok-mod']).toBeUndefined();
   });
 });

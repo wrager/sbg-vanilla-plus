@@ -26,6 +26,27 @@ interface IOlGlobal {
   Map: { prototype: { getView: () => IOlView } };
 }
 
+function isOlGlobal(val: unknown): val is IOlGlobal {
+  return (
+    typeof val === 'object' &&
+    val !== null &&
+    'Map' in val &&
+    typeof val.Map === 'object' &&
+    val.Map !== null &&
+    'prototype' in val.Map &&
+    typeof val.Map.prototype === 'object' &&
+    val.Map.prototype !== null &&
+    'getView' in val.Map.prototype &&
+    typeof val.Map.prototype.getView === 'function'
+  );
+}
+
+declare global {
+  interface Window {
+    ol?: IOlGlobal;
+  }
+}
+
 let captured: IOlMap | null = null;
 const resolvers: ((map: IOlMap) => void)[] = [];
 
@@ -52,15 +73,13 @@ function hookGetView(ol: IOlGlobal): void {
 }
 
 export function initOlMapCapture(): void {
-  const win = window as unknown as Record<string, unknown>;
-
-  if (win.ol) {
-    hookGetView(win.ol as IOlGlobal);
+  if (window.ol) {
+    hookGetView(window.ol);
     return;
   }
 
   // ol not yet loaded — intercept when the game sets window.ol
-  let olValue: unknown;
+  let olValue: IOlGlobal | undefined;
   Object.defineProperty(window, 'ol', {
     configurable: true,
     enumerable: true,
@@ -68,15 +87,17 @@ export function initOlMapCapture(): void {
       return olValue;
     },
     set(val: unknown) {
-      olValue = val;
-      // Restore as a normal data property
+      // Restore as a normal data property first
       Object.defineProperty(window, 'ol', {
         configurable: true,
         enumerable: true,
         writable: true,
         value: val,
       });
-      if (val) hookGetView(val as IOlGlobal);
+      if (isOlGlobal(val)) {
+        olValue = val;
+        hookGetView(val);
+      }
     },
   });
 }

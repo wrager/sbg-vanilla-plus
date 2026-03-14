@@ -17,8 +17,12 @@ export const drawButtonFix: IFeatureModule = {
   enable() {
     observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        if (mutation.type === 'attributes' && (mutation.target as Element).id === 'draw') {
-          (mutation.target as Element).removeAttribute('disabled');
+        if (
+          mutation.type === 'attributes' &&
+          mutation.target instanceof Element &&
+          mutation.target.id === 'draw'
+        ) {
+          mutation.target.removeAttribute('disabled');
         }
       }
     });
