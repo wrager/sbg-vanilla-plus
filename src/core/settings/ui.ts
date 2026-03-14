@@ -2,6 +2,9 @@ import type { FeatureModule } from '../moduleRegistry';
 import { injectStyles } from '../dom';
 import { loadSettings, saveSettings, isModuleEnabled, setModuleEnabled } from './storage';
 
+const PANEL_ID = 'svp-settings-panel';
+const BTN_ID = 'svp-settings-btn';
+
 const PANEL_STYLES = `
 .svp-settings-btn {
   width: 36px;
@@ -48,6 +51,23 @@ const PANEL_STYLES = `
   color: #eee;
   font-size: 24px;
   cursor: pointer;
+}
+
+.svp-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.svp-settings-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 12px 0 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  margin-bottom: 4px;
 }
 
 .svp-module-row {
@@ -120,6 +140,11 @@ const PANEL_STYLES = `
 }
 `;
 
+const SECTION_LABELS: Record<string, string> = {
+  style: 'Внешний вид',
+  features: 'Функции',
+};
+
 function createToggle(checked: boolean, onChange: (enabled: boolean) => void): HTMLElement {
   const label = document.createElement('label');
   label.className = 'svp-toggle';
@@ -173,24 +198,14 @@ function createModuleRow(
   return row;
 }
 
-export function initSettingsUI(modules: readonly FeatureModule[]): void {
-  injectStyles(PANEL_STYLES, 'settings');
+function createSection(modules: readonly FeatureModule[], scriptType: string): HTMLElement {
+  const section = document.createElement('div');
+  section.className = 'svp-settings-section';
 
-  const panel = document.createElement('div');
-  panel.className = 'svp-settings-panel';
-
-  const header = document.createElement('div');
-  header.className = 'svp-settings-header';
-  header.innerHTML = '<span>SBG Vanilla+ Settings</span>';
-
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'svp-settings-close';
-  closeBtn.textContent = '✕';
-  closeBtn.addEventListener('click', () => {
-    panel.classList.remove('svp-open');
-  });
-  header.appendChild(closeBtn);
-  panel.appendChild(header);
+  const title = document.createElement('div');
+  title.className = 'svp-settings-section-title';
+  title.textContent = SECTION_LABELS[scriptType] ?? scriptType;
+  section.appendChild(title);
 
   let settings = loadSettings();
 
@@ -209,13 +224,47 @@ export function initSettingsUI(modules: readonly FeatureModule[]): void {
         console.warn(`[SVP] Ошибка переключения модуля "${mod.name}":`, e);
       }
     });
-    panel.appendChild(row);
+    section.appendChild(row);
   }
+
+  return section;
+}
+
+export function initSettingsUI(modules: readonly FeatureModule[]): void {
+  injectStyles(PANEL_STYLES, 'settings');
+
+  const scriptType = modules[0]?.script ?? 'features';
+  const existingPanel = document.getElementById(PANEL_ID);
+
+  if (existingPanel) {
+    existingPanel.appendChild(createSection(modules, scriptType));
+    return;
+  }
+
+  const panel = document.createElement('div');
+  panel.className = 'svp-settings-panel';
+  panel.id = PANEL_ID;
+
+  const header = document.createElement('div');
+  header.className = 'svp-settings-header';
+  header.innerHTML = '<span>SBG Vanilla+ Settings</span>';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'svp-settings-close';
+  closeBtn.textContent = '✕';
+  closeBtn.addEventListener('click', () => {
+    panel.classList.remove('svp-open');
+  });
+  header.appendChild(closeBtn);
+  panel.appendChild(header);
+
+  panel.appendChild(createSection(modules, scriptType));
 
   document.body.appendChild(panel);
 
   const btn = document.createElement('button');
   btn.className = 'svp-settings-btn';
+  btn.id = BTN_ID;
   btn.textContent = '⚙';
   btn.title = 'SBG Vanilla+ Settings';
   btn.addEventListener('click', () => {
