@@ -34,6 +34,7 @@
 ## Типизация
 
 - **Запрещён `as`-кастинг** без type guards — даже в тестах. Вместо `as` использовать type guards (`is`-функции, `in`-проверки, `instanceof`). В крайнем случае `as` допустим только с комментарием, объясняющим почему guard невозможен
+- **Запрещено отключение ESLint** (`eslint-disable`, `eslint-disable-next-line` и т.д.) — даже в тестах. В крайнем случае допустимо только с коротким оправданием прямо в комментарии (например, `// eslint-disable-next-line @typescript-eslint/no-floating-promises -- fire-and-forget by design`)
 
 ## Игровые настройки и стили
 
