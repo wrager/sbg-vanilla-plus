@@ -197,7 +197,6 @@ const CATEGORY_LABELS: Record<Category, ILocalizedString> = {
 
 interface ToggleHandle {
   element: HTMLElement;
-  setDisabled: (disabled: boolean) => void;
 }
 
 function createToggle(checked: boolean, onChange: (enabled: boolean) => void): ToggleHandle {
@@ -219,11 +218,6 @@ function createToggle(checked: boolean, onChange: (enabled: boolean) => void): T
 
   return {
     element: label,
-    setDisabled(disabled: boolean) {
-      input.disabled = disabled;
-      label.style.opacity = disabled ? '0.4' : '';
-      label.style.pointerEvents = disabled ? 'none' : '';
-    },
   };
 }
 
@@ -282,11 +276,9 @@ function createModuleRow(
     if (message) {
       failed.textContent = message;
       failed.style.display = '';
-      toggle.setDisabled(true);
     } else {
       failed.textContent = '';
       failed.style.display = 'none';
-      toggle.setDisabled(false);
     }
   }
 
