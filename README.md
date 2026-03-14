@@ -26,11 +26,12 @@ Tampermonkey-скрипт, который модифицирует только 
 
 ```bash
 npm install
-npm run dev         # Vite dev server
-npm run build       # Сборка обоих скриптов в dist/
-npm run typecheck   # Проверка типов
-npm run lint        # ESLint
-npm run test        # Jest
+npm run dev:style     # Dev server для стилевого скрипта
+npm run dev:features  # Dev server для основного скрипта
+npm run build         # Сборка обоих скриптов в dist/
+npm run typecheck     # Проверка типов
+npm run lint          # ESLint
+npm run test          # Jest
 ```
 
 ## Добавление фичи
