@@ -31,6 +31,10 @@
 
 Детали архитектуры, стек → [docs/architecture.md](docs/architecture.md), конвенции именования → [docs/codestyle.md](docs/codestyle.md)
 
+## Типизация
+
+- **Запрещён `as`-кастинг** без type guards — даже в тестах. Вместо `as` использовать type guards (`is`-функции, `in`-проверки, `instanceof`). В крайнем случае `as` допустим только с комментарием, объясняющим почему guard невозможен
+
 ## Игровые настройки и стили
 
 - `localStorage['settings']` — JSON с настройками игры
