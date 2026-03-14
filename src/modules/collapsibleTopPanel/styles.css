@@ -1,0 +1,55 @@
+/* Свёрнутый лейаут */
+.topleft-container.svp-collapsed {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  margin: 0;
+  cursor: pointer;
+  border: 1px var(--border) solid !important;
+  background: var(--background) !important;
+  color: var(--text);
+}
+
+.topleft-container.svp-collapsed .self-info {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+}
+
+.topleft-container.svp-collapsed .game-menu {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+}
+
+/* Сводка инвентаря */
+#svp-inv-summary {
+  font-size: 14px;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+/* Кнопка сворачивания — fixed в правом верхнем углу, вне DOM игры */
+#svp-top-toggle {
+  position: fixed;
+  z-index: 10000;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 8px;
+  color: var(--text);
+  background: var(--background);
+  border: 1px var(--border) solid;
+  border-radius: 6px;
+  opacity: 0.8;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#svp-top-toggle:active {
+  opacity: 1;
+}

@@ -7,6 +7,7 @@
 - Перед каждым коммитом: `npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build`
 - Если `format:check` падает — сначала `npx prettier --write .`
 - Все команды запускаются **без запроса разрешения**
+- **Не делать `cd`** в Bash-командах — рабочая директория уже в корне проекта
 - Коммиты на **русском языке**, кратко, всегда с trailerом `Co-Authored-By:` с именем текущей AI-модели
 - Мелкая правка к предыдущему коммиту (опечатка, уточнение) — **amend**, не новый коммит. Если коммит оказался сильно некорректным — **squash** с исправлением
 - При замечании пользователя о работе AI — **обновить этот файл и/или memory**
@@ -29,3 +30,14 @@
 3. Добавить тесты в `tests/modules/<name>.test.ts`
 
 Детали архитектуры, стек → [docs/architecture.md](docs/architecture.md), конвенции именования → [docs/codestyle.md](docs/codestyle.md)
+
+## Игровые настройки и стили
+
+- `localStorage['settings']` — JSON с настройками игры
+  - Поле `theme` (`"light"` / `"dark"`) — текущая тема
+- **Не хардкодить цвета** — использовать CSS custom properties игры из `:root`:
+  - `--background`, `--background-transp` — фон
+  - `--text`, `--text-disabled`, `--text-shadow` — текст
+  - `--border`, `--border-transp` — рамки
+  - `--accent`, `--selection`, `--link` — акценты
+  - `--team-0..3`, `--level-1..10` — цвета команд и уровней
