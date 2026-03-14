@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# Claude Code
+.claude/*
+!.claude/skills/
+!.claude/subagents/
+!.claude/settings.json
