@@ -26,8 +26,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/sbg-vanilla-plus-style.user.js
-            dist/sbg-vanilla-plus-style.meta.js
-            dist/sbg-vanilla-plus-features.user.js
-            dist/sbg-vanilla-plus-features.meta.js
-          generate_release_notes: true
+            dist/sbg-vanilla-plus.user.js
+            dist/sbg-vanilla-plus.meta.js
+          generate_release_notes: false
