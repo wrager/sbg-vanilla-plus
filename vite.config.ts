@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import monkey from 'vite-plugin-monkey';
+import { version } from './package.json';
 import { SBG_COMPATIBLE_VERSION } from './src/core/gameVersion';
 
 const NAMESPACE = 'https://github.com/wrager/sbg-vanilla-plus';
@@ -14,6 +15,9 @@ export default defineConfig(({ command }) => {
   const description = `UI/UX enhancements for SBG (SBG v${SBG_COMPATIBLE_VERSION})`;
 
   return {
+    define: {
+      __SVP_VERSION__: JSON.stringify(version),
+    },
     build: {
       outDir: 'dist',
       emptyOutDir: true,
@@ -24,7 +28,7 @@ export default defineConfig(({ command }) => {
         userscript: {
           name: isDev ? `${name} [DEV]` : name,
           namespace: NAMESPACE,
-          version: '0.1.0',
+          version,
           description,
           author: 'wrager',
           match: [MATCH],

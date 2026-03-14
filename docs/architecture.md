@@ -33,6 +33,8 @@ interface IFeatureModule {
 
 **Версия SBG** — `SBG_COMPATIBLE_VERSION` в `gameVersion.ts`. Проверяет заголовок `x-sbg-version` из `/api/self`.
 
+**SBG Flavor** — `src/core/sbgFlavor.ts`: перехватывает глобальный `fetch` и добавляет заголовок `x-sbg-flavor: VanillaPlus/{version}` ко всем запросам. Если другие скрипты уже установили этот заголовок, значение дополняется через пробел. Формат как у User-Agent. Запрошено разработчиком игры для статистики.
+
 ## Скрипты игры SBG
 
 Исходные скрипты игры:
@@ -79,6 +81,7 @@ src/
 │   ├── dom.ts
 │   ├── gameEvents.ts
 │   ├── gameVersion.ts
+│   ├── sbgFlavor.ts
 │   └── settings/
 │       ├── types.ts
 │       ├── defaults.ts
