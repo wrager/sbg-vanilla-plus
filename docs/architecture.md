@@ -1,11 +1,8 @@
 # Архитектура SBG Vanilla+
 
-## Два скрипта
+## Один скрипт
 
-1. **`sbg-vanilla-plus-style.user.js`** — неинвазивный: CSS-инъекции и простые DOM-модификации. Не трогает OpenLayers, не перехватывает fetch.
-2. **`sbg-vanilla-plus-features.user.js`** — основной: fetch-перехват (только чтение), работа с OpenLayers, настройки.
-
-Правило разграничения: `<style>` теги + простые DOM-операции → стилевой скрипт. OL API, fetch-перехват, сложная JS-логика → основной скрипт.
+Один userscript `sbg-vanilla-plus.user.js` — все модули в одном бандле. Модули организованы по категориям: `style`, `feature`, `bugfix`.
 
 ## Интерфейс модуля
 
@@ -15,7 +12,7 @@ interface IFeatureModule {
   name: ILocalizedString; // { en, ru }
   description: ILocalizedString; // { en, ru }
   defaultEnabled: boolean;
-  script: 'style' | 'features';
+  category: 'style' | 'feature' | 'bugfix';
   init(): void; // один раз при загрузке
   enable(): void;
   disable(): void;
@@ -32,7 +29,7 @@ interface IFeatureModule {
 
 **Настройки** — `localStorage['svp_settings']`: `{ version: number, modules: Record<string, boolean> }`. Миграции через массив `migrations[]`.
 
-**Панель настроек** — единая кнопка ⚙ для обоих скриптов. Первый скрипт создаёт панель с pre-allocated слотами по `data-svp-section`, второй заполняет свой слот.
+**Панель настроек** — кнопка ⚙ открывает полноэкранную панель. Модули сгруппированы по категориям: Стилизация, Фичи, Багфиксы.
 
 **Версия SBG** — `SBG_COMPATIBLE_VERSION` в `gameVersion.ts`. Проверяет заголовок `x-sbg-version` из `/api/self`.
 
@@ -61,7 +58,7 @@ interface IFeatureModule {
 | Инструмент         | Назначение                        |
 | ------------------ | --------------------------------- |
 | TypeScript         | Типизация (strict: true)          |
-| Vite               | Бандлер (два entry, CSS inline)   |
+| Vite               | Бандлер (один entry, CSS inline)  |
 | vite-plugin-monkey | Tampermonkey-заголовки + .meta.js |
 | ESLint             | Линтинг (flat config)             |
 | Prettier           | Форматирование (endOfLine: lf)    |
@@ -88,10 +85,19 @@ src/
 │       ├── storage.ts
 │       └── ui.ts
 ├── modules/
-│   └── <moduleName>/
-│       ├── index.ts
-│       └── styles.css
+│   ├── style/
+│   │   └── <moduleName>/
+│   │       ├── <moduleName>.ts
+│   │       ├── <moduleName>.test.ts
+│   │       └── styles.css
+│   ├── feature/
+│   │   └── <moduleName>/
+│   │       ├── <moduleName>.ts
+│   │       └── <moduleName>.test.ts
+│   └── bugfix/
+│       └── <moduleName>/
+│           ├── <moduleName>.ts
+│           └── <moduleName>.test.ts
 ├── types/
-├── entryStyle.ts
-└── entryFeatures.ts
+└── entry.ts
 ```

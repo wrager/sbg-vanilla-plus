@@ -13,9 +13,8 @@
   "sideEffects": false,
   "license": "MIT",
   "scripts": {
-    "dev:style": "vite --mode style",
-    "dev:features": "vite --mode features",
-    "build": "vite build --mode style && vite build --mode features",
+    "dev": "vite",
+    "build": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",

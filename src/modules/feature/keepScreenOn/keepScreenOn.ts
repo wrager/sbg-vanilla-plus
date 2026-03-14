@@ -1,4 +1,4 @@
-import type { IFeatureModule } from '../../core/moduleRegistry';
+import type { IFeatureModule } from '../../../core/moduleRegistry';
 
 const MODULE_ID = 'keepScreenOn';
 
@@ -29,7 +29,7 @@ export const keepScreenOn: IFeatureModule = {
     ru: 'Экран не гаснет во время игры (Wake Lock API)',
   },
   defaultEnabled: true,
-  script: 'features',
+  category: 'feature',
   init() {},
   enable() {
     void requestWakeLock();

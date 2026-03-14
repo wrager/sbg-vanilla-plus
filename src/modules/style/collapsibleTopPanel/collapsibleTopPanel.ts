@@ -1,5 +1,5 @@
-import type { IFeatureModule } from '../../core/moduleRegistry';
-import { $, $$, injectStyles, removeStyles, waitForElement } from '../../core/dom';
+import type { IFeatureModule } from '../../../core/moduleRegistry';
+import { $, $$, injectStyles, removeStyles, waitForElement } from '../../../core/dom';
 import css from './styles.css?inline';
 
 const MODULE_ID = 'collapsibleTopPanel';
@@ -120,7 +120,7 @@ export const collapsibleTopPanel: IFeatureModule = {
     ru: 'Сворачивает верхнюю панель, показывая только инвентарь и кнопку OPS',
   },
   defaultEnabled: true,
-  script: 'style',
+  category: 'style',
   init() {},
   enable() {
     injectStyles(css, MODULE_ID);

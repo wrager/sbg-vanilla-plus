@@ -5,25 +5,22 @@ import { SBG_COMPATIBLE_VERSION } from './src/core/gameVersion';
 const NAMESPACE = 'https://github.com/wrager/sbg-vanilla-plus';
 const MATCH = 'https://sbg-game.ru/app/*';
 const DOWNLOAD_BASE = 'https://github.com/wrager/sbg-vanilla-plus/releases/latest/download';
+const FILENAME = 'sbg-vanilla-plus';
 
-export default defineConfig(({ command, mode }) => {
-  const isStyle = mode === 'style';
+export default defineConfig(({ command }) => {
   const isDev = command === 'serve';
 
-  const name = isStyle ? 'SBG Vanilla+ Style' : 'SBG Vanilla+ Features';
-  const description = isStyle
-    ? `CSS-only UI enhancements for SBG (SBG v${SBG_COMPATIBLE_VERSION})`
-    : `UI/UX enhancements for SBG (SBG v${SBG_COMPATIBLE_VERSION})`;
-  const filename = isStyle ? 'sbg-vanilla-plus-style' : 'sbg-vanilla-plus-features';
+  const name = 'SBG Vanilla+';
+  const description = `UI/UX enhancements for SBG (SBG v${SBG_COMPATIBLE_VERSION})`;
 
   return {
     build: {
       outDir: 'dist',
-      emptyOutDir: isStyle,
+      emptyOutDir: true,
     },
     plugins: [
       monkey({
-        entry: isStyle ? 'src/entryStyle.ts' : 'src/entryFeatures.ts',
+        entry: 'src/entry.ts',
         userscript: {
           name: isDev ? `${name} [DEV]` : name,
           namespace: NAMESPACE,
@@ -37,13 +34,13 @@ export default defineConfig(({ command, mode }) => {
           ...(isDev
             ? {}
             : {
-                downloadURL: `${DOWNLOAD_BASE}/${filename}.user.js`,
-                updateURL: `${DOWNLOAD_BASE}/${filename}.meta.js`,
+                downloadURL: `${DOWNLOAD_BASE}/${FILENAME}.user.js`,
+                updateURL: `${DOWNLOAD_BASE}/${FILENAME}.meta.js`,
               }),
         },
         build: {
-          fileName: `${filename}.user.js`,
-          metaFileName: `${filename}.meta.js`,
+          fileName: `${FILENAME}.user.js`,
+          metaFileName: `${FILENAME}.meta.js`,
         },
       }),
     ],

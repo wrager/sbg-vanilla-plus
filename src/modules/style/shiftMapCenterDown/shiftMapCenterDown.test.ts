@@ -12,7 +12,7 @@ describe('shiftMapCenterDown', () => {
 
   test('has correct module metadata', () => {
     expect(shiftMapCenterDown.id).toBe('shiftMapCenterDown');
-    expect(shiftMapCenterDown.script).toBe('style');
+    expect(shiftMapCenterDown.category).toBe('style');
     expect(shiftMapCenterDown.defaultEnabled).toBe(true);
     expect(shiftMapCenterDown.requiresReload).toBe(true);
   });

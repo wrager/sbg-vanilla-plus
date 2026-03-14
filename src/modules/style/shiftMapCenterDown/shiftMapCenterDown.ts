@@ -1,5 +1,5 @@
-import type { IFeatureModule } from '../../core/moduleRegistry';
-import { injectStyles } from '../../core/dom';
+import type { IFeatureModule } from '../../../core/moduleRegistry';
+import { injectStyles } from '../../../core/dom';
 
 const MODULE_ID = 'shiftMapCenterDown';
 const EXTRA_HEIGHT_VH = 40;
@@ -15,7 +15,7 @@ export const shiftMapCenterDown: IFeatureModule = {
   },
   defaultEnabled: true,
   requiresReload: true,
-  script: 'style',
+  category: 'style',
   init() {},
   enable() {
     injectStyles(CSS, MODULE_ID);

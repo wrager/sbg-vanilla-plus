@@ -1,5 +1,6 @@
 import type { IFeatureModule } from '../moduleRegistry';
 import { injectStyles } from '../dom';
+import type { ILocalizedString } from '../l10n';
 import { t } from '../l10n';
 import {
   loadSettings,
@@ -184,11 +185,14 @@ const PANEL_STYLES = `
 }
 `;
 
-const SECTION_ORDER = ['style', 'features'] as const;
+type Category = IFeatureModule['category'];
 
-const SECTION_LABELS: Record<string, { en: string; ru: string }> = {
-  style: { en: 'Styles script', ru: 'Styles script' },
-  features: { en: 'Features script', ru: 'Features script' },
+const CATEGORY_ORDER: readonly Category[] = ['style', 'feature', 'bugfix'];
+
+const CATEGORY_LABELS: Record<Category, ILocalizedString> = {
+  style: { en: 'Styling', ru: 'Стилизация' },
+  feature: { en: 'Features', ru: 'Фичи' },
+  bugfix: { en: 'Bugfixes', ru: 'Багфиксы' },
 };
 
 interface ToggleHandle {
@@ -295,11 +299,11 @@ function createModuleRow(
 function fillSection(
   section: HTMLElement,
   modules: readonly IFeatureModule[],
-  scriptType: string,
+  category: Category,
 ): void {
   const title = document.createElement('div');
   title.className = 'svp-settings-section-title';
-  title.textContent = t(SECTION_LABELS[scriptType]);
+  title.textContent = t(CATEGORY_LABELS[category]);
   section.appendChild(title);
 
   let settings = loadSettings();
@@ -347,15 +351,6 @@ function fillSection(
 export function initSettingsUI(modules: readonly IFeatureModule[]): void {
   injectStyles(PANEL_STYLES, 'settings');
 
-  const scriptType = modules[0]?.script ?? 'features';
-  const existingPanel = document.getElementById(PANEL_ID);
-
-  if (existingPanel) {
-    const slot = existingPanel.querySelector<HTMLElement>(`[data-svp-section="${scriptType}"]`);
-    if (slot) fillSection(slot, modules, scriptType);
-    return;
-  }
-
   const panel = document.createElement('div');
   panel.className = 'svp-settings-panel';
   panel.id = PANEL_ID;
@@ -376,17 +371,24 @@ export function initSettingsUI(modules: readonly IFeatureModule[]): void {
   const content = document.createElement('div');
   content.className = 'svp-settings-content';
 
-  for (const type of SECTION_ORDER) {
+  const grouped = new Map<Category, IFeatureModule[]>();
+  for (const mod of modules) {
+    const list = grouped.get(mod.category) ?? [];
+    list.push(mod);
+    grouped.set(mod.category, list);
+  }
+
+  for (const category of CATEGORY_ORDER) {
+    const categoryModules = grouped.get(category);
+    if (!categoryModules?.length) continue;
+
     const section = document.createElement('div');
     section.className = 'svp-settings-section';
-    section.dataset['svpSection'] = type;
+    fillSection(section, categoryModules, category);
     content.appendChild(section);
   }
 
   panel.appendChild(content);
-
-  const ownSlot = content.querySelector<HTMLElement>(`[data-svp-section="${scriptType}"]`);
-  if (ownSlot) fillSection(ownSlot, modules, scriptType);
 
   function updateScrollIndicators(): void {
     const hasTop = content.scrollTop > 0;

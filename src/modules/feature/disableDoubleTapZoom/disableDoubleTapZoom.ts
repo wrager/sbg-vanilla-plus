@@ -1,5 +1,5 @@
-import type { IFeatureModule } from '../../core/moduleRegistry';
-import { waitForElement } from '../../core/dom';
+import type { IFeatureModule } from '../../../core/moduleRegistry';
+import { waitForElement } from '../../../core/dom';
 
 const MODULE_ID = 'disableDoubleTapZoom';
 const DOUBLE_TAP_THRESHOLD_MS = 300;
@@ -31,7 +31,7 @@ export const disableDoubleTapZoom: IFeatureModule = {
     ru: 'Отключает зум по двойному тапу для предотвращения случайного зума',
   },
   defaultEnabled: true,
-  script: 'features',
+  category: 'feature',
   init() {
     void waitForElement('.ol-viewport').then((el) => {
       if (pendingEnabled !== null) {

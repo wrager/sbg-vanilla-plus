@@ -1,4 +1,4 @@
-import type { IFeatureModule } from '../../core/moduleRegistry';
+import type { IFeatureModule } from '../../../core/moduleRegistry';
 
 const MODULE_ID = 'drawButtonFix';
 
@@ -12,7 +12,7 @@ export const drawButtonFix: IFeatureModule = {
     ru: 'Кнопка Draw всегда активна — исправляет баг игры, когда кнопка зависает в неактивном состоянии',
   },
   defaultEnabled: true,
-  script: 'features',
+  category: 'bugfix',
   init() {},
   enable() {
     observer = new MutationObserver((mutations) => {

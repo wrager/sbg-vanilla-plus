@@ -43,7 +43,7 @@ describe('collapsibleTopPanel', () => {
 
   test('has correct module metadata', () => {
     expect(collapsibleTopPanel.id).toBe('collapsibleTopPanel');
-    expect(collapsibleTopPanel.script).toBe('style');
+    expect(collapsibleTopPanel.category).toBe('style');
     expect(collapsibleTopPanel.defaultEnabled).toBe(true);
   });
 

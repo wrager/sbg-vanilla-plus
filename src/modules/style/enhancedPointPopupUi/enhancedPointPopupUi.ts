@@ -1,5 +1,5 @@
-import { injectStyles, removeStyles } from '../../core/dom';
-import type { IFeatureModule } from '../../core/moduleRegistry';
+import { injectStyles, removeStyles } from '../../../core/dom';
+import type { IFeatureModule } from '../../../core/moduleRegistry';
 import styles from './styles.css?inline';
 
 const MODULE_ID = 'enhancedPointPopupUi';
@@ -12,7 +12,7 @@ export const enhancedPointPopupUi: IFeatureModule = {
     ru: 'Увеличенные кнопки на экране точки для удобства на мобильных',
   },
   defaultEnabled: true,
-  script: 'style',
+  category: 'style',
   init() {},
   enable() {
     injectStyles(styles, MODULE_ID);
