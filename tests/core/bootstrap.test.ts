@@ -5,8 +5,8 @@ import * as storage from '../../src/core/settings/storage';
 function createMockModule(overrides: Partial<IFeatureModule> = {}): IFeatureModule {
   return {
     id: 'test',
-    name: 'Test',
-    description: 'Test module',
+    name: { en: 'Test', ru: 'Тест' },
+    description: { en: 'Test module', ru: 'Тестовый модуль' },
     defaultEnabled: true,
     script: 'features',
     init: jest.fn(),

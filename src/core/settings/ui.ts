@@ -1,5 +1,6 @@
 import type { IFeatureModule } from '../moduleRegistry';
 import { injectStyles } from '../dom';
+import { t } from '../l10n';
 import { loadSettings, saveSettings, isModuleEnabled, setModuleEnabled } from './storage';
 
 const PANEL_ID = 'svp-settings-panel';
@@ -92,6 +93,13 @@ const PANEL_STYLES = `
   margin-top: 2px;
 }
 
+.svp-module-id {
+  font-size: 11px;
+  color: #666;
+  font-family: monospace;
+  margin-top: 1px;
+}
+
 .svp-module-failed {
   color: #ff6b6b;
   font-size: 12px;
@@ -142,9 +150,9 @@ const PANEL_STYLES = `
 
 const SECTION_ORDER = ['style', 'features'] as const;
 
-const SECTION_LABELS: Record<string, string> = {
-  style: 'Внешний вид',
-  features: 'Функции',
+const SECTION_LABELS: Record<string, { en: string; ru: string }> = {
+  style: { en: 'Appearance', ru: 'Внешний вид' },
+  features: { en: 'Features', ru: 'Функции' },
 };
 
 function createToggle(checked: boolean, onChange: (enabled: boolean) => void): HTMLElement {
@@ -179,19 +187,24 @@ function createModuleRow(
 
   const name = document.createElement('div');
   name.className = 'svp-module-name';
-  name.textContent = mod.name;
+  name.textContent = t(mod.name);
 
   const desc = document.createElement('div');
   desc.className = 'svp-module-desc';
-  desc.textContent = mod.description;
+  desc.textContent = t(mod.description);
+
+  const modId = document.createElement('div');
+  modId.className = 'svp-module-id';
+  modId.textContent = mod.id;
 
   info.appendChild(name);
   info.appendChild(desc);
+  info.appendChild(modId);
 
   if (mod.status === 'failed') {
     const failed = document.createElement('div');
     failed.className = 'svp-module-failed';
-    failed.textContent = '(ошибка загрузки)';
+    failed.textContent = t({ en: '(loading error)', ru: '(ошибка загрузки)' });
     info.appendChild(failed);
   }
 
@@ -207,7 +220,7 @@ function fillSection(
 ): void {
   const title = document.createElement('div');
   title.className = 'svp-settings-section-title';
-  title.textContent = SECTION_LABELS[scriptType] ?? scriptType;
+  title.textContent = t(SECTION_LABELS[scriptType]);
   section.appendChild(title);
 
   let settings = loadSettings();
@@ -224,7 +237,7 @@ function fillSection(
           mod.disable();
         }
       } catch (e) {
-        console.warn(`[SVP] Ошибка переключения модуля "${mod.name}":`, e);
+        console.warn(`[SVP] Ошибка переключения модуля "${t(mod.name)}":`, e);
       }
     });
     section.appendChild(row);

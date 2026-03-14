@@ -1,7 +1,10 @@
+import type { ILocalizedString } from './l10n';
+import { t } from './l10n';
+
 export interface IFeatureModule {
   id: string;
-  name: string;
-  description: string;
+  name: ILocalizedString;
+  description: ILocalizedString;
   defaultEnabled: boolean;
   script: 'style' | 'features';
   status?: 'ready' | 'failed';
@@ -19,7 +22,7 @@ export function initModules(modules: IFeatureModule[], isEnabled: (id: string) =
       }
       mod.status = 'ready';
     } catch (e) {
-      console.warn(`[SVP] Модуль "${mod.name}" не загрузился:`, e);
+      console.warn(`[SVP] Модуль "${t(mod.name)}" не загрузился:`, e);
       mod.status = 'failed';
     }
   }

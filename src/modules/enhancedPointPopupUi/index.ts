@@ -6,8 +6,11 @@ const MODULE_ID = 'enhancedPointPopupUi';
 
 export const enhancedPointPopupUi: IFeatureModule = {
   id: MODULE_ID,
-  name: 'Enhanced Point Popup UI',
-  description: 'Улучшенный интерфейс попапа точки для удобства на мобильных',
+  name: { en: 'Enhanced Point Popup UI', ru: 'Улучшенный интерфейс попапа точки' },
+  description: {
+    en: 'Enlarged buttons on point popup for mobile convenience',
+    ru: 'Увеличенные кнопки на экране точки для удобства на мобильных',
+  },
   defaultEnabled: true,
   script: 'style',
   init() {},

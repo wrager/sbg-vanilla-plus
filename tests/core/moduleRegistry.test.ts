@@ -3,8 +3,8 @@ import { initModules, type IFeatureModule } from '../../src/core/moduleRegistry'
 function createMockModule(overrides: Partial<IFeatureModule> = {}): IFeatureModule {
   return {
     id: 'test',
-    name: 'Test Module',
-    description: 'A test module',
+    name: { en: 'Test Module', ru: 'Тестовый модуль' },
+    description: { en: 'A test module', ru: 'Тестовый модуль' },
     defaultEnabled: true,
     script: 'style',
     init: jest.fn(),

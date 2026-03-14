@@ -6,9 +6,11 @@ let observer: MutationObserver | null = null;
 
 export const drawAlwaysAvailable: IFeatureModule = {
   id: MODULE_ID,
-  name: 'Draw Always Available',
-  description:
-    'Кнопка Draw всегда активна — исправляет баг игры, когда кнопка зависает в неактивном состоянии',
+  name: { en: 'Draw Always Available', ru: 'Рисование всегда доступно' },
+  description: {
+    en: 'Draw button is always active — fixes a game bug where the button gets stuck in disabled state',
+    ru: 'Кнопка Draw всегда активна — исправляет баг игры, когда кнопка зависает в неактивном состоянии',
+  },
   defaultEnabled: true,
   script: 'features',
   init() {},

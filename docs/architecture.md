@@ -12,8 +12,8 @@
 ```typescript
 interface IFeatureModule {
   id: string; // ключ в настройках
-  name: string;
-  description: string;
+  name: ILocalizedString; // { en, ru }
+  description: ILocalizedString; // { en, ru }
   defaultEnabled: boolean;
   script: 'style' | 'features';
   init(): void; // один раз при загрузке

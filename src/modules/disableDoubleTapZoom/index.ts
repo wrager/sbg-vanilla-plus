@@ -25,8 +25,11 @@ function applyEnabled(el: Element, enabled: boolean): void {
 
 export const disableDoubleTapZoom: IFeatureModule = {
   id: MODULE_ID,
-  name: 'Disable Double-Tap Zoom',
-  description: 'Отключает зум по двойному тапу для предотвращения случайного зума',
+  name: { en: 'Disable Double-Tap Zoom', ru: 'Отключить зум по двойному тапу' },
+  description: {
+    en: 'Disables double-tap zoom to prevent accidental zooming',
+    ru: 'Отключает зум по двойному тапу для предотвращения случайного зума',
+  },
   defaultEnabled: true,
   script: 'features',
   init() {
