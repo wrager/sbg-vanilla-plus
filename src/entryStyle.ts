@@ -1,7 +1,7 @@
 import { isDisabled } from './core/killswitch';
 import { bootstrap } from './core/bootstrap';
-import { enlargedButtons } from './modules/enlargedButtons';
+import { enhancedPointPopupUi } from './modules/enhancedPointPopupUi';
 
 if (!isDisabled()) {
-  bootstrap([enlargedButtons]);
+  bootstrap([enhancedPointPopupUi]);
 }

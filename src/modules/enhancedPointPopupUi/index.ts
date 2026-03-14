@@ -2,11 +2,11 @@ import { injectStyles, removeStyles } from '../../core/dom';
 import type { FeatureModule } from '../../core/moduleRegistry';
 import styles from './styles.css?inline';
 
-const MODULE_ID = 'enlargedButtons';
+const MODULE_ID = 'enhancedPointPopupUi';
 
-export const enlargedButtons: FeatureModule = {
+export const enhancedPointPopupUi: FeatureModule = {
   id: MODULE_ID,
-  name: 'Enlarged Buttons',
+  name: 'Enhanced Point Popup UI',
   description: 'Увеличенные кнопки на экране точки для удобства на мобильных',
   defaultEnabled: true,
   script: 'style',
