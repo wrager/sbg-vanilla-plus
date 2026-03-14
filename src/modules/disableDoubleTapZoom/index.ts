@@ -42,9 +42,7 @@ registerModule({
     if (!map) return;
 
     const interactions = map.getInteractions().getArray();
-    disabledInteractions = interactions.filter(
-      (i) => i.constructor.name === 'DoubleClickZoom',
-    );
+    disabledInteractions = interactions.filter((i) => i.constructor.name === 'DoubleClickZoom');
     for (const interaction of disabledInteractions) {
       interaction.setActive(false);
     }
