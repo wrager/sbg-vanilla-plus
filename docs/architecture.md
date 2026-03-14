@@ -53,7 +53,7 @@ interface IFeatureModule {
 | Vite               | Бандлер (два entry, CSS inline)   |
 | vite-plugin-monkey | Tampermonkey-заголовки + .meta.js |
 | ESLint             | Линтинг (flat config)             |
-| Prettier           | Форматирование (endOfLine: auto)  |
+| Prettier           | Форматирование (endOfLine: lf)    |
 | Jest + ts-jest     | Тестирование (jsdom)              |
 
 ## Конвенции именования
