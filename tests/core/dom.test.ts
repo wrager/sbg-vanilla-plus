@@ -1,4 +1,4 @@
-import { injectStyles, removeStyles, $, $$ } from '../../src/core/dom';
+import { injectStyles, removeStyles, $, $$, waitForElement } from '../../src/core/dom';
 
 describe('dom', () => {
   afterEach(() => {
@@ -40,5 +40,29 @@ describe('dom', () => {
   test('$$ returns all matching elements', () => {
     document.body.innerHTML = '<div class="a"></div><div class="a"></div>';
     expect($$('.a').length).toBe(2);
+  });
+
+  describe('waitForElement', () => {
+    test('resolves immediately when element already exists', async () => {
+      document.body.innerHTML = '<div class="target"></div>';
+      const el = await waitForElement('.target');
+      expect(el.className).toBe('target');
+    });
+
+    test('resolves when element appears after call', async () => {
+      const promise = waitForElement('.late');
+      const el = document.createElement('div');
+      el.className = 'late';
+      document.body.appendChild(el);
+      expect(await promise).toBe(el);
+    });
+
+    test('rejects after timeout if element never appears', async () => {
+      jest.useFakeTimers();
+      const promise = waitForElement('.never', 1000);
+      jest.advanceTimersByTime(1001);
+      await expect(promise).rejects.toThrow();
+      jest.useRealTimers();
+    });
   });
 });

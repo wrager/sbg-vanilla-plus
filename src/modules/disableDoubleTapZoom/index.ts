@@ -5,7 +5,6 @@ const MODULE_ID = 'disableDoubleTapZoom';
 const DOUBLE_TAP_THRESHOLD_MS = 300;
 
 let lastTap = 0;
-let viewport: Element | null = null;
 let pendingEnabled: boolean | null = null;
 
 function blockDoubleTap(e: Event): void {
@@ -32,7 +31,6 @@ export const disableDoubleTapZoom: FeatureModule = {
   script: 'features',
   init() {
     void waitForElement('.ol-viewport').then((el) => {
-      viewport = el;
       if (pendingEnabled !== null) {
         applyEnabled(el, pendingEnabled);
         pendingEnabled = null;
@@ -40,17 +38,18 @@ export const disableDoubleTapZoom: FeatureModule = {
     });
   },
   enable() {
-    if (viewport) {
-      applyEnabled(viewport, true);
+    const el = document.querySelector('.ol-viewport');
+    if (el) {
+      applyEnabled(el, true);
     } else {
       pendingEnabled = true;
     }
   },
   disable() {
-    if (viewport) {
-      applyEnabled(viewport, false);
-    } else {
-      pendingEnabled = false;
-    }
+    pendingEnabled = false;
+    lastTap = 0;
+    document
+      .querySelector('.ol-viewport')
+      ?.removeEventListener('pointerdown', blockDoubleTap, { capture: true });
   },
 };

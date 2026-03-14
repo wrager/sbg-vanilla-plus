@@ -4,4 +4,7 @@ export default {
   testEnvironment: 'jsdom',
   roots: ['<rootDir>/tests'],
   moduleFileExtensions: ['ts', 'js'],
+  moduleNameMapper: {
+    '\\.css\\?inline$': '<rootDir>/tests/__mocks__/cssMock.ts',
+  },
 };

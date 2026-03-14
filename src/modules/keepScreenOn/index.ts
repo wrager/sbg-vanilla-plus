@@ -7,6 +7,9 @@ let wakeLock: WakeLockSentinel | null = null;
 async function requestWakeLock(): Promise<void> {
   try {
     wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => {
+      wakeLock = null;
+    });
   } catch (e) {
     console.warn('[SVP] Wake Lock недоступен:', e);
   }
