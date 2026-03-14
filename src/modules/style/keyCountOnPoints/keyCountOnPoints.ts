@@ -122,7 +122,7 @@ export const keyCountOnPoints: IFeatureModule = {
     ru: 'Показывает число ключей (refs) для каждой видимой точки на карте',
   },
   defaultEnabled: true,
-  category: 'feature',
+  category: 'style',
 
   init() {},
 

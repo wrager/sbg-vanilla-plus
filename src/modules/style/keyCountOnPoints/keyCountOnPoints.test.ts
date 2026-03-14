@@ -181,8 +181,8 @@ describe('keyCountOnPoints metadata', () => {
     expect(keyCountOnPoints.id).toBe('keyCountOnPoints');
   });
 
-  test('has feature category', () => {
-    expect(keyCountOnPoints.category).toBe('feature');
+  test('has style category', () => {
+    expect(keyCountOnPoints.category).toBe('style');
   });
 
   test('is enabled by default', () => {
