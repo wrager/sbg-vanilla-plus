@@ -1,5 +1,16 @@
 # SBG Vanilla+ — Правила AI-разработки
 
+## Поведение AI
+
+- AI **самостоятельно коммитит** изменения
+- Каждое самостоятельное изменение — **отдельный коммит** (не объединять несвязанные правки)
+- Перед **каждым** коммитом обязательно: `npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build`
+- Если `format:check` падает — сначала `npx prettier --write .`, потом перепроверить
+- Коммиты на **русском языке**, минимальный текст — кратко и по делу
+- Каждый коммит самодостаточен и не ломает сборку
+- Когда пользователь даёт замечание о работе AI — **обновить этот файл и/или memory**, чтобы ошибка не повторялась в следующих чатах
+- Модули не должны иметь side effects — никаких вызовов при импорте, только экспорт
+
 ## Критические запреты (нарушение = перманентный бан в игре)
 
 1. **Запрещена подмена GPS** — никогда не генерировать код, подделывающий геолокацию
@@ -17,7 +28,7 @@
 ### Два скрипта
 
 1. **`sbg-vanilla-plus-style.user.js`** ("SBG Vanilla+ Style") — неинвазивный: CSS-инъекции и простые DOM-модификации (classList, setAttribute). Не трогает OpenLayers, не перехватывает fetch.
-2. **`sbg-vanilla-plus.user.js`** ("SBG Vanilla+ Features") — основной: перехват fetch (только чтение), работа с OpenLayers, настройки, управление инвентарём.
+2. **`sbg-vanilla-plus-features.user.js`** ("SBG Vanilla+ Features") — основной: перехват fetch (только чтение), работа с OpenLayers, настройки, управление инвентарём.
 
 Разграничение: `<style>` теги + простые DOM-операции → стилевой скрипт. OpenLayers API, fetch-перехват, сложная JS-логика → основной скрипт.
 
@@ -39,6 +50,10 @@ interface FeatureModule {
 ```
 
 Добавление новой фичи: создать `src/modules/<name>/index.ts`, экспортирующий объект `FeatureModule` → добавить в массив `bootstrap([...])` в соответствующем entry point (`entryStyle.ts` или `entryFeatures.ts`). Модули не должны иметь side effects — никаких вызовов при импорте, только экспорт.
+
+### Killswitch
+
+`src/core/killswitch.ts` — проверка `#svp-disabled=1` в hash и `sessionStorage`. Позволяет отключить скрипты для сравнения с оригинальной игрой в соседней вкладке.
 
 ### Отказоустойчивость
 
@@ -72,7 +87,7 @@ interface FeatureModule {
 | Vite               | Бандлер (два entry, CSS inline)   |
 | vite-plugin-monkey | Tampermonkey-заголовки + .meta.js |
 | ESLint             | Линтинг (flat config)             |
-| Prettier           | Форматирование                    |
+| Prettier           | Форматирование (endOfLine: auto)  |
 | Jest + ts-jest     | Тестирование (jsdom)              |
 
 ## Конвенции именования
@@ -87,20 +102,16 @@ interface FeatureModule {
 | Кастомные события  | `svp:` префикс   | `svp:point-popup-opened` |
 | localStorage ключи | `svp_` префикс   | `svp_settings`           |
 
-## Правила коммитов
-
-- Коммиты на **русском языке**
-- Минимальный текст — кратко и по делу
-- Каждый коммит самодостаточен и не ломает сборку
-- Перед коммитом: `npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build`
+Избегать слов "util" и "manager" в именах — использовать описательные имена.
 
 ## Структура проекта
 
 ```
 src/
 ├── core/
-│   ├── bootstrap.ts         # Инициализация: DOM → настройки → модули → UI
-│   ├── moduleRegistry.ts    # Регистрация и lifecycle модулей
+│   ├── bootstrap.ts         # Принимает массив модулей, инициализирует
+│   ├── killswitch.ts        # #svp-disabled=1 → sessionStorage → skip bootstrap
+│   ├── moduleRegistry.ts    # FeatureModule интерфейс, initModules()
 │   ├── dom.ts               # waitForElement, $, $$, injectStyles, removeStyles
 │   ├── gameEvents.ts        # MutationObserver обёртки
 │   ├── gameVersion.ts       # SBG_COMPATIBLE_VERSION
@@ -111,11 +122,12 @@ src/
 │       └── ui.ts            # Панель настроек
 ├── modules/
 │   └── <moduleName>/
-│       ├── index.ts         # Реализация FeatureModule
+│       ├── index.ts         # Экспорт FeatureModule (без side effects)
 │       └── styles.css       # CSS (если есть)
 ├── types/
 │   ├── gameDom.d.ts         # Типы DOM-элементов игры
-│   └── tampermonkey.d.ts    # GM_* API типы
-├── entryStyle.ts            # Entry стилевого скрипта
-└── entryFeatures.ts         # Entry основного скрипта
+│   ├── tampermonkey.d.ts    # GM_* API типы
+│   └── vite.d.ts            # *.css?inline типы
+├── entryStyle.ts            # isDisabled() → bootstrap([...style modules])
+└── entryFeatures.ts         # isDisabled() → bootstrap([...feature modules])
 ```
