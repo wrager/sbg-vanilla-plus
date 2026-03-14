@@ -129,6 +129,11 @@ const PANEL_STYLES = `
   font-size: 10px;
 }
 
+.svp-module-reload {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
 .svp-toggle {
   position: relative;
   width: 28px;
@@ -238,6 +243,12 @@ function createModuleRow(
   }
 
   row.appendChild(info);
+  if (mod.requiresReload) {
+    const reload = document.createElement('span');
+    reload.className = 'svp-module-reload';
+    reload.textContent = '🔄';
+    row.appendChild(reload);
+  }
   row.appendChild(createToggle(enabled, onChange));
   return row;
 }
