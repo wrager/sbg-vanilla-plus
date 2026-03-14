@@ -28,10 +28,11 @@ const PANEL_STYLES = `
   background: #1a1a2e;
   color: #eee;
   overflow-y: auto;
-  padding: 16px;
+  padding: 8px;
   display: none;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
+  font-size: 13px;
 }
 
 .svp-settings-panel.svp-open {
@@ -42,15 +43,22 @@ const PANEL_STYLES = `
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: bold;
+  position: sticky;
+  top: -8px;
+  background: #1a1a2e;
+  z-index: 1;
+  padding: 8px 8px 4px;
+  margin: -8px -8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .svp-settings-close {
   background: none;
   border: none;
   color: #eee;
-  font-size: 24px;
+  font-size: 18px;
   cursor: pointer;
 }
 
@@ -61,21 +69,21 @@ const PANEL_STYLES = `
 }
 
 .svp-settings-section-title {
-  font-size: 13px;
+  font-size: 10px;
   font-weight: 600;
   color: #888;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  padding: 12px 0 4px;
+  padding: 6px 0 2px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .svp-module-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
+  padding: 4px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -83,32 +91,38 @@ const PANEL_STYLES = `
   flex: 1;
 }
 
+.svp-module-name-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
 .svp-module-name {
+  font-size: 13px;
   font-weight: 600;
 }
 
-.svp-module-desc {
-  font-size: 12px;
-  color: #aaa;
-  margin-top: 2px;
-}
-
 .svp-module-id {
-  font-size: 11px;
+  font-size: 8px;
   color: #666;
   font-family: monospace;
+}
+
+.svp-module-desc {
+  font-size: 10px;
+  color: #aaa;
   margin-top: 1px;
 }
 
 .svp-module-failed {
   color: #ff6b6b;
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .svp-toggle {
   position: relative;
-  width: 44px;
-  height: 24px;
+  width: 28px;
+  height: 16px;
   flex-shrink: 0;
 }
 
@@ -122,7 +136,7 @@ const PANEL_STYLES = `
   position: absolute;
   inset: 0;
   background: #444;
-  border-radius: 12px;
+  border-radius: 8px;
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -130,10 +144,10 @@ const PANEL_STYLES = `
 .svp-toggle-slider::before {
   content: '';
   position: absolute;
-  width: 18px;
-  height: 18px;
-  left: 3px;
-  top: 3px;
+  width: 12px;
+  height: 12px;
+  left: 2px;
+  top: 2px;
   background: #fff;
   border-radius: 50%;
   transition: transform 0.2s;
@@ -144,7 +158,7 @@ const PANEL_STYLES = `
 }
 
 .svp-toggle input:checked + .svp-toggle-slider::before {
-  transform: translateX(20px);
+  transform: translateX(12px);
 }
 `;
 
@@ -185,21 +199,26 @@ function createModuleRow(
   const info = document.createElement('div');
   info.className = 'svp-module-info';
 
+  const nameLine = document.createElement('div');
+  nameLine.className = 'svp-module-name-line';
+
   const name = document.createElement('div');
   name.className = 'svp-module-name';
   name.textContent = t(mod.name);
-
-  const desc = document.createElement('div');
-  desc.className = 'svp-module-desc';
-  desc.textContent = t(mod.description);
 
   const modId = document.createElement('div');
   modId.className = 'svp-module-id';
   modId.textContent = mod.id;
 
-  info.appendChild(name);
+  nameLine.appendChild(name);
+  nameLine.appendChild(modId);
+
+  const desc = document.createElement('div');
+  desc.className = 'svp-module-desc';
+  desc.textContent = t(mod.description);
+
+  info.appendChild(nameLine);
   info.appendChild(desc);
-  info.appendChild(modId);
 
   if (mod.status === 'failed') {
     const failed = document.createElement('div');
