@@ -1,4 +1,5 @@
 import type { FeatureModule } from '../../core/moduleRegistry';
+import { waitForElement } from '../../core/dom';
 
 const MODULE_ID = 'disableDoubleTapZoom';
 
@@ -12,22 +13,36 @@ interface OlMap {
 }
 
 function getMap(): OlMap | null {
-  const canvas = document.querySelector('.ol-viewport canvas');
-  if (!canvas) return null;
-
-  const viewport = canvas.closest('.ol-viewport')?.parentElement;
-  if (!viewport) return null;
-
-  // SBG exposes map in global scope
   const win = window as unknown as Record<string, unknown>;
   if ('map' in win && win.map && typeof win.map === 'object') {
     return win.map as OlMap;
   }
-
   return null;
 }
 
+function findDoubleClickZoom(map: OlMap): OlInteraction[] {
+  return map
+    .getInteractions()
+    .getArray()
+    .filter((i) => i.constructor.name === 'DoubleClickZoom');
+}
+
+let mapReady = false;
+let pendingEnabled: boolean | null = null;
 let disabledInteractions: OlInteraction[] = [];
+
+function applyEnabled(enabled: boolean): void {
+  const map = getMap();
+  if (!map) return;
+
+  if (enabled) {
+    for (const i of disabledInteractions) i.setActive(true);
+    disabledInteractions = [];
+  } else {
+    disabledInteractions = findDoubleClickZoom(map);
+    for (const i of disabledInteractions) i.setActive(false);
+  }
+}
 
 export const disableDoubleTapZoom: FeatureModule = {
   id: MODULE_ID,
@@ -35,21 +50,27 @@ export const disableDoubleTapZoom: FeatureModule = {
   description: 'Отключает зум по двойному тапу для предотвращения случайного зума',
   defaultEnabled: true,
   script: 'features',
-  init() {},
+  init() {
+    void waitForElement('.ol-viewport canvas').then(() => {
+      mapReady = true;
+      if (pendingEnabled !== null) {
+        applyEnabled(pendingEnabled);
+        pendingEnabled = null;
+      }
+    });
+  },
   enable() {
-    const map = getMap();
-    if (!map) return;
-
-    const interactions = map.getInteractions().getArray();
-    disabledInteractions = interactions.filter((i) => i.constructor.name === 'DoubleClickZoom');
-    for (const interaction of disabledInteractions) {
-      interaction.setActive(false);
+    if (mapReady) {
+      applyEnabled(true);
+    } else {
+      pendingEnabled = true;
     }
   },
   disable() {
-    for (const interaction of disabledInteractions) {
-      interaction.setActive(true);
+    if (mapReady) {
+      applyEnabled(false);
+    } else {
+      pendingEnabled = false;
     }
-    disabledInteractions = [];
   },
 };
