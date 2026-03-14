@@ -6,8 +6,9 @@ const NAMESPACE = 'https://github.com/wrager/sbg-vanilla-plus';
 const MATCH = 'https://sbg-game.ru/app/*';
 const DOWNLOAD_BASE = 'https://github.com/wrager/sbg-vanilla-plus/releases/latest/download';
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const isStyle = mode === 'style';
+  const isDev = command === 'serve';
 
   const name = isStyle ? 'SBG Vanilla+ Style' : 'SBG Vanilla+ Features';
   const description = isStyle
@@ -24,7 +25,7 @@ export default defineConfig(({ mode }) => {
       monkey({
         entry: isStyle ? 'src/entryStyle.ts' : 'src/entryFeatures.ts',
         userscript: {
-          name,
+          name: isDev ? `${name} [DEV]` : name,
           namespace: NAMESPACE,
           version: '0.1.0',
           description,
@@ -33,8 +34,12 @@ export default defineConfig(({ mode }) => {
           'run-at': 'document-idle',
           grant: 'none',
           license: 'MIT',
-          downloadURL: `${DOWNLOAD_BASE}/${filename}.user.js`,
-          updateURL: `${DOWNLOAD_BASE}/${filename}.meta.js`,
+          ...(isDev
+            ? {}
+            : {
+                downloadURL: `${DOWNLOAD_BASE}/${filename}.user.js`,
+                updateURL: `${DOWNLOAD_BASE}/${filename}.meta.js`,
+              }),
         },
         build: {
           fileName: `${filename}.user.js`,

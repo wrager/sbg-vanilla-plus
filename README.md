@@ -34,6 +34,15 @@ npm run lint          # ESLint
 npm run test          # Jest
 ```
 
+### Dev-сервер + Tampermonkey
+
+1. Запустить `npm run dev:style` или `npm run dev:features`
+2. vite-plugin-monkey откроет страницу с прокси-скриптом — установить его в Tampermonkey
+3. Открыть `sbg-game.ru/app/` — скрипт загружается с localhost
+4. При изменении кода dev-сервер пересобирает — обновить страницу игры для применения
+
+Dev-скрипт имеет пометку `[DEV]` в названии. Продакшн `downloadURL`/`updateURL` не включаются в dev-режиме.
+
 ## Добавление фичи
 
 1. Создать `src/modules/<name>/index.ts`, реализующий `FeatureModule`
