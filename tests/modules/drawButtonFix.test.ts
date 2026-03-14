@@ -1,4 +1,4 @@
-import { drawAlwaysAvailable } from '../../src/modules/drawAlwaysAvailable/drawAlwaysAvailable';
+import { drawButtonFix } from '../../src/modules/drawButtonFix/drawButtonFix';
 
 function createDrawButton(disabled = true): HTMLButtonElement {
   const btn = document.createElement('button');
@@ -8,14 +8,14 @@ function createDrawButton(disabled = true): HTMLButtonElement {
   return btn;
 }
 
-describe('drawAlwaysAvailable', () => {
+describe('drawButtonFix', () => {
   afterEach(() => {
-    drawAlwaysAvailable.disable();
+    drawButtonFix.disable();
     document.body.innerHTML = '';
   });
 
   test('removes disabled from #draw when attribute is set', async () => {
-    drawAlwaysAvailable.enable();
+    drawButtonFix.enable();
     const btn = createDrawButton(false);
     btn.setAttribute('disabled', '');
     await Promise.resolve();
@@ -23,7 +23,7 @@ describe('drawAlwaysAvailable', () => {
   });
 
   test('does not affect disabled on other buttons', async () => {
-    drawAlwaysAvailable.enable();
+    drawButtonFix.enable();
     const other = document.createElement('button');
     other.id = 'other';
     other.setAttribute('disabled', '');
@@ -33,8 +33,8 @@ describe('drawAlwaysAvailable', () => {
   });
 
   test('disable stops removing the attribute', async () => {
-    drawAlwaysAvailable.enable();
-    drawAlwaysAvailable.disable();
+    drawButtonFix.enable();
+    drawButtonFix.disable();
     const btn = createDrawButton(false);
     btn.setAttribute('disabled', '');
     await Promise.resolve();
