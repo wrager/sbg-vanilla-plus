@@ -7,7 +7,7 @@ const MODULE_ID = 'enhancedPointPopupUi';
 export const enhancedPointPopupUi: FeatureModule = {
   id: MODULE_ID,
   name: 'Enhanced Point Popup UI',
-  description: 'Увеличенные кнопки на экране точки для удобства на мобильных',
+  description: 'Улучшенный интерфейс попапа точки для удобства на мобильных',
   defaultEnabled: true,
   script: 'style',
   init() {},
