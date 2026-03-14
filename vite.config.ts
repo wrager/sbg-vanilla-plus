@@ -28,7 +28,7 @@ export default defineConfig(({ mode }) => {
           namespace: NAMESPACE,
           version: '0.1.0',
           description,
-          author: 'Alexander Filimonov (wrager)',
+          author: 'wrager',
           match: [MATCH],
           'run-at': 'document-idle',
           grant: 'none',
