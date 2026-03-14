@@ -38,7 +38,7 @@ interface FeatureModule {
 }
 ```
 
-Добавление новой фичи: создать `src/modules/<name>/index.ts` → импортировать в соответствующий entry point (`entryStyle.ts` или `entryFeatures.ts`).
+Добавление новой фичи: создать `src/modules/<name>/index.ts`, экспортирующий объект `FeatureModule` → добавить в массив `bootstrap([...])` в соответствующем entry point (`entryStyle.ts` или `entryFeatures.ts`). Модули не должны иметь side effects — никаких вызовов при импорте, только экспорт.
 
 ### Отказоустойчивость
 

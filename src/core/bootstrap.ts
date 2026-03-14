@@ -1,16 +1,15 @@
-import { getModules, initModules } from './moduleRegistry';
+import type { FeatureModule } from './moduleRegistry';
+import { initModules } from './moduleRegistry';
 import { loadSettings, isModuleEnabled } from './settings/storage';
 import { initSettingsUI } from './settings/ui';
 
-export function bootstrap(script: 'style' | 'features'): void {
+export function bootstrap(modules: FeatureModule[]): void {
   const settings = loadSettings();
 
-  initModules(script, (id) => {
-    const mod = getModules().find((m) => m.id === id);
+  initModules(modules, (id) => {
+    const mod = modules.find((m) => m.id === id);
     return isModuleEnabled(settings, id, mod?.defaultEnabled ?? true);
   });
 
-  if (script === 'features') {
-    initSettingsUI();
-  }
+  initSettingsUI(modules);
 }

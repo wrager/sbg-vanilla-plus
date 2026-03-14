@@ -10,25 +10,8 @@ export interface FeatureModule {
   disable(): void;
 }
 
-const modules: FeatureModule[] = [];
-
-export function registerModule(mod: FeatureModule): void {
-  modules.push(mod);
-}
-
-export function getModules(): readonly FeatureModule[] {
-  return modules;
-}
-
-export function getModulesByScript(script: 'style' | 'features'): readonly FeatureModule[] {
-  return modules.filter((m) => m.script === script);
-}
-
-export function initModules(
-  script: 'style' | 'features',
-  isEnabled: (id: string) => boolean,
-): void {
-  for (const mod of getModulesByScript(script)) {
+export function initModules(modules: FeatureModule[], isEnabled: (id: string) => boolean): void {
+  for (const mod of modules) {
     try {
       mod.init();
       if (isEnabled(mod.id)) {

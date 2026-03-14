@@ -1,4 +1,4 @@
-import { registerModule } from '../../core/moduleRegistry';
+import type { FeatureModule } from '../../core/moduleRegistry';
 
 const MODULE_ID = 'disableDoubleTapZoom';
 
@@ -15,11 +15,10 @@ function getMap(): OlMap | null {
   const canvas = document.querySelector('.ol-viewport canvas');
   if (!canvas) return null;
 
-  // OpenLayers stores map reference on the viewport container
   const viewport = canvas.closest('.ol-viewport')?.parentElement;
   if (!viewport) return null;
 
-  // Access map instance from global scope (SBG exposes it)
+  // SBG exposes map in global scope
   const win = window as unknown as Record<string, unknown>;
   if ('map' in win && win.map && typeof win.map === 'object') {
     return win.map as OlMap;
@@ -30,7 +29,7 @@ function getMap(): OlMap | null {
 
 let disabledInteractions: OlInteraction[] = [];
 
-registerModule({
+export const disableDoubleTapZoom: FeatureModule = {
   id: MODULE_ID,
   name: 'Disable Double-Tap Zoom',
   description: 'Отключает зум по двойному тапу для предотвращения случайного зума',
@@ -53,4 +52,4 @@ registerModule({
     }
     disabledInteractions = [];
   },
-});
+};

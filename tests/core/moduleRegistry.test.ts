@@ -1,10 +1,4 @@
-import {
-  registerModule,
-  getModules,
-  getModulesByScript,
-  initModules,
-  type FeatureModule,
-} from '../../src/core/moduleRegistry';
+import { initModules, type FeatureModule } from '../../src/core/moduleRegistry';
 
 function createMockModule(overrides: Partial<FeatureModule> = {}): FeatureModule {
   return {
@@ -20,47 +14,38 @@ function createMockModule(overrides: Partial<FeatureModule> = {}): FeatureModule
   };
 }
 
-describe('moduleRegistry', () => {
-  test('registerModule adds module to registry', () => {
-    const mod = createMockModule({ id: 'reg-test' });
-    const before = getModules().length;
-    registerModule(mod);
-    expect(getModules().length).toBe(before + 1);
-  });
+describe('initModules', () => {
+  test('calls init and enable for enabled modules', () => {
+    const mod = createMockModule({ id: 'init-test' });
 
-  test('getModulesByScript filters correctly', () => {
-    const styleMod = createMockModule({ id: 'style-mod', script: 'style' });
-    const featuresMod = createMockModule({ id: 'features-mod', script: 'features' });
-    registerModule(styleMod);
-    registerModule(featuresMod);
-
-    const styleModules = getModulesByScript('style');
-    expect(styleModules.some((m) => m.id === 'style-mod')).toBe(true);
-    expect(styleModules.some((m) => m.id === 'features-mod')).toBe(false);
-  });
-
-  test('initModules calls init and enable for enabled modules', () => {
-    const mod = createMockModule({ id: 'init-test', script: 'features' });
-    registerModule(mod);
-
-    initModules('features', () => true);
+    initModules([mod], () => true);
 
     expect(mod.init).toHaveBeenCalledTimes(1);
     expect(mod.enable).toHaveBeenCalledTimes(1);
   });
 
-  test('initModules marks failed modules', () => {
-    const mod = createMockModule({
+  test('calls init but not enable for disabled modules', () => {
+    const mod = createMockModule({ id: 'disabled-test' });
+
+    initModules([mod], () => false);
+
+    expect(mod.init).toHaveBeenCalledTimes(1);
+    expect(mod.enable).not.toHaveBeenCalled();
+  });
+
+  test('marks failed modules without blocking others', () => {
+    const failing = createMockModule({
       id: 'fail-test',
-      script: 'features',
       init: jest.fn(() => {
         throw new Error('boom');
       }),
     });
-    registerModule(mod);
+    const healthy = createMockModule({ id: 'healthy-test' });
 
-    initModules('features', () => true);
+    initModules([failing, healthy], () => true);
 
-    expect(mod.status).toBe('failed');
+    expect(failing.status).toBe('failed');
+    expect(healthy.status).toBe('ready');
+    expect(healthy.init).toHaveBeenCalledTimes(1);
   });
 });

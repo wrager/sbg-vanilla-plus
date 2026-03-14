@@ -1,4 +1,4 @@
-import './modules/enlargedButtons';
 import { bootstrap } from './core/bootstrap';
+import { enlargedButtons } from './modules/enlargedButtons';
 
-bootstrap('style');
+bootstrap([enlargedButtons]);

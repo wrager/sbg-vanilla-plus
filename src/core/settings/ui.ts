@@ -1,4 +1,4 @@
-import { getModules, type FeatureModule } from '../moduleRegistry';
+import type { FeatureModule } from '../moduleRegistry';
 import { injectStyles } from '../dom';
 import { loadSettings, saveSettings, isModuleEnabled, setModuleEnabled } from './storage';
 
@@ -173,7 +173,7 @@ function createModuleRow(
   return row;
 }
 
-export function initSettingsUI(): void {
+export function initSettingsUI(modules: readonly FeatureModule[]): void {
   injectStyles(PANEL_STYLES, 'settings');
 
   const panel = document.createElement('div');
@@ -193,7 +193,6 @@ export function initSettingsUI(): void {
   panel.appendChild(header);
 
   let settings = loadSettings();
-  const modules = getModules();
 
   for (const mod of modules) {
     const enabled = isModuleEnabled(settings, mod.id, mod.defaultEnabled);

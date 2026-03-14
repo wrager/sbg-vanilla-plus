@@ -10,6 +10,7 @@
     "type": "git",
     "url": "https://github.com/wrager/sbg-vanilla-plus.git"
   },
+  "sideEffects": false,
   "license": "MIT",
   "scripts": {
     "dev": "vite",
