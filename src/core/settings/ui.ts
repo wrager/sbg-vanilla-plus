@@ -140,6 +140,8 @@ const PANEL_STYLES = `
 }
 `;
 
+const SECTION_ORDER = ['style', 'features'] as const;
+
 const SECTION_LABELS: Record<string, string> = {
   style: 'Внешний вид',
   features: 'Функции',
@@ -198,10 +200,11 @@ function createModuleRow(
   return row;
 }
 
-function createSection(modules: readonly FeatureModule[], scriptType: string): HTMLElement {
-  const section = document.createElement('div');
-  section.className = 'svp-settings-section';
-
+function fillSection(
+  section: HTMLElement,
+  modules: readonly FeatureModule[],
+  scriptType: string,
+): void {
   const title = document.createElement('div');
   title.className = 'svp-settings-section-title';
   title.textContent = SECTION_LABELS[scriptType] ?? scriptType;
@@ -226,8 +229,6 @@ function createSection(modules: readonly FeatureModule[], scriptType: string): H
     });
     section.appendChild(row);
   }
-
-  return section;
 }
 
 export function initSettingsUI(modules: readonly FeatureModule[]): void {
@@ -237,7 +238,8 @@ export function initSettingsUI(modules: readonly FeatureModule[]): void {
   const existingPanel = document.getElementById(PANEL_ID);
 
   if (existingPanel) {
-    existingPanel.appendChild(createSection(modules, scriptType));
+    const slot = existingPanel.querySelector<HTMLElement>(`[data-svp-section="${scriptType}"]`);
+    if (slot) fillSection(slot, modules, scriptType);
     return;
   }
 
@@ -258,7 +260,15 @@ export function initSettingsUI(modules: readonly FeatureModule[]): void {
   header.appendChild(closeBtn);
   panel.appendChild(header);
 
-  panel.appendChild(createSection(modules, scriptType));
+  for (const type of SECTION_ORDER) {
+    const section = document.createElement('div');
+    section.className = 'svp-settings-section';
+    section.dataset['svpSection'] = type;
+    panel.appendChild(section);
+  }
+
+  const ownSlot = panel.querySelector<HTMLElement>(`[data-svp-section="${scriptType}"]`);
+  if (ownSlot) fillSection(ownSlot, modules, scriptType);
 
   document.body.appendChild(panel);
 
