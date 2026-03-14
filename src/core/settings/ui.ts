@@ -175,8 +175,8 @@ const PANEL_STYLES = `
 const SECTION_ORDER = ['style', 'features'] as const;
 
 const SECTION_LABELS: Record<string, { en: string; ru: string }> = {
-  style: { en: 'Appearance', ru: 'Внешний вид' },
-  features: { en: 'Features', ru: 'Функции' },
+  style: { en: 'Styles script', ru: 'Styles script' },
+  features: { en: 'Features script', ru: 'Features script' },
 };
 
 function createToggle(checked: boolean, onChange: (enabled: boolean) => void): HTMLElement {
