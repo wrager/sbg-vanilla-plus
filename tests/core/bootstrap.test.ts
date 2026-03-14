@@ -1,8 +1,8 @@
 import { bootstrap } from '../../src/core/bootstrap';
-import type { FeatureModule } from '../../src/core/moduleRegistry';
+import type { IFeatureModule } from '../../src/core/moduleRegistry';
 import * as storage from '../../src/core/settings/storage';
 
-function createMockModule(overrides: Partial<FeatureModule> = {}): FeatureModule {
+function createMockModule(overrides: Partial<IFeatureModule> = {}): IFeatureModule {
   return {
     id: 'test',
     name: 'Test',

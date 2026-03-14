@@ -10,7 +10,7 @@
 ## Интерфейс модуля
 
 ```typescript
-interface FeatureModule {
+interface IFeatureModule {
   id: string; // ключ в настройках
   name: string;
   description: string;

@@ -1,4 +1,4 @@
-export interface SvpSettings {
+export interface ISvpSettings {
   version: number;
   modules: Record<string, boolean>;
 }

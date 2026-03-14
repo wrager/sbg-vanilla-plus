@@ -1,4 +1,4 @@
-import type { FeatureModule } from '../moduleRegistry';
+import type { IFeatureModule } from '../moduleRegistry';
 import { injectStyles } from '../dom';
 import { loadSettings, saveSettings, isModuleEnabled, setModuleEnabled } from './storage';
 
@@ -167,7 +167,7 @@ function createToggle(checked: boolean, onChange: (enabled: boolean) => void): H
 }
 
 function createModuleRow(
-  mod: FeatureModule,
+  mod: IFeatureModule,
   enabled: boolean,
   onChange: (enabled: boolean) => void,
 ): HTMLElement {
@@ -202,7 +202,7 @@ function createModuleRow(
 
 function fillSection(
   section: HTMLElement,
-  modules: readonly FeatureModule[],
+  modules: readonly IFeatureModule[],
   scriptType: string,
 ): void {
   const title = document.createElement('div');
@@ -231,7 +231,7 @@ function fillSection(
   }
 }
 
-export function initSettingsUI(modules: readonly FeatureModule[]): void {
+export function initSettingsUI(modules: readonly IFeatureModule[]): void {
   injectStyles(PANEL_STYLES, 'settings');
 
   const scriptType = modules[0]?.script ?? 'features';

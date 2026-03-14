@@ -21,7 +21,7 @@
 
 ## Добавление модуля
 
-1. Создать `src/modules/<name>/index.ts` — экспортировать объект `FeatureModule` (без side effects при импорте)
+1. Создать `src/modules/<name>/index.ts` — экспортировать объект `IFeatureModule` (без side effects при импорте)
 2. Добавить в `bootstrap([...])` в `entryStyle.ts` или `entryFeatures.ts`
 3. Добавить тесты в `tests/modules/<name>.test.ts`
 

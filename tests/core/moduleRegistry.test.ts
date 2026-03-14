@@ -1,6 +1,6 @@
-import { initModules, type FeatureModule } from '../../src/core/moduleRegistry';
+import { initModules, type IFeatureModule } from '../../src/core/moduleRegistry';
 
-function createMockModule(overrides: Partial<FeatureModule> = {}): FeatureModule {
+function createMockModule(overrides: Partial<IFeatureModule> = {}): IFeatureModule {
   return {
     id: 'test',
     name: 'Test Module',

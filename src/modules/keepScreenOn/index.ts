@@ -1,4 +1,4 @@
-import type { FeatureModule } from '../../core/moduleRegistry';
+import type { IFeatureModule } from '../../core/moduleRegistry';
 
 const MODULE_ID = 'keepScreenOn';
 
@@ -21,7 +21,7 @@ function onVisibilityChange(): void {
   }
 }
 
-export const keepScreenOn: FeatureModule = {
+export const keepScreenOn: IFeatureModule = {
   id: MODULE_ID,
   name: 'Keep Screen On',
   description: 'Экран не гаснет во время игры (Wake Lock API)',

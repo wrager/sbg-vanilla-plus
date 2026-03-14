@@ -1,6 +1,6 @@
 /** Known DOM elements in SBG game UI */
 
-interface SbgPointPopup extends HTMLElement {
+interface ISbgPointPopup extends HTMLElement {
   querySelector(
     selector: '.discover-btn' | '.deploy-btn' | '.draw-btn' | '.repair-btn',
   ): HTMLButtonElement | null;

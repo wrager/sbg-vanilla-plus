@@ -1,10 +1,10 @@
 import { injectStyles, removeStyles } from '../../core/dom';
-import type { FeatureModule } from '../../core/moduleRegistry';
+import type { IFeatureModule } from '../../core/moduleRegistry';
 import styles from './styles.css?inline';
 
 const MODULE_ID = 'enhancedPointPopupUi';
 
-export const enhancedPointPopupUi: FeatureModule = {
+export const enhancedPointPopupUi: IFeatureModule = {
   id: MODULE_ID,
   name: 'Enhanced Point Popup UI',
   description: 'Улучшенный интерфейс попапа точки для удобства на мобильных',

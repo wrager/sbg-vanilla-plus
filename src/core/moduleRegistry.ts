@@ -1,4 +1,4 @@
-export interface FeatureModule {
+export interface IFeatureModule {
   id: string;
   name: string;
   description: string;
@@ -10,7 +10,7 @@ export interface FeatureModule {
   disable(): void;
 }
 
-export function initModules(modules: FeatureModule[], isEnabled: (id: string) => boolean): void {
+export function initModules(modules: IFeatureModule[], isEnabled: (id: string) => boolean): void {
   for (const mod of modules) {
     try {
       mod.init();

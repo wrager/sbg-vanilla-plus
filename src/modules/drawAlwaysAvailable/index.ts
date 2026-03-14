@@ -1,10 +1,10 @@
-import type { FeatureModule } from '../../core/moduleRegistry';
+import type { IFeatureModule } from '../../core/moduleRegistry';
 
 const MODULE_ID = 'drawAlwaysAvailable';
 
 let observer: MutationObserver | null = null;
 
-export const drawAlwaysAvailable: FeatureModule = {
+export const drawAlwaysAvailable: IFeatureModule = {
   id: MODULE_ID,
   name: 'Draw Always Available',
   description:

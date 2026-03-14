@@ -3,7 +3,7 @@
 | Что                | Формат           | Пример               |
 | ------------------ | ---------------- | -------------------- |
 | Файлы/папки        | camelCase        | `settingsStorage.ts` |
-| Интерфейсы         | PascalCase       | `FeatureModule`      |
+| Интерфейсы         | IPascalCase      | `IFeatureModule`     |
 | Функции/переменные | camelCase        | `getModuleEnabled`   |
 | Константы          | UPPER_SNAKE_CASE | `MODULE_ID`          |
 | CSS-классы скрипта | `svp-` префикс   | `svp-settings-panel` |

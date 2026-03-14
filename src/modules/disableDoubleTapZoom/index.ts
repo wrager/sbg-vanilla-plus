@@ -1,4 +1,4 @@
-import type { FeatureModule } from '../../core/moduleRegistry';
+import type { IFeatureModule } from '../../core/moduleRegistry';
 import { waitForElement } from '../../core/dom';
 
 const MODULE_ID = 'disableDoubleTapZoom';
@@ -23,7 +23,7 @@ function applyEnabled(el: Element, enabled: boolean): void {
   }
 }
 
-export const disableDoubleTapZoom: FeatureModule = {
+export const disableDoubleTapZoom: IFeatureModule = {
   id: MODULE_ID,
   name: 'Disable Double-Tap Zoom',
   description: 'Отключает зум по двойному тапу для предотвращения случайного зума',

@@ -1,13 +1,13 @@
-import type { SvpSettings } from './types';
+import type { ISvpSettings } from './types';
 import { DEFAULT_SETTINGS, SETTINGS_VERSION } from './defaults';
 
 const STORAGE_KEY = 'svp_settings';
 
-type Migration = (settings: SvpSettings) => SvpSettings;
+type Migration = (settings: ISvpSettings) => ISvpSettings;
 
 const migrations: Migration[] = [];
 
-function migrate(settings: SvpSettings): SvpSettings {
+function migrate(settings: ISvpSettings): ISvpSettings {
   let current = { ...settings };
   for (let v = current.version; v < SETTINGS_VERSION; v++) {
     const migration = migrations[v - 1] as Migration | undefined;
@@ -19,12 +19,12 @@ function migrate(settings: SvpSettings): SvpSettings {
   return current;
 }
 
-export function loadSettings(): SvpSettings {
+export function loadSettings(): ISvpSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
 
-    const parsed = JSON.parse(raw) as SvpSettings;
+    const parsed = JSON.parse(raw) as ISvpSettings;
     if (parsed.version < SETTINGS_VERSION) {
       const migrated = migrate(parsed);
       saveSettings(migrated);
@@ -36,19 +36,23 @@ export function loadSettings(): SvpSettings {
   }
 }
 
-export function saveSettings(settings: SvpSettings): void {
+export function saveSettings(settings: ISvpSettings): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 }
 
 export function isModuleEnabled(
-  settings: SvpSettings,
+  settings: ISvpSettings,
   id: string,
   defaultEnabled: boolean,
 ): boolean {
   return settings.modules[id] ?? defaultEnabled;
 }
 
-export function setModuleEnabled(settings: SvpSettings, id: string, enabled: boolean): SvpSettings {
+export function setModuleEnabled(
+  settings: ISvpSettings,
+  id: string,
+  enabled: boolean,
+): ISvpSettings {
   return {
     ...settings,
     modules: { ...settings.modules, [id]: enabled },
