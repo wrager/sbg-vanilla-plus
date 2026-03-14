@@ -39,6 +39,20 @@ const PANEL_STYLES = `
   display: flex;
 }
 
+.svp-settings-panel.svp-scroll-top {
+  box-shadow: inset 0 12px 8px -8px rgba(0, 0, 0, 0.5);
+}
+
+.svp-settings-panel.svp-scroll-bottom {
+  box-shadow: inset 0 -12px 8px -8px rgba(0, 0, 0, 0.5);
+}
+
+.svp-settings-panel.svp-scroll-top.svp-scroll-bottom {
+  box-shadow:
+    inset 0 12px 8px -8px rgba(0, 0, 0, 0.5),
+    inset 0 -12px 8px -8px rgba(0, 0, 0, 0.5);
+}
+
 .svp-settings-header {
   display: flex;
   justify-content: space-between;
@@ -49,7 +63,7 @@ const PANEL_STYLES = `
   top: -8px;
   background: #1a1a2e;
   z-index: 1;
-  padding: 8px 8px 4px;
+  padding: 4px 8px 4px;
   margin: -8px -8px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.15);
 }
@@ -302,6 +316,17 @@ export function initSettingsUI(modules: readonly IFeatureModule[]): void {
   const ownSlot = panel.querySelector<HTMLElement>(`[data-svp-section="${scriptType}"]`);
   if (ownSlot) fillSection(ownSlot, modules, scriptType);
 
+  function updateScrollIndicators(): void {
+    const hasTop = panel.scrollTop > 0;
+    const hasBottom = panel.scrollTop + panel.clientHeight < panel.scrollHeight - 1;
+    panel.classList.toggle('svp-scroll-top', hasTop);
+    panel.classList.toggle('svp-scroll-bottom', hasBottom);
+  }
+
+  panel.addEventListener('scroll', updateScrollIndicators);
+  const observer = new MutationObserver(updateScrollIndicators);
+  observer.observe(panel, { childList: true, subtree: true });
+
   document.body.appendChild(panel);
 
   const btn = document.createElement('button');
@@ -311,6 +336,7 @@ export function initSettingsUI(modules: readonly IFeatureModule[]): void {
   btn.title = 'SBG Vanilla+ Settings';
   btn.addEventListener('click', () => {
     panel.classList.toggle('svp-open');
+    requestAnimationFrame(updateScrollIndicators);
   });
 
   const container = document.querySelector('.bottom-container');
