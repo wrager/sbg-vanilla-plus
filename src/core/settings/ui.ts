@@ -7,7 +7,7 @@ const PANEL_STYLES = `
   width: 36px;
   height: 36px;
   border: none;
-  background: rgba(255, 255, 255, 0.15);
+  background: #414141;
   border-radius: 50%;
   color: #fff;
   font-size: 20px;
