@@ -1,12 +1,12 @@
 import type { FeatureModule } from '../../core/moduleRegistry';
 
-const MODULE_ID = 'alwaysDrawEnabled';
+const MODULE_ID = 'drawAlwaysAvailable';
 
 let observer: MutationObserver | null = null;
 
-export const alwaysDrawEnabled: FeatureModule = {
+export const drawAlwaysAvailable: FeatureModule = {
   id: MODULE_ID,
-  name: 'Always Draw Enabled',
+  name: 'Draw Always Available',
   description:
     'Кнопка Draw всегда активна — исправляет баг игры, когда кнопка зависает в неактивном состоянии',
   defaultEnabled: true,
