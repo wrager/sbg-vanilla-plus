@@ -39,18 +39,12 @@ const PANEL_STYLES = `
   display: flex;
 }
 
-.svp-settings-panel.svp-scroll-top {
-  box-shadow: inset 0 12px 8px -8px rgba(0, 0, 0, 0.5);
+.svp-settings-panel.svp-scroll-top .svp-settings-header {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
 }
 
 .svp-settings-panel.svp-scroll-bottom {
   box-shadow: inset 0 -12px 8px -8px rgba(0, 0, 0, 0.5);
-}
-
-.svp-settings-panel.svp-scroll-top.svp-scroll-bottom {
-  box-shadow:
-    inset 0 12px 8px -8px rgba(0, 0, 0, 0.5),
-    inset 0 -12px 8px -8px rgba(0, 0, 0, 0.5);
 }
 
 .svp-settings-header {
