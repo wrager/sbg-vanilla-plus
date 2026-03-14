@@ -8,6 +8,7 @@ import { disableDoubleTapZoom } from './modules/feature/disableDoubleTapZoom/dis
 import { drawButtonFix } from './modules/bugfix/drawButtonFix/drawButtonFix';
 import { keepScreenOn } from './modules/feature/keepScreenOn/keepScreenOn';
 import { keyCountOnPoints } from './modules/style/keyCountOnPoints/keyCountOnPoints';
+import { largerPointTapArea } from './modules/style/largerPointTapArea/largerPointTapArea';
 
 if (!isDisabled()) {
   initOlMapCapture();
@@ -15,6 +16,7 @@ if (!isDisabled()) {
     collapsibleTopPanel,
     enhancedPointPopupUi,
     shiftMapCenterDown,
+    largerPointTapArea,
     disableDoubleTapZoom,
     drawButtonFix,
     keepScreenOn,
