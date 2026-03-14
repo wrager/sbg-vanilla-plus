@@ -1,4 +1,4 @@
-import { getGameLocale, t } from '../../src/core/l10n';
+import { getGameLocale, t } from './l10n';
 
 describe('l10n', () => {
   afterEach(() => {

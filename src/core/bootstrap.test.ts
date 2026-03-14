@@ -1,7 +1,7 @@
-import { bootstrap } from '../../src/core/bootstrap';
-import type { IFeatureModule } from '../../src/core/moduleRegistry';
-import type { ISvpSettings } from '../../src/core/settings/types';
-import * as storage from '../../src/core/settings/storage';
+import { bootstrap } from './bootstrap';
+import type { IFeatureModule } from './moduleRegistry';
+import type { ISvpSettings } from './settings/types';
+import * as storage from './settings/storage';
 
 function createMockModule(overrides: Partial<IFeatureModule> = {}): IFeatureModule {
   return {

@@ -1,4 +1,4 @@
-import { injectStyles, removeStyles, $, $$, waitForElement } from '../../src/core/dom';
+import { injectStyles, removeStyles, $, $$, waitForElement } from './dom';
 
 describe('dom', () => {
   afterEach(() => {

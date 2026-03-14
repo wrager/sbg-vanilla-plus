@@ -1,4 +1,4 @@
-import { isDisabled } from '../../src/core/killswitch';
+import { isDisabled } from './killswitch';
 
 describe('killswitch', () => {
   beforeEach(() => {

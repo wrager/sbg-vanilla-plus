@@ -1,4 +1,4 @@
-import { checkVersion, SBG_COMPATIBLE_VERSION } from '../../src/core/gameVersion';
+import { checkVersion, SBG_COMPATIBLE_VERSION } from './gameVersion';
 
 describe('checkVersion', () => {
   beforeEach(() => {

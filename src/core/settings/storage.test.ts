@@ -5,8 +5,8 @@ import {
   setModuleEnabled,
   setModuleError,
   clearModuleError,
-} from '../../../src/core/settings/storage';
-import { DEFAULT_SETTINGS } from '../../../src/core/settings/defaults';
+} from './storage';
+import { DEFAULT_SETTINGS } from './defaults';
 
 describe('settings/storage', () => {
   beforeEach(() => {

@@ -1,4 +1,4 @@
-import { observeElement } from '../../src/core/gameEvents';
+import { observeElement } from './gameEvents';
 
 describe('observeElement', () => {
   afterEach(() => {

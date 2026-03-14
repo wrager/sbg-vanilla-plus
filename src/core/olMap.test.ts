@@ -1,4 +1,4 @@
-import type { IOlView } from '../../src/core/olMap';
+import type { IOlView } from './olMap';
 
 function createFakeView(): IOlView {
   return {
@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 test('captures map instance when ol is already available', async () => {
-  const { getOlMap, initOlMapCapture } = await import('../../src/core/olMap');
+  const { getOlMap, initOlMapCapture } = await import('./olMap');
 
   const fakeView = createFakeView();
   const fakeMap = { getView: () => fakeView };
@@ -53,7 +53,7 @@ test('captures map instance when ol is already available', async () => {
 test('waits for ol and captures when it becomes available', async () => {
   delete window.ol;
 
-  const { getOlMap, initOlMapCapture } = await import('../../src/core/olMap');
+  const { getOlMap, initOlMapCapture } = await import('./olMap');
 
   initOlMapCapture();
 
@@ -77,7 +77,7 @@ test('waits for ol and captures when it becomes available', async () => {
 test('restores window.ol as a normal property after interception', async () => {
   delete window.ol;
 
-  const { initOlMapCapture } = await import('../../src/core/olMap');
+  const { initOlMapCapture } = await import('./olMap');
 
   initOlMapCapture();
 
@@ -92,7 +92,7 @@ test('restores window.ol as a normal property after interception', async () => {
 });
 
 test('restores original getView after capture', async () => {
-  const { initOlMapCapture } = await import('../../src/core/olMap');
+  const { initOlMapCapture } = await import('./olMap');
 
   const fakeView = createFakeView();
   const originalGetView = () => fakeView;
@@ -111,7 +111,7 @@ test('restores original getView after capture', async () => {
 });
 
 test('does not throw when ol is undefined', async () => {
-  const { initOlMapCapture } = await import('../../src/core/olMap');
+  const { initOlMapCapture } = await import('./olMap');
 
   window.ol = undefined;
   expect(() => {

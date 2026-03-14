@@ -1,4 +1,4 @@
-import { drawButtonFix } from '../../src/modules/drawButtonFix/drawButtonFix';
+import { drawButtonFix } from './drawButtonFix';
 
 function createDrawButton(disabled = true): HTMLButtonElement {
   const btn = document.createElement('button');

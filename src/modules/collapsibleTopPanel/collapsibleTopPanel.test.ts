@@ -1,4 +1,4 @@
-import { collapsibleTopPanel } from '../../src/modules/collapsibleTopPanel/collapsibleTopPanel';
+import { collapsibleTopPanel } from './collapsibleTopPanel';
 
 const TOPLEFT_HTML = `
 <div class="topleft-container">

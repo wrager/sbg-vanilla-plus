@@ -1,4 +1,4 @@
-import { keepScreenOn } from '../../src/modules/keepScreenOn/keepScreenOn';
+import { keepScreenOn } from './keepScreenOn';
 
 class MockSentinel extends EventTarget {
   readonly released = false;
