@@ -16,14 +16,50 @@ export interface IOlView {
   getCenter(): number[] | undefined;
   setCenter(center: number[] | undefined): void;
   changed(): void;
+  getZoom?(): number | undefined;
+  on?(type: string, listener: () => void): void;
+  un?(type: string, listener: () => void): void;
+}
+
+export interface IOlFeature {
+  getGeometry(): { getCoordinates(): number[] };
+  getId(): string | number | undefined;
+  setId(id: string): void;
+  setStyle(style: unknown): void;
+}
+
+export interface IOlVectorSource {
+  getFeatures(): IOlFeature[];
+  addFeature(feature: IOlFeature): void;
+  clear(): void;
+  on(type: string, listener: () => void): void;
+  un(type: string, listener: () => void): void;
+}
+
+export interface IOlLayer {
+  get(key: string): unknown;
+  getSource(): IOlVectorSource | null;
 }
 
 export interface IOlMap {
   getView(): IOlView;
+  getLayers(): { getArray(): IOlLayer[] };
+  addLayer(layer: IOlLayer): void;
+  removeLayer(layer: IOlLayer): void;
 }
 
 interface IOlGlobal {
   Map: { prototype: { getView: () => IOlView } };
+  layer?: { Vector?: new (opts: Record<string, unknown>) => IOlLayer };
+  source?: { Vector?: new () => IOlVectorSource };
+  style?: {
+    Style?: new (opts: Record<string, unknown>) => unknown;
+    Text?: new (opts: Record<string, unknown>) => unknown;
+    Fill?: new (opts: Record<string, unknown>) => unknown;
+    Stroke?: new (opts: Record<string, unknown>) => unknown;
+  };
+  Feature?: new (opts?: Record<string, unknown>) => IOlFeature;
+  geom?: { Point?: new (coords: number[]) => { getCoordinates(): number[] } };
 }
 
 function isOlGlobal(val: unknown): val is IOlGlobal {
