@@ -38,12 +38,23 @@ interface IFeatureModule {
 
 ## Скрипты игры SBG
 
-Исходные скрипты игры доступны по адресам:
+Исходные скрипты игры:
 
-- **OpenLayers**: `https://sbg-game.ru/packages/js/ol@10.6.0.js` (минифицирован)
-- **Основной скрипт игры**: `https://sbg-game.ru/app.js` (содержит инициализацию Map, глобальные переменные, API-вызовы)
+- **OpenLayers**: `https://sbg-game.ru/packages/js/ol@10.6.0.js` (UMD-бандл, глобал `window.ol`)
+- **Основной скрипт игры**: URL формируется динамически. Чтобы получить актуальный URL, запросить `https://sbg-game.ru/app/` и найти конструкцию `s.src = (m()?'script':'intel')+'@'+v+'.'+...+'.js'`. Пример: `script@0.6.0.7eda6a0935.1.js`
 
-При необходимости понять внутреннюю механику игры (DOM-структура, OL Map-объект, глобальные переменные) — запросить у пользователя актуальный URL или HTML из DevTools.
+**Доступ к OL Map**: карта создаётся как `const map = new ol.Map({target:'map', ...})` в локальной переменной внутри `main()`, не экспонируется глобально. Для доступа — перехват `ol.Map.prototype` (см. `src/core/olMap.ts`).
+
+## Сторонние скрипты (референс)
+
+Полезны как референс для реализации фич и хаков с DOM/OL API игры:
+
+- **SBG Enhanced UI (eui)** — темы, компактный режим, анимации, импорт/экспорт
+  - Исходники: [`github.com/egorantonov/sbg-enhanced`](https://github.com/egorantonov/sbg-enhanced) (TypeScript + Webpack, `src/`)
+  - Релиз: `https://github.com/egorantonov/sbg-enhanced/releases/latest/download/eui.user.js`
+- **SBG Custom UI (cui)** — автоинвентарь, фавориты, подсветка точек, сортировка рефов
+  - Исходники: [`github.com/nicko-v/sbg-cui`](https://github.com/nicko-v/sbg-cui) (JS + CSS, всё в корне: `index.js`, `styles.css`)
+  - Релиз: `https://github.com/egorantonov/sbg-enhanced/releases/latest/download/cui.user.js`
 
 ## Стек
 
