@@ -1,14 +1,13 @@
 # SBG Vanilla+
 
-UI/UX улучшения для [SBG](https://sbg-game.ru) — location-based браузерной игры.
+Quality-of-life улучшения интерфейса [SBG](https://sbg-game.ru) — то, чего не хватает в повседневной игре.
 
-Tampermonkey-скрипт, который модифицирует только интерфейс. Не автоматизирует действия, не подменяет GPS, не модифицирует запросы к серверу.
+Модульный Tampermonkey-скрипт: каждая фича изолирована и переключается независимо прямо в игре. Если после обновления SBG что-то сломалось — отключите один модуль, остальные продолжат работать.
 
 ## Установка
 
 1. Установить [Tampermonkey](https://www.tampermonkey.net/)
-2. Установить скрипт из [последнего релиза](https://github.com/wrager/sbg-vanilla-plus/releases/latest):
-   - **SBG Vanilla+** — все улучшения в одном скрипте
+2. Установить скрипт из [последнего релиза](https://github.com/wrager/sbg-vanilla-plus/releases/latest)
 
 ## Модули
 
