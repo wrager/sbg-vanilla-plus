@@ -46,6 +46,7 @@ export interface IOlMap {
   getLayers(): { getArray(): IOlLayer[] };
   addLayer(layer: IOlLayer): void;
   removeLayer(layer: IOlLayer): void;
+  updateSize(): void;
 }
 
 interface IOlGlobal {
