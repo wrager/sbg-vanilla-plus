@@ -28,4 +28,4 @@ jobs:
           files: |
             dist/sbg-vanilla-plus.user.js
             dist/sbg-vanilla-plus.meta.js
-          generate_release_notes: false
+          body_path: RELEASE_NOTES.md
