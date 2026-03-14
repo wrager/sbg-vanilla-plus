@@ -49,16 +49,7 @@ interface FeatureModule {
 
 ## Конвенции именования
 
-| Что                | Формат           | Пример               |
-| ------------------ | ---------------- | -------------------- |
-| Файлы/папки        | camelCase        | `settingsStorage.ts` |
-| Интерфейсы         | PascalCase       | `FeatureModule`      |
-| Функции/переменные | camelCase        | `getModuleEnabled`   |
-| Константы          | UPPER_SNAKE_CASE | `MODULE_ID`          |
-| CSS-классы скрипта | `svp-` префикс   | `svp-settings-panel` |
-| localStorage ключи | `svp_` префикс   | `svp_settings`       |
-
-Избегать слов "util" и "manager" — использовать описательные имена.
+→ [docs/codestyle.md](codestyle.md)
 
 ## Структура проекта
 

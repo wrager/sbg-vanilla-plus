@@ -25,4 +25,4 @@
 2. Добавить в `bootstrap([...])` в `entryStyle.ts` или `entryFeatures.ts`
 3. Добавить тесты в `tests/modules/<name>.test.ts`
 
-Детали архитектуры, стек, конвенции → [docs/architecture.md](docs/architecture.md)
+Детали архитектуры, стек → [docs/architecture.md](docs/architecture.md), конвенции именования → [docs/codestyle.md](docs/codestyle.md)
