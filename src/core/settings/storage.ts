@@ -40,7 +40,11 @@ export function saveSettings(settings: SvpSettings): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 }
 
-export function isModuleEnabled(settings: SvpSettings, id: string, defaultEnabled: boolean): boolean {
+export function isModuleEnabled(
+  settings: SvpSettings,
+  id: string,
+  defaultEnabled: boolean,
+): boolean {
   return settings.modules[id] ?? defaultEnabled;
 }
 

@@ -6,10 +6,7 @@ export function $$(selector: string, root: ParentNode = document): Element[] {
   return [...root.querySelectorAll(selector)];
 }
 
-export function waitForElement(
-  selector: string,
-  timeout = 10_000,
-): Promise<Element> {
+export function waitForElement(selector: string, timeout = 10_000): Promise<Element> {
   return new Promise((resolve, reject) => {
     const existing = $(selector);
     if (existing) {

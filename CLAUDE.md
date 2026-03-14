@@ -8,6 +8,7 @@
 4. **Запрещена модификация запросов** — никогда не изменять тела исходящих API-запросов (координаты, количества, ID предметов)
 
 Скрипт может ТОЛЬКО:
+
 - Модифицировать UI/UX (CSS, DOM-структура)
 - ЧИТАТЬ ответы API через перехват fetch — никогда не модифицировать запросы или ответы, отправляемые серверу
 
@@ -26,14 +27,14 @@
 
 ```typescript
 interface FeatureModule {
-  id: string;            // Ключ в настройках (например 'enlargedButtons')
-  name: string;          // Человекочитаемое имя
-  description: string;   // Описание для панели настроек
+  id: string; // Ключ в настройках (например 'enlargedButtons')
+  name: string; // Человекочитаемое имя
+  description: string; // Описание для панели настроек
   defaultEnabled: boolean;
   script: 'style' | 'features';
-  init(): void;          // Один раз при загрузке (DOM готов)
-  enable(): void;        // При включении фичи
-  disable(): void;       // При выключении фичи
+  init(): void; // Один раз при загрузке (DOM готов)
+  enable(): void; // При включении фичи
+  disable(): void; // При выключении фичи
 }
 ```
 
@@ -65,33 +66,33 @@ interface FeatureModule {
 
 ## Стек
 
-| Инструмент | Назначение |
-|---|---|
-| TypeScript | Типизация (strict: true) |
-| Vite | Бандлер (два entry, CSS inline) |
+| Инструмент         | Назначение                        |
+| ------------------ | --------------------------------- |
+| TypeScript         | Типизация (strict: true)          |
+| Vite               | Бандлер (два entry, CSS inline)   |
 | vite-plugin-monkey | Tampermonkey-заголовки + .meta.js |
-| ESLint | Линтинг (flat config) |
-| Prettier | Форматирование |
-| Jest + ts-jest | Тестирование (jsdom) |
+| ESLint             | Линтинг (flat config)             |
+| Prettier           | Форматирование                    |
+| Jest + ts-jest     | Тестирование (jsdom)              |
 
 ## Конвенции именования
 
-| Что | Формат | Пример |
-|---|---|---|
-| Файлы/папки | camelCase | `settingsStorage.ts` |
-| Интерфейсы | PascalCase | `FeatureModule` |
-| Функции/переменные | camelCase | `getModuleEnabled` |
-| Константы | UPPER_SNAKE_CASE | `MODULE_ID` |
-| CSS-классы скрипта | `svp-` префикс | `svp-settings-panel` |
-| Кастомные события | `svp:` префикс | `svp:point-popup-opened` |
-| localStorage ключи | `svp_` префикс | `svp_settings` |
+| Что                | Формат           | Пример                   |
+| ------------------ | ---------------- | ------------------------ |
+| Файлы/папки        | camelCase        | `settingsStorage.ts`     |
+| Интерфейсы         | PascalCase       | `FeatureModule`          |
+| Функции/переменные | camelCase        | `getModuleEnabled`       |
+| Константы          | UPPER_SNAKE_CASE | `MODULE_ID`              |
+| CSS-классы скрипта | `svp-` префикс   | `svp-settings-panel`     |
+| Кастомные события  | `svp:` префикс   | `svp:point-popup-opened` |
+| localStorage ключи | `svp_` префикс   | `svp_settings`           |
 
 ## Правила коммитов
 
 - Коммиты на **русском языке**
 - Минимальный текст — кратко и по делу
 - Каждый коммит самодостаточен и не ломает сборку
-- Перед коммитом: `npm run typecheck && npm run lint && npm run test && npm run build`
+- Перед коммитом: `npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build`
 
 ## Структура проекта
 

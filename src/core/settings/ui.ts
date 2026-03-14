@@ -139,7 +139,11 @@ function createToggle(checked: boolean, onChange: (enabled: boolean) => void): H
   return label;
 }
 
-function createModuleRow(mod: FeatureModule, enabled: boolean, onChange: (enabled: boolean) => void): HTMLElement {
+function createModuleRow(
+  mod: FeatureModule,
+  enabled: boolean,
+  onChange: (enabled: boolean) => void,
+): HTMLElement {
   const row = document.createElement('div');
   row.className = 'svp-module-row';
 

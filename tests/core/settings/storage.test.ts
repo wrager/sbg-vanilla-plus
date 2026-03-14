@@ -1,4 +1,9 @@
-import { loadSettings, saveSettings, isModuleEnabled, setModuleEnabled } from '../../../src/core/settings/storage';
+import {
+  loadSettings,
+  saveSettings,
+  isModuleEnabled,
+  setModuleEnabled,
+} from '../../../src/core/settings/storage';
 import { DEFAULT_SETTINGS } from '../../../src/core/settings/defaults';
 
 describe('settings/storage', () => {

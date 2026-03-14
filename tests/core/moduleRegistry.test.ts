@@ -1,4 +1,10 @@
-import { registerModule, getModules, getModulesByScript, initModules, type FeatureModule } from '../../src/core/moduleRegistry';
+import {
+  registerModule,
+  getModules,
+  getModulesByScript,
+  initModules,
+  type FeatureModule,
+} from '../../src/core/moduleRegistry';
 
 function createMockModule(overrides: Partial<FeatureModule> = {}): FeatureModule {
   return {
@@ -47,7 +53,9 @@ describe('moduleRegistry', () => {
     const mod = createMockModule({
       id: 'fail-test',
       script: 'features',
-      init: jest.fn(() => { throw new Error('boom'); }),
+      init: jest.fn(() => {
+        throw new Error('boom');
+      }),
     });
     registerModule(mod);
 

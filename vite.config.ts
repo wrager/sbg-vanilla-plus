@@ -4,8 +4,7 @@ import { SBG_COMPATIBLE_VERSION } from './src/core/gameVersion';
 
 const NAMESPACE = 'https://github.com/wrager/sbg-vanilla-plus';
 const MATCH = 'https://sbg-game.ru/app/*';
-const DOWNLOAD_BASE =
-  'https://github.com/wrager/sbg-vanilla-plus/releases/latest/download';
+const DOWNLOAD_BASE = 'https://github.com/wrager/sbg-vanilla-plus/releases/latest/download';
 
 export default defineConfig(({ mode }) => {
   const isStyle = mode === 'style';
