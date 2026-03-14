@@ -1,14 +1,10 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { injectStyles, removeStyles } from '../../core/dom';
+import { injectStyles } from '../../core/dom';
 
 const MODULE_ID = 'shiftMapCenterDown';
 const EXTRA_HEIGHT_VH = 40;
 
 const CSS = `#map { height: calc(100% + ${EXTRA_HEIGHT_VH}vh) !important; }`;
-
-function notifyResize(): void {
-  window.dispatchEvent(new Event('resize'));
-}
 
 export const shiftMapCenterDown: IFeatureModule = {
   id: MODULE_ID,
@@ -18,16 +14,13 @@ export const shiftMapCenterDown: IFeatureModule = {
     ru: 'Сдвигает центр карты вниз, чтобы видеть больше карты впереди по ходу движения',
   },
   defaultEnabled: true,
+  requiresReload: true,
   script: 'style',
-  init() {
-    // no-op
-  },
+  init() {},
   enable() {
     injectStyles(CSS, MODULE_ID);
-    notifyResize();
   },
   disable() {
-    removeStyles(MODULE_ID);
-    notifyResize();
+    // no-op: применяется после перезагрузки
   },
 };

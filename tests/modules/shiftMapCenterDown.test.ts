@@ -6,7 +6,7 @@ describe('shiftMapCenterDown', () => {
   });
 
   afterEach(() => {
-    shiftMapCenterDown.disable();
+    document.getElementById('svp-shiftMapCenterDown')?.remove();
     document.body.innerHTML = '';
   });
 
@@ -14,6 +14,7 @@ describe('shiftMapCenterDown', () => {
     expect(shiftMapCenterDown.id).toBe('shiftMapCenterDown');
     expect(shiftMapCenterDown.script).toBe('style');
     expect(shiftMapCenterDown.defaultEnabled).toBe(true);
+    expect(shiftMapCenterDown.requiresReload).toBe(true);
   });
 
   test('injects style on enable', () => {
@@ -25,33 +26,11 @@ describe('shiftMapCenterDown', () => {
     expect(style?.textContent).toContain('calc(100% + 40vh)');
   });
 
-  test('removes style on disable', () => {
+  test('disable is no-op (requires reload)', () => {
     shiftMapCenterDown.enable();
     shiftMapCenterDown.disable();
 
     const style = document.getElementById('svp-shiftMapCenterDown');
-    expect(style).toBeNull();
-  });
-
-  test('dispatches resize event on enable', () => {
-    const handler = jest.fn();
-    window.addEventListener('resize', handler);
-
-    shiftMapCenterDown.enable();
-    expect(handler).toHaveBeenCalledTimes(1);
-
-    window.removeEventListener('resize', handler);
-  });
-
-  test('dispatches resize event on disable', () => {
-    shiftMapCenterDown.enable();
-
-    const handler = jest.fn();
-    window.addEventListener('resize', handler);
-
-    shiftMapCenterDown.disable();
-    expect(handler).toHaveBeenCalledTimes(1);
-
-    window.removeEventListener('resize', handler);
+    expect(style).not.toBeNull();
   });
 });

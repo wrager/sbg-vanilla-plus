@@ -259,6 +259,11 @@ function fillSection(
     const row = createModuleRow(mod, enabled, (newEnabled) => {
       settings = setModuleEnabled(settings, mod.id, newEnabled);
       saveSettings(settings);
+      if (mod.requiresReload) {
+        location.hash = 'svp-settings';
+        location.reload();
+        return;
+      }
       try {
         if (newEnabled) {
           mod.enable();
@@ -345,5 +350,11 @@ export function initSettingsUI(modules: readonly IFeatureModule[]): void {
     container.appendChild(btn);
   } else {
     document.body.appendChild(btn);
+  }
+
+  if (location.hash.includes('svp-settings')) {
+    panel.classList.add('svp-open');
+    history.replaceState(null, '', location.pathname + location.search);
+    requestAnimationFrame(updateScrollIndicators);
   }
 }

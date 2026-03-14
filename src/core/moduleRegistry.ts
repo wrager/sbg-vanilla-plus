@@ -7,6 +7,7 @@ export interface IFeatureModule {
   description: ILocalizedString;
   defaultEnabled: boolean;
   script: 'style' | 'features';
+  requiresReload?: boolean;
   status?: 'ready' | 'failed';
   init(): void;
   enable(): void;
