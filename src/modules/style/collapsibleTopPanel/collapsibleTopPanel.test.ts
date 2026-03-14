@@ -1,5 +1,12 @@
 import { collapsibleTopPanel } from './collapsibleTopPanel';
 
+class ResizeObserverStub {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+globalThis.ResizeObserver = ResizeObserverStub;
+
 const TOPLEFT_HTML = `
 <div class="topleft-container">
   <div class="self-info">
@@ -67,7 +74,7 @@ describe('collapsibleTopPanel', () => {
     expect(document.getElementById('ops')?.style.display).not.toBe('none');
   });
 
-  test('shows summary and hides toggle when collapsed', async () => {
+  test('shows summary, expand button and hides toggle when collapsed', async () => {
     collapsibleTopPanel.enable();
     await flushPromises();
 
@@ -77,6 +84,10 @@ describe('collapsibleTopPanel', () => {
 
     const toggle = document.getElementById('svp-top-toggle');
     expect(toggle?.style.display).toBe('none');
+
+    const expandBtn = document.getElementById('svp-top-expand');
+    expect(expandBtn?.style.display).not.toBe('none');
+    expect(expandBtn?.textContent).toBe('▼');
   });
 
   test('expands on container mousedown (not OPS)', async () => {
@@ -91,8 +102,22 @@ describe('collapsibleTopPanel', () => {
     expect(container?.classList.contains('svp-collapsed')).toBe(false);
     expect(getEntryFor('self-info__name')?.style.display).toBe('');
 
-    // Toggle visible when expanded
+    // Toggle visible, expand button hidden when expanded
     expect(document.getElementById('svp-top-toggle')?.style.display).toBe('');
+    expect(document.getElementById('svp-top-expand')?.style.display).toBe('none');
+  });
+
+  test('expands on expand button mousedown', async () => {
+    collapsibleTopPanel.enable();
+    await flushPromises();
+
+    const expandBtn = document.getElementById('svp-top-expand');
+    if (!expandBtn) throw new Error('expand button not found');
+    mousedown(expandBtn);
+
+    const container = document.querySelector('.topleft-container');
+    expect(container?.classList.contains('svp-collapsed')).toBe(false);
+    expect(expandBtn.style.display).toBe('none');
   });
 
   test('does not expand when clicking OPS', async () => {
@@ -135,6 +160,7 @@ describe('collapsibleTopPanel', () => {
     const container = document.querySelector('.topleft-container');
     expect(container?.classList.contains('svp-collapsed')).toBe(false);
     expect(document.getElementById('svp-top-toggle')).toBeNull();
+    expect(document.getElementById('svp-top-expand')).toBeNull();
     expect(document.getElementById('svp-inv-summary')).toBeNull();
     expect(document.getElementById('svp-collapsibleTopPanel')).toBeNull();
     expect(getEntryFor('self-info__name')?.style.display).toBe('');

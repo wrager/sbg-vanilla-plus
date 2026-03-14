@@ -4,7 +4,7 @@
   flex-direction: row;
   align-items: center;
   gap: 4px;
-  padding: 4px 6px;
+  padding: 4px 37px 4px 6px;
   margin: 0;
   cursor: pointer;
   border: 1px var(--border) solid !important;
@@ -32,8 +32,9 @@
   color: var(--text);
 }
 
-/* Кнопка сворачивания — fixed в правом верхнем углу, вне DOM игры */
-#svp-top-toggle {
+/* Кнопки сворачивания/разворачивания — fixed, вне DOM игры */
+#svp-top-toggle,
+#svp-top-expand {
   position: fixed;
   z-index: 1;
   font-size: 10px;
@@ -50,6 +51,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-#svp-top-toggle:active {
+#svp-top-toggle:active,
+#svp-top-expand:active {
   opacity: 1;
 }

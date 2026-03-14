@@ -5,6 +5,7 @@ import css from './styles.css?inline';
 const MODULE_ID = 'collapsibleTopPanel';
 const SUMMARY_ID = 'svp-inv-summary';
 const TOGGLE_ID = 'svp-top-toggle';
+const EXPAND_ID = 'svp-top-expand';
 
 let cleanup: (() => void) | null = null;
 
@@ -39,6 +40,8 @@ async function setup(): Promise<() => void> {
   if (!isHTMLElement(container)) return () => {};
   const selfInfo = $('.self-info', container);
   if (!isHTMLElement(selfInfo)) return () => {};
+  const opsBtn = $('#ops', container);
+  if (!isHTMLElement(opsBtn)) return () => {};
 
   const allEntries = $$('.self-info__entry', container).filter(isHTMLElement);
   const extraButtons = $$('.game-menu button:not(#ops)', container).filter(isHTMLElement);
@@ -51,6 +54,12 @@ async function setup(): Promise<() => void> {
   toggle.textContent = '▲';
   document.body.appendChild(toggle);
 
+  // Кнопка разворачивания — в body, чтобы игра не перехватывала клики
+  const expandBtn = document.createElement('div');
+  expandBtn.id = EXPAND_ID;
+  expandBtn.textContent = '▼';
+  document.body.appendChild(expandBtn);
+
   const summary = createSummary(container);
   selfInfo.appendChild(summary);
 
@@ -62,6 +71,18 @@ async function setup(): Promise<() => void> {
     toggle.style.left = `${rect.right - toggle.offsetWidth - 4}px`;
   };
 
+  const positionExpand = () => {
+    const opsRect = opsBtn.getBoundingClientRect();
+    expandBtn.style.top = `${opsRect.top + (opsRect.height - expandBtn.offsetHeight) / 2}px`;
+    expandBtn.style.left = `${opsRect.right + 4}px`;
+  };
+
+  // Перепозиционировать кнопку ▼ при изменении размера контейнера
+  const resizeObserver = new ResizeObserver(() => {
+    if (collapsed) positionExpand();
+  });
+  resizeObserver.observe(container);
+
   const setCollapsed = (value: boolean) => {
     collapsed = value;
     for (const el of hiddenEls) {
@@ -69,6 +90,7 @@ async function setup(): Promise<() => void> {
     }
     summary.style.display = collapsed ? '' : 'none';
     toggle.style.display = collapsed ? 'none' : '';
+    expandBtn.style.display = collapsed ? '' : 'none';
     selfInfo.style.border = collapsed ? 'none' : '';
     container.classList.toggle('svp-collapsed', collapsed);
     if (!collapsed) {
@@ -89,6 +111,13 @@ async function setup(): Promise<() => void> {
     setCollapsed(false);
   };
 
+  // Раскрытие: клик по кнопке ▼
+  const onExpandBtn = (e: Event) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setCollapsed(false);
+  };
+
   // Сворачивание: клик по кнопке ▲
   const onCollapse = (e: Event) => {
     e.stopPropagation();
@@ -98,16 +127,22 @@ async function setup(): Promise<() => void> {
 
   container.addEventListener('touchstart', onExpand, { passive: false });
   container.addEventListener('mousedown', onExpand);
+  expandBtn.addEventListener('touchstart', onExpandBtn, { passive: false });
+  expandBtn.addEventListener('mousedown', onExpandBtn);
   toggle.addEventListener('touchstart', onCollapse, { passive: false });
   toggle.addEventListener('mousedown', onCollapse);
 
   return () => {
+    resizeObserver.disconnect();
     container.removeEventListener('touchstart', onExpand);
     container.removeEventListener('mousedown', onExpand);
+    expandBtn.removeEventListener('touchstart', onExpandBtn);
+    expandBtn.removeEventListener('mousedown', onExpandBtn);
     toggle.removeEventListener('touchstart', onCollapse);
     toggle.removeEventListener('mousedown', onCollapse);
     setCollapsed(false);
     toggle.remove();
+    expandBtn.remove();
     summary.remove();
   };
 }
