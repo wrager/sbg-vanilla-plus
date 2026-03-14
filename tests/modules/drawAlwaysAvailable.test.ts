@@ -1,4 +1,4 @@
-import { drawAlwaysAvailable } from '../../src/modules/drawAlwaysAvailable';
+import { drawAlwaysAvailable } from '../../src/modules/drawAlwaysAvailable/drawAlwaysAvailable';
 
 function createDrawButton(disabled = true): HTMLButtonElement {
   const btn = document.createElement('button');

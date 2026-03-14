@@ -1,4 +1,4 @@
-import { shiftMapCenterDown } from '../../src/modules/shiftMapCenterDown';
+import { shiftMapCenterDown } from '../../src/modules/shiftMapCenterDown/shiftMapCenterDown';
 
 describe('shiftMapCenterDown', () => {
   beforeEach(() => {

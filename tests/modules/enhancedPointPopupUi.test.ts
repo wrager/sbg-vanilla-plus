@@ -1,4 +1,4 @@
-import { enhancedPointPopupUi } from '../../src/modules/enhancedPointPopupUi';
+import { enhancedPointPopupUi } from '../../src/modules/enhancedPointPopupUi/enhancedPointPopupUi';
 
 describe('enhancedPointPopupUi', () => {
   afterEach(() => {

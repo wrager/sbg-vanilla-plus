@@ -1,4 +1,4 @@
-import { keepScreenOn } from '../../src/modules/keepScreenOn';
+import { keepScreenOn } from '../../src/modules/keepScreenOn/keepScreenOn';
 
 function createMockSentinel(): WakeLockSentinel {
   const sentinel = new EventTarget() as WakeLockSentinel;

@@ -1,4 +1,4 @@
-import { disableDoubleTapZoom } from '../../src/modules/disableDoubleTapZoom';
+import { disableDoubleTapZoom } from '../../src/modules/disableDoubleTapZoom/disableDoubleTapZoom';
 
 function getViewport(): Element {
   const el = document.querySelector('.ol-viewport');
