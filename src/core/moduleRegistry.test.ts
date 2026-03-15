@@ -231,4 +231,36 @@ describe('initModules', () => {
     expect(mod.enable).toHaveBeenCalledTimes(1);
     expect(mod.status).toBe('ready');
   });
+
+  test('does not call onReady when async enable fails', async () => {
+    const onReady = jest.fn();
+    const mod = createMockModule({
+      id: 'async-enable-no-ready',
+      enable: jest.fn(() => Promise.reject(new Error('enable failed'))),
+    });
+
+    initModules([mod], () => true, undefined, onReady);
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mod.status).toBe('failed');
+    expect(onReady).not.toHaveBeenCalled();
+  });
+
+  test('calls onReady after async enable succeeds', async () => {
+    const onReady = jest.fn();
+    const mod = createMockModule({
+      id: 'async-enable-ready',
+      enable: jest.fn(() => Promise.resolve()),
+    });
+
+    initModules([mod], () => true, undefined, onReady);
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mod.status).toBe('ready');
+    expect(onReady).toHaveBeenCalledWith('async-enable-ready');
+  });
 });

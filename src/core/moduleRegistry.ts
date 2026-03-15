@@ -64,14 +64,22 @@ export function initModules(
       handleModuleError(mod, 'enable', e, onError);
     };
 
-    const enableIfNeeded = (): void => {
-      if (mod.status !== 'failed' && isEnabled(mod.id)) {
-        void runModuleAction(mod.enable.bind(mod), enableErrorHandler);
-      }
+    const markReady = (): void => {
       if (mod.status !== 'failed') {
         mod.status = 'ready';
         onReady?.(mod.id);
       }
+    };
+
+    const enableIfNeeded = (): void => {
+      if (mod.status !== 'failed' && isEnabled(mod.id)) {
+        const result = runModuleAction(mod.enable.bind(mod), enableErrorHandler);
+        if (result instanceof Promise) {
+          void result.then(markReady);
+          return;
+        }
+      }
+      markReady();
     };
 
     const initResult = runModuleAction(mod.init.bind(mod), initErrorHandler);
