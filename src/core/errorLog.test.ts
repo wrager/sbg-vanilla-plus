@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 describe('initErrorLog', () => {
-  test('intercepts console.error with [SVP] prefix', () => {
+  test('captures console.error', () => {
     initErrorLog();
 
     console.error('[SVP] Something broke');
@@ -26,38 +26,37 @@ describe('initErrorLog', () => {
     expect(log[0].message).toContain('[SVP] Something broke');
   });
 
-  test('intercepts console.warn with [SVP] prefix', () => {
+  test('captures console.warn', () => {
     initErrorLog();
 
-    console.warn('[SVP] Модуль "Test" не загрузился:', 'some reason');
+    console.warn('some warning message');
 
     const log = getErrorLog();
     expect(log).toHaveLength(1);
     expect(log[0].level).toBe('warn');
-    expect(log[0].message).toContain('[SVP]');
+    expect(log[0].message).toContain('some warning message');
   });
 
-  test('ignores console messages without [SVP] prefix', () => {
+  test('captures all errors regardless of source', () => {
     initErrorLog();
 
     console.error('unrelated error from game');
     console.warn('unrelated warning');
 
-    expect(getErrorLog()).toHaveLength(0);
+    expect(getErrorLog()).toHaveLength(2);
   });
 
-  test('captures errors with sbg-vanilla-plus in stack', () => {
+  test('formats Error objects with stack trace', () => {
     initErrorLog();
 
     const error = new Error('test error');
-    error.stack = 'Error: test error\n    at Object.<anonymous> (sbg-vanilla-plus.user.js:42:1)';
+    error.stack = 'Error: test error\n    at Object.<anonymous> (script.js:42:1)';
     console.error(error);
 
     const log = getErrorLog();
     expect(log).toHaveLength(1);
-    expect(log[0].level).toBe('error');
     expect(log[0].message).toContain('test error');
-    expect(log[0].message).toContain('sbg-vanilla-plus');
+    expect(log[0].message).toContain('script.js:42:1');
   });
 
   test('still calls original console methods', () => {
@@ -68,8 +67,8 @@ describe('initErrorLog', () => {
 
     initErrorLog();
 
-    console.error('[SVP] test');
-    console.warn('[SVP] test');
+    console.error('test');
+    console.warn('test');
 
     expect(spyError).toHaveBeenCalled();
     expect(spyWarn).toHaveBeenCalled();
@@ -83,19 +82,19 @@ describe('formatErrorLog', () => {
 
   test('formats entries with ISO timestamp and level', () => {
     initErrorLog();
-    console.error('[SVP] format test');
+    console.error('format test');
 
     const formatted = formatErrorLog();
     expect(formatted).toMatch(/\[\d{4}-\d{2}-\d{2}T/);
     expect(formatted).toContain('[error]');
-    expect(formatted).toContain('[SVP] format test');
+    expect(formatted).toContain('format test');
   });
 });
 
 describe('clearErrorLog', () => {
   test('removes all entries', () => {
     initErrorLog();
-    console.error('[SVP] will be cleared');
+    console.error('will be cleared');
     expect(getErrorLog()).toHaveLength(1);
 
     clearErrorLog();

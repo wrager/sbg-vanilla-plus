@@ -371,7 +371,7 @@ export function initSettingsUI(modules: readonly IFeatureModule[]): void {
 
   const version = document.createElement('span');
   version.className = 'svp-settings-version';
-  version.textContent = `v${__SVP_VERSION__}`;
+  version.textContent = `SBG Vanilla+ v${__SVP_VERSION__}`;
   footer.appendChild(version);
 
   const reportButton = document.createElement('button');

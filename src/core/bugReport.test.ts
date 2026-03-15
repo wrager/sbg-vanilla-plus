@@ -72,14 +72,15 @@ describe('buildBugReportUrl', () => {
 });
 
 describe('buildDiagnosticClipboard', () => {
-  test('includes version header', () => {
+  test('returns fallback text when no errors', () => {
     const result = buildDiagnosticClipboard([]);
-    expect(result).toContain('Версия:');
+    expect(result).toBe('Ошибок не обнаружено');
   });
 
-  test('includes browser info', () => {
+  test('does not include version or browser (already in URL)', () => {
     const result = buildDiagnosticClipboard([]);
-    expect(result).toContain('Браузер:');
+    expect(result).not.toContain('Версия:');
+    expect(result).not.toContain('Браузер:');
   });
 
   test('includes module errors', () => {
@@ -93,13 +94,13 @@ describe('buildDiagnosticClipboard', () => {
     );
     const mod = createMockModule({ id: 'broken' });
     const result = buildDiagnosticClipboard([mod]);
-    expect(result).toContain('❌ Something went wrong');
+    expect(result).toContain('Ошибки модулей:');
+    expect(result).toContain('broken: Something went wrong');
   });
 
-  test('includes module list section', () => {
+  test('does not include module list (already in URL)', () => {
     const mod = createMockModule({ id: 'featureA', defaultEnabled: true });
     const result = buildDiagnosticClipboard([mod]);
-    expect(result).toContain('Модули:');
-    expect(result).toContain('✅ featureA');
+    expect(result).not.toContain('✅ featureA');
   });
 });

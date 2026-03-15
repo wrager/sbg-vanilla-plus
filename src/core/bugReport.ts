@@ -31,25 +31,21 @@ export function buildDiagnosticClipboard(modules: readonly IFeatureModule[]): st
   const settings = loadSettings();
   const sections: string[] = [];
 
-  sections.push(`Версия: ${__SVP_VERSION__}`);
-  sections.push(`Браузер: ${navigator.userAgent}`);
-
-  const moduleLines = modules
-    .map((mod) => {
-      const enabled = isModuleEnabled(settings, mod.id, mod.defaultEnabled);
-      const error = settings.errors[mod.id];
-      let line = `${enabled ? '✅' : '⬜'} ${mod.id}`;
-      if (error) {
-        line += ` ❌ ${error}`;
-      }
-      return line;
-    })
+  const moduleErrors = modules
+    .filter((mod) => settings.errors[mod.id])
+    .map((mod) => `${mod.id}: ${settings.errors[mod.id]}`)
     .join('\n');
-  sections.push(`Модули:\n${moduleLines}`);
+  if (moduleErrors) {
+    sections.push(`Ошибки модулей:\n${moduleErrors}`);
+  }
 
   const errorLog = formatErrorLog();
   if (errorLog) {
-    sections.push(`Лог ошибок:\n${errorLog}`);
+    sections.push(`Лог консоли:\n${errorLog}`);
+  }
+
+  if (sections.length === 0) {
+    return 'Ошибок не обнаружено';
   }
 
   return sections.join('\n\n');

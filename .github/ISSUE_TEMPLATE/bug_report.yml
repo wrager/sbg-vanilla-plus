@@ -31,6 +31,14 @@ body:
       required: true
 
   - type: textarea
+    id: logs
+    attributes:
+      label: Диагностика
+      description: 'Вставьте из буфера обмена (Ctrl+V) — данные копируются автоматически при нажатии кнопки «Сообщить об ошибке» в настройках скрипта'
+      render: text
+      placeholder: '(вставьте скопированные данные диагностики)'
+
+  - type: textarea
     id: steps
     attributes:
       label: Шаги воспроизведения
@@ -56,14 +64,6 @@ body:
       placeholder: Что произошло на самом деле?
     validations:
       required: true
-
-  - type: textarea
-    id: logs
-    attributes:
-      label: Диагностика
-      description: 'Вставьте из буфера обмена (Ctrl+V) — данные копируются автоматически при нажатии кнопки «Сообщить об ошибке» в настройках скрипта'
-      render: text
-      placeholder: '(вставьте скопированные данные диагностики)'
 
   - type: textarea
     id: extra

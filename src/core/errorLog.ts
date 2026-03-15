@@ -1,5 +1,4 @@
 const MAX_ENTRIES = 50;
-const SVP_PREFIX = '[SVP]';
 
 export interface IErrorLogEntry {
   timestamp: number;
@@ -14,19 +13,6 @@ function addEntry(level: IErrorLogEntry['level'], message: string): void {
   if (entries.length > MAX_ENTRIES) {
     entries.shift();
   }
-}
-
-function isFromScript(args: unknown[]): boolean {
-  const text = args.map(String).join(' ');
-  if (text.includes(SVP_PREFIX)) return true;
-
-  for (const argument of args) {
-    if (argument instanceof Error && argument.stack) {
-      if (argument.stack.includes('sbg-vanilla-plus')) return true;
-    }
-  }
-
-  return false;
 }
 
 function formatArgs(args: unknown[]): string {
@@ -45,38 +31,25 @@ export function initErrorLog(): void {
   const originalWarn = console.warn;
 
   console.error = (...args: unknown[]): void => {
-    if (isFromScript(args)) {
-      addEntry('error', formatArgs(args));
-    }
+    addEntry('error', formatArgs(args));
     originalError.apply(console, args);
   };
 
   console.warn = (...args: unknown[]): void => {
-    if (isFromScript(args)) {
-      addEntry('warn', formatArgs(args));
-    }
+    addEntry('warn', formatArgs(args));
     originalWarn.apply(console, args);
   };
 
   window.addEventListener('error', (event: ErrorEvent) => {
     const message =
       event.error instanceof Error ? (event.error.stack ?? event.error.message) : event.message;
-    if (message.includes(SVP_PREFIX) || message.includes('sbg-vanilla-plus')) {
-      addEntry('uncaught', message);
-    }
+    addEntry('uncaught', message);
   });
 
   window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
     const reason: unknown = event.reason;
-    let message: string;
-    if (reason instanceof Error) {
-      message = reason.stack ?? reason.message;
-    } else {
-      message = String(reason);
-    }
-    if (message.includes(SVP_PREFIX) || message.includes('sbg-vanilla-plus')) {
-      addEntry('uncaught', message);
-    }
+    const message = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+    addEntry('uncaught', message);
   });
 }
 
