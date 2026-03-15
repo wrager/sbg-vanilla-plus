@@ -1,5 +1,6 @@
 import { isDisabled } from './core/killswitch';
 import { bootstrap } from './core/bootstrap';
+import { initErrorLog } from './core/errorLog';
 import { initOlMapCapture } from './core/olMap';
 import { installSbgFlavor } from './core/sbgFlavor';
 import { collapsibleTopPanel } from './modules/collapsibleTopPanel/collapsibleTopPanel';
@@ -12,6 +13,7 @@ import { keyCountOnPoints } from './modules/keyCountOnPoints/keyCountOnPoints';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
 
 if (!isDisabled()) {
+  initErrorLog();
   installSbgFlavor();
   initOlMapCapture();
   bootstrap([
