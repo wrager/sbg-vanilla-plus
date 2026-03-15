@@ -1,26 +1,15 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { waitForElement } from '../../core/dom';
+import type { IOlInteraction } from '../../core/olMap';
+import { getOlMap } from '../../core/olMap';
 
 const MODULE_ID = 'disableDoubleTapZoom';
-const DOUBLE_TAP_THRESHOLD_MS = 300;
 
-let lastTap = 0;
-let pendingEnabled: boolean | null = null;
+let disabledInteractions: IOlInteraction[] = [];
+let enabled = false;
 
-function blockDoubleTap(e: Event): void {
-  const now = Date.now();
-  if (now - lastTap < DOUBLE_TAP_THRESHOLD_MS) {
-    e.stopImmediatePropagation();
-  }
-  lastTap = now;
-}
-
-function applyEnabled(el: Element, enabled: boolean): void {
-  if (enabled) {
-    el.addEventListener('pointerdown', blockDoubleTap, { capture: true });
-  } else {
-    el.removeEventListener('pointerdown', blockDoubleTap, { capture: true });
-  }
+function isDoubleClickZoom(interaction: IOlInteraction): boolean {
+  const DoubleClickZoom = window.ol?.interaction?.DoubleClickZoom;
+  return DoubleClickZoom !== undefined && interaction instanceof DoubleClickZoom;
 }
 
 export const disableDoubleTapZoom: IFeatureModule = {
@@ -33,26 +22,24 @@ export const disableDoubleTapZoom: IFeatureModule = {
   defaultEnabled: true,
   category: 'map',
   init() {
-    return waitForElement('.ol-viewport').then((el) => {
-      if (pendingEnabled !== null) {
-        applyEnabled(el, pendingEnabled);
-        pendingEnabled = null;
+    // no-op: map interactions are managed in enable/disable
+  },
+  enable() {
+    enabled = true;
+    return getOlMap().then((map) => {
+      if (!enabled) return;
+      const interactions = map.getInteractions().getArray();
+      disabledInteractions = interactions.filter(isDoubleClickZoom);
+      for (const interaction of disabledInteractions) {
+        interaction.setActive(false);
       }
     });
   },
-  enable() {
-    const el = document.querySelector('.ol-viewport');
-    if (el) {
-      applyEnabled(el, true);
-    } else {
-      pendingEnabled = true;
-    }
-  },
   disable() {
-    pendingEnabled = false;
-    lastTap = 0;
-    document
-      .querySelector('.ol-viewport')
-      ?.removeEventListener('pointerdown', blockDoubleTap, { capture: true });
+    enabled = false;
+    for (const interaction of disabledInteractions) {
+      interaction.setActive(true);
+    }
+    disabledInteractions = [];
   },
 };

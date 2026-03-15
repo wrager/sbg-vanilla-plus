@@ -65,6 +65,7 @@ function makeMap(layers: IOlLayer[], view: IOlView): IOlMap {
     getView: () => view,
     getSize: () => [800, 600],
     getLayers: () => ({ getArray: () => layers }),
+    getInteractions: () => ({ getArray: () => [] }),
     addLayer: addLayerMock,
     removeLayer: removeLayerMock,
     updateSize: jest.fn(),

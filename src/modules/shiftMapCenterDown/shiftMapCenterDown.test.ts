@@ -29,6 +29,7 @@ beforeEach(() => {
     getView: () => mockView,
     getSize: () => [800, 600],
     getLayers: jest.fn() as unknown as IOlMap['getLayers'],
+    getInteractions: jest.fn() as unknown as IOlMap['getInteractions'],
     addLayer: jest.fn(),
     removeLayer: jest.fn(),
     updateSize: jest.fn(),

@@ -1,94 +1,122 @@
+import type { IOlInteraction, IOlMap } from '../../core/olMap';
+
+jest.mock('../../core/olMap', () => ({
+  getOlMap: jest.fn(),
+}));
+
 import { disableDoubleTapZoom } from './disableDoubleTapZoom';
+import { getOlMap } from '../../core/olMap';
 
-function getViewport(): Element {
-  const el = document.querySelector('.ol-viewport');
-  if (!el) throw new Error('.ol-viewport not found');
-  return el;
+const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
+
+class MockDoubleClickZoom implements IOlInteraction {
+  private active = true;
+  setActive(value: boolean): void {
+    this.active = value;
+  }
+  getActive(): boolean {
+    return this.active;
+  }
 }
 
-function dispatchPointerDown(target: Element): Event {
-  const event = new Event('pointerdown', { bubbles: false });
-  jest.spyOn(event, 'stopImmediatePropagation');
-  target.dispatchEvent(event);
-  return event;
+class MockOtherInteraction implements IOlInteraction {
+  private active = true;
+  setActive(value: boolean): void {
+    this.active = value;
+  }
+  getActive(): boolean {
+    return this.active;
+  }
 }
+
+let doubleClickZoom: MockDoubleClickZoom;
+let otherInteraction: MockOtherInteraction;
+let mockMap: IOlMap;
+
+beforeEach(() => {
+  doubleClickZoom = new MockDoubleClickZoom();
+  otherInteraction = new MockOtherInteraction();
+  mockMap = {
+    getView: jest.fn() as unknown as IOlMap['getView'],
+    getSize: () => [800, 600],
+    getLayers: jest.fn() as unknown as IOlMap['getLayers'],
+    getInteractions: () => ({
+      getArray: () => [doubleClickZoom, otherInteraction],
+    }),
+    addLayer: jest.fn(),
+    removeLayer: jest.fn(),
+    updateSize: jest.fn(),
+  };
+  mockGetOlMap.mockResolvedValue(mockMap);
+
+  window.ol = {
+    Map: { prototype: { getView: jest.fn() } },
+    interaction: { DoubleClickZoom: MockDoubleClickZoom },
+  } as unknown as typeof window.ol;
+});
+
+afterEach(async () => {
+  await disableDoubleTapZoom.disable();
+  delete window.ol;
+  jest.restoreAllMocks();
+});
 
 describe('disableDoubleTapZoom', () => {
-  beforeEach(() => {
-    document.body.innerHTML = '<div class="ol-viewport"></div>';
+  test('has correct module metadata', () => {
+    expect(disableDoubleTapZoom.id).toBe('disableDoubleTapZoom');
+    expect(disableDoubleTapZoom.category).toBe('map');
+    expect(disableDoubleTapZoom.defaultEnabled).toBe(true);
   });
 
-  afterEach(async () => {
-    await disableDoubleTapZoom.disable();
-    document.body.innerHTML = '';
-    jest.restoreAllMocks();
-  });
-
-  test('does not block first tap', async () => {
+  test('enable deactivates DoubleClickZoom interaction', async () => {
     await disableDoubleTapZoom.enable();
-    const event = dispatchPointerDown(getViewport());
-    expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
+    expect(doubleClickZoom.getActive()).toBe(false);
   });
 
-  test('blocks second tap within threshold', async () => {
+  test('enable does not affect other interactions', async () => {
     await disableDoubleTapZoom.enable();
-    const now = Date.now();
-    jest
-      .spyOn(Date, 'now')
-      .mockReturnValueOnce(now)
-      .mockReturnValueOnce(now + 100);
-
-    dispatchPointerDown(getViewport());
-    const second = dispatchPointerDown(getViewport());
-    expect(second.stopImmediatePropagation).toHaveBeenCalled();
+    expect(otherInteraction.getActive()).toBe(true);
   });
 
-  test('does not block second tap after threshold', async () => {
-    await disableDoubleTapZoom.enable();
-    const now = Date.now();
-    jest
-      .spyOn(Date, 'now')
-      .mockReturnValueOnce(now)
-      .mockReturnValueOnce(now + 400);
-
-    dispatchPointerDown(getViewport());
-    const second = dispatchPointerDown(getViewport());
-    expect(second.stopImmediatePropagation).not.toHaveBeenCalled();
-  });
-
-  test('disable removes the listener', async () => {
+  test('disable reactivates DoubleClickZoom interaction', async () => {
     await disableDoubleTapZoom.enable();
     await disableDoubleTapZoom.disable();
-
-    const now = Date.now();
-    jest
-      .spyOn(Date, 'now')
-      .mockReturnValueOnce(now)
-      .mockReturnValueOnce(now + 100);
-
-    dispatchPointerDown(getViewport());
-    const second = dispatchPointerDown(getViewport());
-    expect(second.stopImmediatePropagation).not.toHaveBeenCalled();
+    expect(doubleClickZoom.getActive()).toBe(true);
   });
 
-  test('enable before viewport is ready applies listener once viewport appears', async () => {
-    document.body.innerHTML = '';
-    const initPromise = disableDoubleTapZoom.init();
+  test('disable before map ready does not deactivate interaction', async () => {
+    let resolveMap!: (map: IOlMap) => void;
+    mockGetOlMap.mockReturnValue(
+      new Promise((resolve) => {
+        resolveMap = resolve;
+      }),
+    );
+
+    const enablePromise = disableDoubleTapZoom.enable();
+    await disableDoubleTapZoom.disable();
+    resolveMap(mockMap);
+    await enablePromise;
+
+    expect(doubleClickZoom.getActive()).toBe(true);
+  });
+
+  test('multiple enable/disable cycles work correctly', async () => {
     await disableDoubleTapZoom.enable();
+    expect(doubleClickZoom.getActive()).toBe(false);
 
-    const viewport = document.createElement('div');
-    viewport.className = 'ol-viewport';
-    document.body.appendChild(viewport);
-    await initPromise;
+    await disableDoubleTapZoom.disable();
+    expect(doubleClickZoom.getActive()).toBe(true);
 
-    const now = Date.now();
-    jest
-      .spyOn(Date, 'now')
-      .mockReturnValueOnce(now)
-      .mockReturnValueOnce(now + 100);
+    await disableDoubleTapZoom.enable();
+    expect(doubleClickZoom.getActive()).toBe(false);
+  });
 
-    dispatchPointerDown(viewport);
-    const second = dispatchPointerDown(viewport);
-    expect(second.stopImmediatePropagation).toHaveBeenCalled();
+  test('enable without DoubleClickZoom constructor completes without error', async () => {
+    window.ol = {
+      Map: { prototype: { getView: jest.fn() } },
+    } as unknown as typeof window.ol;
+
+    await disableDoubleTapZoom.enable();
+    expect(doubleClickZoom.getActive()).toBe(true);
   });
 });

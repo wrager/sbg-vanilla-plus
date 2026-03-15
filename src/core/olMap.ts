@@ -42,10 +42,16 @@ export interface IOlLayer {
   getSource(): IOlVectorSource | null;
 }
 
+export interface IOlInteraction {
+  setActive(active: boolean): void;
+  getActive(): boolean;
+}
+
 export interface IOlMap {
   getView(): IOlView;
   getSize(): number[] | undefined;
   getLayers(): { getArray(): IOlLayer[] };
+  getInteractions(): { getArray(): IOlInteraction[] };
   addLayer(layer: IOlLayer): void;
   removeLayer(layer: IOlLayer): void;
   updateSize(): void;
@@ -63,6 +69,9 @@ interface IOlGlobal {
   };
   Feature?: new (opts?: Record<string, unknown>) => IOlFeature;
   geom?: { Point?: new (coords: number[]) => { getCoordinates(): number[] } };
+  interaction?: {
+    DoubleClickZoom?: new () => IOlInteraction;
+  };
 }
 
 function isOlGlobal(val: unknown): val is IOlGlobal {
