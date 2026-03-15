@@ -73,7 +73,7 @@ describe('disableDoubleTapZoom', () => {
 
   test('enable before viewport is ready applies listener once viewport appears', async () => {
     document.body.innerHTML = '';
-    disableDoubleTapZoom.init();
+    void disableDoubleTapZoom.init();
     await disableDoubleTapZoom.enable();
 
     const viewport = document.createElement('div');

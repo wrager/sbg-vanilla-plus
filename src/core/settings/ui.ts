@@ -1,5 +1,5 @@
 import type { IFeatureModule } from '../moduleRegistry';
-import { catchAsyncModuleError } from '../moduleRegistry';
+import { runModuleAction } from '../moduleRegistry';
 import { buildBugReportUrl, buildDiagnosticClipboard } from '../bugReport';
 import { injectStyles } from '../dom';
 import type { ILocalizedString } from '../l10n';
@@ -305,18 +305,13 @@ function fillSection(
           setError(message);
         }
 
-        try {
-          if (newEnabled) {
-            catchAsyncModuleError(mod.enable.bind(mod), onToggleError);
-          } else {
-            catchAsyncModuleError(mod.disable.bind(mod), onToggleError);
-          }
+        const toggleAction = newEnabled ? mod.enable.bind(mod) : mod.disable.bind(mod);
+        void runModuleAction(toggleAction, onToggleError);
+        if (mod.status !== 'failed') {
           mod.status = 'ready';
           settings = clearModuleError(settings, mod.id);
           saveSettings(settings);
           setError(null);
-        } catch (e) {
-          onToggleError(e);
         }
       },
       errorMessage,

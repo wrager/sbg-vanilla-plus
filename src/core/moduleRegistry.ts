@@ -9,7 +9,7 @@ export interface IFeatureModule {
   category: 'ui' | 'map' | 'utility' | 'fix';
   requiresReload?: boolean;
   status?: 'ready' | 'failed';
-  init(): void;
+  init(): void | Promise<void>;
   enable(): void | Promise<void>;
   disable(): void | Promise<void>;
 }
@@ -23,13 +23,17 @@ function handleModuleError(mod: IFeatureModule, e: unknown, onError?: ModuleErro
   onError?.(mod.id, errorString);
 }
 
-export function catchAsyncModuleError(
+export function runModuleAction(
   action: () => void | Promise<void>,
   onError: (e: unknown) => void,
-): void {
-  const result = action();
-  if (result instanceof Promise) {
-    result.catch(onError);
+): void | Promise<void> {
+  try {
+    const result = action();
+    if (result instanceof Promise) {
+      return result.catch(onError);
+    }
+  } catch (e) {
+    onError(e);
   }
 }
 
@@ -39,16 +43,25 @@ export function initModules(
   onError?: ModuleErrorCallback,
 ): void {
   for (const mod of modules) {
-    try {
-      mod.init();
-      if (isEnabled(mod.id)) {
-        catchAsyncModuleError(mod.enable.bind(mod), (e: unknown) => {
-          handleModuleError(mod, e, onError);
-        });
-      }
-      mod.status = 'ready';
-    } catch (e) {
+    const errorHandler = (e: unknown): void => {
       handleModuleError(mod, e, onError);
+    };
+
+    const enableIfNeeded = (): void => {
+      if (mod.status !== 'failed' && isEnabled(mod.id)) {
+        void runModuleAction(mod.enable.bind(mod), errorHandler);
+      }
+      if (mod.status !== 'failed') {
+        mod.status = 'ready';
+      }
+    };
+
+    const initResult = runModuleAction(mod.init.bind(mod), errorHandler);
+
+    if (initResult instanceof Promise) {
+      void initResult.then(enableIfNeeded);
+    } else {
+      enableIfNeeded();
     }
   }
 }
