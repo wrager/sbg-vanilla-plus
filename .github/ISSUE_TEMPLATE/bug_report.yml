@@ -1,0 +1,72 @@
+name: "\U0001F41B Баг-репорт"
+description: Сообщить об ошибке в работе скрипта
+labels: ['bug']
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Версия скрипта
+      placeholder: '0.1.0'
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Браузер / User-Agent
+      placeholder: 'Chrome 130, Android 14'
+    validations:
+      required: true
+
+  - type: textarea
+    id: modules
+    attributes:
+      label: Включённые модули
+      description: Список модулей и их статус (заполняется автоматически при создании через кнопку в настройках)
+      placeholder: |
+        ✅ collapsibleTopPanel
+        ✅ enhancedPointPopupUi
+        ⬜ shiftMapCenterDown
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги воспроизведения
+      placeholder: |
+        1. Открыть игру
+        2. Нажать на точку
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемое поведение
+      placeholder: Что должно было произойти?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Фактическое поведение
+      placeholder: Что произошло на самом деле?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Диагностика
+      description: 'Вставьте из буфера обмена (Ctrl+V) — данные копируются автоматически при нажатии кнопки «Сообщить об ошибке» в настройках скрипта'
+      render: text
+      placeholder: '(вставьте скопированные данные диагностики)'
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Дополнительная информация
+      description: Скриншоты, видео, любой дополнительный контекст
