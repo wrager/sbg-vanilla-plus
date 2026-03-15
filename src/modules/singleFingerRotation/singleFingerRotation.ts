@@ -5,14 +5,31 @@ import { waitForElement } from '../../core/dom';
 
 const MODULE_ID = 'singleFingerRotation';
 
-let viewport: Element | null = null;
+let viewport: HTMLElement | null = null;
 let map: IOlMap | null = null;
 let trackingPointerId: number | null = null;
 let previousAngle: number | null = null;
+let originalSetRotation: ((rotation: number) => void) | null = null;
+let touchActionStyle: HTMLStyleElement | null = null;
 let enabled = false;
 
 function isFollowWalkerActive(): boolean {
   return localStorage.getItem('follow') === 'true';
+}
+
+function lockViewRotation(): void {
+  if (!map || !originalSetRotation) return;
+  map.getView().setRotation = () => {};
+}
+
+function unlockViewRotation(): void {
+  if (!map || !originalSetRotation) return;
+  map.getView().setRotation = originalSetRotation;
+}
+
+function applyRotation(delta: number): void {
+  if (!originalSetRotation || !map) return;
+  originalSetRotation(map.getView().getRotation() + delta);
 }
 
 function getScreenCenter(): { x: number; y: number } {
@@ -35,26 +52,34 @@ function normalizeAngleDelta(delta: number): number {
   return delta;
 }
 
+function isViewportEvent(event: PointerEvent): boolean {
+  if (!viewport) return false;
+  const target = event.target;
+  return target instanceof Node && viewport.contains(target);
+}
+
 function onPointerDown(event: PointerEvent): void {
+  if (!isViewportEvent(event)) return;
   if (event.pointerType !== 'touch') return;
   if (!isFollowWalkerActive()) return;
   if (trackingPointerId !== null) return;
+  if (!map) return;
 
   trackingPointerId = event.pointerId;
   previousAngle = angleFromCenter(event.clientX, event.clientY);
+  lockViewRotation();
 }
 
 function onPointerMove(event: PointerEvent): void {
   if (event.pointerId !== trackingPointerId) return;
-  if (previousAngle === null || !map) return;
+  if (previousAngle === null || !originalSetRotation) return;
 
-  event.stopPropagation();
+  event.stopImmediatePropagation();
 
   const currentAngle = angleFromCenter(event.clientX, event.clientY);
   const delta = normalizeAngleDelta(currentAngle - previousAngle);
 
-  const view = map.getView();
-  view.setRotation(view.getRotation() + delta);
+  applyRotation(delta);
   previousAngle = currentAngle;
 }
 
@@ -71,34 +96,54 @@ function onPointerCancel(event: PointerEvent): void {
 function resetState(): void {
   trackingPointerId = null;
   previousAngle = null;
+  unlockViewRotation();
 }
 
-function addListeners(element: Element): void {
-  element.addEventListener('pointerdown', onPointerDown as EventListener, {
+// Use a <style> element instead of inline style to prevent OL/game from
+// overwriting touch-action via inline style assignments.
+function injectTouchActionStyle(): void {
+  if (touchActionStyle) return;
+  touchActionStyle = document.createElement('style');
+  touchActionStyle.textContent = '.ol-viewport { touch-action: none !important; }';
+  document.head.appendChild(touchActionStyle);
+}
+
+function removeTouchActionStyle(): void {
+  if (!touchActionStyle) return;
+  touchActionStyle.remove();
+  touchActionStyle = null;
+}
+
+function addListeners(): void {
+  injectTouchActionStyle();
+  document.addEventListener('pointerdown', onPointerDown as EventListener, {
     capture: true,
   });
-  element.addEventListener('pointermove', onPointerMove as EventListener, {
+  document.addEventListener('pointermove', onPointerMove as EventListener, {
     capture: true,
   });
-  element.addEventListener('pointerup', onPointerUp as EventListener, {
+  document.addEventListener('pointerup', onPointerUp as EventListener, {
     capture: true,
   });
-  element.addEventListener('pointercancel', onPointerCancel as EventListener, {
+  document.addEventListener('pointercancel', onPointerCancel as EventListener, {
     capture: true,
   });
 }
 
-function removeListeners(element: Element): void {
-  element.removeEventListener('pointerdown', onPointerDown as EventListener, {
+function removeListeners(): void {
+  removeTouchActionStyle();
+  document.removeEventListener('pointerdown', onPointerDown as EventListener, {
     capture: true,
   });
-  element.removeEventListener('pointermove', onPointerMove as EventListener, {
+  document.removeEventListener('pointermove', onPointerMove as EventListener, {
     capture: true,
   });
-  element.removeEventListener('pointerup', onPointerUp as EventListener, {
+  document.removeEventListener('pointerup', onPointerUp as EventListener, {
     capture: true,
   });
-  element.removeEventListener('pointercancel', onPointerCancel as EventListener, { capture: true });
+  document.removeEventListener('pointercancel', onPointerCancel as EventListener, {
+    capture: true,
+  });
 }
 
 export const singleFingerRotation: IFeatureModule = {
@@ -116,28 +161,27 @@ export const singleFingerRotation: IFeatureModule = {
   init() {
     return Promise.all([
       waitForElement('.ol-viewport').then((element) => {
-        viewport = element;
+        if (element instanceof HTMLElement) {
+          viewport = element;
+        }
       }),
       getOlMap().then((olMap) => {
         map = olMap;
+        originalSetRotation = olMap.getView().setRotation.bind(olMap.getView());
       }),
     ]).then(() => {
-      if (enabled && viewport) {
-        addListeners(viewport);
+      if (enabled) {
+        addListeners();
       }
     });
   },
   enable() {
     enabled = true;
-    if (viewport) {
-      addListeners(viewport);
-    }
+    addListeners();
   },
   disable() {
     enabled = false;
-    if (viewport) {
-      removeListeners(viewport);
-    }
+    removeListeners();
     resetState();
   },
 };

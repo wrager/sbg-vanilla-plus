@@ -32,7 +32,7 @@ import { waitForElement } from '../../core/dom';
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 const mockWaitForElement = waitForElement as jest.MockedFunction<typeof waitForElement>;
 
-let setRotationMock: jest.Mock;
+let realSetRotation: jest.Mock;
 let mockView: IOlView;
 let mockMap: IOlMap;
 let viewport: HTMLDivElement;
@@ -66,21 +66,25 @@ function dispatchMouse(
 }
 
 beforeEach(async () => {
-  setRotationMock = jest.fn();
+  realSetRotation = jest.fn();
+  let currentRotation = 0;
   mockView = {
     padding: [0, 0, 0, 0],
     getCenter: () => [0, 0],
     setCenter: jest.fn(),
     calculateExtent: () => [0, 0, 0, 0],
     changed: jest.fn(),
-    getRotation: () => 0,
-    setRotation: setRotationMock,
+    getRotation: () => currentRotation,
+    setRotation(rotation: number) {
+      currentRotation = rotation;
+      realSetRotation(rotation);
+    },
   };
   mockMap = {
     getView: () => mockView,
     getSize: () => [800, 600],
     getLayers: jest.fn() as unknown as IOlMap['getLayers'],
-    getInteractions: jest.fn() as unknown as IOlMap['getInteractions'],
+    getInteractions: () => ({ getArray: () => [] }),
     addLayer: jest.fn(),
     removeLayer: jest.fn(),
     updateSize: jest.fn(),
@@ -113,7 +117,7 @@ test('does not rotate when Follow Walker is off', () => {
   dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
   dispatchTouch('pointermove', { clientX: 500, clientY: 300 });
 
-  expect(setRotationMock).not.toHaveBeenCalled();
+  expect(realSetRotation).not.toHaveBeenCalled();
 });
 
 test('does not rotate for mouse events', () => {
@@ -122,19 +126,16 @@ test('does not rotate for mouse events', () => {
   dispatchMouse('pointerdown', { clientX: 400, clientY: 100 });
   dispatchMouse('pointermove', { clientX: 500, clientY: 300 });
 
-  expect(setRotationMock).not.toHaveBeenCalled();
+  expect(realSetRotation).not.toHaveBeenCalled();
 });
 
 test('rotates map with circular gesture when FW is active', () => {
   localStorage.setItem('follow', 'true');
 
-  // Touch at top-center (above screen center)
   dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
-
-  // Move to the right side
   dispatchTouch('pointermove', { clientX: 700, clientY: 300 });
 
-  expect(setRotationMock).toHaveBeenCalled();
+  expect(realSetRotation).toHaveBeenCalled();
 });
 
 test('rotates even with small movement', () => {
@@ -143,7 +144,7 @@ test('rotates even with small movement', () => {
   dispatchTouch('pointerdown', { clientX: 700, clientY: 300 });
   dispatchTouch('pointermove', { clientX: 701, clientY: 300 });
 
-  expect(setRotationMock).toHaveBeenCalled();
+  expect(realSetRotation).toHaveBeenCalled();
 });
 
 test('ignores second finger', () => {
@@ -151,11 +152,10 @@ test('ignores second finger', () => {
 
   dispatchTouch('pointerdown', { clientX: 400, clientY: 100, pointerId: 1 });
 
-  // Second finger down — should be ignored
   dispatchTouch('pointerdown', { clientX: 200, clientY: 200, pointerId: 2 });
   dispatchTouch('pointermove', { clientX: 300, clientY: 400, pointerId: 2 });
 
-  expect(setRotationMock).not.toHaveBeenCalled();
+  expect(realSetRotation).not.toHaveBeenCalled();
 });
 
 test('resets state on pointerup', () => {
@@ -165,13 +165,11 @@ test('resets state on pointerup', () => {
   dispatchTouch('pointermove', { clientX: 700, clientY: 300 });
   dispatchTouch('pointerup', { clientX: 700, clientY: 300 });
 
-  setRotationMock.mockClear();
+  realSetRotation.mockClear();
 
-  // New gesture should start fresh — this move alone should not rotate
-  // because there is no active pointerdown
   dispatchTouch('pointermove', { clientX: 100, clientY: 300 });
 
-  expect(setRotationMock).not.toHaveBeenCalled();
+  expect(realSetRotation).not.toHaveBeenCalled();
 });
 
 test('resets state on pointercancel', () => {
@@ -180,11 +178,11 @@ test('resets state on pointercancel', () => {
   dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
   dispatchTouch('pointercancel', { clientX: 400, clientY: 100 });
 
-  setRotationMock.mockClear();
+  realSetRotation.mockClear();
 
   dispatchTouch('pointermove', { clientX: 700, clientY: 300 });
 
-  expect(setRotationMock).not.toHaveBeenCalled();
+  expect(realSetRotation).not.toHaveBeenCalled();
 });
 
 test('disable removes listeners and stops rotating', async () => {
@@ -195,62 +193,68 @@ test('disable removes listeners and stops rotating', async () => {
   dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
   dispatchTouch('pointermove', { clientX: 700, clientY: 300 });
 
-  expect(setRotationMock).not.toHaveBeenCalled();
+  expect(realSetRotation).not.toHaveBeenCalled();
 });
 
-test('does not block pointerdown propagation to preserve double-tap zoom', () => {
+test('blocks external setRotation calls during gesture', () => {
   localStorage.setItem('follow', 'true');
-
-  const propagationSpy = jest.fn();
-  viewport.addEventListener('pointerdown', propagationSpy);
-
-  dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
-
-  expect(propagationSpy).toHaveBeenCalled();
-
-  viewport.removeEventListener('pointerdown', propagationSpy);
-});
-
-test('stops propagation of pointermove when rotation is active', () => {
-  localStorage.setItem('follow', 'true');
-
-  const propagationSpy = jest.fn();
-  viewport.addEventListener('pointermove', propagationSpy);
 
   dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
   dispatchTouch('pointermove', { clientX: 700, clientY: 300 });
 
-  // The bubble-phase listener should not receive the event
-  expect(propagationSpy).not.toHaveBeenCalled();
+  realSetRotation.mockClear();
 
-  viewport.removeEventListener('pointermove', propagationSpy);
+  // Simulate game's FW resetting rotation to 0
+  mockView.setRotation(0);
+
+  // The external call should be blocked (no-op)
+  expect(realSetRotation).not.toHaveBeenCalled();
+});
+
+test('restores setRotation after gesture ends', () => {
+  localStorage.setItem('follow', 'true');
+
+  dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
+  dispatchTouch('pointerup', { clientX: 400, clientY: 100 });
+
+  realSetRotation.mockClear();
+
+  // After gesture, external setRotation should work again
+  mockView.setRotation(1.5);
+
+  expect(realSetRotation).toHaveBeenCalledWith(1.5);
+});
+
+test('injects touch-action style when enabled', () => {
+  const style = document.querySelector('style');
+  expect(style).not.toBeNull();
+  expect(style?.textContent).toContain('touch-action: none');
+});
+
+test('removes touch-action style on disable', async () => {
+  await singleFingerRotation.disable();
+  const styles = document.querySelectorAll('style');
+  const hasTouchAction = Array.from(styles).some((s) =>
+    s.textContent.includes('touch-action: none'),
+  );
+  expect(hasTouchAction).toBe(false);
 });
 
 test('accounts for view padding when calculating rotation center', () => {
   localStorage.setItem('follow', 'true');
 
-  // Simulate shiftMapCenterDown: top padding shifts visual center down
   mockView.padding = [210, 0, 0, 0];
 
-  // Screen is 800x600, padding [210,0,0,0] → visual center at (400, 405)
-  // Touch directly at visual center, then move right → should produce
-  // a rotation delta of ~PI/2 (90°) if moving from center-right to center-bottom
-  // We just verify setRotation is called with a value that accounts for the
-  // shifted center rather than the raw screen center
-
-  // Touch above visual center (at y=205, which is 200px above center at 405)
   dispatchTouch('pointerdown', { clientX: 400, clientY: 205 });
-
-  // Move to the right of visual center (at x=600, y=405 = the visual center y)
   dispatchTouch('pointermove', { clientX: 600, clientY: 405 });
 
-  expect(setRotationMock).toHaveBeenCalled();
-  const firstCall = setRotationMock.mock.calls[0] as [number];
+  expect(realSetRotation).toHaveBeenCalled();
+  const firstCall = realSetRotation.mock.calls[0] as [number];
   const rotation = firstCall[0];
 
   // With padding-aware center (400, 405):
-  // Start angle: atan2(205-405, 400-400) = atan2(-200, 0) = -PI/2
-  // End angle: atan2(405-405, 600-400) = atan2(0, 200) = 0
-  // Delta = 0 - (-PI/2) = PI/2 ≈ 1.5708
+  // Start: atan2(205-405, 400-400) = -PI/2
+  // End: atan2(405-405, 600-400) = 0
+  // Delta = PI/2
   expect(rotation).toBeCloseTo(Math.PI / 2, 1);
 });

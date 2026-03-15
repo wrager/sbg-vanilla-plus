@@ -73,6 +73,7 @@ interface IOlGlobal {
   geom?: { Point?: new (coords: number[]) => { getCoordinates(): number[] } };
   interaction?: {
     DoubleClickZoom?: new () => IOlInteraction;
+    DragPan?: new () => IOlInteraction;
   };
 }
 
