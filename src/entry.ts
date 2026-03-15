@@ -7,6 +7,7 @@ import { collapsibleTopPanel } from './modules/collapsibleTopPanel/collapsibleTo
 import { enhancedPointPopupUi } from './modules/enhancedPointPopupUi/enhancedPointPopupUi';
 import { shiftMapCenterDown } from './modules/shiftMapCenterDown/shiftMapCenterDown';
 import { disableDoubleTapZoom } from './modules/disableDoubleTapZoom/disableDoubleTapZoom';
+import { doubleTapDragZoom } from './modules/doubleTapDragZoom/doubleTapDragZoom';
 import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
 import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
 import { keyCountOnPoints } from './modules/keyCountOnPoints/keyCountOnPoints';
@@ -23,6 +24,7 @@ if (!isDisabled()) {
     shiftMapCenterDown,
     largerPointTapArea,
     disableDoubleTapZoom,
+    doubleTapDragZoom,
     drawButtonFix,
     keepScreenOn,
     keyCountOnPoints,
