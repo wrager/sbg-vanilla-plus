@@ -496,11 +496,9 @@ export function initSettingsUI(
   const version = document.createElement('span');
   version.className = 'svp-settings-version';
   version.textContent = `SBG Vanilla+ v${__SVP_VERSION__}`;
-  footer.appendChild(version);
-
   const reportButton = document.createElement('button');
   reportButton.className = 'svp-report-button';
-  const reportLabel = { en: 'Report Bug', ru: 'Сообщить об ошибке' };
+  const reportLabel = { en: 'Report a bug', ru: 'Сообщить об ошибке' };
   reportButton.textContent = t(reportLabel);
   reportButton.addEventListener('click', () => {
     const clipboard = buildDiagnosticClipboard(modules);
@@ -515,6 +513,8 @@ export function initSettingsUI(
     window.open(url, '_blank');
   });
   footer.appendChild(reportButton);
+
+  footer.appendChild(version);
 
   panel.appendChild(footer);
 
