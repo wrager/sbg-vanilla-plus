@@ -20,6 +20,7 @@ export function bootstrap(modules: IFeatureModule[]): void {
     },
     (id, message) => {
       settings = setModuleError(settings, id, message);
+      saveSettings(settings);
     },
   );
 

@@ -86,6 +86,46 @@ describe('bootstrap', () => {
     expect(lastSaved?.errors['fail-mod']).toContain('test error');
   });
 
+  test('persists error for async init failure', async () => {
+    let lastSaved: ISvpSettings | undefined;
+    jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
+      lastSaved = s;
+    });
+    jest.spyOn(storage, 'loadSettings').mockReturnValue({ version: 2, modules: {}, errors: {} });
+
+    const failing = createMockModule({
+      id: 'async-fail',
+      init: jest.fn(() => Promise.reject(new Error('async init error'))),
+    });
+
+    bootstrap([failing]);
+
+    await Promise.resolve();
+
+    expect(lastSaved).toBeDefined();
+    expect(lastSaved?.errors['async-fail']).toContain('async init error');
+  });
+
+  test('persists error for async enable failure', async () => {
+    let lastSaved: ISvpSettings | undefined;
+    jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
+      lastSaved = s;
+    });
+    jest.spyOn(storage, 'loadSettings').mockReturnValue({ version: 2, modules: {}, errors: {} });
+
+    const failing = createMockModule({
+      id: 'async-enable-fail',
+      enable: jest.fn(() => Promise.reject(new Error('async enable error'))),
+    });
+
+    bootstrap([failing]);
+
+    await Promise.resolve();
+
+    expect(lastSaved).toBeDefined();
+    expect(lastSaved?.errors['async-enable-fail']).toContain('async enable error');
+  });
+
   test('clears previous error for successful module', () => {
     let lastSaved: ISvpSettings | undefined;
     jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
