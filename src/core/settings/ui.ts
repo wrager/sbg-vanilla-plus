@@ -185,6 +185,11 @@ type Category = IFeatureModule['category'];
 
 const CATEGORY_ORDER: readonly Category[] = ['ui', 'map', 'utility', 'fix'];
 
+const SETTINGS_TITLE: ILocalizedString = {
+  en: 'SBG Vanilla+ Settings',
+  ru: 'Настройки SBG Vanilla+',
+};
+
 const CATEGORY_LABELS: Record<Category, ILocalizedString> = {
   ui: { en: 'Interface', ru: 'Интерфейс' },
   map: { en: 'Map', ru: 'Карта' },
@@ -336,7 +341,9 @@ export function initSettingsUI(
 
   const header = document.createElement('div');
   header.className = 'svp-settings-header';
-  header.innerHTML = '<span>SBG Vanilla+ Settings</span>';
+  const titleSpan = document.createElement('span');
+  titleSpan.textContent = t(SETTINGS_TITLE);
+  header.appendChild(titleSpan);
 
   const closeBtn = document.createElement('button');
   closeBtn.className = 'svp-settings-close';
@@ -414,7 +421,7 @@ export function initSettingsUI(
   btn.className = 'svp-settings-btn';
   btn.id = BTN_ID;
   btn.textContent = '⚙';
-  btn.title = 'SBG Vanilla+ Settings';
+  btn.title = t(SETTINGS_TITLE);
   btn.addEventListener('click', () => {
     panel.classList.toggle('svp-open');
     requestAnimationFrame(updateScrollIndicators);
