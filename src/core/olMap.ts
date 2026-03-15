@@ -17,6 +17,8 @@ export interface IOlView {
   setCenter(center: number[] | undefined): void;
   calculateExtent(size?: number[]): number[];
   changed(): void;
+  getRotation(): number;
+  setRotation(rotation: number): void;
   getZoom?(): number | undefined;
   on?(type: string, listener: () => void): void;
   un?(type: string, listener: () => void): void;

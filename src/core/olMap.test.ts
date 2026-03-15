@@ -7,6 +7,8 @@ function createFakeView(): IOlView {
     setCenter: () => {},
     calculateExtent: () => [0, 0, 0, 0],
     changed: () => {},
+    getRotation: () => 0,
+    setRotation: () => {},
     getZoom: () => undefined,
   };
 }

@@ -24,6 +24,8 @@ beforeEach(() => {
     setCenter: setCenterMock,
     calculateExtent: calculateExtentMock,
     changed: jest.fn(),
+    getRotation: () => 0,
+    setRotation: jest.fn(),
   };
   mockMap = {
     getView: () => mockView,
