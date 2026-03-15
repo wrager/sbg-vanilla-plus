@@ -7,29 +7,12 @@ const MODULE_ID = 'singleFingerRotation';
 
 let viewport: HTMLElement | null = null;
 let map: IOlMap | null = null;
-let trackingPointerId: number | null = null;
-let previousAngle: number | null = null;
-let originalSetRotation: ((rotation: number) => void) | null = null;
-let touchActionStyle: HTMLStyleElement | null = null;
+let latestPoint: [number, number] | null = null;
+let inflateExtent = false;
 let enabled = false;
 
 function isFollowActive(): boolean {
   return localStorage.getItem('follow') === 'true';
-}
-
-function lockViewRotation(): void {
-  if (!map || !originalSetRotation) return;
-  map.getView().setRotation = () => {};
-}
-
-function unlockViewRotation(): void {
-  if (!map || !originalSetRotation) return;
-  map.getView().setRotation = originalSetRotation;
-}
-
-function applyRotation(delta: number): void {
-  if (!originalSetRotation || !map) return;
-  originalSetRotation(map.getView().getRotation() + delta);
 }
 
 function getScreenCenter(): { x: number; y: number } {
@@ -52,96 +35,69 @@ function normalizeAngleDelta(delta: number): number {
   return delta;
 }
 
-function isViewportEvent(event: PointerEvent): boolean {
-  if (!viewport) return false;
-  const target = event.target;
-  return target instanceof Node && viewport.contains(target);
-}
-
-function onPointerDown(event: PointerEvent): void {
-  if (!isViewportEvent(event)) return;
-  if (event.pointerType !== 'touch') return;
-  if (!isFollowActive()) return;
-  if (trackingPointerId !== null) return;
+function applyRotation(delta: number): void {
   if (!map) return;
-
-  trackingPointerId = event.pointerId;
-  previousAngle = angleFromCenter(event.clientX, event.clientY);
-  lockViewRotation();
+  const view = map.getView();
+  view.setRotation(view.getRotation() + delta);
 }
 
-function onPointerMove(event: PointerEvent): void {
-  if (event.pointerId !== trackingPointerId) return;
-  if (previousAngle === null || !originalSetRotation) return;
+function resetGesture(): void {
+  latestPoint = null;
+}
 
-  event.stopImmediatePropagation();
+function onTouchStart(event: TouchEvent): void {
+  if (event.targetTouches.length > 1) {
+    resetGesture();
+    return;
+  }
+  if (!isFollowActive()) return;
+  if (!(event.target instanceof HTMLCanvasElement)) return;
 
-  const currentAngle = angleFromCenter(event.clientX, event.clientY);
+  const touch = event.targetTouches[0];
+  latestPoint = [touch.clientX, touch.clientY];
+}
+
+function onTouchMove(event: TouchEvent): void {
+  if (!latestPoint) return;
+
+  event.preventDefault();
+
+  const touch = event.targetTouches[0];
+  const currentAngle = angleFromCenter(touch.clientX, touch.clientY);
+  const previousAngle = angleFromCenter(latestPoint[0], latestPoint[1]);
   const delta = normalizeAngleDelta(currentAngle - previousAngle);
 
   applyRotation(delta);
-  previousAngle = currentAngle;
+  latestPoint = [touch.clientX, touch.clientY];
 }
 
-function onPointerUp(event: PointerEvent): void {
-  if (event.pointerId !== trackingPointerId) return;
-  resetState();
+function onTouchEnd(): void {
+  resetGesture();
 }
 
-function onPointerCancel(event: PointerEvent): void {
-  if (event.pointerId !== trackingPointerId) return;
-  resetState();
-}
-
-function resetState(): void {
-  trackingPointerId = null;
-  previousAngle = null;
-  unlockViewRotation();
-}
-
-// Use a <style> element instead of inline style to prevent OL/game from
-// overwriting touch-action via inline style assignments.
-function injectTouchActionStyle(): void {
-  if (touchActionStyle) return;
-  touchActionStyle = document.createElement('style');
-  touchActionStyle.textContent = '.ol-viewport { touch-action: none !important; }';
-  document.head.appendChild(touchActionStyle);
-}
-
-function removeTouchActionStyle(): void {
-  if (!touchActionStyle) return;
-  touchActionStyle.remove();
-  touchActionStyle = null;
+// Блокируем pointermove во время жеста, чтобы OL's DragPan не
+// панорамировал карту параллельно с нашим поворотом. Touch events
+// не подавляют pointer events — нужен отдельный перехват в capture-фазе.
+function onPointerMove(event: PointerEvent): void {
+  if (latestPoint && event.pointerType === 'touch') {
+    event.stopImmediatePropagation();
+  }
 }
 
 function addListeners(): void {
-  injectTouchActionStyle();
-  document.addEventListener('pointerdown', onPointerDown as EventListener, {
-    capture: true,
-  });
-  document.addEventListener('pointermove', onPointerMove as EventListener, {
-    capture: true,
-  });
-  document.addEventListener('pointerup', onPointerUp as EventListener, {
-    capture: true,
-  });
-  document.addEventListener('pointercancel', onPointerCancel as EventListener, {
-    capture: true,
-  });
+  if (!viewport) return;
+  viewport.addEventListener('touchstart', onTouchStart);
+  viewport.addEventListener('touchmove', onTouchMove, { passive: false });
+  viewport.addEventListener('touchend', onTouchEnd);
+  document.addEventListener('pointermove', onPointerMove as EventListener, { capture: true });
 }
 
 function removeListeners(): void {
-  removeTouchActionStyle();
-  document.removeEventListener('pointerdown', onPointerDown as EventListener, {
-    capture: true,
-  });
+  if (!viewport) return;
+  viewport.removeEventListener('touchstart', onTouchStart);
+  viewport.removeEventListener('touchmove', onTouchMove);
+  viewport.removeEventListener('touchend', onTouchEnd);
   document.removeEventListener('pointermove', onPointerMove as EventListener, {
-    capture: true,
-  });
-  document.removeEventListener('pointerup', onPointerUp as EventListener, {
-    capture: true,
-  });
-  document.removeEventListener('pointercancel', onPointerCancel as EventListener, {
     capture: true,
   });
 }
@@ -167,7 +123,21 @@ export const singleFingerRotation: IFeatureModule = {
       }),
       getOlMap().then((olMap) => {
         map = olMap;
-        originalSetRotation = olMap.getView().setRotation.bind(olMap.getView());
+        // Игра запрашивает точки через view.calculateExtent(map.getSize()),
+        // но перезапрашивает только при смещении центра >30м или изменении
+        // зума — поворот не вызывает перезагрузку. Расширяем extent до
+        // диагонали вьюпорта, чтобы загруженная область покрывала любой
+        // угол поворота (аналогично shiftMapCenterDown для padding).
+        // Wrapper создаётся один раз, переключается флагом в enable/disable.
+        const view = olMap.getView();
+        const originalCalculateExtent = view.calculateExtent.bind(view);
+        view.calculateExtent = (size?: number[]) => {
+          if (inflateExtent && size) {
+            const diagonal = Math.ceil(Math.sqrt(size[0] ** 2 + size[1] ** 2));
+            return originalCalculateExtent([diagonal, diagonal]);
+          }
+          return originalCalculateExtent(size);
+        };
       }),
     ]).then(() => {
       if (enabled) {
@@ -177,11 +147,13 @@ export const singleFingerRotation: IFeatureModule = {
   },
   enable() {
     enabled = true;
+    inflateExtent = true;
     addListeners();
   },
   disable() {
     enabled = false;
+    inflateExtent = false;
     removeListeners();
-    resetState();
+    resetGesture();
   },
 };

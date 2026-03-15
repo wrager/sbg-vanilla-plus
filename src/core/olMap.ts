@@ -19,6 +19,7 @@ export interface IOlView {
   changed(): void;
   getRotation(): number;
   setRotation(rotation: number): void;
+  adjustRotation?(delta: number, anchor?: number[]): void;
   getZoom?(): number | undefined;
   on?(type: string, listener: () => void): void;
   un?(type: string, listener: () => void): void;
@@ -57,6 +58,8 @@ export interface IOlMap {
   addLayer(layer: IOlLayer): void;
   removeLayer(layer: IOlLayer): void;
   updateSize(): void;
+  getPixelFromCoordinate?(coordinate: number[]): number[];
+  getCoordinateFromPixel?(pixel: number[]): number[];
 }
 
 interface IOlGlobal {

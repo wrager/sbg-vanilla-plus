@@ -1,20 +1,25 @@
 import type { IOlMap, IOlView } from '../../core/olMap';
 
-// jsdom does not implement PointerEvent — polyfill with the properties we need
-class PointerEventPolyfill extends MouseEvent {
-  readonly pointerId: number;
-  readonly pointerType: string;
-  constructor(
-    type: string,
-    init: PointerEventInit & { pointerId?: number; pointerType?: string } = {},
-  ) {
-    super(type, init);
-    this.pointerId = init.pointerId ?? 0;
-    this.pointerType = init.pointerType ?? '';
+// jsdom does not implement Touch/TouchEvent — polyfill with the properties we need
+class TouchPolyfill {
+  readonly clientX: number;
+  readonly clientY: number;
+  constructor(init: { clientX?: number; clientY?: number }) {
+    this.clientX = init.clientX ?? 0;
+    this.clientY = init.clientY ?? 0;
   }
 }
-if (typeof globalThis.PointerEvent === 'undefined') {
-  (globalThis as Record<string, unknown>).PointerEvent = PointerEventPolyfill;
+
+class TouchEventPolyfill extends UIEvent {
+  readonly targetTouches: readonly TouchPolyfill[];
+  constructor(type: string, init: { cancelable?: boolean; targetTouches?: TouchPolyfill[] } = {}) {
+    super(type, { bubbles: true, cancelable: init.cancelable });
+    this.targetTouches = init.targetTouches ?? [];
+  }
+}
+
+if (typeof globalThis.TouchEvent === 'undefined') {
+  (globalThis as Record<string, unknown>).TouchEvent = TouchEventPolyfill;
 }
 
 jest.mock('../../core/olMap', () => ({
@@ -36,33 +41,22 @@ let realSetRotation: jest.Mock;
 let mockView: IOlView;
 let mockMap: IOlMap;
 let viewport: HTMLDivElement;
+let canvas: HTMLCanvasElement;
 
 function dispatchTouch(
-  type: 'pointerdown' | 'pointermove' | 'pointerup' | 'pointercancel',
-  options: { clientX: number; clientY: number; pointerId?: number },
+  type: 'touchstart' | 'touchmove' | 'touchend',
+  options: { clientX?: number; clientY?: number; targetTouches?: number } = {},
 ): void {
-  const event = new PointerEvent(type, {
-    pointerType: 'touch',
-    pointerId: options.pointerId ?? 1,
-    clientX: options.clientX,
-    clientY: options.clientY,
-    bubbles: true,
-  });
-  viewport.dispatchEvent(event);
-}
+  const touchCount = options.targetTouches ?? 1;
+  const touch = new TouchPolyfill({ clientX: options.clientX, clientY: options.clientY });
+  const touches = Array.from({ length: touchCount }, () => touch);
 
-function dispatchMouse(
-  type: 'pointerdown' | 'pointermove' | 'pointerup',
-  options: { clientX: number; clientY: number },
-): void {
-  const event = new PointerEvent(type, {
-    pointerType: 'mouse',
-    pointerId: 1,
-    clientX: options.clientX,
-    clientY: options.clientY,
-    bubbles: true,
+  const event = new TouchEventPolyfill(type, {
+    cancelable: true,
+    targetTouches: touches,
   });
-  viewport.dispatchEvent(event);
+
+  canvas.dispatchEvent(event);
 }
 
 beforeEach(async () => {
@@ -72,13 +66,17 @@ beforeEach(async () => {
     padding: [0, 0, 0, 0],
     getCenter: () => [0, 0],
     setCenter: jest.fn(),
-    calculateExtent: () => [0, 0, 0, 0],
+    calculateExtent: (size?: number[]) => {
+      if (size) return [-size[0] / 2, -size[1] / 2, size[0] / 2, size[1] / 2];
+      return [0, 0, 0, 0];
+    },
     changed: jest.fn(),
     getRotation: () => currentRotation,
     setRotation(rotation: number) {
       currentRotation = rotation;
       realSetRotation(rotation);
     },
+    getZoom: () => 17,
   };
   mockMap = {
     getView: () => mockView,
@@ -92,6 +90,8 @@ beforeEach(async () => {
 
   viewport = document.createElement('div');
   viewport.classList.add('ol-viewport');
+  canvas = document.createElement('canvas');
+  viewport.appendChild(canvas);
   document.body.appendChild(viewport);
 
   mockWaitForElement.mockResolvedValue(viewport);
@@ -114,17 +114,24 @@ afterEach(async () => {
 test('does not rotate when FW is off', () => {
   localStorage.setItem('follow', 'false');
 
-  dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
-  dispatchTouch('pointermove', { clientX: 500, clientY: 300 });
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+  dispatchTouch('touchmove', { clientX: 500, clientY: 300 });
 
   expect(realSetRotation).not.toHaveBeenCalled();
 });
 
-test('does not rotate for mouse events', () => {
+test('does not rotate for non-canvas targets', () => {
   localStorage.setItem('follow', 'true');
 
-  dispatchMouse('pointerdown', { clientX: 400, clientY: 100 });
-  dispatchMouse('pointermove', { clientX: 500, clientY: 300 });
+  // Dispatch touchstart from viewport div, not canvas
+  const touch = new TouchPolyfill({ clientX: 400, clientY: 100 });
+  const event = new TouchEventPolyfill('touchstart', {
+    cancelable: true,
+    targetTouches: [touch],
+  });
+  viewport.dispatchEvent(event);
+
+  dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
 
   expect(realSetRotation).not.toHaveBeenCalled();
 });
@@ -132,55 +139,37 @@ test('does not rotate for mouse events', () => {
 test('rotates map with circular gesture when FW is active', () => {
   localStorage.setItem('follow', 'true');
 
-  dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
-  dispatchTouch('pointermove', { clientX: 700, clientY: 300 });
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+  dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
 
   expect(realSetRotation).toHaveBeenCalled();
 });
 
-test('rotates even with small movement', () => {
+test('resets gesture when second finger touches', () => {
   localStorage.setItem('follow', 'true');
 
-  dispatchTouch('pointerdown', { clientX: 700, clientY: 300 });
-  dispatchTouch('pointermove', { clientX: 701, clientY: 300 });
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+  dispatchTouch('touchmove', { clientX: 500, clientY: 200 });
 
-  expect(realSetRotation).toHaveBeenCalled();
-});
+  realSetRotation.mockClear();
 
-test('ignores second finger', () => {
-  localStorage.setItem('follow', 'true');
-
-  dispatchTouch('pointerdown', { clientX: 400, clientY: 100, pointerId: 1 });
-
-  dispatchTouch('pointerdown', { clientX: 200, clientY: 200, pointerId: 2 });
-  dispatchTouch('pointermove', { clientX: 300, clientY: 400, pointerId: 2 });
+  // Second finger
+  dispatchTouch('touchstart', { clientX: 200, clientY: 200, targetTouches: 2 });
+  dispatchTouch('touchmove', { clientX: 600, clientY: 400 });
 
   expect(realSetRotation).not.toHaveBeenCalled();
 });
 
-test('resets state on pointerup', () => {
+test('resets state on touchend', () => {
   localStorage.setItem('follow', 'true');
 
-  dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
-  dispatchTouch('pointermove', { clientX: 700, clientY: 300 });
-  dispatchTouch('pointerup', { clientX: 700, clientY: 300 });
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+  dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+  dispatchTouch('touchend');
 
   realSetRotation.mockClear();
 
-  dispatchTouch('pointermove', { clientX: 100, clientY: 300 });
-
-  expect(realSetRotation).not.toHaveBeenCalled();
-});
-
-test('resets state on pointercancel', () => {
-  localStorage.setItem('follow', 'true');
-
-  dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
-  dispatchTouch('pointercancel', { clientX: 400, clientY: 100 });
-
-  realSetRotation.mockClear();
-
-  dispatchTouch('pointermove', { clientX: 700, clientY: 300 });
+  dispatchTouch('touchmove', { clientX: 100, clientY: 300 });
 
   expect(realSetRotation).not.toHaveBeenCalled();
 });
@@ -190,54 +179,34 @@ test('disable removes listeners and stops rotating', async () => {
 
   await singleFingerRotation.disable();
 
-  dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
-  dispatchTouch('pointermove', { clientX: 700, clientY: 300 });
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+  dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
 
   expect(realSetRotation).not.toHaveBeenCalled();
 });
 
-test('blocks external setRotation calls during gesture', () => {
-  localStorage.setItem('follow', 'true');
+test('inflates calculateExtent to viewport diagonal when enabled', () => {
+  const size = [800, 600];
+  const extent = mockView.calculateExtent(size);
 
-  dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
-  dispatchTouch('pointermove', { clientX: 700, clientY: 300 });
-
-  realSetRotation.mockClear();
-
-  // Simulate game's FW resetting rotation to 0
-  mockView.setRotation(0);
-
-  // The external call should be blocked (no-op)
-  expect(realSetRotation).not.toHaveBeenCalled();
+  // diagonal = ceil(sqrt(800² + 600²)) = 1000
+  expect(extent[2] - extent[0]).toBe(1000);
+  expect(extent[3] - extent[1]).toBe(1000);
 });
 
-test('restores setRotation after gesture ends', () => {
-  localStorage.setItem('follow', 'true');
-
-  dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
-  dispatchTouch('pointerup', { clientX: 400, clientY: 100 });
-
-  realSetRotation.mockClear();
-
-  // After gesture, external setRotation should work again
-  mockView.setRotation(1.5);
-
-  expect(realSetRotation).toHaveBeenCalledWith(1.5);
-});
-
-test('injects touch-action style when enabled', () => {
-  const style = document.querySelector('style');
-  expect(style).not.toBeNull();
-  expect(style?.textContent).toContain('touch-action: none');
-});
-
-test('removes touch-action style on disable', async () => {
+test('does not inflate calculateExtent when disabled', async () => {
   await singleFingerRotation.disable();
-  const styles = document.querySelectorAll('style');
-  const hasTouchAction = Array.from(styles).some((s) =>
-    s.textContent.includes('touch-action: none'),
-  );
-  expect(hasTouchAction).toBe(false);
+
+  const size = [800, 600];
+  const extent = mockView.calculateExtent(size);
+
+  expect(extent[2] - extent[0]).toBe(800);
+  expect(extent[3] - extent[1]).toBe(600);
+});
+
+test('passes through calculateExtent without size argument', () => {
+  const extent = mockView.calculateExtent();
+  expect(extent).toEqual([0, 0, 0, 0]);
 });
 
 test('accounts for view padding when calculating rotation center', () => {
@@ -245,8 +214,8 @@ test('accounts for view padding when calculating rotation center', () => {
 
   mockView.padding = [210, 0, 0, 0];
 
-  dispatchTouch('pointerdown', { clientX: 400, clientY: 205 });
-  dispatchTouch('pointermove', { clientX: 600, clientY: 405 });
+  dispatchTouch('touchstart', { clientX: 400, clientY: 205 });
+  dispatchTouch('touchmove', { clientX: 600, clientY: 405 });
 
   expect(realSetRotation).toHaveBeenCalled();
   const firstCall = realSetRotation.mock.calls[0] as [number];
@@ -257,4 +226,20 @@ test('accounts for view padding when calculating rotation center', () => {
   // End: atan2(405-405, 600-400) = 0
   // Delta = PI/2
   expect(rotation).toBeCloseTo(Math.PI / 2, 1);
+});
+
+test('preventDefault is called on touchmove during gesture', () => {
+  localStorage.setItem('follow', 'true');
+
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+
+  const touch = new TouchPolyfill({ clientX: 700, clientY: 300 });
+  const event = new TouchEventPolyfill('touchmove', {
+    cancelable: true,
+    targetTouches: [touch],
+  });
+  const spy = jest.spyOn(event, 'preventDefault');
+  canvas.dispatchEvent(event);
+
+  expect(spy).toHaveBeenCalled();
 });
