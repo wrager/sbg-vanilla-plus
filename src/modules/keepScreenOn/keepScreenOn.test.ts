@@ -63,11 +63,24 @@ describe('keepScreenOn', () => {
     expect(mockRequest).toHaveBeenCalledTimes(1);
   });
 
-  test('does not throw when wake lock API is unavailable', async () => {
+  test('rejects when wake lock API is unavailable', async () => {
     Object.defineProperty(navigator, 'wakeLock', {
       value: undefined,
       configurable: true,
     });
+    await expect(keepScreenOn.enable()).rejects.toThrow();
+  });
+
+  test('silently handles re-acquisition failure on visibility change', async () => {
+    const sentinel = new MockSentinel();
+    mockRequest.mockResolvedValueOnce(sentinel);
     await keepScreenOn.enable();
+
+    sentinel.dispatchEvent(new Event('release'));
+    await Promise.resolve();
+
+    mockRequest.mockRejectedValueOnce(new Error('transient'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await Promise.resolve();
   });
 });
