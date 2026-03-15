@@ -33,6 +33,7 @@ function makeView(zoom = 16): IOlView {
     padding: [0, 0, 0, 0],
     getCenter: () => undefined,
     setCenter: () => {},
+    calculateExtent: () => [0, 0, 0, 0],
     changed: () => {},
     getZoom: () => zoom,
     on(type: string, cb: () => void) {
@@ -62,6 +63,7 @@ function makeMap(layers: IOlLayer[], view: IOlView): IOlMap {
   const removeLayerMock = jest.fn();
   return {
     getView: () => view,
+    getSize: () => [800, 600],
     getLayers: () => ({ getArray: () => layers }),
     addLayer: addLayerMock,
     removeLayer: removeLayerMock,
@@ -223,49 +225,43 @@ describe('keyCountOnPoints enable/disable', () => {
     mockOl();
   });
 
-  afterEach(() => {
-    keyCountOnPoints.disable();
+  afterEach(async () => {
+    await keyCountOnPoints.disable();
     delete window.ol;
   });
 
   test('adds layer to map on enable', async () => {
-    keyCountOnPoints.enable();
-    await Promise.resolve();
+    await keyCountOnPoints.enable();
     expect((olMap.addLayer as jest.Mock).mock.calls.length).toBeGreaterThan(0);
   });
 
   test('removes layer from map on disable after enable', async () => {
-    keyCountOnPoints.enable();
-    await Promise.resolve();
-    keyCountOnPoints.disable();
+    await keyCountOnPoints.enable();
+    await keyCountOnPoints.disable();
     expect((olMap.removeLayer as jest.Mock).mock.calls.length).toBeGreaterThan(0);
   });
 
   test('subscribes to points source change on enable', async () => {
-    keyCountOnPoints.enable();
-    await Promise.resolve();
+    await keyCountOnPoints.enable();
     expect(pointsSrc._listeners.get('change')?.length).toBeGreaterThan(0);
   });
 
   test('unsubscribes from points source change on disable', async () => {
-    keyCountOnPoints.enable();
-    await Promise.resolve();
-    keyCountOnPoints.disable();
+    await keyCountOnPoints.enable();
+    await keyCountOnPoints.disable();
     expect(pointsSrc._listeners.get('change')?.length ?? 0).toBe(0);
   });
 
   test('does nothing if ol constructors are absent', async () => {
     window.ol = { Map: { prototype: { getView: jest.fn() } } };
-    keyCountOnPoints.enable();
-    await Promise.resolve();
+    await keyCountOnPoints.enable();
     expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
   });
 
   test('does nothing if points layer is not found', async () => {
     const otherLayer = makeLayer('other', makeSource());
     mockGetOlMap.mockResolvedValue(makeMap([otherLayer], view));
-    keyCountOnPoints.enable();
-    await Promise.resolve();
+    await keyCountOnPoints.enable();
     expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
   });
 });

@@ -35,8 +35,8 @@ beforeEach(() => {
   mockGetOlMap.mockResolvedValue(mockMap as unknown as IOlMap);
 });
 
-afterEach(() => {
-  largerPointTapArea.disable();
+afterEach(async () => {
+  await largerPointTapArea.disable();
 });
 
 describe('largerPointTapArea metadata', () => {
@@ -71,15 +71,13 @@ describe('largerPointTapArea enable/disable', () => {
     };
     mockGetOlMap.mockResolvedValue(plainMap as unknown as IOlMap);
 
-    largerPointTapArea.enable();
-    await Promise.resolve();
+    await largerPointTapArea.enable();
 
     expect(plainMap).not.toHaveProperty('forEachFeatureAtPixel');
   });
 
   test('injects hitTolerance into every call', async () => {
-    largerPointTapArea.enable();
-    await Promise.resolve();
+    await largerPointTapArea.enable();
 
     const callback = jest.fn();
     mockMap.forEachFeatureAtPixel([100, 200], callback);
@@ -90,8 +88,7 @@ describe('largerPointTapArea enable/disable', () => {
   });
 
   test('preserves existing options while adding hitTolerance', async () => {
-    largerPointTapArea.enable();
-    await Promise.resolve();
+    await largerPointTapArea.enable();
 
     const callback = jest.fn();
     const layerFilter = jest.fn();
@@ -104,8 +101,7 @@ describe('largerPointTapArea enable/disable', () => {
   });
 
   test('overrides caller hitTolerance with module value', async () => {
-    largerPointTapArea.enable();
-    await Promise.resolve();
+    await largerPointTapArea.enable();
 
     const callback = jest.fn();
     mockMap.forEachFeatureAtPixel([10, 20], callback, { hitTolerance: 0 });
@@ -116,29 +112,24 @@ describe('largerPointTapArea enable/disable', () => {
   });
 
   test('restores original method on disable', async () => {
-    largerPointTapArea.enable();
-    await Promise.resolve();
+    await largerPointTapArea.enable();
 
-    largerPointTapArea.disable();
+    await largerPointTapArea.disable();
 
     expect(mockMap.forEachFeatureAtPixel).toBe(forEachOriginal);
   });
 
   test('enable is idempotent — does not double-patch', async () => {
-    largerPointTapArea.enable();
-    await Promise.resolve();
+    await largerPointTapArea.enable();
 
     const patchedMethod = mockMap.forEachFeatureAtPixel;
 
-    largerPointTapArea.enable();
-    await Promise.resolve();
+    await largerPointTapArea.enable();
 
     expect(mockMap.forEachFeatureAtPixel).toBe(patchedMethod);
   });
 
-  test('disable is safe when not enabled', () => {
-    expect(() => {
-      largerPointTapArea.disable();
-    }).not.toThrow();
+  test('disable is safe when not enabled', async () => {
+    await largerPointTapArea.disable();
   });
 });

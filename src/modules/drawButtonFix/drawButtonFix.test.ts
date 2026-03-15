@@ -9,13 +9,13 @@ function createDrawButton(disabled = true): HTMLButtonElement {
 }
 
 describe('drawButtonFix', () => {
-  afterEach(() => {
-    drawButtonFix.disable();
+  afterEach(async () => {
+    await drawButtonFix.disable();
     document.body.innerHTML = '';
   });
 
   test('removes disabled from #draw when attribute is set', async () => {
-    drawButtonFix.enable();
+    await drawButtonFix.enable();
     const btn = createDrawButton(false);
     btn.setAttribute('disabled', '');
     await Promise.resolve();
@@ -23,7 +23,7 @@ describe('drawButtonFix', () => {
   });
 
   test('does not affect disabled on other buttons', async () => {
-    drawButtonFix.enable();
+    await drawButtonFix.enable();
     const other = document.createElement('button');
     other.id = 'other';
     other.setAttribute('disabled', '');
@@ -33,8 +33,8 @@ describe('drawButtonFix', () => {
   });
 
   test('disable stops removing the attribute', async () => {
-    drawButtonFix.enable();
-    drawButtonFix.disable();
+    await drawButtonFix.enable();
+    await drawButtonFix.disable();
     const btn = createDrawButton(false);
     btn.setAttribute('disabled', '');
     await Promise.resolve();

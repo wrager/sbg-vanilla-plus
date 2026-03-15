@@ -43,8 +43,8 @@ describe('collapsibleTopPanel', () => {
     document.body.innerHTML = TOPLEFT_HTML;
   });
 
-  afterEach(() => {
-    collapsibleTopPanel.disable();
+  afterEach(async () => {
+    await collapsibleTopPanel.disable();
     document.body.innerHTML = '';
   });
 
@@ -55,7 +55,7 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('injects styles on enable', async () => {
-    collapsibleTopPanel.enable();
+    await collapsibleTopPanel.enable();
     await flushPromises();
 
     const style = document.getElementById('svp-collapsibleTopPanel');
@@ -64,7 +64,7 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('hides all entries and extra buttons by default', async () => {
-    collapsibleTopPanel.enable();
+    await collapsibleTopPanel.enable();
     await flushPromises();
 
     expect(getEntryFor('self-info__name')?.style.display).toBe('none');
@@ -75,7 +75,7 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('shows summary, expand button and hides toggle when collapsed', async () => {
-    collapsibleTopPanel.enable();
+    await collapsibleTopPanel.enable();
     await flushPromises();
 
     const summary = document.getElementById('svp-inv-summary');
@@ -91,7 +91,7 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('expands on container mousedown (not OPS)', async () => {
-    collapsibleTopPanel.enable();
+    await collapsibleTopPanel.enable();
     await flushPromises();
 
     const summary = document.getElementById('svp-inv-summary');
@@ -108,7 +108,7 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('expands on expand button mousedown', async () => {
-    collapsibleTopPanel.enable();
+    await collapsibleTopPanel.enable();
     await flushPromises();
 
     const expandBtn = document.getElementById('svp-top-expand');
@@ -121,7 +121,7 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('does not expand when clicking OPS', async () => {
-    collapsibleTopPanel.enable();
+    await collapsibleTopPanel.enable();
     await flushPromises();
 
     const ops = document.getElementById('ops');
@@ -133,7 +133,7 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('collapses on toggle mousedown', async () => {
-    collapsibleTopPanel.enable();
+    await collapsibleTopPanel.enable();
     await flushPromises();
 
     // Expand first
@@ -152,10 +152,10 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('cleans up on disable', async () => {
-    collapsibleTopPanel.enable();
+    await collapsibleTopPanel.enable();
     await flushPromises();
 
-    collapsibleTopPanel.disable();
+    await collapsibleTopPanel.disable();
 
     const container = document.querySelector('.topleft-container');
     expect(container?.classList.contains('svp-collapsed')).toBe(false);

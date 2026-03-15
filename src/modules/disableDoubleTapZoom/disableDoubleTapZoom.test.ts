@@ -18,20 +18,20 @@ describe('disableDoubleTapZoom', () => {
     document.body.innerHTML = '<div class="ol-viewport"></div>';
   });
 
-  afterEach(() => {
-    disableDoubleTapZoom.disable();
+  afterEach(async () => {
+    await disableDoubleTapZoom.disable();
     document.body.innerHTML = '';
     jest.restoreAllMocks();
   });
 
-  test('does not block first tap', () => {
-    disableDoubleTapZoom.enable();
+  test('does not block first tap', async () => {
+    await disableDoubleTapZoom.enable();
     const event = dispatchPointerDown(getViewport());
     expect(event.stopImmediatePropagation).not.toHaveBeenCalled();
   });
 
-  test('blocks second tap within threshold', () => {
-    disableDoubleTapZoom.enable();
+  test('blocks second tap within threshold', async () => {
+    await disableDoubleTapZoom.enable();
     const now = Date.now();
     jest
       .spyOn(Date, 'now')
@@ -43,8 +43,8 @@ describe('disableDoubleTapZoom', () => {
     expect(second.stopImmediatePropagation).toHaveBeenCalled();
   });
 
-  test('does not block second tap after threshold', () => {
-    disableDoubleTapZoom.enable();
+  test('does not block second tap after threshold', async () => {
+    await disableDoubleTapZoom.enable();
     const now = Date.now();
     jest
       .spyOn(Date, 'now')
@@ -56,9 +56,9 @@ describe('disableDoubleTapZoom', () => {
     expect(second.stopImmediatePropagation).not.toHaveBeenCalled();
   });
 
-  test('disable removes the listener', () => {
-    disableDoubleTapZoom.enable();
-    disableDoubleTapZoom.disable();
+  test('disable removes the listener', async () => {
+    await disableDoubleTapZoom.enable();
+    await disableDoubleTapZoom.disable();
 
     const now = Date.now();
     jest
@@ -74,7 +74,7 @@ describe('disableDoubleTapZoom', () => {
   test('enable before viewport is ready applies listener once viewport appears', async () => {
     document.body.innerHTML = '';
     disableDoubleTapZoom.init();
-    disableDoubleTapZoom.enable();
+    await disableDoubleTapZoom.enable();
 
     const viewport = document.createElement('div');
     viewport.className = 'ol-viewport';

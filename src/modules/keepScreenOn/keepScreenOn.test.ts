@@ -22,14 +22,13 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
-  keepScreenOn.disable();
+afterEach(async () => {
+  await keepScreenOn.disable();
 });
 
 describe('keepScreenOn', () => {
   test('requests wake lock on enable', async () => {
-    keepScreenOn.enable();
-    await Promise.resolve();
+    await keepScreenOn.enable();
     expect(mockRequest).toHaveBeenCalledWith('screen');
   });
 
@@ -37,10 +36,8 @@ describe('keepScreenOn', () => {
     const sentinel = new MockSentinel();
     mockRequest.mockResolvedValueOnce(sentinel);
 
-    keepScreenOn.enable();
-    await Promise.resolve();
-    keepScreenOn.disable();
-    await Promise.resolve();
+    await keepScreenOn.enable();
+    await keepScreenOn.disable();
     expect(sentinel.release).toHaveBeenCalledTimes(1);
   });
 
@@ -48,8 +45,7 @@ describe('keepScreenOn', () => {
     const sentinel = new MockSentinel();
     mockRequest.mockResolvedValueOnce(sentinel);
 
-    keepScreenOn.enable();
-    await Promise.resolve();
+    await keepScreenOn.enable();
     mockRequest.mockClear();
 
     // Browser releases the lock (e.g. tab goes to background)
@@ -67,13 +63,11 @@ describe('keepScreenOn', () => {
     expect(mockRequest).toHaveBeenCalledTimes(1);
   });
 
-  test('does not throw when wake lock API is unavailable', () => {
+  test('does not throw when wake lock API is unavailable', async () => {
     Object.defineProperty(navigator, 'wakeLock', {
       value: undefined,
       configurable: true,
     });
-    expect(() => {
-      keepScreenOn.enable();
-    }).not.toThrow();
+    await keepScreenOn.enable();
   });
 });
