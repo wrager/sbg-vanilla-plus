@@ -9,7 +9,7 @@ export const drawButtonFix: IFeatureModule = {
   name: { en: 'Draw Button Fix', ru: 'Фикс кнопки рисования' },
   description: {
     en: 'Draw button is always active — fixes a game bug where the button gets stuck in disabled state',
-    ru: 'Кнопка Draw всегда активна — исправляет баг игры, когда кнопка зависает в неактивном состоянии',
+    ru: 'Кнопка «Рисовать» всегда активна — исправляет баг игры, когда кнопка зависает в неактивном состоянии',
   },
   defaultEnabled: true,
   category: 'fix',
