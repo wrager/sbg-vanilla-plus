@@ -274,6 +274,7 @@ function fillSection(
   section: HTMLElement,
   modules: readonly IFeatureModule[],
   category: Category,
+  errorDisplay: Map<string, (message: string | null) => void>,
 ): void {
   const title = document.createElement('div');
   title.className = 'svp-settings-section-title';
@@ -297,9 +298,10 @@ function fillSection(
           location.reload();
           return;
         }
+        const phaseLabel = newEnabled ? 'включении' : 'выключении';
         function onToggleError(e: unknown): void {
           const message = e instanceof Error ? e.message : String(e);
-          console.warn(`[SVP] Ошибка переключения модуля "${t(mod.name)}":`, e);
+          console.error(`[SVP] Ошибка при ${phaseLabel} модуля "${t(mod.name)}":`, e);
           mod.status = 'failed';
           settings = setModuleError(settings, mod.id, message);
           saveSettings(settings);
@@ -317,11 +319,15 @@ function fillSection(
       },
       errorMessage,
     );
+    errorDisplay.set(mod.id, setError);
     section.appendChild(row);
   }
 }
 
-export function initSettingsUI(modules: readonly IFeatureModule[]): void {
+export function initSettingsUI(
+  modules: readonly IFeatureModule[],
+  errorDisplay: Map<string, (message: string | null) => void>,
+): void {
   injectStyles(PANEL_STYLES, 'settings');
 
   const panel = document.createElement('div');
@@ -357,7 +363,7 @@ export function initSettingsUI(modules: readonly IFeatureModule[]): void {
 
     const section = document.createElement('div');
     section.className = 'svp-settings-section';
-    fillSection(section, categoryModules, category);
+    fillSection(section, categoryModules, category, errorDisplay);
     content.appendChild(section);
   }
 

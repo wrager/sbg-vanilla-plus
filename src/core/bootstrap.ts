@@ -12,6 +12,8 @@ import { initSettingsUI } from './settings/ui';
 export function bootstrap(modules: IFeatureModule[]): void {
   let settings = loadSettings();
 
+  const errorDisplay = new Map<string, (message: string | null) => void>();
+
   initModules(
     modules,
     (id) => {
@@ -21,16 +23,17 @@ export function bootstrap(modules: IFeatureModule[]): void {
     (id, message) => {
       settings = setModuleError(settings, id, message);
       saveSettings(settings);
+      errorDisplay.get(id)?.(message);
+    },
+    (id) => {
+      if (settings.errors[id]) {
+        settings = clearModuleError(settings, id);
+        saveSettings(settings);
+        errorDisplay.get(id)?.(null);
+      }
     },
   );
 
-  // Очистить ошибки для успешно загруженных модулей
-  for (const mod of modules) {
-    if (mod.status === 'ready' && settings.errors[mod.id]) {
-      settings = clearModuleError(settings, mod.id);
-    }
-  }
-
   saveSettings(settings);
-  initSettingsUI(modules);
+  initSettingsUI(modules, errorDisplay);
 }
