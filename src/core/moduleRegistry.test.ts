@@ -60,7 +60,7 @@ describe('initModules', () => {
 
     initModules([failing], () => true, onError);
 
-    expect(onError).toHaveBeenCalledWith('err-cb', 'kaboom');
+    expect(onError).toHaveBeenCalledWith('err-cb', expect.stringContaining('kaboom'));
   });
 
   test('does not call onError for successful modules', () => {

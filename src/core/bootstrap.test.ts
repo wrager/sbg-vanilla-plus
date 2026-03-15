@@ -83,7 +83,7 @@ describe('bootstrap', () => {
     bootstrap([failing]);
 
     expect(lastSaved).toBeDefined();
-    expect(lastSaved?.errors['fail-mod']).toBe('test error');
+    expect(lastSaved?.errors['fail-mod']).toContain('test error');
   });
 
   test('clears previous error for successful module', () => {

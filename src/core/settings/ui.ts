@@ -296,12 +296,13 @@ function fillSection(
           return;
         }
         function onToggleError(e: unknown): void {
-          const msg = e instanceof Error ? e.message : String(e);
+          const message = e instanceof Error ? e.message : String(e);
+          const errorString = e instanceof Error ? (e.stack ?? e.message) : String(e);
           console.warn(`[SVP] Ошибка переключения модуля "${t(mod.name)}":`, e);
           mod.status = 'failed';
-          settings = setModuleError(settings, mod.id, msg);
+          settings = setModuleError(settings, mod.id, errorString);
           saveSettings(settings);
-          setError(msg);
+          setError(message);
         }
 
         try {
