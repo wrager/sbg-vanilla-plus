@@ -153,8 +153,12 @@ const PANEL_STYLES = `
 }
 
 .svp-module-reload {
-  font-size: 14px;
-  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-disabled);
+}
+
+.svp-module-reload-text {
+  font-style: italic;
 }
 
 .svp-module-checkbox {
@@ -198,6 +202,11 @@ const CATEGORY_ORDER: readonly Category[] = ['ui', 'map', 'utility', 'fix'];
 const SETTINGS_TITLE: ILocalizedString = {
   en: 'SBG Vanilla+ Settings',
   ru: 'Настройки SBG Vanilla+',
+};
+
+const RELOAD_LABEL: ILocalizedString = {
+  en: 'Page will reload on toggle',
+  ru: 'При переключении происходит перезагрузка',
 };
 
 const CATEGORY_LABELS: Record<Category, ILocalizedString> = {
@@ -256,16 +265,21 @@ function createModuleRow(
   info.appendChild(nameLine);
   info.appendChild(desc);
 
+  if (mod.requiresReload) {
+    const reloadIndicator = document.createElement('div');
+    reloadIndicator.className = 'svp-module-reload';
+    reloadIndicator.textContent = '↻ ';
+    const reloadText = document.createElement('span');
+    reloadText.className = 'svp-module-reload-text';
+    reloadText.textContent = t(RELOAD_LABEL);
+    reloadIndicator.appendChild(reloadText);
+    info.appendChild(reloadIndicator);
+  }
+
   const failed = document.createElement('div');
   failed.className = 'svp-module-failed';
 
   row.appendChild(info);
-  if (mod.requiresReload) {
-    const reload = document.createElement('span');
-    reload.className = 'svp-module-reload';
-    reload.textContent = '🔄';
-    row.appendChild(reload);
-  }
   const checkbox = createCheckbox(enabled, onChange);
   row.appendChild(checkbox);
 
