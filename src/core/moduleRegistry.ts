@@ -14,11 +14,24 @@ export interface IFeatureModule {
   disable(): void | Promise<void>;
 }
 
+export type ModulePhase = 'init' | 'enable' | 'disable';
+
 export type ModuleErrorCallback = (id: string, message: string) => void;
 
-function handleModuleError(mod: IFeatureModule, e: unknown, onError?: ModuleErrorCallback): void {
+const PHASE_LABELS: Record<ModulePhase, string> = {
+  init: 'инициализации',
+  enable: 'включении',
+  disable: 'выключении',
+};
+
+function handleModuleError(
+  mod: IFeatureModule,
+  phase: ModulePhase,
+  e: unknown,
+  onError?: ModuleErrorCallback,
+): void {
   const message = e instanceof Error ? e.message : String(e);
-  console.warn(`[SVP] Модуль "${t(mod.name)}" не загрузился:`, e);
+  console.error(`[SVP] Ошибка при ${PHASE_LABELS[phase]} модуля "${t(mod.name)}":`, e);
   mod.status = 'failed';
   onError?.(mod.id, message);
 }
@@ -41,22 +54,27 @@ export function initModules(
   modules: IFeatureModule[],
   isEnabled: (id: string) => boolean,
   onError?: ModuleErrorCallback,
+  onReady?: (id: string) => void,
 ): void {
   for (const mod of modules) {
-    const errorHandler = (e: unknown): void => {
-      handleModuleError(mod, e, onError);
+    const initErrorHandler = (e: unknown): void => {
+      handleModuleError(mod, 'init', e, onError);
+    };
+    const enableErrorHandler = (e: unknown): void => {
+      handleModuleError(mod, 'enable', e, onError);
     };
 
     const enableIfNeeded = (): void => {
       if (mod.status !== 'failed' && isEnabled(mod.id)) {
-        void runModuleAction(mod.enable.bind(mod), errorHandler);
+        void runModuleAction(mod.enable.bind(mod), enableErrorHandler);
       }
       if (mod.status !== 'failed') {
         mod.status = 'ready';
+        onReady?.(mod.id);
       }
     };
 
-    const initResult = runModuleAction(mod.init.bind(mod), errorHandler);
+    const initResult = runModuleAction(mod.init.bind(mod), initErrorHandler);
 
     if (initResult instanceof Promise) {
       void initResult.then(enableIfNeeded);

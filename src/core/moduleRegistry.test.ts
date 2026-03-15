@@ -107,6 +107,39 @@ describe('initModules', () => {
     expect(onError).toHaveBeenCalledWith('err-cb', expect.stringContaining('kaboom'));
   });
 
+  test('logs init errors via console.error with phase label', () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+    const mod = createMockModule({
+      id: 'init-log',
+      init: jest.fn(() => {
+        throw new Error('init broke');
+      }),
+    });
+
+    initModules([mod], () => true);
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('инициализации'),
+      expect.any(Error),
+    );
+    errorSpy.mockRestore();
+  });
+
+  test('logs enable errors via console.error with phase label', () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+    const mod = createMockModule({
+      id: 'enable-log',
+      enable: jest.fn(() => {
+        throw new Error('enable broke');
+      }),
+    });
+
+    initModules([mod], () => true);
+
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('включении'), expect.any(Error));
+    errorSpy.mockRestore();
+  });
+
   test('does not call onError for successful modules', () => {
     const onError = jest.fn();
     const mod = createMockModule({ id: 'ok-mod' });
