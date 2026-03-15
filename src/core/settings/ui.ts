@@ -47,6 +47,16 @@ const PANEL_STYLES = `
   display: flex;
 }
 
+.svp-settings-header,
+.svp-settings-content,
+.svp-settings-footer {
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .svp-settings-header {
   display: flex;
   justify-content: space-between;
