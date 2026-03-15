@@ -127,7 +127,7 @@ export const keyCountOnPoints: IFeatureModule = {
   init() {},
 
   enable() {
-    void getOlMap().then((olMap) => {
+    return getOlMap().then((olMap) => {
       const ol = window.ol;
       const OlVectorSource = ol?.source?.Vector;
       const OlVectorLayer = ol?.layer?.Vector;

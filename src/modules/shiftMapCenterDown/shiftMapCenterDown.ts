@@ -16,10 +16,17 @@ export const shiftMapCenterDown: IFeatureModule = {
   category: 'map',
   init() {},
   enable() {
-    void getOlMap().then((map) => {
+    return getOlMap().then((map) => {
       const view = map.getView();
       const topPadding = Math.round(window.innerHeight * PADDING_FACTOR);
       view.padding = [topPadding, 0, 0, 0];
+
+      // Оборачиваем calculateExtent, чтобы без аргументов возвращать extent
+      // для полного canvas (включая padding-зону). Без этого игра не подгружает
+      // точки в области, открывшейся после сдвига центра (как в CUI-референсе).
+      const originalCalculateExtent = view.calculateExtent.bind(view);
+      view.calculateExtent = (size?: number[]) => originalCalculateExtent(size ?? map.getSize());
+
       view.setCenter(view.getCenter());
     });
   },

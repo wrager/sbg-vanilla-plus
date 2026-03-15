@@ -10,8 +10,8 @@ export interface IFeatureModule {
   requiresReload?: boolean;
   status?: 'ready' | 'failed';
   init(): void;
-  enable(): void;
-  disable(): void;
+  enable(): void | Promise<void>;
+  disable(): void | Promise<void>;
 }
 
 export type ModuleErrorCallback = (id: string, message: string) => void;

@@ -5,6 +5,7 @@ function createFakeView(): IOlView {
     padding: [0, 0, 0, 0],
     getCenter: () => undefined,
     setCenter: () => {},
+    calculateExtent: () => [0, 0, 0, 0],
     changed: () => {},
     getZoom: () => undefined,
   };

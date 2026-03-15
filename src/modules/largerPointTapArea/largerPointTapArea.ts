@@ -37,7 +37,7 @@ export const largerPointTapArea: IFeatureModule = {
   init() {},
 
   enable() {
-    void getOlMap().then((olMap) => {
+    return getOlMap().then((olMap) => {
       if (originalMethod) return;
       if (!hasForEachFeatureAtPixel(olMap)) return;
 

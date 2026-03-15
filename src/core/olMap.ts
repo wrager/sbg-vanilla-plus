@@ -15,6 +15,7 @@ export interface IOlView {
   padding: number[];
   getCenter(): number[] | undefined;
   setCenter(center: number[] | undefined): void;
+  calculateExtent(size?: number[]): number[];
   changed(): void;
   getZoom?(): number | undefined;
   on?(type: string, listener: () => void): void;
@@ -43,6 +44,7 @@ export interface IOlLayer {
 
 export interface IOlMap {
   getView(): IOlView;
+  getSize(): number[] | undefined;
   getLayers(): { getArray(): IOlLayer[] };
   addLayer(layer: IOlLayer): void;
   removeLayer(layer: IOlLayer): void;

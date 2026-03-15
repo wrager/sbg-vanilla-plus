@@ -159,7 +159,7 @@ export const collapsibleTopPanel: IFeatureModule = {
   init() {},
   enable() {
     injectStyles(css, MODULE_ID);
-    void setup().then((fn) => {
+    return setup().then((fn) => {
       cleanup = fn;
     });
   },
