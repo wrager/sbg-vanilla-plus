@@ -42,7 +42,12 @@
 2. Добавить в `bootstrap([...])` в `entry.ts`
 3. Добавить тесты в `src/modules/<name>/<name>.test.ts` (тесты лежат рядом с исходниками)
 
-Детали архитектуры, стек → [docs/architecture.md](docs/architecture.md), конвенции именования → [docs/codestyle.md](docs/codestyle.md)
+Детали архитектуры, стек → [docs/architecture.md](docs/architecture.md), конвенции именования → [docs/codestyle.md](docs/codestyle.md), словарь терминов → [docs/glossary.md](docs/glossary.md)
+
+## Терминология
+
+- **Использовать словарь** [docs/glossary.md](docs/glossary.md) при написании текстов (release notes, README, описания модулей). Не выдумывать расшифровки игровых терминов — сверяться со словарём
+- В пользовательских текстах предпочитать русские варианты: **СЛ**, **ОРПЦ**, **точка**, **ключ**. Допустимы двуязычные: **СЛ/FW**, **ОРПЦ/OPS**
 
 ## Типизация
 
