@@ -15,7 +15,7 @@ export const shiftMapCenterDown: IFeatureModule = {
     ru: 'Сдвигает центр карты вниз, чтобы видеть больше карты впереди по ходу движения',
   },
   defaultEnabled: true,
-  category: 'style',
+  category: 'map',
   init() {},
   enable() {
     injectStyles(CSS, MODULE_ID);

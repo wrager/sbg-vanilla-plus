@@ -9,7 +9,7 @@ function createMockModule(overrides: Partial<IFeatureModule> = {}): IFeatureModu
     name: { en: 'Test', ru: 'Тест' },
     description: { en: 'Test module', ru: 'Тестовый модуль' },
     defaultEnabled: true,
-    category: 'feature',
+    category: 'ui',
     init: jest.fn(),
     enable: jest.fn(),
     disable: jest.fn(),

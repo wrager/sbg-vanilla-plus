@@ -12,7 +12,7 @@ export const enhancedPointPopupUi: IFeatureModule = {
     ru: 'Увеличенные кнопки на экране точки для удобства на мобильных',
   },
   defaultEnabled: true,
-  category: 'style',
+  category: 'ui',
   init() {},
   enable() {
     injectStyles(styles, MODULE_ID);

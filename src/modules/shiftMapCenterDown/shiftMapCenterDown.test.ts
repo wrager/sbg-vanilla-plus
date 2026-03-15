@@ -30,7 +30,7 @@ afterEach(() => {
 describe('shiftMapCenterDown', () => {
   test('has correct module metadata', () => {
     expect(shiftMapCenterDown.id).toBe('shiftMapCenterDown');
-    expect(shiftMapCenterDown.category).toBe('style');
+    expect(shiftMapCenterDown.category).toBe('map');
     expect(shiftMapCenterDown.defaultEnabled).toBe(true);
     expect(shiftMapCenterDown.requiresReload).toBeUndefined();
   });

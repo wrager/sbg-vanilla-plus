@@ -45,7 +45,7 @@ describe('largerPointTapArea metadata', () => {
   });
 
   test('has style category', () => {
-    expect(largerPointTapArea.category).toBe('style');
+    expect(largerPointTapArea.category).toBe('map');
   });
 
   test('is enabled by default', () => {

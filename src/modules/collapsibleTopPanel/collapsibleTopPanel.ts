@@ -155,7 +155,7 @@ export const collapsibleTopPanel: IFeatureModule = {
     ru: 'Сворачивает верхнюю панель, показывая только инвентарь и кнопку ОРПЦ',
   },
   defaultEnabled: true,
-  category: 'style',
+  category: 'ui',
   init() {},
   enable() {
     injectStyles(css, MODULE_ID);

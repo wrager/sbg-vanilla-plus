@@ -32,7 +32,7 @@ export const largerPointTapArea: IFeatureModule = {
     ru: 'Увеличивает кликабельную область точек на карте для удобства на мобильных',
   },
   defaultEnabled: true,
-  category: 'style',
+  category: 'map',
 
   init() {},
 

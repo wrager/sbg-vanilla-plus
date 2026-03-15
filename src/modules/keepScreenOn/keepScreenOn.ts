@@ -29,7 +29,7 @@ export const keepScreenOn: IFeatureModule = {
     ru: 'Экран не гаснет во время игры (Wake Lock API)',
   },
   defaultEnabled: true,
-  category: 'feature',
+  category: 'utility',
   init() {},
   enable() {
     void requestWakeLock();

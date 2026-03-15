@@ -152,12 +152,13 @@ const PANEL_STYLES = `
 
 type Category = IFeatureModule['category'];
 
-const CATEGORY_ORDER: readonly Category[] = ['style', 'feature', 'bugfix'];
+const CATEGORY_ORDER: readonly Category[] = ['ui', 'map', 'utility', 'fix'];
 
 const CATEGORY_LABELS: Record<Category, ILocalizedString> = {
-  style: { en: 'Styling', ru: 'Стилизация' },
-  feature: { en: 'Features', ru: 'Фичи' },
-  bugfix: { en: 'Bugfixes', ru: 'Багфиксы' },
+  ui: { en: 'Interface', ru: 'Интерфейс' },
+  map: { en: 'Map', ru: 'Карта' },
+  utility: { en: 'Utilities', ru: 'Утилиты' },
+  fix: { en: 'Bugfixes', ru: 'Багфиксы' },
 };
 
 function createCheckbox(checked: boolean, onChange: (enabled: boolean) => void): HTMLInputElement {

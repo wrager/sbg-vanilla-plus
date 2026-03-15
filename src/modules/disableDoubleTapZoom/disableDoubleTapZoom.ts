@@ -31,7 +31,7 @@ export const disableDoubleTapZoom: IFeatureModule = {
     ru: 'Отключает зум по двойному тапу для предотвращения случайного зума',
   },
   defaultEnabled: true,
-  category: 'feature',
+  category: 'map',
   init() {
     void waitForElement('.ol-viewport').then((el) => {
       if (pendingEnabled !== null) {

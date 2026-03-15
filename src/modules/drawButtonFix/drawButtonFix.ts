@@ -12,7 +12,7 @@ export const drawButtonFix: IFeatureModule = {
     ru: 'Кнопка Draw всегда активна — исправляет баг игры, когда кнопка зависает в неактивном состоянии',
   },
   defaultEnabled: true,
-  category: 'bugfix',
+  category: 'fix',
   init() {},
   enable() {
     observer = new MutationObserver((mutations) => {

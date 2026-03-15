@@ -182,7 +182,7 @@ describe('keyCountOnPoints metadata', () => {
   });
 
   test('has style category', () => {
-    expect(keyCountOnPoints.category).toBe('style');
+    expect(keyCountOnPoints.category).toBe('ui');
   });
 
   test('is enabled by default', () => {
