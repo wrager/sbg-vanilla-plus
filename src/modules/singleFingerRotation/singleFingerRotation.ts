@@ -13,7 +13,7 @@ let originalSetRotation: ((rotation: number) => void) | null = null;
 let touchActionStyle: HTMLStyleElement | null = null;
 let enabled = false;
 
-function isFollowWalkerActive(): boolean {
+function isFollowActive(): boolean {
   return localStorage.getItem('follow') === 'true';
 }
 
@@ -61,7 +61,7 @@ function isViewportEvent(event: PointerEvent): boolean {
 function onPointerDown(event: PointerEvent): void {
   if (!isViewportEvent(event)) return;
   if (event.pointerType !== 'touch') return;
-  if (!isFollowWalkerActive()) return;
+  if (!isFollowActive()) return;
   if (trackingPointerId !== null) return;
   if (!map) return;
 
@@ -153,7 +153,7 @@ export const singleFingerRotation: IFeatureModule = {
     ru: 'Вращение карты одним пальцем',
   },
   description: {
-    en: 'Rotate map with circular finger gesture in Follow Walker mode',
+    en: 'Rotate map with circular finger gesture in FW mode',
     ru: 'Вращение карты круговым жестом одного пальца в режиме следования за игроком',
   },
   defaultEnabled: true,

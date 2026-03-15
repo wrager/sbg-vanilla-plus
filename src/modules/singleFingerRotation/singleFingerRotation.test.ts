@@ -111,7 +111,7 @@ afterEach(async () => {
   viewport.remove();
 });
 
-test('does not rotate when Follow Walker is off', () => {
+test('does not rotate when FW is off', () => {
   localStorage.setItem('follow', 'false');
 
   dispatchTouch('pointerdown', { clientX: 400, clientY: 100 });
