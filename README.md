@@ -62,8 +62,8 @@ Dev-скрипт имеет пометку `[DEV]` в названии. Прод
 
 ## Добавление фичи
 
-1. Создать `src/modules/<category>/<name>/<name>.ts`, реализующий `IFeatureModule`
-2. Если нужен CSS — создать `src/modules/<category>/<name>/styles.css`
+1. Создать `src/modules/<name>/<name>.ts`, реализующий `IFeatureModule`
+2. Если нужен CSS — создать `src/modules/<name>/styles.css`
 3. Импортировать модуль в `src/entry.ts`
 
 ## Отладка

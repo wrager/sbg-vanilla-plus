@@ -1,6 +1,6 @@
-import type { IFeatureModule } from '../../../core/moduleRegistry';
-import { getOlMap } from '../../../core/olMap';
-import type { IOlMap, IOlVectorSource, IOlLayer } from '../../../core/olMap';
+import type { IFeatureModule } from '../../core/moduleRegistry';
+import { getOlMap } from '../../core/olMap';
+import type { IOlMap, IOlVectorSource, IOlLayer } from '../../core/olMap';
 
 const MODULE_ID = 'keyCountOnPoints';
 const MIN_ZOOM = 15;

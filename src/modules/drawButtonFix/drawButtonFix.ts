@@ -1,4 +1,4 @@
-import type { IFeatureModule } from '../../../core/moduleRegistry';
+import type { IFeatureModule } from '../../core/moduleRegistry';
 
 const MODULE_ID = 'drawButtonFix';
 

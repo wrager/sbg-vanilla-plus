@@ -1,5 +1,5 @@
-import { injectStyles, removeStyles } from '../../../core/dom';
-import type { IFeatureModule } from '../../../core/moduleRegistry';
+import { injectStyles, removeStyles } from '../../core/dom';
+import type { IFeatureModule } from '../../core/moduleRegistry';
 import styles from './styles.css?inline';
 
 const MODULE_ID = 'enhancedPointPopupUi';

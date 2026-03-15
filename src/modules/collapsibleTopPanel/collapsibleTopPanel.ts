@@ -1,5 +1,5 @@
-import type { IFeatureModule } from '../../../core/moduleRegistry';
-import { $, $$, injectStyles, removeStyles, waitForElement } from '../../../core/dom';
+import type { IFeatureModule } from '../../core/moduleRegistry';
+import { $, $$, injectStyles, removeStyles, waitForElement } from '../../core/dom';
 import css from './styles.css?inline';
 
 const MODULE_ID = 'collapsibleTopPanel';

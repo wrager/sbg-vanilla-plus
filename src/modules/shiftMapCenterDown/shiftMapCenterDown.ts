@@ -1,6 +1,6 @@
-import type { IFeatureModule } from '../../../core/moduleRegistry';
-import { injectStyles, removeStyles } from '../../../core/dom';
-import { getOlMap } from '../../../core/olMap';
+import type { IFeatureModule } from '../../core/moduleRegistry';
+import { injectStyles, removeStyles } from '../../core/dom';
+import { getOlMap } from '../../core/olMap';
 
 const MODULE_ID = 'shiftMapCenterDown';
 const EXTRA_HEIGHT_VH = 40;

@@ -1,11 +1,11 @@
 import { largerPointTapArea } from './largerPointTapArea';
-import type { IOlMap } from '../../../core/olMap';
+import type { IOlMap } from '../../core/olMap';
 
-jest.mock('../../../core/olMap', () => ({
+jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
 }));
 
-import { getOlMap } from '../../../core/olMap';
+import { getOlMap } from '../../core/olMap';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 

@@ -1,6 +1,6 @@
-import type { IFeatureModule } from '../../../core/moduleRegistry';
-import { getOlMap } from '../../../core/olMap';
-import type { IOlMap } from '../../../core/olMap';
+import type { IFeatureModule } from '../../core/moduleRegistry';
+import { getOlMap } from '../../core/olMap';
+import type { IOlMap } from '../../core/olMap';
 
 const MODULE_ID = 'largerPointTapArea';
 const HIT_TOLERANCE_PX = 15;

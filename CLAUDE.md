@@ -25,9 +25,9 @@
 
 ## Добавление модуля
 
-1. Создать `src/modules/<category>/<name>/<name>.ts` — экспортировать объект `IFeatureModule` (без side effects при импорте)
+1. Создать `src/modules/<name>/<name>.ts` — экспортировать объект `IFeatureModule` (без side effects при импорте)
 2. Добавить в `bootstrap([...])` в `entry.ts`
-3. Добавить тесты в `src/modules/<category>/<name>/<name>.test.ts` (тесты лежат рядом с исходниками)
+3. Добавить тесты в `src/modules/<name>/<name>.test.ts` (тесты лежат рядом с исходниками)
 
 Детали архитектуры, стек → [docs/architecture.md](docs/architecture.md), конвенции именования → [docs/codestyle.md](docs/codestyle.md)
 

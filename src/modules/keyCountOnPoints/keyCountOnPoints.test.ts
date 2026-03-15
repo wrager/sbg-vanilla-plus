@@ -1,5 +1,5 @@
 import { buildRefCounts, keyCountOnPoints } from './keyCountOnPoints';
-import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../../core/olMap';
+import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -200,11 +200,11 @@ describe('keyCountOnPoints metadata', () => {
 // ── enable / disable ──────────────────────────────────────────────────────────
 
 // Mock getOlMap to return a controlled map
-jest.mock('../../../core/olMap', () => ({
+jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
 }));
 
-import { getOlMap } from '../../../core/olMap';
+import { getOlMap } from '../../core/olMap';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 
