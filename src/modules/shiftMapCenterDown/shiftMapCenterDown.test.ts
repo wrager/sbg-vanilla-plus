@@ -9,20 +9,20 @@ import { getOlMap } from '../../core/olMap';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 const setCenterMock = jest.fn();
-const calculateExtentMock = jest.fn(() => [0, 0, 1, 1]);
 
 let mockView: IOlView;
 let mockMap: IOlMap;
 
-beforeEach(() => {
+beforeEach(async () => {
   setCenterMock.mockReset();
-  calculateExtentMock.mockReset();
-  calculateExtentMock.mockReturnValue([0, 0, 1, 1]);
   mockView = {
     padding: [0, 0, 0, 0],
     getCenter: () => [0, 0],
     setCenter: setCenterMock,
-    calculateExtent: calculateExtentMock,
+    calculateExtent: (size?: number[]) => {
+      if (size) return [-size[0] / 2, -size[1] / 2, size[0] / 2, size[1] / 2];
+      return [0, 0, 0, 0];
+    },
     changed: jest.fn(),
     getRotation: () => 0,
     setRotation: jest.fn(),
@@ -37,6 +37,10 @@ beforeEach(() => {
     updateSize: jest.fn(),
   };
   mockGetOlMap.mockResolvedValue(mockMap);
+
+  Object.defineProperty(window, 'innerHeight', { value: 600, writable: true });
+
+  await shiftMapCenterDown.init();
 });
 
 describe('shiftMapCenterDown', () => {
@@ -44,13 +48,13 @@ describe('shiftMapCenterDown', () => {
     expect(shiftMapCenterDown.id).toBe('shiftMapCenterDown');
     expect(shiftMapCenterDown.category).toBe('map');
     expect(shiftMapCenterDown.defaultEnabled).toBe(true);
-    expect(shiftMapCenterDown.requiresReload).toBe(true);
+    expect(shiftMapCenterDown.requiresReload).toBeUndefined();
   });
 
   test('sets top padding on enable', async () => {
     await shiftMapCenterDown.enable();
 
-    const expectedPadding = Math.round(window.innerHeight * 0.35);
+    const expectedPadding = Math.round(600 * 0.35);
     expect(mockView.padding).toEqual([expectedPadding, 0, 0, 0]);
   });
 
@@ -61,18 +65,48 @@ describe('shiftMapCenterDown', () => {
     expect(setCenterMock).toHaveBeenCalledWith([0, 0]);
   });
 
-  test('wraps calculateExtent to use full map size when called without args', async () => {
+  test('inflates calculateExtent height by padding when enabled', async () => {
     await shiftMapCenterDown.enable();
 
-    mockView.calculateExtent();
-    expect(calculateExtentMock).toHaveBeenCalledWith([800, 600]);
+    const topPadding = Math.round(600 * 0.35);
+    const extent = mockView.calculateExtent([400, 300]);
+
+    // height inflated: 300 + topPadding
+    expect(extent[2] - extent[0]).toBe(400);
+    expect(extent[3] - extent[1]).toBe(300 + topPadding);
   });
 
-  test('wraps calculateExtent to increase height by padding when called with size', async () => {
+  test('does not inflate calculateExtent when disabled', async () => {
+    await shiftMapCenterDown.enable();
+    await shiftMapCenterDown.disable();
+
+    const extent = mockView.calculateExtent([400, 300]);
+
+    expect(extent[2] - extent[0]).toBe(400);
+    expect(extent[3] - extent[1]).toBe(300);
+  });
+
+  test('passes through calculateExtent without size argument', async () => {
     await shiftMapCenterDown.enable();
 
-    const topPadding = Math.round(window.innerHeight * 0.35);
-    mockView.calculateExtent([400, 300]);
-    expect(calculateExtentMock).toHaveBeenCalledWith([400, 300 + topPadding]);
+    const extent = mockView.calculateExtent();
+    expect(extent).toEqual([0, 0, 0, 0]);
+  });
+
+  test('resets padding to zero on disable', async () => {
+    await shiftMapCenterDown.enable();
+    await shiftMapCenterDown.disable();
+
+    expect(mockView.padding).toEqual([0, 0, 0, 0]);
+  });
+
+  test('calls setCenter on disable to re-center view', async () => {
+    await shiftMapCenterDown.enable();
+    setCenterMock.mockClear();
+
+    await shiftMapCenterDown.disable();
+
+    expect(setCenterMock).toHaveBeenCalledTimes(1);
+    expect(setCenterMock).toHaveBeenCalledWith([0, 0]);
   });
 });

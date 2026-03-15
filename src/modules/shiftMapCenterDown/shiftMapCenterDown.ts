@@ -1,8 +1,13 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
+import type { IOlMap } from '../../core/olMap';
 import { getOlMap } from '../../core/olMap';
 
 const MODULE_ID = 'shiftMapCenterDown';
 const PADDING_FACTOR = 0.35;
+
+let map: IOlMap | null = null;
+let topPadding = 0;
+let inflateForPadding = false;
 
 export const shiftMapCenterDown: IFeatureModule = {
   id: MODULE_ID,
@@ -12,34 +17,48 @@ export const shiftMapCenterDown: IFeatureModule = {
     ru: 'Сдвигает центр карты вниз, чтобы видеть больше карты впереди по ходу движения',
   },
   defaultEnabled: true,
-  // Перезагрузка нужна по трём причинам:
-  // 1. enable() оборачивает view.calculateExtent — повторный вызов создаст вложенные обёртки.
-  // 2. disable() не восстанавливает оригинальный calculateExtent и padding.
-  // 3. В отличие от предыдущей CSS-реализации (injectStyles + map.updateSize()),
-  //    которая применялась динамически, view.padding + обёртка calculateExtent
-  //    должны быть установлены до первой загрузки данных игрой — иначе OL уже
-  //    закеширует extent без учёта padding и точки в новой области не подгрузятся.
-  requiresReload: true,
   category: 'map',
-  init() {},
-  enable() {
-    return getOlMap().then((map) => {
-      const view = map.getView();
-      const topPadding = Math.round(window.innerHeight * PADDING_FACTOR);
-      view.padding = [topPadding, 0, 0, 0];
+  init() {
+    topPadding = Math.round(window.innerHeight * PADDING_FACTOR);
+
+    return getOlMap().then((olMap) => {
+      map = olMap;
 
       // Игра вызывает view.calculateExtent(map.getSize()) для определения
       // видимой области и загрузки точек. OL при наличии padding уменьшает
       // эту область, из-за чего точки в padding-зоне не загружаются.
-      // Компенсируем: увеличиваем height на величину padding (как в CUI).
+      // Компенсируем: увеличиваем height на величину padding.
+      // Wrapper создаётся один раз, переключается флагом в enable/disable.
+      const view = olMap.getView();
       const originalCalculateExtent = view.calculateExtent.bind(view);
       view.calculateExtent = (size?: number[]) => {
-        const effectiveSize = size ? [size[0], size[1] + topPadding] : map.getSize();
-        return originalCalculateExtent(effectiveSize);
+        if (inflateForPadding && size) {
+          return originalCalculateExtent([size[0], size[1] + topPadding]);
+        }
+        return originalCalculateExtent(size);
       };
-
-      view.setCenter(view.getCenter());
     });
   },
-  disable() {},
+  enable() {
+    inflateForPadding = true;
+    if (map) {
+      const view = map.getView();
+      // Сохраняем центр ДО смены padding: OL's padding setter корректирует
+      // центр в координатном пространстве (без учёта rotation), а рендеринг
+      // (getState) применяет padding в экранном (с rotation). Если не
+      // восстановить центр, при повороте карты сдвиг пойдёт не вниз.
+      const center = view.getCenter();
+      view.padding = [topPadding, 0, 0, 0];
+      view.setCenter(center);
+    }
+  },
+  disable() {
+    inflateForPadding = false;
+    if (map) {
+      const view = map.getView();
+      const center = view.getCenter();
+      view.padding = [0, 0, 0, 0];
+      view.setCenter(center);
+    }
+  },
 };
