@@ -184,6 +184,16 @@ const PANEL_STYLES = `
   font-family: monospace;
 }
 
+.svp-toggle-all {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-weight: normal;
+  font-size: 11px;
+  color: var(--text-disabled);
+}
+
 .svp-report-button {
   background: none;
   border: 1px solid var(--border);
@@ -209,6 +219,11 @@ const RELOAD_LABEL: ILocalizedString = {
   ru: 'При переключении происходит перезагрузка',
 };
 
+const TOGGLE_ALL_LABEL: ILocalizedString = {
+  en: 'Toggle all',
+  ru: 'Переключить все',
+};
+
 const CATEGORY_LABELS: Record<Category, ILocalizedString> = {
   ui: { en: 'Interface', ru: 'Интерфейс' },
   map: { en: 'Map', ru: 'Карта' },
@@ -229,6 +244,7 @@ function createCheckbox(checked: boolean, onChange: (enabled: boolean) => void):
 
 interface ModuleRowResult {
   row: HTMLElement;
+  checkbox: HTMLInputElement;
   setError: (message: string | null) => void;
 }
 
@@ -296,7 +312,7 @@ function createModuleRow(
   setError(errorMessage);
   info.appendChild(failed);
 
-  return { row, setError };
+  return { row, checkbox, setError };
 }
 
 function fillSection(
@@ -304,6 +320,8 @@ function fillSection(
   modules: readonly IFeatureModule[],
   category: Category,
   errorDisplay: Map<string, (message: string | null) => void>,
+  checkboxMap: Map<string, HTMLInputElement>,
+  onAnyToggle: () => void,
 ): void {
   const title = document.createElement('div');
   title.className = 'svp-settings-section-title';
@@ -316,7 +334,7 @@ function fillSection(
     const enabled = isModuleEnabled(settings, mod.id, mod.defaultEnabled);
     const errorMessage = settings.errors[mod.id] ?? null;
 
-    const { row, setError } = createModuleRow(
+    const { row, checkbox, setError } = createModuleRow(
       mod,
       enabled,
       (newEnabled) => {
@@ -345,9 +363,11 @@ function fillSection(
           saveSettings(settings);
           setError(null);
         }
+        onAnyToggle();
       },
       errorMessage,
     );
+    checkboxMap.set(mod.id, checkbox);
     errorDisplay.set(mod.id, setError);
     section.appendChild(row);
   }
@@ -365,6 +385,18 @@ export function initSettingsUI(
 
   const header = document.createElement('div');
   header.className = 'svp-settings-header';
+
+  const toggleAllLabel = document.createElement('label');
+  toggleAllLabel.className = 'svp-toggle-all';
+  const toggleAllCheckbox = document.createElement('input');
+  toggleAllCheckbox.type = 'checkbox';
+  toggleAllCheckbox.className = 'svp-module-checkbox';
+  const toggleAllText = document.createElement('span');
+  toggleAllText.textContent = t(TOGGLE_ALL_LABEL);
+  toggleAllLabel.appendChild(toggleAllCheckbox);
+  toggleAllLabel.appendChild(toggleAllText);
+  header.appendChild(toggleAllLabel);
+
   const titleSpan = document.createElement('span');
   titleSpan.textContent = t(SETTINGS_TITLE);
   header.appendChild(titleSpan);
@@ -373,6 +405,23 @@ export function initSettingsUI(
 
   const content = document.createElement('div');
   content.className = 'svp-settings-content';
+
+  const checkboxMap = new Map<string, HTMLInputElement>();
+
+  function updateMasterState(): void {
+    const checkboxes = [...checkboxMap.values()];
+    const checkedCount = checkboxes.filter((cb) => cb.checked).length;
+    if (checkedCount === 0) {
+      toggleAllCheckbox.checked = false;
+      toggleAllCheckbox.indeterminate = false;
+    } else if (checkedCount === checkboxes.length) {
+      toggleAllCheckbox.checked = true;
+      toggleAllCheckbox.indeterminate = false;
+    } else {
+      toggleAllCheckbox.checked = false;
+      toggleAllCheckbox.indeterminate = true;
+    }
+  }
 
   const grouped = new Map<Category, IFeatureModule[]>();
   for (const mod of modules) {
@@ -387,9 +436,57 @@ export function initSettingsUI(
 
     const section = document.createElement('div');
     section.className = 'svp-settings-section';
-    fillSection(section, categoryModules, category, errorDisplay);
+    fillSection(section, categoryModules, category, errorDisplay, checkboxMap, updateMasterState);
     content.appendChild(section);
   }
+
+  updateMasterState();
+
+  toggleAllCheckbox.addEventListener('change', () => {
+    const enableAll = toggleAllCheckbox.checked;
+    let settings = loadSettings();
+    let needsReload = false;
+
+    for (const mod of modules) {
+      const checkbox = checkboxMap.get(mod.id);
+      if (!checkbox || checkbox.checked === enableAll) continue;
+
+      checkbox.checked = enableAll;
+      settings = setModuleEnabled(settings, mod.id, enableAll);
+
+      if (mod.requiresReload) {
+        needsReload = true;
+        continue;
+      }
+
+      const phaseLabel = enableAll ? 'включении' : 'выключении';
+      function onToggleError(e: unknown): void {
+        const message = e instanceof Error ? e.message : String(e);
+        console.error(`[SVP] Ошибка при ${phaseLabel} модуля "${t(mod.name)}":`, e);
+        mod.status = 'failed';
+        settings = setModuleError(settings, mod.id, message);
+        const setError = errorDisplay.get(mod.id);
+        setError?.(message);
+      }
+
+      const toggleAction = enableAll ? mod.enable.bind(mod) : mod.disable.bind(mod);
+      void runModuleAction(toggleAction, onToggleError);
+      if (mod.status !== 'failed') {
+        mod.status = 'ready';
+        settings = clearModuleError(settings, mod.id);
+        const setError = errorDisplay.get(mod.id);
+        setError?.(null);
+      }
+    }
+
+    saveSettings(settings);
+    updateMasterState();
+
+    if (needsReload) {
+      location.hash = 'svp-settings';
+      location.reload();
+    }
+  });
 
   panel.appendChild(content);
 
