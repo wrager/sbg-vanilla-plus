@@ -16,7 +16,12 @@ function isFollowWalkerActive(): boolean {
 }
 
 function getScreenCenter(): { x: number; y: number } {
-  return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  const padding = map ? map.getView().padding : [0, 0, 0, 0];
+  const [top, right, bottom, left] = padding;
+  return {
+    x: (left + window.innerWidth - right) / 2,
+    y: (top + window.innerHeight - bottom) / 2,
+  };
 }
 
 function angleFromCenter(clientX: number, clientY: number): number {

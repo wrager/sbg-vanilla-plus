@@ -225,3 +225,32 @@ test('stops propagation of pointermove when rotation is active', () => {
 
   viewport.removeEventListener('pointermove', propagationSpy);
 });
+
+test('accounts for view padding when calculating rotation center', () => {
+  localStorage.setItem('follow', 'true');
+
+  // Simulate shiftMapCenterDown: top padding shifts visual center down
+  mockView.padding = [210, 0, 0, 0];
+
+  // Screen is 800x600, padding [210,0,0,0] → visual center at (400, 405)
+  // Touch directly at visual center, then move right → should produce
+  // a rotation delta of ~PI/2 (90°) if moving from center-right to center-bottom
+  // We just verify setRotation is called with a value that accounts for the
+  // shifted center rather than the raw screen center
+
+  // Touch above visual center (at y=205, which is 200px above center at 405)
+  dispatchTouch('pointerdown', { clientX: 400, clientY: 205 });
+
+  // Move to the right of visual center (at x=600, y=405 = the visual center y)
+  dispatchTouch('pointermove', { clientX: 600, clientY: 405 });
+
+  expect(setRotationMock).toHaveBeenCalled();
+  const firstCall = setRotationMock.mock.calls[0] as [number];
+  const rotation = firstCall[0];
+
+  // With padding-aware center (400, 405):
+  // Start angle: atan2(205-405, 400-400) = atan2(-200, 0) = -PI/2
+  // End angle: atan2(405-405, 600-400) = atan2(0, 200) = 0
+  // Delta = 0 - (-PI/2) = PI/2 ≈ 1.5708
+  expect(rotation).toBeCloseTo(Math.PI / 2, 1);
+});
