@@ -204,7 +204,7 @@ export const doubleTapDragZoom: IFeatureModule = {
     en: 'Double-tap and drag up/down to zoom in/out smoothly',
     ru: 'Двойной тап и перетаскивание вверх/вниз для плавного зума',
   },
-  defaultEnabled: false,
+  defaultEnabled: true,
   category: 'map',
   init() {
     return Promise.all([

@@ -146,7 +146,7 @@ describe('doubleTapDragZoom', () => {
   test('has correct module metadata', () => {
     expect(doubleTapDragZoom.id).toBe('doubleTapDragZoom');
     expect(doubleTapDragZoom.category).toBe('map');
-    expect(doubleTapDragZoom.defaultEnabled).toBe(false);
+    expect(doubleTapDragZoom.defaultEnabled).toBe(true);
   });
 
   test('double-tap + drag up zooms in', () => {
