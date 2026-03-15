@@ -1,5 +1,6 @@
 import type { IFeatureModule } from '../moduleRegistry';
 import { catchAsyncModuleError } from '../moduleRegistry';
+import { buildBugReportUrl, buildDiagnosticClipboard } from '../bugReport';
 import { injectStyles } from '../dom';
 import type { ILocalizedString } from '../l10n';
 import { t } from '../l10n';
@@ -11,6 +12,8 @@ import {
   setModuleError,
   clearModuleError,
 } from './storage';
+
+declare const __SVP_VERSION__: string;
 
 const PANEL_ID = 'svp-settings-panel';
 const BTN_ID = 'svp-settings-btn';
@@ -148,6 +151,31 @@ const PANEL_STYLES = `
   width: 16px;
   height: 16px;
 
+}
+
+.svp-settings-footer {
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border-transp);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.svp-settings-version {
+  font-size: 10px;
+  color: var(--text-disabled);
+  font-family: monospace;
+}
+
+.svp-report-button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-disabled);
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
 }
 `;
 
@@ -337,6 +365,34 @@ export function initSettingsUI(modules: readonly IFeatureModule[]): void {
   }
 
   panel.appendChild(content);
+
+  const footer = document.createElement('div');
+  footer.className = 'svp-settings-footer';
+
+  const version = document.createElement('span');
+  version.className = 'svp-settings-version';
+  version.textContent = `v${__SVP_VERSION__}`;
+  footer.appendChild(version);
+
+  const reportButton = document.createElement('button');
+  reportButton.className = 'svp-report-button';
+  const reportLabel = { en: 'Report Bug', ru: 'Сообщить об ошибке' };
+  reportButton.textContent = t(reportLabel);
+  reportButton.addEventListener('click', () => {
+    const clipboard = buildDiagnosticClipboard(modules);
+    const url = buildBugReportUrl(modules);
+    const copiedLabel = { en: 'Copied! Opening...', ru: 'Скопировано! Открываю...' };
+    void navigator.clipboard.writeText(clipboard).then(() => {
+      reportButton.textContent = t(copiedLabel);
+      setTimeout(() => {
+        reportButton.textContent = t(reportLabel);
+      }, 2000);
+    });
+    window.open(url, '_blank');
+  });
+  footer.appendChild(reportButton);
+
+  panel.appendChild(footer);
 
   function updateScrollIndicators(): void {
     const hasTop = content.scrollTop > 0;
