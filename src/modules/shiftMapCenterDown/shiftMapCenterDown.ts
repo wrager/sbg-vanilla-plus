@@ -1,11 +1,8 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { injectStyles, removeStyles } from '../../core/dom';
 import { getOlMap } from '../../core/olMap';
 
 const MODULE_ID = 'shiftMapCenterDown';
-const EXTRA_HEIGHT_VH = 40;
-
-const CSS = `#map { height: calc(100% + ${EXTRA_HEIGHT_VH}vh) !important; }`;
+const PADDING_FACTOR = 0.35;
 
 export const shiftMapCenterDown: IFeatureModule = {
   id: MODULE_ID,
@@ -15,18 +12,16 @@ export const shiftMapCenterDown: IFeatureModule = {
     ru: 'Сдвигает центр карты вниз, чтобы видеть больше карты впереди по ходу движения',
   },
   defaultEnabled: true,
+  requiresReload: true,
   category: 'map',
   init() {},
   enable() {
-    injectStyles(CSS, MODULE_ID);
     void getOlMap().then((map) => {
-      map.updateSize();
+      const view = map.getView();
+      const topPadding = Math.round(window.innerHeight * PADDING_FACTOR);
+      view.padding = [topPadding, 0, 0, 0];
+      view.setCenter(view.getCenter());
     });
   },
-  disable() {
-    removeStyles(MODULE_ID);
-    void getOlMap().then((map) => {
-      map.updateSize();
-    });
-  },
+  disable() {},
 };

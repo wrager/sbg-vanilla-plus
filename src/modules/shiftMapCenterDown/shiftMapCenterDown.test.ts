@@ -1,5 +1,5 @@
 import { shiftMapCenterDown } from './shiftMapCenterDown';
-import type { IOlMap } from '../../core/olMap';
+import type { IOlMap, IOlView } from '../../core/olMap';
 
 jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
@@ -8,23 +8,25 @@ jest.mock('../../core/olMap', () => ({
 import { getOlMap } from '../../core/olMap';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
-const updateSizeMock = jest.fn();
+const setCenterMock = jest.fn();
+
+let mockView: IOlView;
 
 beforeEach(() => {
-  document.body.innerHTML = '<div id="map"></div>';
-  updateSizeMock.mockReset();
+  setCenterMock.mockReset();
+  mockView = {
+    padding: [0, 0, 0, 0],
+    getCenter: () => [0, 0],
+    setCenter: setCenterMock,
+    changed: jest.fn(),
+  };
   mockGetOlMap.mockResolvedValue({
-    getView: jest.fn(),
+    getView: () => mockView,
     getLayers: jest.fn(),
     addLayer: jest.fn(),
     removeLayer: jest.fn(),
-    updateSize: updateSizeMock,
+    updateSize: jest.fn(),
   } as unknown as IOlMap);
-});
-
-afterEach(() => {
-  shiftMapCenterDown.disable();
-  document.body.innerHTML = '';
 });
 
 describe('shiftMapCenterDown', () => {
@@ -32,38 +34,22 @@ describe('shiftMapCenterDown', () => {
     expect(shiftMapCenterDown.id).toBe('shiftMapCenterDown');
     expect(shiftMapCenterDown.category).toBe('map');
     expect(shiftMapCenterDown.defaultEnabled).toBe(true);
-    expect(shiftMapCenterDown.requiresReload).toBeUndefined();
+    expect(shiftMapCenterDown.requiresReload).toBe(true);
   });
 
-  test('injects style on enable', () => {
-    shiftMapCenterDown.enable();
-
-    const style = document.getElementById('svp-shiftMapCenterDown');
-    expect(style).not.toBeNull();
-    expect(style?.textContent).toContain('#map');
-    expect(style?.textContent).toContain('calc(100% + 40vh)');
-  });
-
-  test('removes style on disable', () => {
-    shiftMapCenterDown.enable();
-    shiftMapCenterDown.disable();
-
-    const style = document.getElementById('svp-shiftMapCenterDown');
-    expect(style).toBeNull();
-  });
-
-  test('calls updateSize on enable', async () => {
+  test('sets top padding on enable', async () => {
     shiftMapCenterDown.enable();
     await Promise.resolve();
-    expect(updateSizeMock).toHaveBeenCalledTimes(1);
+
+    const expectedPadding = Math.round(window.innerHeight * 0.35);
+    expect(mockView.padding).toEqual([expectedPadding, 0, 0, 0]);
   });
 
-  test('calls updateSize on disable', async () => {
+  test('calls setCenter to apply padding', async () => {
     shiftMapCenterDown.enable();
     await Promise.resolve();
-    updateSizeMock.mockClear();
-    shiftMapCenterDown.disable();
-    await Promise.resolve();
-    expect(updateSizeMock).toHaveBeenCalledTimes(1);
+
+    expect(setCenterMock).toHaveBeenCalledTimes(1);
+    expect(setCenterMock).toHaveBeenCalledWith([0, 0]);
   });
 });
