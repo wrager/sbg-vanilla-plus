@@ -85,12 +85,12 @@ const PANEL_STYLES = `
   box-shadow: inset 0 -12px 8px -8px rgba(0, 0, 0, 0.2);
 }
 
-.svp-settings-close {
-  background: none;
-  border: none;
-  color: var(--text);
-  font-size: 18px;
-  cursor: pointer;
+.svp-settings-panel .popup-close {
+  position: fixed;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
 }
 
 .svp-settings-section {
@@ -171,7 +171,7 @@ const PANEL_STYLES = `
 
 .svp-settings-footer {
   flex-shrink: 0;
-  padding: 6px 8px;
+  padding: 6px 8px 40px;
   border-top: 1px solid var(--border-transp);
   display: flex;
   align-items: center;
@@ -369,13 +369,6 @@ export function initSettingsUI(
   titleSpan.textContent = t(SETTINGS_TITLE);
   header.appendChild(titleSpan);
 
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'svp-settings-close';
-  closeBtn.textContent = '✕';
-  closeBtn.addEventListener('click', () => {
-    panel.classList.remove('svp-open');
-  });
-  header.appendChild(closeBtn);
   panel.appendChild(header);
 
   const content = document.createElement('div');
@@ -427,6 +420,15 @@ export function initSettingsUI(
   footer.appendChild(reportButton);
 
   panel.appendChild(footer);
+
+  const closeButton = document.createElement('button');
+  closeButton.className = 'popup-close';
+  closeButton.textContent = '[x]';
+  closeButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    panel.classList.remove('svp-open');
+  });
+  panel.appendChild(closeButton);
 
   function updateScrollIndicators(): void {
     const hasTop = content.scrollTop > 0;
