@@ -8,8 +8,8 @@ export const enhancedPointPopupUi: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Enhanced Point Popup UI', ru: 'Улучшенный UI попапа точки' },
   description: {
-    en: 'Enlarged buttons on point popup for mobile convenience',
-    ru: 'Увеличенные кнопки на экране точки для удобства на мобильных',
+    en: 'Larger buttons, smaller text, auto-deploy hidden from accidental taps',
+    ru: 'Крупные кнопки, мелкий текст, авто-простановка убрана от случайных нажатий',
   },
   defaultEnabled: true,
   category: 'ui',
