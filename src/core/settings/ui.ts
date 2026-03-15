@@ -102,7 +102,7 @@ const PANEL_STYLES = `
 .svp-settings-section-title {
   font-size: 10px;
   font-weight: 600;
-  color: var(--text-disabled);
+  color: var(--text);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   padding: 6px 0 2px;
@@ -141,7 +141,7 @@ const PANEL_STYLES = `
 
 .svp-module-desc {
   font-size: 10px;
-  color: var(--text-disabled);
+  color: var(--text);
   margin-top: 1px;
 }
 
@@ -154,7 +154,7 @@ const PANEL_STYLES = `
 
 .svp-module-reload {
   font-size: 10px;
-  color: var(--text-disabled);
+  color: var(--text);
 }
 
 .svp-module-reload-text {
@@ -191,13 +191,13 @@ const PANEL_STYLES = `
   cursor: pointer;
   font-weight: normal;
   font-size: 11px;
-  color: var(--text-disabled);
+  color: var(--text);
 }
 
 .svp-report-button {
   background: none;
   border: 1px solid var(--border);
-  color: var(--text-disabled);
+  color: var(--text);
   border-radius: 4px;
   padding: 3px 10px;
   font-size: 11px;
