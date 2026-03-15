@@ -1,7 +1,6 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import type { IOlInteraction, IOlMap } from '../../core/olMap';
 import { getOlMap } from '../../core/olMap';
-import { waitForElement } from '../../core/dom';
 
 const MODULE_ID = 'doubleTapDragZoom';
 
@@ -18,7 +17,6 @@ const ZOOM_SENSITIVITY = 0.01;
 
 type GestureState = 'idle' | 'firstTapDown' | 'waitingSecondTap' | 'secondTapDown' | 'zooming';
 
-let viewport: HTMLElement | null = null;
 let map: IOlMap | null = null;
 let enabled = false;
 let disabledInteractions: IOlInteraction[] = [];
@@ -152,6 +150,31 @@ function onTouchEnd(): void {
   resetGesture();
 }
 
+// Capture-фаза на document: обрабатываем touch-события ДО того, как они
+// дойдут до viewport-листенеров других модулей (singleFingerRotation).
+// Когда жест зума активен — stopPropagation блокирует дальнейшее всплытие.
+function onTouchStartCapture(event: TouchEvent): void {
+  onTouchStart(event);
+  if (state === 'secondTapDown' || state === 'zooming') {
+    event.stopPropagation();
+  }
+}
+
+function onTouchMoveCapture(event: TouchEvent): void {
+  onTouchMove(event);
+  if (state === 'secondTapDown' || state === 'zooming') {
+    event.stopPropagation();
+  }
+}
+
+function onTouchEndCapture(event: TouchEvent): void {
+  const wasActive = state === 'secondTapDown' || state === 'zooming';
+  onTouchEnd();
+  if (wasActive) {
+    event.stopPropagation();
+  }
+}
+
 // Блокируем pointermove во время жеста зума, чтобы OL DragPan
 // не панорамировал карту параллельно с нашим зумом.
 function onPointerMove(event: PointerEvent): void {
@@ -161,18 +184,16 @@ function onPointerMove(event: PointerEvent): void {
 }
 
 function addListeners(): void {
-  if (!viewport) return;
-  viewport.addEventListener('touchstart', onTouchStart, { passive: false });
-  viewport.addEventListener('touchmove', onTouchMove, { passive: false });
-  viewport.addEventListener('touchend', onTouchEnd);
+  document.addEventListener('touchstart', onTouchStartCapture, { capture: true, passive: false });
+  document.addEventListener('touchmove', onTouchMoveCapture, { capture: true, passive: false });
+  document.addEventListener('touchend', onTouchEndCapture, { capture: true });
   document.addEventListener('pointermove', onPointerMove as EventListener, { capture: true });
 }
 
 function removeListeners(): void {
-  if (!viewport) return;
-  viewport.removeEventListener('touchstart', onTouchStart);
-  viewport.removeEventListener('touchmove', onTouchMove);
-  viewport.removeEventListener('touchend', onTouchEnd);
+  document.removeEventListener('touchstart', onTouchStartCapture, { capture: true });
+  document.removeEventListener('touchmove', onTouchMoveCapture, { capture: true });
+  document.removeEventListener('touchend', onTouchEndCapture, { capture: true });
   document.removeEventListener('pointermove', onPointerMove as EventListener, {
     capture: true,
   });
@@ -207,16 +228,8 @@ export const doubleTapDragZoom: IFeatureModule = {
   defaultEnabled: true,
   category: 'map',
   init() {
-    return Promise.all([
-      waitForElement('.ol-viewport').then((element) => {
-        if (element instanceof HTMLElement) {
-          viewport = element;
-        }
-      }),
-      getOlMap().then((olMap) => {
-        map = olMap;
-      }),
-    ]).then(() => {
+    return getOlMap().then((olMap) => {
+      map = olMap;
       if (enabled) {
         disableDoubleClickZoomInteractions();
         addListeners();

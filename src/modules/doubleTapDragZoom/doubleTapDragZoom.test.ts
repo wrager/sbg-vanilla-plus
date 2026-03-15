@@ -26,16 +26,10 @@ jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
 }));
 
-jest.mock('../../core/dom', () => ({
-  waitForElement: jest.fn(),
-}));
-
 import { doubleTapDragZoom } from './doubleTapDragZoom';
 import { getOlMap } from '../../core/olMap';
-import { waitForElement } from '../../core/dom';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
-const mockWaitForElement = waitForElement as jest.MockedFunction<typeof waitForElement>;
 
 class MockDoubleClickZoom implements IOlInteraction {
   private active = true;
@@ -122,7 +116,6 @@ beforeEach(async () => {
   viewport.appendChild(canvas);
   document.body.appendChild(viewport);
 
-  mockWaitForElement.mockResolvedValue(viewport);
   mockGetOlMap.mockResolvedValue(mockMap);
 
   window.ol = {
@@ -323,6 +316,32 @@ describe('doubleTapDragZoom', () => {
     dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
 
     expect(mockSetZoom).not.toHaveBeenCalled();
+  });
+
+  test('stopPropagation blocks events from reaching viewport listeners during gesture', () => {
+    const viewportListener = jest.fn();
+    viewport.addEventListener('touchmove', viewportListener);
+
+    // Enter zooming state
+    doubleTapAndDrag(200, 200, 300);
+
+    // Viewport listener should NOT have received the touchmove during zooming
+    // (stopPropagation in capture phase blocks it)
+    expect(viewportListener).not.toHaveBeenCalled();
+
+    viewport.removeEventListener('touchmove', viewportListener);
+  });
+
+  test('events reach viewport listeners when gesture is not active', () => {
+    const viewportListener = jest.fn();
+    viewport.addEventListener('touchstart', viewportListener);
+
+    // First tap — not in active state yet
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+
+    expect(viewportListener).toHaveBeenCalled();
+
+    viewport.removeEventListener('touchstart', viewportListener);
   });
 
   test('disable before map ready does not deactivate interaction', async () => {
