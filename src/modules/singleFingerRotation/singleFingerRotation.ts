@@ -16,7 +16,7 @@ function isFollowActive(): boolean {
 }
 
 function getScreenCenter(): { x: number; y: number } {
-  const padding = map ? map.getView().padding : [0, 0, 0, 0];
+  const padding = (map ? map.getView().padding : undefined) ?? [0, 0, 0, 0];
   const [top, right, bottom, left] = padding;
   return {
     x: (left + window.innerWidth - right) / 2,
