@@ -13,6 +13,5 @@
 5. Запустить полную проверку: `npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build`
 6. Закоммитить все изменения (RELEASE_NOTES.md, package.json, и прочие если есть).
 7. Создать тег `v<версия>`.
-8. Запушить коммит и тег: `git push origin main --tags`.
 
-Workflow `.github/workflows/release.yml` автоматически создаст GitHub Release с userscript в ассетах.
+**Не пушить.** Пользователь пушит сам. Workflow `.github/workflows/release.yml` автоматически создаст GitHub Release с userscript в ассетах.
