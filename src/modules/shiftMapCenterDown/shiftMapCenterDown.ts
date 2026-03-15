@@ -12,6 +12,13 @@ export const shiftMapCenterDown: IFeatureModule = {
     ru: 'Сдвигает центр карты вниз, чтобы видеть больше карты впереди по ходу движения',
   },
   defaultEnabled: true,
+  // Перезагрузка нужна по трём причинам:
+  // 1. enable() оборачивает view.calculateExtent — повторный вызов создаст вложенные обёртки.
+  // 2. disable() не восстанавливает оригинальный calculateExtent и padding.
+  // 3. В отличие от предыдущей CSS-реализации (injectStyles + map.updateSize()),
+  //    которая применялась динамически, view.padding + обёртка calculateExtent
+  //    должны быть установлены до первой загрузки данных игрой — иначе OL уже
+  //    закеширует extent без учёта padding и точки в новой области не подгрузятся.
   requiresReload: true,
   category: 'map',
   init() {},
@@ -21,11 +28,15 @@ export const shiftMapCenterDown: IFeatureModule = {
       const topPadding = Math.round(window.innerHeight * PADDING_FACTOR);
       view.padding = [topPadding, 0, 0, 0];
 
-      // Оборачиваем calculateExtent, чтобы без аргументов возвращать extent
-      // для полного canvas (включая padding-зону). Без этого игра не подгружает
-      // точки в области, открывшейся после сдвига центра (как в CUI-референсе).
+      // Игра вызывает view.calculateExtent(map.getSize()) для определения
+      // видимой области и загрузки точек. OL при наличии padding уменьшает
+      // эту область, из-за чего точки в padding-зоне не загружаются.
+      // Компенсируем: увеличиваем height на величину padding (как в CUI).
       const originalCalculateExtent = view.calculateExtent.bind(view);
-      view.calculateExtent = (size?: number[]) => originalCalculateExtent(size ?? map.getSize());
+      view.calculateExtent = (size?: number[]) => {
+        const effectiveSize = size ? [size[0], size[1] + topPadding] : map.getSize();
+        return originalCalculateExtent(effectiveSize);
+      };
 
       view.setCenter(view.getCenter());
     });

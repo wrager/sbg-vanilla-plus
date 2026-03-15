@@ -1,10 +1,10 @@
-import { shiftMapCenterDown } from './shiftMapCenterDown';
 import type { IOlMap, IOlView } from '../../core/olMap';
 
 jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
 }));
 
+import { shiftMapCenterDown } from './shiftMapCenterDown';
 import { getOlMap } from '../../core/olMap';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
@@ -65,10 +65,11 @@ describe('shiftMapCenterDown', () => {
     expect(calculateExtentMock).toHaveBeenCalledWith([800, 600]);
   });
 
-  test('wraps calculateExtent to pass through explicit size', async () => {
+  test('wraps calculateExtent to increase height by padding when called with size', async () => {
     await shiftMapCenterDown.enable();
 
+    const topPadding = Math.round(window.innerHeight * 0.35);
     mockView.calculateExtent([400, 300]);
-    expect(calculateExtentMock).toHaveBeenCalledWith([400, 300]);
+    expect(calculateExtentMock).toHaveBeenCalledWith([400, 300 + topPadding]);
   });
 });
