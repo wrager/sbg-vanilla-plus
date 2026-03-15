@@ -32,12 +32,13 @@ export const keepScreenOn: IFeatureModule = {
   category: 'utility',
   init() {},
   enable() {
-    void requestWakeLock();
     document.addEventListener('visibilitychange', onVisibilityChange);
+    return requestWakeLock();
   },
   disable() {
-    void wakeLock?.release();
-    wakeLock = null;
     document.removeEventListener('visibilitychange', onVisibilityChange);
+    const released = wakeLock?.release();
+    wakeLock = null;
+    return released;
   },
 };

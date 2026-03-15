@@ -73,13 +73,13 @@ describe('disableDoubleTapZoom', () => {
 
   test('enable before viewport is ready applies listener once viewport appears', async () => {
     document.body.innerHTML = '';
-    void disableDoubleTapZoom.init();
+    const initPromise = disableDoubleTapZoom.init();
     await disableDoubleTapZoom.enable();
 
     const viewport = document.createElement('div');
     viewport.className = 'ol-viewport';
     document.body.appendChild(viewport);
-    await new Promise((r) => setTimeout(r, 0));
+    await initPromise;
 
     const now = Date.now();
     jest

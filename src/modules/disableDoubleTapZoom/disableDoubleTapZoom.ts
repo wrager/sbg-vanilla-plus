@@ -33,7 +33,7 @@ export const disableDoubleTapZoom: IFeatureModule = {
   defaultEnabled: true,
   category: 'map',
   init() {
-    void waitForElement('.ol-viewport').then((el) => {
+    return waitForElement('.ol-viewport').then((el) => {
       if (pendingEnabled !== null) {
         applyEnabled(el, pendingEnabled);
         pendingEnabled = null;
