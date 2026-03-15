@@ -1,4 +1,5 @@
 import type { IFeatureModule } from '../moduleRegistry';
+import { catchAsyncModuleError } from '../moduleRegistry';
 import { injectStyles } from '../dom';
 import type { ILocalizedString } from '../l10n';
 import { t } from '../l10n';
@@ -266,23 +267,27 @@ function fillSection(
           location.reload();
           return;
         }
-        try {
-          if (newEnabled) {
-            mod.enable();
-          } else {
-            mod.disable();
-          }
-          mod.status = 'ready';
-          settings = clearModuleError(settings, mod.id);
-          saveSettings(settings);
-          setError(null);
-        } catch (e) {
+        function onToggleError(e: unknown): void {
           const msg = e instanceof Error ? e.message : String(e);
           console.warn(`[SVP] Ошибка переключения модуля "${t(mod.name)}":`, e);
           mod.status = 'failed';
           settings = setModuleError(settings, mod.id, msg);
           saveSettings(settings);
           setError(msg);
+        }
+
+        try {
+          if (newEnabled) {
+            catchAsyncModuleError(mod.enable.bind(mod), onToggleError);
+          } else {
+            catchAsyncModuleError(mod.disable.bind(mod), onToggleError);
+          }
+          mod.status = 'ready';
+          settings = clearModuleError(settings, mod.id);
+          saveSettings(settings);
+          setError(null);
+        } catch (e) {
+          onToggleError(e);
         }
       },
       errorMessage,

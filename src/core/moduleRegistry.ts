@@ -16,6 +16,23 @@ export interface IFeatureModule {
 
 export type ModuleErrorCallback = (id: string, message: string) => void;
 
+function handleModuleError(mod: IFeatureModule, e: unknown, onError?: ModuleErrorCallback): void {
+  const message = e instanceof Error ? e.message : String(e);
+  console.warn(`[SVP] Модуль "${t(mod.name)}" не загрузился:`, e);
+  mod.status = 'failed';
+  onError?.(mod.id, message);
+}
+
+export function catchAsyncModuleError(
+  action: () => void | Promise<void>,
+  onError: (e: unknown) => void,
+): void {
+  const result = action();
+  if (result instanceof Promise) {
+    result.catch(onError);
+  }
+}
+
 export function initModules(
   modules: IFeatureModule[],
   isEnabled: (id: string) => boolean,
@@ -25,14 +42,13 @@ export function initModules(
     try {
       mod.init();
       if (isEnabled(mod.id)) {
-        mod.enable();
+        catchAsyncModuleError(mod.enable.bind(mod), (e: unknown) => {
+          handleModuleError(mod, e, onError);
+        });
       }
       mod.status = 'ready';
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      console.warn(`[SVP] Модуль "${t(mod.name)}" не загрузился:`, e);
-      mod.status = 'failed';
-      onError?.(mod.id, message);
+      handleModuleError(mod, e, onError);
     }
   }
 }
