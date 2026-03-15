@@ -26,7 +26,11 @@ function formatArgs(args: unknown[]): string {
     .join(' ');
 }
 
+let teardown: (() => void) | null = null;
+
 export function initErrorLog(): void {
+  if (teardown) teardown();
+
   const originalError = console.error;
   const originalWarn = console.warn;
 
@@ -40,17 +44,28 @@ export function initErrorLog(): void {
     originalWarn.apply(console, args);
   };
 
-  window.addEventListener('error', (event: ErrorEvent) => {
+  function onError(event: ErrorEvent): void {
     const message =
       event.error instanceof Error ? (event.error.stack ?? event.error.message) : event.message;
     addEntry('uncaught', message);
-  });
+  }
 
-  window.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
+  function onUnhandledRejection(event: PromiseRejectionEvent): void {
     const reason: unknown = event.reason;
     const message = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
     addEntry('uncaught', message);
-  });
+  }
+
+  window.addEventListener('error', onError);
+  window.addEventListener('unhandledrejection', onUnhandledRejection);
+
+  teardown = (): void => {
+    console.error = originalError;
+    console.warn = originalWarn;
+    window.removeEventListener('error', onError);
+    window.removeEventListener('unhandledrejection', onUnhandledRejection);
+    teardown = null;
+  };
 }
 
 export function getErrorLog(): readonly IErrorLogEntry[] {

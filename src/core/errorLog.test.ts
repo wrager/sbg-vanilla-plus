@@ -60,18 +60,45 @@ describe('initErrorLog', () => {
   });
 
   test('still calls original console methods', () => {
-    const spyError = jest.fn();
-    const spyWarn = jest.fn();
-    console.error = spyError;
-    console.warn = spyWarn;
-
     initErrorLog();
+
+    const spyError = jest.spyOn(console, 'error');
+    const spyWarn = jest.spyOn(console, 'warn');
 
     console.error('test');
     console.warn('test');
 
     expect(spyError).toHaveBeenCalled();
     expect(spyWarn).toHaveBeenCalled();
+
+    spyError.mockRestore();
+    spyWarn.mockRestore();
+  });
+
+  test('captures uncaught errors via window error event', () => {
+    initErrorLog();
+
+    const error = new Error('uncaught boom');
+    window.dispatchEvent(new ErrorEvent('error', { error, message: 'uncaught boom' }));
+
+    const log = getErrorLog();
+    const uncaught = log.filter((entry) => entry.level === 'uncaught');
+    expect(uncaught).toHaveLength(1);
+    expect(uncaught[0].message).toContain('uncaught boom');
+  });
+
+  test('captures unhandled promise rejections', () => {
+    initErrorLog();
+
+    const error = new Error('rejected promise');
+    const event = new Event('unhandledrejection') as Event & { reason: unknown };
+    Object.defineProperty(event, 'reason', { value: error });
+    window.dispatchEvent(event);
+
+    const log = getErrorLog();
+    const uncaught = log.filter((entry) => entry.level === 'uncaught');
+    expect(uncaught).toHaveLength(1);
+    expect(uncaught[0].message).toContain('rejected promise');
   });
 });
 
