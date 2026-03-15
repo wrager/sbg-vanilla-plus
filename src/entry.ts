@@ -11,6 +11,7 @@ import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
 import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
 import { keyCountOnPoints } from './modules/keyCountOnPoints/keyCountOnPoints';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
+import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
 
 if (!isDisabled()) {
   initErrorLog();
@@ -25,5 +26,6 @@ if (!isDisabled()) {
     drawButtonFix,
     keepScreenOn,
     keyCountOnPoints,
+    singleFingerRotation,
   ]);
 }
