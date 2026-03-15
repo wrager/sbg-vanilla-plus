@@ -1,5 +1,7 @@
 import { installSbgFlavor } from './sbgFlavor';
 
+declare const __SVP_VERSION__: string;
+
 describe('installSbgFlavor', () => {
   let originalFetch: typeof window.fetch;
   let mockFetch: jest.Mock<Promise<unknown>, [RequestInfo | URL, RequestInit | undefined]>;
@@ -26,7 +28,7 @@ describe('installSbgFlavor', () => {
 
     await window.fetch('/api/self');
 
-    expect(getLastCallHeaders().get('x-sbg-flavor')).toBe('VanillaPlus/0.1.0');
+    expect(getLastCallHeaders().get('x-sbg-flavor')).toBe(`VanillaPlus/${__SVP_VERSION__}`);
   });
 
   it('should append to existing x-sbg-flavor header', async () => {
@@ -36,17 +38,19 @@ describe('installSbgFlavor', () => {
       headers: { 'x-sbg-flavor': 'OtherScript/1.0' },
     });
 
-    expect(getLastCallHeaders().get('x-sbg-flavor')).toBe('OtherScript/1.0 VanillaPlus/0.1.0');
+    expect(getLastCallHeaders().get('x-sbg-flavor')).toBe(
+      `OtherScript/1.0 VanillaPlus/${__SVP_VERSION__}`,
+    );
   });
 
   it('should not duplicate flavor if already present', async () => {
     installSbgFlavor();
 
     await window.fetch('/api/self', {
-      headers: { 'x-sbg-flavor': 'VanillaPlus/0.1.0' },
+      headers: { 'x-sbg-flavor': `VanillaPlus/${__SVP_VERSION__}` },
     });
 
-    expect(getLastCallHeaders().get('x-sbg-flavor')).toBe('VanillaPlus/0.1.0');
+    expect(getLastCallHeaders().get('x-sbg-flavor')).toBe(`VanillaPlus/${__SVP_VERSION__}`);
   });
 
   it('should preserve existing init options', async () => {
@@ -68,6 +72,6 @@ describe('installSbgFlavor', () => {
 
     await window.fetch('/api/self');
 
-    expect(getLastCallHeaders().get('x-sbg-flavor')).toBe('VanillaPlus/0.1.0');
+    expect(getLastCallHeaders().get('x-sbg-flavor')).toBe(`VanillaPlus/${__SVP_VERSION__}`);
   });
 });
