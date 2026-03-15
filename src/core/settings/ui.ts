@@ -138,6 +138,8 @@ const PANEL_STYLES = `
 .svp-module-failed {
   color: var(--accent);
   font-size: 10px;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .svp-module-reload {
@@ -297,10 +299,9 @@ function fillSection(
         }
         function onToggleError(e: unknown): void {
           const message = e instanceof Error ? e.message : String(e);
-          const errorString = e instanceof Error ? (e.stack ?? e.message) : String(e);
           console.warn(`[SVP] Ошибка переключения модуля "${t(mod.name)}":`, e);
           mod.status = 'failed';
-          settings = setModuleError(settings, mod.id, errorString);
+          settings = setModuleError(settings, mod.id, message);
           saveSettings(settings);
           setError(message);
         }

@@ -17,10 +17,10 @@ export interface IFeatureModule {
 export type ModuleErrorCallback = (id: string, message: string) => void;
 
 function handleModuleError(mod: IFeatureModule, e: unknown, onError?: ModuleErrorCallback): void {
-  const errorString = e instanceof Error ? (e.stack ?? e.message) : String(e);
+  const message = e instanceof Error ? e.message : String(e);
   console.warn(`[SVP] Модуль "${t(mod.name)}" не загрузился:`, e);
   mod.status = 'failed';
-  onError?.(mod.id, errorString);
+  onError?.(mod.id, message);
 }
 
 export function runModuleAction(
