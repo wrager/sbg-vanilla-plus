@@ -2,6 +2,14 @@ name: "\U0001F41B Баг-репорт"
 description: Сообщить об ошибке в работе скрипта
 labels: ['bug']
 body:
+  - type: textarea
+    id: logs
+    attributes:
+      label: Диагностика
+      description: 'Вставьте из буфера обмена (Ctrl+V) — данные копируются автоматически при нажатии кнопки «Сообщить об ошибке» в настройках скрипта'
+      render: text
+      placeholder: '(вставьте скопированные данные диагностики)'
+
   - type: input
     id: version
     attributes:
@@ -29,14 +37,6 @@ body:
         ⬜ shiftMapCenterDown
     validations:
       required: true
-
-  - type: textarea
-    id: logs
-    attributes:
-      label: Диагностика
-      description: 'Вставьте из буфера обмена (Ctrl+V) — данные копируются автоматически при нажатии кнопки «Сообщить об ошибке» в настройках скрипта'
-      render: text
-      placeholder: '(вставьте скопированные данные диагностики)'
 
   - type: textarea
     id: steps
