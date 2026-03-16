@@ -192,7 +192,7 @@ export const nextPointNavigation: IFeatureModule = {
     ru: 'Последовательная навигация по ближайшим точкам из попапа',
   },
   defaultEnabled: true,
-  category: 'map',
+  category: 'feature',
 
   init() {},
 

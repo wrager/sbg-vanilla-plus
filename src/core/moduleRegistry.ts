@@ -6,7 +6,7 @@ export interface IFeatureModule {
   name: ILocalizedString;
   description: ILocalizedString;
   defaultEnabled: boolean;
-  category: 'ui' | 'map' | 'utility' | 'fix';
+  category: 'ui' | 'map' | 'feature' | 'utility' | 'fix';
   requiresReload?: boolean;
   status?: 'ready' | 'failed';
   init(): void | Promise<void>;

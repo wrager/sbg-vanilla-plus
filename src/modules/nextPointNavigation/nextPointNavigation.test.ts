@@ -122,8 +122,8 @@ describe('nextPointNavigation metadata', () => {
     expect(nextPointNavigation.id).toBe('nextPointNavigation');
   });
 
-  test('has map category', () => {
-    expect(nextPointNavigation.category).toBe('map');
+  test('has feature category', () => {
+    expect(nextPointNavigation.category).toBe('feature');
   });
 
   test('is enabled by default', () => {

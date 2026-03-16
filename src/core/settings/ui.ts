@@ -207,7 +207,7 @@ const PANEL_STYLES = `
 
 type Category = IFeatureModule['category'];
 
-const CATEGORY_ORDER: readonly Category[] = ['ui', 'map', 'utility', 'fix'];
+const CATEGORY_ORDER: readonly Category[] = ['ui', 'map', 'feature', 'utility', 'fix'];
 
 const SETTINGS_TITLE: ILocalizedString = {
   en: 'SBG Vanilla+ Settings',
@@ -227,6 +227,7 @@ const TOGGLE_ALL_LABEL: ILocalizedString = {
 const CATEGORY_LABELS: Record<Category, ILocalizedString> = {
   ui: { en: 'Interface', ru: 'Интерфейс' },
   map: { en: 'Map', ru: 'Карта' },
+  feature: { en: 'Features', ru: 'Фичи' },
   utility: { en: 'Utilities', ru: 'Утилиты' },
   fix: { en: 'Bugfixes', ru: 'Багфиксы' },
 };
