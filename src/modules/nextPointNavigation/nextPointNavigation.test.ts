@@ -244,6 +244,99 @@ describe('nextPointNavigation enable/disable', () => {
     expect(() => nextPointNavigation.disable()).not.toThrow();
   });
 
+  test('resets chain when popup guid changes without navigation', async () => {
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
+
+    // Начинаем цепочку
+    button.click();
+    expect(olMap.dispatchEvent).toHaveBeenCalledTimes(1);
+
+    // Симулируем что попап открылся для p2 (ожидаемая точка)
+    popup.dataset.guid = 'p2';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Симулируем ручное открытие другой точки (p1 снова)
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Следующий клик должен начать новую цепочку от p1
+    olMap.dispatchEvent.mockClear();
+    olMap.getPixelFromCoordinate.mockClear();
+    button.click();
+
+    // Если цепочка сбросилась, p2 снова доступна (не в visited)
+    expect(olMap.getPixelFromCoordinate).toHaveBeenCalledWith([20, 20]);
+  });
+
+  test('retries navigation when fake click reopens same point', async () => {
+    pointsSrc = makeSource([
+      makeFeature('p1', [10, 10]),
+      makeFeature('p2', [20, 20]),
+      makeFeature('p3', [30, 30]),
+    ]);
+    olMap = makeMapWithDispatch([makeLayer('points', pointsSrc)], view);
+    mockGetOlMap.mockResolvedValue(olMap);
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
+
+    // Первый клик: навигация к p2
+    button.click();
+    expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([20, 20]);
+
+    // Симулируем что фейковый клик переоткрыл p1 (ту же точку):
+    // guid не меняется, но childList mutation триггерит observer
+    const temp = document.createElement('span');
+    popup.appendChild(temp);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    temp.remove();
+
+    // Модуль должен был вызвать navigateToNext() повторно,
+    // p2 уже в visited → следующая p3
+    expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([30, 30]);
+  });
+
+  test('accepts different point when fake click misses target', async () => {
+    pointsSrc = makeSource([
+      makeFeature('p1', [10, 10]),
+      makeFeature('p2', [20, 20]),
+      makeFeature('p3', [30, 30]),
+    ]);
+    olMap = makeMapWithDispatch([makeLayer('points', pointsSrc)], view);
+    mockGetOlMap.mockResolvedValue(olMap);
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
+
+    // Клик: навигация к p2 (ожидаемая)
+    button.click();
+    expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([20, 20]);
+
+    // Фейковый клик попал в p3 вместо p2
+    popup.dataset.guid = 'p3';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // p3 принята как часть цепочки → следующий клик не сбрасывает
+    olMap.getPixelFromCoordinate.mockClear();
+    button.click();
+
+    // p2 и p3 в visited, p1 — chainOrigin → нет непосещённых
+    // (p1 в visited, p2 в visited из navigateToNext, p3 в visited из observer)
+    expect(olMap.getPixelFromCoordinate).not.toHaveBeenCalled();
+  });
+
   test('always searches from the original point in a chain', async () => {
     pointsSrc = makeSource([
       makeFeature('p1', [10, 10]),
