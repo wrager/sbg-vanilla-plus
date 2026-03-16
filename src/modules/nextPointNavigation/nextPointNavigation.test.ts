@@ -52,7 +52,10 @@ function makeLayer(name: string, source: IOlVectorSource | null): IOlLayer {
   };
 }
 
-function makeMap(layers: IOlLayer[], view: IOlView): IOlMap {
+function makeMapWithDispatch(
+  layers: IOlLayer[],
+  view: IOlView,
+): IOlMap & { dispatchEvent: jest.Mock; getPixelFromCoordinate: jest.Mock } {
   return {
     getView: () => view,
     getSize: () => [800, 600],
@@ -61,6 +64,8 @@ function makeMap(layers: IOlLayer[], view: IOlView): IOlMap {
     addLayer: jest.fn(),
     removeLayer: jest.fn(),
     updateSize: jest.fn(),
+    dispatchEvent: jest.fn(),
+    getPixelFromCoordinate: jest.fn().mockReturnValue([100, 200]),
   };
 }
 
@@ -151,12 +156,13 @@ const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 describe('nextPointNavigation enable/disable', () => {
   let pointsSrc: IOlVectorSource;
   let view: IOlView;
+  let olMap: IOlMap & { dispatchEvent: jest.Mock; getPixelFromCoordinate: jest.Mock };
 
   beforeEach(() => {
     pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p2', [20, 20])]);
     view = makeView();
     const pointsLayer = makeLayer('points', pointsSrc);
-    const olMap = makeMap([pointsLayer], view);
+    olMap = makeMapWithDispatch([pointsLayer], view);
     mockGetOlMap.mockResolvedValue(olMap);
 
     // Create popup element in DOM
@@ -166,27 +172,11 @@ describe('nextPointNavigation enable/disable', () => {
     buttonsContainer.className = 'i-buttons';
     popup.appendChild(buttonsContainer);
     document.body.appendChild(popup);
-
-    window.showInfo = jest.fn();
   });
 
   afterEach(async () => {
     await nextPointNavigation.disable();
     document.querySelector('.info.popup')?.remove();
-    delete window.showInfo;
-  });
-
-  test('intercepts window.showInfo on enable', async () => {
-    const original = window.showInfo;
-    await nextPointNavigation.enable();
-    expect(window.showInfo).not.toBe(original);
-  });
-
-  test('restores window.showInfo on disable', async () => {
-    const original = window.showInfo;
-    await nextPointNavigation.enable();
-    await nextPointNavigation.disable();
-    expect(window.showInfo).toBe(original);
   });
 
   test('injects button into visible popup on enable', async () => {
@@ -203,28 +193,32 @@ describe('nextPointNavigation enable/disable', () => {
     expect(button).toBeNull();
   });
 
-  test('manual showInfo calls through to original', async () => {
-    const originalShowInfo = window.showInfo as jest.Mock;
+  test('dispatches fake click on navigation', async () => {
     await nextPointNavigation.enable();
 
-    // Call showInfo manually (not programmatic) — should call original
-    window.showInfo?.('manual-point');
-    expect(originalShowInfo).toHaveBeenCalledWith('manual-point');
-  });
-
-  test('navigates to nearest point from popup', async () => {
-    await nextPointNavigation.enable();
-
-    // Set popup data-guid to simulate an open point
     const popup = document.querySelector('.info.popup') as HTMLElement;
     popup.dataset.guid = 'p1';
 
-    // Click the button
     const button = document.querySelector('.svp-next-point-button') as HTMLElement;
     button.click();
 
-    // Should navigate to p2 (nearest to p1) and call showInfo
-    expect(view.setCenter).toHaveBeenCalledWith([20, 20]);
+    expect(olMap.dispatchEvent).toHaveBeenCalledWith({
+      type: 'click',
+      pixel: [100, 200],
+      originalEvent: {},
+    });
+  });
+
+  test('does not move the map on navigation', async () => {
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
+    button.click();
+
+    expect(view.setCenter).not.toHaveBeenCalled();
   });
 
   test('does nothing when popup has no guid', async () => {
@@ -233,21 +227,46 @@ describe('nextPointNavigation enable/disable', () => {
     const button = document.querySelector('.svp-next-point-button') as HTMLElement;
     button.click();
 
-    expect(view.setCenter).not.toHaveBeenCalled();
+    expect(olMap.dispatchEvent).not.toHaveBeenCalled();
   });
 
   test('does nothing when points layer not found', async () => {
     const otherLayer = makeLayer('other', makeSource());
-    mockGetOlMap.mockResolvedValue(makeMap([otherLayer], view));
+    mockGetOlMap.mockResolvedValue(makeMapWithDispatch([otherLayer], view));
     await nextPointNavigation.enable();
-    // Should not throw, showInfo should remain original
-    const original = window.showInfo;
-    expect(window.showInfo).toBe(original);
+    const button = document.querySelector('.svp-next-point-button');
+    expect(button).toBeNull();
   });
 
   test('double disable does not throw', async () => {
     await nextPointNavigation.enable();
     await nextPointNavigation.disable();
     expect(() => nextPointNavigation.disable()).not.toThrow();
+  });
+
+  test('always searches from the original point in a chain', async () => {
+    // p1=[10,10], p2=[20,20], p3=[15,15] — all relative to p1 origin
+    const p3 = makeFeature('p3', [15, 15]);
+    pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p2', [20, 20]), p3]);
+    olMap = makeMapWithDispatch([makeLayer('points', pointsSrc)], view);
+    mockGetOlMap.mockResolvedValue(olMap);
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
+
+    // Первый клик: от p1 ближайшая — p3 ([15,15], dist²=50)
+    button.click();
+    expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([15, 15]);
+
+    // Симулируем что попап открылся на p3
+    popup.dataset.guid = 'p3';
+
+    // Второй клик: ищем снова от p1 (не от p3!) — p2 ([20,20], dist²=200)
+    olMap.dispatchEvent.mockClear();
+    button.click();
+    expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([20, 20]);
   });
 });

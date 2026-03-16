@@ -51,6 +51,12 @@ export interface IOlInteraction {
   getActive(): boolean;
 }
 
+export interface IOlMapEvent {
+  type: string;
+  pixel: number[];
+  originalEvent: Record<string, unknown>;
+}
+
 export interface IOlMap {
   getView(): IOlView;
   getSize(): number[] | undefined;
@@ -61,6 +67,7 @@ export interface IOlMap {
   updateSize(): void;
   getPixelFromCoordinate?(coordinate: number[]): number[];
   getCoordinateFromPixel?(pixel: number[]): number[];
+  dispatchEvent?(event: IOlMapEvent): void;
 }
 
 interface IOlGlobal {

@@ -7,17 +7,11 @@ import styles from './styles.css?inline';
 const MODULE_ID = 'nextPointNavigation';
 const BUTTON_CLASS = 'svp-next-point-button';
 
-declare global {
-  interface Window {
-    showInfo?: (guid: string) => void;
-  }
-}
-
 let map: IOlMap | null = null;
 let pointsSource: IOlVectorSource | null = null;
 const visited = new Set<string | number>();
-let isProgrammaticOpen = false;
-let originalShowInfo: ((guid: string) => void) | null = null;
+let chainOrigin: number[] | null = null;
+let expectedNextGuid: string | null = null;
 let popupObserver: MutationObserver | null = null;
 let onButtonClick: (() => void) | null = null;
 
@@ -68,6 +62,24 @@ function findFeatureById(id: string): IOlFeature | null {
   return null;
 }
 
+function openPointPopup(guid: string): void {
+  if (
+    !map ||
+    typeof map.dispatchEvent !== 'function' ||
+    typeof map.getPixelFromCoordinate !== 'function'
+  ) {
+    return;
+  }
+
+  const feature = findFeatureById(guid);
+  if (!feature) return;
+
+  expectedNextGuid = guid;
+  const coords = feature.getGeometry().getCoordinates();
+  const pixel = map.getPixelFromCoordinate(coords);
+  map.dispatchEvent({ type: 'click', pixel, originalEvent: {} });
+}
+
 function navigateToNext(): void {
   if (!map || !pointsSource) return;
 
@@ -77,14 +89,19 @@ function navigateToNext(): void {
   const currentFeature = findFeatureById(currentId);
   if (!currentFeature) return;
 
+  // Первый клик в цепочке — запомнить начальную точку
+  if (!chainOrigin) {
+    chainOrigin = currentFeature.getGeometry().getCoordinates();
+  }
+
   visited.add(currentId);
 
-  const origin = currentFeature.getGeometry().getCoordinates();
   const features = pointsSource.getFeatures();
-  const next = findNearestUnvisited(origin, features, visited);
+  const next = findNearestUnvisited(chainOrigin, features, visited);
 
   if (!next) {
     visited.clear();
+    chainOrigin = null;
     return;
   }
 
@@ -92,27 +109,7 @@ function navigateToNext(): void {
   if (nextId === undefined) return;
 
   visited.add(nextId);
-
-  const coords = next.getGeometry().getCoordinates();
-  map.getView().setCenter(coords);
-
-  // Скрыть попап перед вызовом showInfo — игра не обновляет
-  // уже открытый попап, поэтому нужно сначала закрыть его
-  const popup = document.querySelector('.info.popup');
-  popup?.classList.add('hidden');
-
-  if (typeof window.showInfo === 'function') {
-    isProgrammaticOpen = true;
-    window.showInfo(String(nextId));
-    isProgrammaticOpen = false;
-  }
-}
-
-function showInfoWrapper(guid: string): void {
-  if (!isProgrammaticOpen) {
-    visited.clear();
-  }
-  originalShowInfo?.(guid);
+  openPointPopup(String(nextId));
 }
 
 function injectButton(popup: Element): void {
@@ -142,21 +139,23 @@ function removeButton(): void {
   onButtonClick = null;
 }
 
-function tryInterceptShowInfo(): void {
-  if (originalShowInfo) return;
-  if (typeof window.showInfo !== 'function') return;
-
-  originalShowInfo = window.showInfo;
-  window.showInfo = showInfoWrapper;
+function onPopupMutation(popup: Element): void {
+  const isVisible = !popup.classList.contains('hidden');
+  if (isVisible) {
+    const currentGuid = (popup as HTMLElement).dataset.guid ?? null;
+    // Сброс цепочки при ручном открытии точки (не нашей навигацией)
+    if (currentGuid !== expectedNextGuid) {
+      visited.clear();
+      chainOrigin = null;
+    }
+    expectedNextGuid = null;
+    injectButton(popup);
+  }
 }
 
 function startObservingPopup(popup: Element): void {
   popupObserver = new MutationObserver(() => {
-    tryInterceptShowInfo();
-    const isVisible = !popup.classList.contains('hidden');
-    if (isVisible) {
-      injectButton(popup);
-    }
+    onPopupMutation(popup);
   });
 
   popupObserver.observe(popup, {
@@ -207,18 +206,12 @@ export const nextPointNavigation: IFeatureModule = {
       map = olMap;
       pointsSource = source;
 
-      tryInterceptShowInfo();
       injectStyles(styles, MODULE_ID);
       observePopup();
     });
   },
 
   disable() {
-    if (originalShowInfo) {
-      window.showInfo = originalShowInfo;
-      originalShowInfo = null;
-    }
-
     if (popupObserver) {
       popupObserver.disconnect();
       popupObserver = null;
@@ -230,6 +223,7 @@ export const nextPointNavigation: IFeatureModule = {
     map = null;
     pointsSource = null;
     visited.clear();
-    isProgrammaticOpen = false;
+    chainOrigin = null;
+    expectedNextGuid = null;
   },
 };
