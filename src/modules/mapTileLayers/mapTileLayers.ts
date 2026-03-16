@@ -8,6 +8,7 @@ import styles from './styles.css?inline';
 const MODULE_ID = 'mapTileLayers';
 const STORAGE_KEY_URL = 'svp_mapTileLayerUrl';
 const STORAGE_KEY_LAYER = 'svp_mapTileLayer';
+const STORAGE_KEY_GAME_LAYER = 'svp_mapTileGameLayer';
 const CUSTOM_VALUE = 'svp-custom';
 const CUSTOM_DARK_VALUE = 'svp-custom-dark';
 const TILE_FILTER_ID = 'mapTileLayersFilter';
@@ -39,6 +40,7 @@ let popupObserver: MutationObserver | null = null;
 let injectedElements: HTMLElement[] = [];
 let boundChangeHandler: ((event: Event) => void) | null = null;
 let changeTarget: Element | null = null;
+let lastGameRadioValue: string | null = null;
 
 /**
  * Convert standard XYZ tile Y to latitude (EPSG:3857 spherical Mercator inverse).
@@ -252,6 +254,11 @@ function injectIntoPopup(popup: Element): void {
     }
   });
 
+  const checkedGameRadio = list.querySelector<HTMLInputElement>('input[name="baselayer"]:checked');
+  if (checkedGameRadio && !isCustomValue(checkedGameRadio.value)) {
+    lastGameRadioValue = checkedGameRadio.value;
+  }
+
   const saved = loadSelectedLayer();
   if (saved && isCustomValue(saved)) {
     const targetRadio = customRadios.find((r) => r.value === saved);
@@ -273,11 +280,16 @@ function injectIntoPopup(popup: Element): void {
     if (isCustomValue(target.value) && target.checked) {
       const url = urlInput.value.trim();
       if (url) {
+        if (lastGameRadioValue) {
+          localStorage.setItem(STORAGE_KEY_GAME_LAYER, lastGameRadioValue);
+        }
         localStorage.setItem(STORAGE_KEY_URL, url);
         localStorage.setItem(STORAGE_KEY_LAYER, target.value);
         applyTileSource(url, target.value);
       }
     } else if (target.checked) {
+      lastGameRadioValue = target.value;
+      localStorage.removeItem(STORAGE_KEY_GAME_LAYER);
       localStorage.removeItem(STORAGE_KEY_LAYER);
       removeCustomTiles();
     }
@@ -297,6 +309,28 @@ function cleanupInjected(): void {
     element.remove();
   }
   injectedElements = [];
+}
+
+/**
+ * Restore the game's radio selection in the popup after module disable.
+ * Must be called AFTER cleanupInjected (our change handler removed)
+ * so the dispatched change event only reaches the game's handler.
+ */
+function restoreGameRadioSelection(): void {
+  const savedValue = lastGameRadioValue ?? localStorage.getItem(STORAGE_KEY_GAME_LAYER);
+  if (!savedValue) return;
+
+  const popup = document.querySelector('.layers-config');
+  if (!popup) return;
+
+  const radios = popup.querySelectorAll<HTMLInputElement>('input[name="baselayer"]');
+  for (const radio of radios) {
+    if (radio.value === savedValue) {
+      radio.checked = true;
+      radio.dispatchEvent(new Event('change', { bubbles: true }));
+      break;
+    }
+  }
 }
 
 function onMutation(mutations: MutationRecord[]): void {
@@ -363,10 +397,12 @@ export const mapTileLayers: IFeatureModule = {
     removeStyles(TILE_FILTER_ID);
     removeStyles(MODULE_ID);
     cleanupInjected();
+    restoreGameRadioSelection();
     popupObserver?.disconnect();
     popupObserver = null;
 
     gameTileLayer = null;
     originalSource = null;
+    lastGameRadioValue = null;
   },
 };

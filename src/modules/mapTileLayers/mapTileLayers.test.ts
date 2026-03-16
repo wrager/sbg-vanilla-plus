@@ -252,6 +252,7 @@ describe('mapTileLayers enable/disable', () => {
   beforeEach(() => {
     localStorage.removeItem('svp_mapTileLayer');
     localStorage.removeItem('svp_mapTileLayerUrl');
+    localStorage.removeItem('svp_mapTileGameLayer');
     tileLayer = makeTileLayer('base');
     const pointsLayer = makeVectorLayer('points');
     olMap = makeMap([tileLayer, pointsLayer]);
@@ -325,6 +326,7 @@ describe('mapTileLayers setSource interception', () => {
   beforeEach(() => {
     localStorage.removeItem('svp_mapTileLayer');
     localStorage.removeItem('svp_mapTileLayerUrl');
+    localStorage.removeItem('svp_mapTileGameLayer');
     tileLayer = makeTileLayer('base');
     const pointsLayer = makeVectorLayer('points');
     const olMap = makeMap([tileLayer, pointsLayer]);
@@ -427,6 +429,7 @@ describe('mapTileLayers popup injection', () => {
   beforeEach(() => {
     localStorage.removeItem('svp_mapTileLayer');
     localStorage.removeItem('svp_mapTileLayerUrl');
+    localStorage.removeItem('svp_mapTileGameLayer');
     tileLayer = makeTileLayer('base');
     const pointsLayer = makeVectorLayer('points');
     const olMap = makeMap([tileLayer, pointsLayer]);
@@ -591,6 +594,76 @@ describe('mapTileLayers popup injection', () => {
     expect(popup.querySelector('input[value="svp-custom"]')).toBeNull();
   });
 
+  test('disable restores game radio selection in popup', async () => {
+    localStorage.setItem('svp_mapTileLayerUrl', 'https://example.com/{z}/{x}/{y}.png');
+    await mapTileLayers.enable();
+
+    const popup = createLayersConfigPopup();
+    document.body.appendChild(popup);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // OSM is checked by default in our test popup
+    const osmRadio = popup.querySelector<HTMLInputElement>('input[name="baselayer"][value="osm"]');
+    expect(osmRadio?.checked).toBe(true);
+
+    // Select custom tiles
+    const customRadio = popup.querySelector<HTMLInputElement>(
+      'input[name="baselayer"][value="svp-custom"]',
+    );
+    if (customRadio) {
+      customRadio.checked = true;
+      customRadio.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // OSM is now unchecked (same radio name group)
+    expect(osmRadio?.checked).toBe(false);
+
+    // Disable module → should restore OSM radio
+    await mapTileLayers.disable();
+
+    // Our custom radio is removed, OSM should be re-checked
+    expect(popup.querySelector('input[value="svp-custom"]')).toBeNull();
+    expect(osmRadio?.checked).toBe(true);
+  });
+
+  test('saves game radio value to localStorage on custom select', async () => {
+    localStorage.setItem('svp_mapTileLayerUrl', 'https://example.com/{z}/{x}/{y}.png');
+    await mapTileLayers.enable();
+
+    const popup = createLayersConfigPopup();
+    document.body.appendChild(popup);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const customRadio = popup.querySelector<HTMLInputElement>(
+      'input[name="baselayer"][value="svp-custom"]',
+    );
+    if (customRadio) {
+      customRadio.checked = true;
+      customRadio.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    expect(localStorage.getItem('svp_mapTileGameLayer')).toBe('osm');
+  });
+
+  test('clears game radio from localStorage when game radio selected', async () => {
+    localStorage.setItem('svp_mapTileLayerUrl', 'https://example.com/{z}/{x}/{y}.png');
+    localStorage.setItem('svp_mapTileLayer', 'svp-custom');
+    localStorage.setItem('svp_mapTileGameLayer', 'osm');
+    await mapTileLayers.enable();
+
+    const popup = createLayersConfigPopup();
+    document.body.appendChild(popup);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const cdbRadio = popup.querySelector<HTMLInputElement>('input[name="baselayer"][value="cdb"]');
+    if (cdbRadio) {
+      cdbRadio.checked = true;
+      cdbRadio.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    expect(localStorage.getItem('svp_mapTileGameLayer')).toBeNull();
+  });
+
   test('URL input change re-applies tiles when custom radio is selected', async () => {
     localStorage.setItem('svp_mapTileLayerUrl', 'https://example.com/{z}/{x}/{y}.png');
     localStorage.setItem('svp_mapTileLayer', 'svp-custom');
@@ -643,6 +716,7 @@ describe('mapTileLayers persistence', () => {
   beforeEach(() => {
     localStorage.removeItem('svp_mapTileLayer');
     localStorage.removeItem('svp_mapTileLayerUrl');
+    localStorage.removeItem('svp_mapTileGameLayer');
   });
 
   test('selecting custom radio persists both URL and variant', async () => {
