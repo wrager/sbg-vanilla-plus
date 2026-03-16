@@ -113,6 +113,7 @@ function isCustomValue(value: string): boolean {
 
 function lockGameSource(): void {
   if (!gameTileLayer || originalSetSource) return;
+  originalSource = gameTileLayer.getSource();
   originalSetSource = gameTileLayer.setSource.bind(gameTileLayer);
   gameTileLayer.setSource = (source: unknown) => {
     gameRequestedSource = source;
@@ -120,10 +121,17 @@ function lockGameSource(): void {
   };
 }
 
-function unlockGameSource(): void {
+/**
+ * @param forceOriginal — true при disable модуля: всегда восстанавливать
+ *   originalSource (source до custom tiles), игнорируя gameRequestedSource,
+ *   который может содержать мусор от обработки игрой неизвестного "svp-custom".
+ *   false при переключении на game radio: применить source, запрошенный игрой
+ *   (игра уже вызвала setSource для нового baselayer через перехваченный proxy).
+ */
+function unlockGameSource(forceOriginal = false): void {
   if (!gameTileLayer || !originalSetSource) return;
   gameTileLayer.setSource = originalSetSource;
-  if (hasGameRequest) {
+  if (!forceOriginal && hasGameRequest) {
     gameTileLayer.setSource(gameRequestedSource);
   } else {
     gameTileLayer.setSource(originalSource);
@@ -351,7 +359,8 @@ export const mapTileLayers: IFeatureModule = {
   disable() {
     enabled = false;
 
-    removeCustomTiles();
+    unlockGameSource(true);
+    removeStyles(TILE_FILTER_ID);
     removeStyles(MODULE_ID);
     cleanupInjected();
     popupObserver?.disconnect();

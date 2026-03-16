@@ -354,18 +354,18 @@ describe('mapTileLayers setSource interception', () => {
     expect(tileLayer.getSource()).toBe(customSource);
   });
 
-  test('applies game-requested source on restore', async () => {
+  test('disable ignores game setSource requests and restores pre-lock source', async () => {
+    const sourceBeforeCustom = tileLayer.getSource();
     localStorage.setItem('svp_mapTileLayer', 'svp-custom');
     localStorage.setItem('svp_mapTileLayerUrl', 'https://example.com/{z}/{x}/{y}.png');
     await mapTileLayers.enable();
 
-    // Simulate game requesting a different source while locked
-    const gameSource = makeFakeSource();
-    tileLayer.setSource(gameSource);
+    // Simulate game calling setSource for unknown "svp-custom" value (garbage)
+    tileLayer.setSource(makeFakeSource());
 
-    // Disable → should apply the game's requested source
+    // Disable should restore source from before custom, not game's garbage
     await mapTileLayers.disable();
-    expect(tileLayer.getSource()).toBe(gameSource);
+    expect(tileLayer.getSource()).toBe(sourceBeforeCustom);
   });
 
   test('restores original source when game made no request', async () => {
@@ -377,6 +377,26 @@ describe('mapTileLayers setSource interception', () => {
     // No game source request
     await mapTileLayers.disable();
     expect(tileLayer.getSource()).toBe(originalSource);
+  });
+
+  test('lockGameSource captures current source for accurate restore', async () => {
+    await mapTileLayers.enable();
+
+    // Simulate game changing source (e.g., user switched to Carto)
+    const cartoSource = makeFakeSource();
+    tileLayer.setSource(cartoSource);
+
+    // Now select custom tiles — lockGameSource should capture cartoSource
+    localStorage.setItem('svp_mapTileLayerUrl', 'https://example.com/{z}/{x}/{y}.png');
+    localStorage.setItem('svp_mapTileLayer', 'svp-custom');
+
+    // Re-enable to trigger custom source application (lockGameSource captures current)
+    await mapTileLayers.disable();
+    await mapTileLayers.enable();
+
+    // Disable should restore cartoSource (captured at lock time), not original OSM
+    await mapTileLayers.disable();
+    expect(tileLayer.getSource()).toBe(cartoSource);
   });
 
   test('restores original setSource method on disable', async () => {
@@ -654,5 +674,37 @@ describe('mapTileLayers persistence', () => {
     await mapTileLayers.disable();
     delete window.ol;
     popup.remove();
+  });
+
+  test('disable + re-enable restores custom tiles from localStorage', async () => {
+    const tileLayer = makeTileLayer('base');
+    const olMap = makeMap([tileLayer, makeVectorLayer('points')]);
+    mockGetOlMap.mockResolvedValue(olMap);
+    mockOlWithXyz();
+
+    localStorage.setItem('svp_mapTileLayerUrl', 'https://tiles.example.com/{z}/{x}/{y}.png');
+    localStorage.setItem('svp_mapTileLayer', 'svp-custom');
+
+    // Enable → custom tiles applied
+    await mapTileLayers.enable();
+    const sourceBeforeDisable = tileLayer.getSource();
+
+    // Disable → original source restored
+    await mapTileLayers.disable();
+    const sourceAfterDisable = tileLayer.getSource();
+    expect(sourceAfterDisable).not.toBe(sourceBeforeDisable);
+
+    // Re-enable → custom tiles should come back
+    await mapTileLayers.enable();
+    expect(tileLayer.getSource()).not.toBe(sourceAfterDisable);
+
+    // URL and variant still in localStorage
+    expect(localStorage.getItem('svp_mapTileLayerUrl')).toBe(
+      'https://tiles.example.com/{z}/{x}/{y}.png',
+    );
+    expect(localStorage.getItem('svp_mapTileLayer')).toBe('svp-custom');
+
+    await mapTileLayers.disable();
+    delete window.ol;
   });
 });
