@@ -146,8 +146,8 @@ describe('mapTileLayers metadata', () => {
     expect(mapTileLayers.category).toBe('map');
   });
 
-  test('is disabled by default', () => {
-    expect(mapTileLayers.defaultEnabled).toBe(false);
+  test('is enabled by default', () => {
+    expect(mapTileLayers.defaultEnabled).toBe(true);
   });
 
   test('has localized name and description', () => {

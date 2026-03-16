@@ -272,7 +272,7 @@ export const mapTileLayers: IFeatureModule = {
     en: 'Adds custom tile layers to the map layer switcher',
     ru: 'Добавляет свои тайлы карты в переключатель слоёв',
   },
-  defaultEnabled: false,
+  defaultEnabled: true,
   category: 'map',
 
   init() {},
