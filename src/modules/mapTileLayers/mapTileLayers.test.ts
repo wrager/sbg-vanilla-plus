@@ -1,9 +1,4 @@
-import {
-  mapTileLayers,
-  findBaseTileLayer,
-  adjustTileYToEllipsoidal,
-  needsEllipsoidalProjection,
-} from './mapTileLayers';
+import { mapTileLayers, findBaseTileLayer } from './mapTileLayers';
 import type { IOlLayer, IOlMap, IOlTileSource, IOlVectorSource, IOlView } from '../../core/olMap';
 import { hasTileSource } from '../../core/olMap';
 
@@ -73,7 +68,6 @@ function mockOlWithXyz(): jest.Mock {
         url?: string;
         crossOrigin?: string;
         attributions?: string;
-        tileUrlFunction?: (coord: number[]) => string;
       }) => IOlTileSource,
     },
   };
@@ -97,73 +91,6 @@ function createLayersConfigPopup(savedBaselayer = 'osm'): HTMLElement {
   `;
   return popup;
 }
-
-// ── adjustTileYToEllipsoidal ─────────────────────────────────────────────────
-
-describe('adjustTileYToEllipsoidal', () => {
-  test('returns same Y at equator (no ellipsoidal correction needed)', () => {
-    // At equator, spherical and ellipsoidal Mercator coincide
-    const zoom = 10;
-    const equatorY = 1 << (zoom - 1); // 512 at z=10 — equator tile
-    expect(adjustTileYToEllipsoidal(equatorY, zoom)).toBe(equatorY);
-  });
-
-  test('returns higher Y (southward shift) in northern hemisphere', () => {
-    // At ~57°N (z=16), ellipsoidal tiles are shifted south relative to spherical
-    const zoom = 16;
-    const sphericalY = 20531; // approximately 57°N
-    const ellipsoidalY = adjustTileYToEllipsoidal(sphericalY, zoom);
-    expect(ellipsoidalY).toBeGreaterThan(sphericalY);
-  });
-
-  test('offset increases with latitude', () => {
-    const zoom = 16;
-    const yMid = Math.floor((1 << zoom) * 0.35); // mid-latitude
-    const yHigh = Math.floor((1 << zoom) * 0.3); // higher latitude
-
-    const offsetMid = adjustTileYToEllipsoidal(yMid, zoom) - yMid;
-    const offsetHigh = adjustTileYToEllipsoidal(yHigh, zoom) - yHigh;
-
-    // Both should have positive offsets (shifted south in tile coords)
-    expect(offsetMid).toBeGreaterThan(0);
-    expect(offsetHigh).toBeGreaterThan(offsetMid);
-  });
-
-  test('produces ~117 tile offset at z=17 for ~57°N', () => {
-    // At z=17, y=40396 corresponds to ~56.6°N
-    // Expected offset: ~117 tiles (36km / 305.75m per tile)
-    const zoom = 17;
-    const sphericalY = 40396;
-    const ellipsoidalY = adjustTileYToEllipsoidal(sphericalY, zoom);
-    const offset = ellipsoidalY - sphericalY;
-    expect(offset).toBeGreaterThanOrEqual(110);
-    expect(offset).toBeLessThanOrEqual(125);
-  });
-});
-
-// ── needsEllipsoidalProjection ───────────────────────────────────────────────
-
-describe('needsEllipsoidalProjection', () => {
-  test('returns true for tile servers using EPSG:3395', () => {
-    const url =
-      'https://core-renderer-tiles.maps.example.net/tiles?l=map&x={x}&y={y}&z={z}&scale=1&lang=ru_RU';
-    expect(needsEllipsoidalProjection(url)).toBe(true);
-  });
-
-  test('returns false for standard XYZ tile servers', () => {
-    expect(needsEllipsoidalProjection('https://tile.openstreetmap.org/{z}/{x}/{y}.png')).toBe(
-      false,
-    );
-    expect(
-      needsEllipsoidalProjection('https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'),
-    ).toBe(false);
-  });
-
-  test('returns false for invalid URLs', () => {
-    expect(needsEllipsoidalProjection('not-a-url')).toBe(false);
-    expect(needsEllipsoidalProjection('')).toBe(false);
-  });
-});
 
 // ── hasTileSource type guard ─────────────────────────────────────────────────
 
@@ -696,29 +623,14 @@ describe('mapTileLayers popup injection', () => {
     );
   });
 
-  test('uses tileUrlFunction for EPSG:3395 tile server URLs', async () => {
-    const ellipsoidalUrl =
-      'https://core-renderer-tiles.maps.example.net/tiles?l=map&x={x}&y={y}&z={z}';
-    localStorage.setItem('svp_mapTileLayerUrl', ellipsoidalUrl);
-    localStorage.setItem('svp_mapTileLayer', 'svp-custom');
-    await mapTileLayers.enable();
-
-    // XYZ constructor should have been called with tileUrlFunction (not url)
-    const lastCallArgs = xyzConstructor.mock.lastCall as unknown[];
-    const lastCall = lastCallArgs[0] as Record<string, unknown>;
-    expect(lastCall).toHaveProperty('tileUrlFunction');
-    expect(lastCall).not.toHaveProperty('url');
-  });
-
-  test('uses url template for standard tile server URLs', async () => {
+  test('creates XYZ source with url template', async () => {
     localStorage.setItem('svp_mapTileLayerUrl', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png');
     localStorage.setItem('svp_mapTileLayer', 'svp-custom');
     await mapTileLayers.enable();
 
     const lastCallArgs = xyzConstructor.mock.lastCall as unknown[];
     const lastCall = lastCallArgs[0] as Record<string, unknown>;
-    expect(lastCall).toHaveProperty('url');
-    expect(lastCall).not.toHaveProperty('tileUrlFunction');
+    expect(lastCall).toHaveProperty('url', 'https://tile.openstreetmap.org/{z}/{x}/{y}.png');
   });
 });
 

@@ -89,7 +89,6 @@ interface IOlGlobal {
       url?: string;
       crossOrigin?: string;
       attributions?: string;
-      tileUrlFunction?: (coord: number[]) => string;
     }) => IOlTileSource;
   };
   style?: {
