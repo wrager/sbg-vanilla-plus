@@ -25,6 +25,22 @@ describe('l10n', () => {
       expect(getGameLocale()).toBe('en');
     });
 
+    test('returns "ru" when lang is "sys" and browser locale is Russian', () => {
+      localStorage.setItem('settings', JSON.stringify({ lang: 'sys' }));
+      const originalLanguage = navigator.language;
+      Object.defineProperty(navigator, 'language', { value: 'ru-RU', configurable: true });
+      expect(getGameLocale()).toBe('ru');
+      Object.defineProperty(navigator, 'language', { value: originalLanguage, configurable: true });
+    });
+
+    test('returns "en" when lang is "sys" and browser locale is not Russian', () => {
+      localStorage.setItem('settings', JSON.stringify({ lang: 'sys' }));
+      const originalLanguage = navigator.language;
+      Object.defineProperty(navigator, 'language', { value: 'en-US', configurable: true });
+      expect(getGameLocale()).toBe('en');
+      Object.defineProperty(navigator, 'language', { value: originalLanguage, configurable: true });
+    });
+
     test('returns "en" when settings is invalid JSON', () => {
       localStorage.setItem('settings', 'not-json');
       expect(getGameLocale()).toBe('en');

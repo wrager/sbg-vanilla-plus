@@ -10,8 +10,10 @@ export function getGameLocale(): ILocale {
     const raw = localStorage.getItem('settings');
     if (raw) {
       const parsed: unknown = JSON.parse(raw);
-      if (typeof parsed === 'object' && parsed !== null && 'lang' in parsed && parsed.lang === 'ru')
-        return 'ru';
+      if (typeof parsed === 'object' && parsed !== null && 'lang' in parsed) {
+        if (parsed.lang === 'ru') return 'ru';
+        if (parsed.lang === 'sys' && navigator.language.startsWith('ru')) return 'ru';
+      }
     }
   } catch {
     // ignore parse errors
