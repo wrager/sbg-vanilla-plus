@@ -61,23 +61,23 @@ interface IFeatureModule {
 
 **Автоматическое содержимое** (скачивается скриптом):
 
-| Что            | Расположение                 | Описание                              |
-| -------------- | ---------------------------- | ------------------------------------- |
-| EUI исходники  | `refs/eui/src/`              | TypeScript-исходники из GitHub        |
-| CUI исходники  | `refs/cui/`                  | `index.js` + `styles.css` из GitHub   |
-| EUI релиз      | `refs/releases/eui.user.js`  | Собранный бандл (beautified)          |
-| CUI релиз      | `refs/releases/cui.user.js`  | Собранный бандл (beautified)          |
-| OpenLayers     | `refs/ol/ol.js`              | UMD-бандл v10.6.0 (beautified)        |
-| HTML игры      | `refs/game/index.html`       | Статический HTML страницы             |
-| Скрипт игры    | `refs/game/script.js`        | Основной скрипт (beautified)          |
-| CSS-переменные | `refs/game/cssVariables.css` | Извлечённые `:root` custom properties |
+| Что           | Расположение                | Описание                            |
+| ------------- | --------------------------- | ----------------------------------- |
+| EUI исходники | `refs/eui/src/`             | TypeScript-исходники из GitHub      |
+| CUI исходники | `refs/cui/`                 | `index.js` + `styles.css` из GitHub |
+| EUI релиз     | `refs/releases/eui.user.js` | Собранный бандл (beautified)        |
+| CUI релиз     | `refs/releases/cui.user.js` | Собранный бандл (beautified)        |
+| OpenLayers    | `refs/ol/ol.js`             | UMD-бандл v10.6.0 (beautified)      |
+| HTML игры     | `refs/game/index.html`      | Статический HTML страницы           |
+| Скрипт игры   | `refs/game/script.js`       | Основной скрипт (beautified)        |
 
 **Ручное содержимое** (добавляет пользователь):
 
-| Что               | Расположение        | Описание                           |
-| ----------------- | ------------------- | ---------------------------------- |
-| DOM после рендера | `refs/game/dom/`    | Дампы из DevTools (Copy outerHTML) |
-| Скриншоты UI      | `refs/screenshots/` | Визуальный контекст интерфейса     |
+| Что               | Расположение        | Описание                                        |
+| ----------------- | ------------------- | ----------------------------------------------- |
+| DOM после рендера | `refs/game/dom/`    | Дампы из DevTools (Copy outerHTML)              |
+| CSS-переменные    | `refs/game/css/`    | `:root` custom properties (экспорт из DevTools) |
+| Скриншоты UI      | `refs/screenshots/` | Визуальный контекст интерфейса                  |
 
 При повторном запуске `refs:fetch` ручное содержимое сохраняется.
 
