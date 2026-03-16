@@ -82,7 +82,7 @@ function applyTileSource(url: string, variant: string): void {
 
   lockGameSource();
 
-  const source = new OlXyz({ url, crossOrigin: 'anonymous' });
+  const source = new OlXyz({ url });
   if (originalSetSource) {
     originalSetSource(source);
   }
