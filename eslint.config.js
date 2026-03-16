@@ -24,6 +24,14 @@ export default [
     },
   },
   {
-    ignores: ['dist/', 'coverage/', 'node_modules/', 'eslint.config.js', 'jest.config.js'],
+    ignores: [
+      'dist/',
+      'coverage/',
+      'node_modules/',
+      'refs/',
+      'scripts/',
+      'eslint.config.js',
+      'jest.config.js',
+    ],
   },
 ];

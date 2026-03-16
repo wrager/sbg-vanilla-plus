@@ -19,7 +19,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "jest"
+    "test": "jest",
+    "refs:fetch": "node scripts/fetchRefs.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
