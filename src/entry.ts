@@ -16,6 +16,7 @@ import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapA
 import { nextPointNavigation } from './modules/nextPointNavigation/nextPointNavigation';
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
 import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
+import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
 
 if (!isDisabled()) {
   initErrorLog();
@@ -31,6 +32,7 @@ if (!isDisabled()) {
     doubleTapDragZoom,
     drawButtonFix,
     keepScreenOn,
+    inventoryCleanup,
     keyCountOnPoints,
     nextPointNavigation,
     singleFingerRotation,

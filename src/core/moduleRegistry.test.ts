@@ -263,4 +263,52 @@ describe('initModules', () => {
     expect(mod.status).toBe('ready');
     expect(onReady).toHaveBeenCalledWith('async-enable-ready');
   });
+
+  test('marks failed when async init rejects after delay', async () => {
+    const onError = jest.fn();
+    const mod = createMockModule({
+      id: 'delayed-init-fail',
+      init: jest.fn(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            setTimeout(() => {
+              reject(new Error('timeout'));
+            }, 10);
+          }),
+      ),
+    });
+
+    initModules([mod], () => true, onError);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(mod.status).toBe('failed');
+    expect(mod.enable).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith('delayed-init-fail', expect.stringContaining('timeout'));
+  });
+
+  test('marks failed when async enable rejects after delay', async () => {
+    const onError = jest.fn();
+    const mod = createMockModule({
+      id: 'delayed-enable-fail',
+      enable: jest.fn(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            setTimeout(() => {
+              reject(new Error('enable timeout'));
+            }, 10);
+          }),
+      ),
+    });
+
+    initModules([mod], () => true, onError);
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(mod.status).toBe('failed');
+    expect(onError).toHaveBeenCalledWith(
+      'delayed-enable-fail',
+      expect.stringContaining('enable timeout'),
+    );
+  });
 });

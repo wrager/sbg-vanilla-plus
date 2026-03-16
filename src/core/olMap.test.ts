@@ -24,9 +24,11 @@ let originalOlDescriptor: PropertyDescriptor | undefined;
 beforeEach(() => {
   originalOlDescriptor = Object.getOwnPropertyDescriptor(window, 'ol');
   jest.resetModules();
+  jest.useFakeTimers();
 });
 
 afterEach(() => {
+  jest.useRealTimers();
   if (originalOlDescriptor) {
     Object.defineProperty(window, 'ol', originalOlDescriptor);
   } else {
@@ -121,4 +123,110 @@ test('does not throw when ol is undefined', async () => {
   expect(() => {
     initOlMapCapture();
   }).not.toThrow();
+});
+
+test('waits indefinitely until map is created', async () => {
+  delete window.ol;
+
+  const { getOlMap, initOlMapCapture } = await import('./olMap');
+
+  initOlMapCapture();
+
+  const promise = getOlMap();
+  let resolved = false;
+  void promise.then(() => {
+    resolved = true;
+  });
+
+  // Промис не резолвится без создания карты
+  await Promise.resolve();
+  expect(resolved).toBe(false);
+
+  // Создаём карту — промис резолвится
+  const fakeView = createFakeView();
+  const fakeMap = { getView: () => fakeView };
+  window.ol = {
+    Map: { prototype: { getView: fakeMap.getView } },
+  };
+  getProto().getView.call(fakeMap);
+
+  const captured = await promise;
+  expect(captured).toBe(fakeMap);
+});
+
+test('logs diagnostic warning when map is not captured in time', async () => {
+  delete window.ol;
+
+  const { initOlMapCapture } = await import('./olMap');
+
+  const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+  initOlMapCapture();
+  jest.advanceTimersByTime(5000);
+
+  expect(warnSpy).toHaveBeenCalledWith(
+    expect.stringContaining('OL Map не захвачен'),
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+    expect.anything(),
+  );
+  warnSpy.mockRestore();
+});
+
+test('does not log diagnostic if map captured before delay', async () => {
+  const { initOlMapCapture } = await import('./olMap');
+
+  const fakeView = createFakeView();
+  const fakeMap = { getView: () => fakeView };
+  window.ol = {
+    Map: { prototype: { getView: fakeMap.getView } },
+  };
+
+  const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+  initOlMapCapture();
+  getProto().getView.call(fakeMap);
+  jest.advanceTimersByTime(5000);
+
+  expect(warnSpy).not.toHaveBeenCalled();
+  warnSpy.mockRestore();
+});
+
+test('retries hook when ol available but defineProperty missed', async () => {
+  delete window.ol;
+
+  const { getOlMap, initOlMapCapture } = await import('./olMap');
+
+  initOlMapCapture();
+
+  // Симулируем: другой скрипт перезаписал defineProperty, ol появился напрямую
+  Object.defineProperty(window, 'ol', {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value: undefined,
+  });
+  const fakeView = createFakeView();
+  const fakeMap = { getView: () => fakeView };
+  window.ol = {
+    Map: { prototype: { getView: fakeMap.getView } },
+  };
+
+  const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+
+  // Диагностика обнаруживает: ol есть, hook не вызван → повторный перехват
+  jest.advanceTimersByTime(5000);
+
+  expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Повторная попытка'));
+
+  // После повторного перехвата getView вызов резолвит промис
+  const promise = getOlMap();
+  getProto().getView.call(fakeMap);
+
+  const captured = await promise;
+  expect(captured).toBe(fakeMap);
+
+  warnSpy.mockRestore();
 });

@@ -75,7 +75,7 @@ export function initModules(
       if (mod.status !== 'failed' && isEnabled(mod.id)) {
         const result = runModuleAction(mod.enable.bind(mod), enableErrorHandler);
         if (result instanceof Promise) {
-          void result.then(markReady);
+          void result.then(markReady).catch(enableErrorHandler);
           return;
         }
       }
@@ -85,7 +85,7 @@ export function initModules(
     const initResult = runModuleAction(mod.init.bind(mod), initErrorHandler);
 
     if (initResult instanceof Promise) {
-      void initResult.then(enableIfNeeded);
+      void initResult.then(enableIfNeeded).catch(initErrorHandler);
     } else {
       enableIfNeeded();
     }

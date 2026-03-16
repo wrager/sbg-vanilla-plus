@@ -137,6 +137,10 @@ export function findDragPanInteractions(map: IOlMap): IOlInteraction[] {
 
 let captured: IOlMap | null = null;
 const resolvers: ((map: IOlMap) => void)[] = [];
+let hooked = false;
+let proxyInstalled = false;
+
+const DIAG_DELAY = 5_000;
 
 export function getOlMap(): Promise<IOlMap> {
   if (captured) return Promise.resolve(captured);
@@ -146,12 +150,15 @@ export function getOlMap(): Promise<IOlMap> {
 }
 
 function hookGetView(ol: IOlGlobal): void {
+  hooked = true;
   const proto = ol.Map.prototype;
   const orig = proto.getView;
 
+  proxyInstalled = true;
   proto.getView = new Proxy(orig, {
     apply(_target, thisArg: IOlMap) {
       proto.getView = orig;
+      proxyInstalled = false;
       captured = thisArg;
       for (const r of resolvers) r(thisArg);
       resolvers.length = 0;
@@ -160,32 +167,56 @@ function hookGetView(ol: IOlGlobal): void {
   });
 }
 
+function logDiagnostics(): void {
+  if (captured) return;
+
+  const olAvailable = isOlGlobal(window.ol);
+  const viewportExists = document.querySelector('.ol-viewport') !== null;
+
+  console.warn(
+    '[SVP] OL Map не захвачен за %dс. Диагностика:' +
+      ' window.ol=%s, hookGetView=%s, proxy=%s, viewport=%s',
+    DIAG_DELAY / 1000,
+    olAvailable ? 'есть' : 'нет',
+    hooked ? 'вызван' : 'не вызван',
+    proxyInstalled ? 'установлен' : 'снят',
+    viewportExists ? 'есть' : 'нет',
+  );
+
+  // window.ol появился, но hookGetView не вызван — defineProperty не сработал
+  if (olAvailable && !hooked) {
+    console.warn('[SVP] Повторная попытка перехвата getView');
+    hookGetView(window.ol as IOlGlobal);
+  }
+}
+
 export function initOlMapCapture(): void {
   if (window.ol) {
     hookGetView(window.ol);
-    return;
+  } else {
+    // ol not yet loaded — intercept when the game sets window.ol
+    let olValue: IOlGlobal | undefined;
+    Object.defineProperty(window, 'ol', {
+      configurable: true,
+      enumerable: true,
+      get() {
+        return olValue;
+      },
+      set(val: unknown) {
+        // Restore as a normal data property first
+        Object.defineProperty(window, 'ol', {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value: val,
+        });
+        if (isOlGlobal(val)) {
+          olValue = val;
+          hookGetView(val);
+        }
+      },
+    });
   }
 
-  // ol not yet loaded — intercept when the game sets window.ol
-  let olValue: IOlGlobal | undefined;
-  Object.defineProperty(window, 'ol', {
-    configurable: true,
-    enumerable: true,
-    get() {
-      return olValue;
-    },
-    set(val: unknown) {
-      // Restore as a normal data property first
-      Object.defineProperty(window, 'ol', {
-        configurable: true,
-        enumerable: true,
-        writable: true,
-        value: val,
-      });
-      if (isOlGlobal(val)) {
-        olValue = val;
-        hookGetView(val);
-      }
-    },
-  });
+  setTimeout(logDiagnostics, DIAG_DELAY);
 }

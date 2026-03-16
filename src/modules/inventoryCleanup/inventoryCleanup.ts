@@ -1,0 +1,143 @@
+import type { IFeatureModule } from '../../core/moduleRegistry';
+import { parseInventoryCache } from './inventoryParser';
+import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
+import { loadCleanupSettings } from './cleanupSettings';
+import { initCleanupSettingsUi, destroyCleanupSettingsUi } from './cleanupSettingsUi';
+import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
+
+const MODULE_ID = 'inventoryCleanup';
+
+const ACTION_SELECTORS = '#discover';
+const TOAST_DURATION = 3000;
+const DEBUG_INV_KEY = 'svp_debug_inv';
+
+let cleanupInProgress = false;
+
+function readDebugInvCount(): number | null {
+  const match = /[#&]svp-inv=(\d+)/.exec(location.hash);
+  if (match) {
+    sessionStorage.setItem(DEBUG_INV_KEY, match[1]);
+  }
+  const stored = sessionStorage.getItem(DEBUG_INV_KEY);
+  if (stored === null) return null;
+  const value = parseInt(stored, 10);
+  return Number.isFinite(value) ? value : null;
+}
+
+function showCleanupToast(message: string): void {
+  const toast = document.createElement('div');
+  toast.className = 'svp-cleanup-toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add('svp-cleanup-toast-hide');
+    toast.addEventListener('transitionend', () => {
+      toast.remove();
+    });
+  }, TOAST_DURATION);
+}
+
+function readDomNumber(id: string): number | null {
+  const element = document.getElementById(id);
+  if (!element) return null;
+  const value = parseInt(element.textContent, 10);
+  return Number.isFinite(value) ? value : null;
+}
+
+async function runCleanup(): Promise<void> {
+  if (cleanupInProgress) return;
+  cleanupInProgress = true;
+
+  try {
+    await runCleanupImpl();
+  } finally {
+    cleanupInProgress = false;
+  }
+}
+
+function updateDomInventoryCount(total: number): void {
+  const element = document.getElementById('self-info__inv');
+  if (element) {
+    element.textContent = String(total);
+  }
+}
+
+async function runCleanupImpl(): Promise<void> {
+  const settings = loadCleanupSettings();
+
+  const currentCount = readDebugInvCount() ?? readDomNumber('self-info__inv');
+  const inventoryLimit = readDomNumber('self-info__inv-lim');
+
+  if (currentCount === null || inventoryLimit === null) {
+    console.warn('[SVP inventoryCleanup] Не удалось прочитать инвентарь из DOM');
+    return;
+  }
+
+  if (!shouldRunCleanup(currentCount, inventoryLimit, settings.minFreeSlots)) {
+    return;
+  }
+
+  const items = parseInventoryCache();
+  if (items.length === 0) return;
+
+  const deletions = calculateDeletions(items, settings.limits);
+  if (deletions.length === 0) return;
+
+  const totalAmount = deletions.reduce((sum, entry) => sum + entry.amount, 0);
+  const summary = formatDeletionSummary(deletions);
+  console.log(
+    `[SVP inventoryCleanup] Удалить ${totalAmount} предметов` +
+      ` (инвентарь: ${currentCount}/${inventoryLimit})`,
+    deletions,
+  );
+
+  try {
+    const result = await deleteInventoryItems(deletions);
+    updateInventoryCache(deletions);
+    updateDomInventoryCount(result.total);
+    showCleanupToast(`Очистка (${totalAmount}): ${summary}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+    console.error('[SVP inventoryCleanup] Ошибка удаления:', message);
+    showCleanupToast(`Ошибка очистки: ${message}`);
+  }
+}
+
+function isDiscoverAvailable(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  const button = target.closest(ACTION_SELECTORS);
+  if (!(button instanceof HTMLButtonElement)) return false;
+  return !button.disabled;
+}
+
+function onClickCapture(event: Event): void {
+  if (!isDiscoverAvailable(event.target)) return;
+  void runCleanup();
+}
+
+export const inventoryCleanup: IFeatureModule = {
+  id: MODULE_ID,
+  name: {
+    en: 'Inventory auto-cleanup',
+    ru: 'Автоочистка инвентаря',
+  },
+  description: {
+    en: 'Automatically removes excess items before discover',
+    ru: 'Автоматически удаляет лишние предметы перед изучением',
+  },
+  defaultEnabled: false,
+  category: 'utility',
+
+  init() {},
+
+  enable() {
+    document.addEventListener('click', onClickCapture, true);
+    initCleanupSettingsUi();
+  },
+
+  disable() {
+    document.removeEventListener('click', onClickCapture, true);
+    destroyCleanupSettingsUi();
+  },
+};
