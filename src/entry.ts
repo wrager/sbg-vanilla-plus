@@ -13,6 +13,7 @@ import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
 import { keyCountOnPoints } from './modules/keyCountOnPoints/keyCountOnPoints';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
+import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 
 if (!isDisabled()) {
   initErrorLog();
@@ -29,5 +30,6 @@ if (!isDisabled()) {
     keepScreenOn,
     keyCountOnPoints,
     singleFingerRotation,
+    mapTileLayers,
   ]);
 }
