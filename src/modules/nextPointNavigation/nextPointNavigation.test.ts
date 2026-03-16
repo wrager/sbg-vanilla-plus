@@ -245,9 +245,11 @@ describe('nextPointNavigation enable/disable', () => {
   });
 
   test('always searches from the original point in a chain', async () => {
-    // p1=[10,10], p2=[20,20], p3=[15,15] — all relative to p1 origin
-    const p3 = makeFeature('p3', [15, 15]);
-    pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p2', [20, 20]), p3]);
+    pointsSrc = makeSource([
+      makeFeature('p1', [10, 10]),
+      makeFeature('p2', [20, 20]),
+      makeFeature('p3', [15, 15]),
+    ]);
     olMap = makeMapWithDispatch([makeLayer('points', pointsSrc)], view);
     mockGetOlMap.mockResolvedValue(olMap);
     await nextPointNavigation.enable();

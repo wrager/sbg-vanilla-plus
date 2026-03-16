@@ -13,6 +13,8 @@ const visited = new Set<string | number>();
 let chainOrigin: number[] | null = null;
 let expectedNextGuid: string | null = null;
 let lastSeenGuid: string | null = null;
+let fakeClickRetries = 0;
+const MAX_FAKE_CLICK_RETRIES = 3;
 let popupObserver: MutationObserver | null = null;
 let onButtonClick: (() => void) | null = null;
 
@@ -147,12 +149,25 @@ function onPopupMutation(popup: Element): void {
     // MutationObserver может сработать несколько раз для одного открытия
     // (class, data-guid, childList). Обнулять expectedNextGuid только
     // когда он совпал или когда точно ручное открытие другой точки.
-    if (currentGuid === expectedNextGuid) {
+    if (expectedNextGuid !== null) {
+      if (currentGuid === lastSeenGuid && fakeClickRetries < MAX_FAKE_CLICK_RETRIES) {
+        // Фейковый клик переоткрыл ту же точку — повторить навигацию
+        fakeClickRetries++;
+        expectedNextGuid = null;
+        navigateToNext();
+        return;
+      }
+      fakeClickRetries = 0;
+      // Наша навигация открыла попап. Фейковый клик мог попасть
+      // в соседнюю точку — принимаем открывшуюся как часть цепочки.
+      if (currentGuid !== expectedNextGuid && currentGuid) {
+        visited.add(currentGuid);
+      }
       expectedNextGuid = null;
     } else if (currentGuid !== lastSeenGuid) {
+      fakeClickRetries = 0;
       visited.clear();
       chainOrigin = null;
-      expectedNextGuid = null;
     }
     lastSeenGuid = currentGuid;
     injectButton(popup);
@@ -232,5 +247,6 @@ export const nextPointNavigation: IFeatureModule = {
     chainOrigin = null;
     expectedNextGuid = null;
     lastSeenGuid = null;
+    fakeClickRetries = 0;
   },
 };
