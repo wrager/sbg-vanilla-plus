@@ -12,6 +12,7 @@ import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
 import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
 import { keyCountOnPoints } from './modules/keyCountOnPoints/keyCountOnPoints';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
+import { nextPointNavigation } from './modules/nextPointNavigation/nextPointNavigation';
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
 
 if (!isDisabled()) {
@@ -28,6 +29,7 @@ if (!isDisabled()) {
     drawButtonFix,
     keepScreenOn,
     keyCountOnPoints,
+    nextPointNavigation,
     singleFingerRotation,
   ]);
 }
