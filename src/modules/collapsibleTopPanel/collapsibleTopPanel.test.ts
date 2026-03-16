@@ -151,6 +151,27 @@ describe('collapsibleTopPanel', () => {
     expect(toggle.style.display).toBe('none');
   });
 
+  test('mirrors inventory overflow color to summary', async () => {
+    await collapsibleTopPanel.enable();
+    await flushPromises();
+
+    const invEntry = getEntryFor('self-info__inv');
+    if (!invEntry) throw new Error('inv entry not found');
+    const summary = document.getElementById('svp-inv-summary');
+    if (!summary) throw new Error('summary not found');
+
+    // Игра ставит color на .self-info__entry при переполнении (jQuery .css())
+    // jsdom не поддерживает var() в CSSOM, поэтому тестируем с обычным цветом
+    invEntry.style.color = 'red';
+    await flushPromises();
+    expect(summary.style.color).toBe('red');
+
+    // Игра сбрасывает color когда инвентарь не переполнен
+    invEntry.style.color = '';
+    await flushPromises();
+    expect(summary.style.color).toBe('');
+  });
+
   test('cleans up on disable', async () => {
     await collapsibleTopPanel.enable();
     await flushPromises();

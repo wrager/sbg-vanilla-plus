@@ -12,6 +12,7 @@ let cleanup: (() => void) | null = null;
 function createSummary(container: Element): HTMLSpanElement {
   const invSpan = $('#self-info__inv', container);
   const limSpan = $('#self-info__inv-lim', container);
+  const invEntry = invSpan?.closest('.self-info__entry');
 
   const summary = document.createElement('span');
   summary.id = SUMMARY_ID;
@@ -20,6 +21,9 @@ function createSummary(container: Element): HTMLSpanElement {
     const inv = invSpan?.textContent ?? '?';
     const lim = limSpan?.textContent ?? '?';
     summary.textContent = `${inv}/${lim}`;
+    if (invEntry instanceof HTMLElement) {
+      summary.style.color = invEntry.style.color;
+    }
   };
 
   update();
@@ -27,6 +31,7 @@ function createSummary(container: Element): HTMLSpanElement {
   const observer = new MutationObserver(update);
   if (invSpan) observer.observe(invSpan, { childList: true, characterData: true, subtree: true });
   if (limSpan) observer.observe(limSpan, { childList: true, characterData: true, subtree: true });
+  if (invEntry) observer.observe(invEntry, { attributes: true, attributeFilter: ['style'] });
 
   return summary;
 }

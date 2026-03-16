@@ -29,7 +29,6 @@
 #svp-inv-summary {
   font-size: 14px;
   white-space: nowrap;
-  color: var(--text);
 }
 
 /* Кнопки сворачивания/разворачивания — fixed, вне DOM игры */
