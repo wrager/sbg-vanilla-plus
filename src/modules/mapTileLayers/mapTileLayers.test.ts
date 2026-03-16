@@ -457,11 +457,25 @@ describe('mapTileLayers popup injection', () => {
     const customRadio = popup.querySelector<HTMLInputElement>(
       'input[name="baselayer"][value="svp-custom"]',
     );
+    expect(customRadio).not.toBeNull();
+
+    // Dark variant should not exist
     const darkRadio = popup.querySelector<HTMLInputElement>(
       'input[name="baselayer"][value="svp-custom-dark"]',
     );
-    expect(customRadio).not.toBeNull();
-    expect(darkRadio).not.toBeNull();
+    expect(darkRadio).toBeNull();
+  });
+
+  test('URL input is a textarea for multi-line display', async () => {
+    await mapTileLayers.enable();
+
+    const popup = createLayersConfigPopup();
+    document.body.appendChild(popup);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const urlInput = popup.querySelector('.svp-tile-url-input');
+    expect(urlInput).not.toBeNull();
+    expect(urlInput?.tagName).toBe('TEXTAREA');
   });
 
   test('radio buttons are disabled when URL is empty', async () => {
@@ -546,35 +560,13 @@ describe('mapTileLayers popup injection', () => {
     expect(tileLayer.getSource()).toBe(sourceBeforeSave);
   });
 
-  test('dark variant injects CSS filter with invert', async () => {
-    localStorage.setItem('svp_mapTileLayerUrl', 'https://example.com/{z}/{x}/{y}.png');
-    localStorage.setItem('svp_mapTileLayer', 'svp-custom-dark');
-    await mapTileLayers.enable();
-
-    const filterStyle = document.getElementById('svp-mapTileLayersFilter');
-    expect(filterStyle).not.toBeNull();
-    expect(filterStyle?.textContent).toContain('invert(1)');
-    expect(filterStyle?.textContent).toContain('!important');
-  });
-
-  test('light variant injects CSS filter with none', async () => {
+  test('does not inject CSS filter for custom tiles (game handles theme filters)', async () => {
     localStorage.setItem('svp_mapTileLayerUrl', 'https://example.com/{z}/{x}/{y}.png');
     localStorage.setItem('svp_mapTileLayer', 'svp-custom');
     await mapTileLayers.enable();
 
     const filterStyle = document.getElementById('svp-mapTileLayersFilter');
-    expect(filterStyle).not.toBeNull();
-    expect(filterStyle?.textContent).toContain('filter: none');
-    expect(filterStyle?.textContent).toContain('!important');
-  });
-
-  test('disable removes CSS filter', async () => {
-    localStorage.setItem('svp_mapTileLayerUrl', 'https://example.com/{z}/{x}/{y}.png');
-    localStorage.setItem('svp_mapTileLayer', 'svp-custom-dark');
-    await mapTileLayers.enable();
-    await mapTileLayers.disable();
-
-    expect(document.getElementById('svp-mapTileLayersFilter')).toBeNull();
+    expect(filterStyle).toBeNull();
   });
 
   test('cleans up injected elements on disable', async () => {
@@ -673,7 +665,7 @@ describe('mapTileLayers popup injection', () => {
     document.body.appendChild(popup);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const urlInput = popup.querySelector<HTMLInputElement>('.svp-tile-url-input');
+    const urlInput = popup.querySelector<HTMLTextAreaElement>('.svp-tile-url-input');
     if (urlInput) {
       urlInput.value = 'https://new-tiles.example.com/{z}/{x}/{y}.png';
       urlInput.dispatchEvent(new Event('input'));
@@ -733,7 +725,7 @@ describe('mapTileLayers persistence', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     const customRadio = popup.querySelector<HTMLInputElement>(
-      'input[name="baselayer"][value="svp-custom-dark"]',
+      'input[name="baselayer"][value="svp-custom"]',
     );
     if (customRadio) {
       customRadio.checked = true;
@@ -743,7 +735,7 @@ describe('mapTileLayers persistence', () => {
     expect(localStorage.getItem('svp_mapTileLayerUrl')).toBe(
       'https://tiles.example.com/{z}/{x}/{y}.png',
     );
-    expect(localStorage.getItem('svp_mapTileLayer')).toBe('svp-custom-dark');
+    expect(localStorage.getItem('svp_mapTileLayer')).toBe('svp-custom');
 
     await mapTileLayers.disable();
     delete window.ol;

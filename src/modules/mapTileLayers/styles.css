@@ -3,10 +3,12 @@
   box-sizing: border-box;
   padding: 4px 6px;
   font-size: 12px;
+  font-family: inherit;
   background: var(--background);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
+  resize: none;
 }
 
 .svp-tile-url-input::placeholder {

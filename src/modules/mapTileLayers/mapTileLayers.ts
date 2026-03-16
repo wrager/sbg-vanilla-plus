@@ -10,18 +10,12 @@ const STORAGE_KEY_URL = 'svp_mapTileLayerUrl';
 const STORAGE_KEY_LAYER = 'svp_mapTileLayer';
 const STORAGE_KEY_GAME_LAYER = 'svp_mapTileGameLayer';
 const CUSTOM_VALUE = 'svp-custom';
-const CUSTOM_DARK_VALUE = 'svp-custom-dark';
-const TILE_FILTER_ID = 'mapTileLayersFilter';
-const LIGHT_FILTER_CSS = '.ol-layer__base canvas { filter: none !important; }';
-const DARK_FILTER_CSS =
-  '.ol-layer__base canvas { filter: invert(1) hue-rotate(180deg) !important; }';
 
 type TileLayer = IOlLayer & {
   setSource(source: unknown): void;
 };
 
 const LABEL_CUSTOM = { en: 'Custom tiles', ru: 'Свои тайлы' };
-const LABEL_CUSTOM_DARK = { en: 'Custom tiles (dark)', ru: 'Свои тайлы (тёмная)' };
 const LABEL_HEADER = { en: 'SBG Vanilla+', ru: 'SBG Vanilla+' };
 
 // WGS84 ellipsoid parameters for EPSG:3395 coordinate transformation
@@ -110,7 +104,7 @@ function loadTileUrl(): string {
 }
 
 function isCustomValue(value: string): boolean {
-  return value === CUSTOM_VALUE || value === CUSTOM_DARK_VALUE;
+  return value === CUSTOM_VALUE;
 }
 
 function lockGameSource(): void {
@@ -163,7 +157,7 @@ function buildEllipsoidalTileUrlFunction(urlTemplate: string): (coord: number[])
   };
 }
 
-function applyTileSource(url: string, variant: string): void {
+function applyTileSource(url: string): void {
   const OlXyz = window.ol?.source?.XYZ;
   if (!url || !OlXyz || !gameTileLayer) return;
 
@@ -175,24 +169,20 @@ function applyTileSource(url: string, variant: string): void {
   if (originalSetSource) {
     originalSetSource(source);
   }
-
-  const isDark = variant === CUSTOM_DARK_VALUE;
-  injectStyles(isDark ? DARK_FILTER_CSS : LIGHT_FILTER_CSS, TILE_FILTER_ID);
 }
 
 function removeCustomTiles(): void {
   unlockGameSource();
-  removeStyles(TILE_FILTER_ID);
 }
 
 function applyCustomSource(): void {
   const url = loadTileUrl();
   const variant = loadSelectedLayer();
   if (!variant || !isCustomValue(variant)) return;
-  applyTileSource(url, variant);
+  applyTileSource(url);
 }
 
-function updateRadioState(urlInput: HTMLInputElement, radios: HTMLInputElement[]): void {
+function updateRadioState(urlInput: HTMLTextAreaElement, radios: HTMLInputElement[]): void {
   const hasUrl = urlInput.value.trim().length > 0;
   for (const radio of radios) {
     radio.disabled = !hasUrl;
@@ -213,14 +203,14 @@ function injectIntoPopup(popup: Element): void {
   header.className = 'layers-config__subheader';
   header.textContent = t(LABEL_HEADER);
 
-  const urlLabel = document.createElement('label');
-  urlLabel.className = 'layers-config__entry svp-tile-url-entry';
-  const urlInput = document.createElement('input');
-  urlInput.type = 'text';
+  const urlWrapper = document.createElement('div');
+  urlWrapper.className = 'layers-config__entry svp-tile-url-entry';
+  const urlInput = document.createElement('textarea');
   urlInput.className = 'svp-tile-url-input';
   urlInput.placeholder = 'https://example.com/tiles/{z}/{x}/{y}.png';
   urlInput.value = loadTileUrl();
-  urlLabel.appendChild(urlInput);
+  urlInput.rows = 2;
+  urlWrapper.appendChild(urlInput);
 
   const customRadios: HTMLInputElement[] = [];
 
@@ -240,7 +230,6 @@ function injectIntoPopup(popup: Element): void {
   }
 
   const customLabel = createRadioLabel(CUSTOM_VALUE, LABEL_CUSTOM);
-  const customDarkLabel = createRadioLabel(CUSTOM_DARK_VALUE, LABEL_CUSTOM_DARK);
 
   urlInput.addEventListener('input', () => {
     updateRadioState(urlInput, customRadios);
@@ -249,7 +238,7 @@ function injectIntoPopup(popup: Element): void {
       const url = urlInput.value.trim();
       if (url) {
         localStorage.setItem(STORAGE_KEY_URL, url);
-        applyTileSource(url, checkedCustom.value);
+        applyTileSource(url);
       }
     }
   });
@@ -267,12 +256,11 @@ function injectIntoPopup(popup: Element): void {
     }
   }
 
-  insertAfter.after(customDarkLabel);
   insertAfter.after(customLabel);
-  insertAfter.after(urlLabel);
+  insertAfter.after(urlWrapper);
   insertAfter.after(header);
 
-  injectedElements.push(header, urlLabel, customLabel, customDarkLabel);
+  injectedElements.push(header, urlWrapper, customLabel);
 
   const handleRadioChange = (event: Event): void => {
     const target = event.target;
@@ -285,7 +273,7 @@ function injectIntoPopup(popup: Element): void {
         }
         localStorage.setItem(STORAGE_KEY_URL, url);
         localStorage.setItem(STORAGE_KEY_LAYER, target.value);
-        applyTileSource(url, target.value);
+        applyTileSource(url);
       }
     } else if (target.checked) {
       lastGameRadioValue = target.value;
@@ -394,7 +382,6 @@ export const mapTileLayers: IFeatureModule = {
     enabled = false;
 
     unlockGameSource(true);
-    removeStyles(TILE_FILTER_ID);
     removeStyles(MODULE_ID);
     cleanupInjected();
     restoreGameRadioSelection();
