@@ -22,7 +22,6 @@ type TileLayer = IOlLayer & {
 
 const LABEL_CUSTOM = { en: 'Custom tiles', ru: 'Свои тайлы' };
 const LABEL_CUSTOM_DARK = { en: 'Custom tiles (dark)', ru: 'Свои тайлы (тёмная)' };
-const LABEL_HEADER = { en: 'SBG Vanilla+', ru: 'SBG Vanilla+' };
 
 let enabled = false;
 let gameTileLayer: TileLayer | null = null;
@@ -130,10 +129,6 @@ function injectIntoPopup(popup: Element): void {
   const insertAfter = lastGameRadio?.closest('.layers-config__entry') ?? null;
   if (!insertAfter) return;
 
-  const header = document.createElement('h4');
-  header.className = 'layers-config__subheader';
-  header.textContent = t(LABEL_HEADER);
-
   const urlWrapper = document.createElement('div');
   urlWrapper.className = 'layers-config__entry svp-tile-url-entry';
   const urlInput = document.createElement('textarea');
@@ -188,12 +183,11 @@ function injectIntoPopup(popup: Element): void {
     }
   }
 
+  insertAfter.after(urlWrapper);
   insertAfter.after(customDarkLabel);
   insertAfter.after(customLabel);
-  insertAfter.after(urlWrapper);
-  insertAfter.after(header);
 
-  injectedElements.push(header, urlWrapper, customLabel, customDarkLabel);
+  injectedElements.push(customLabel, customDarkLabel, urlWrapper);
 
   const handleRadioChange = (event: Event): void => {
     const target = event.target;
