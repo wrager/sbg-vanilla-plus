@@ -12,6 +12,7 @@ let pointsSource: IOlVectorSource | null = null;
 const visited = new Set<string | number>();
 let chainOrigin: number[] | null = null;
 let expectedNextGuid: string | null = null;
+let lastSeenGuid: string | null = null;
 let popupObserver: MutationObserver | null = null;
 let onButtonClick: (() => void) | null = null;
 
@@ -143,12 +144,17 @@ function onPopupMutation(popup: Element): void {
   const isVisible = !popup.classList.contains('hidden');
   if (isVisible) {
     const currentGuid = (popup as HTMLElement).dataset.guid ?? null;
-    // Сброс цепочки при ручном открытии точки (не нашей навигацией)
-    if (currentGuid !== expectedNextGuid) {
+    // MutationObserver может сработать несколько раз для одного открытия
+    // (class, data-guid, childList). Обнулять expectedNextGuid только
+    // когда он совпал или когда точно ручное открытие другой точки.
+    if (currentGuid === expectedNextGuid) {
+      expectedNextGuid = null;
+    } else if (currentGuid !== lastSeenGuid) {
       visited.clear();
       chainOrigin = null;
+      expectedNextGuid = null;
     }
-    expectedNextGuid = null;
+    lastSeenGuid = currentGuid;
     injectButton(popup);
   }
 }
@@ -225,5 +231,6 @@ export const nextPointNavigation: IFeatureModule = {
     visited.clear();
     chainOrigin = null;
     expectedNextGuid = null;
+    lastSeenGuid = null;
   },
 };
