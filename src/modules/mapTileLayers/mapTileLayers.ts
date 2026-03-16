@@ -23,6 +23,12 @@ const LABEL_CUSTOM = { en: 'Custom tiles', ru: 'Свои тайлы' };
 const LABEL_CUSTOM_DARK = { en: 'Custom tiles (dark)', ru: 'Свои тайлы (тёмная)' };
 const LABEL_HEADER = { en: 'SBG Vanilla+', ru: 'SBG Vanilla+' };
 
+// WGS84 ellipsoid parameters for EPSG:3395 coordinate transformation
+const WGS84_ECCENTRICITY = 0.0818191908426;
+const HALF_ECCENTRICITY = WGS84_ECCENTRICITY / 2;
+const EARTH_RADIUS = 6378137;
+const MERCATOR_EXTENT = Math.PI * EARTH_RADIUS;
+
 let enabled = false;
 let gameTileLayer: TileLayer | null = null;
 let originalSource: IOlVectorSource | null = null;
@@ -33,6 +39,57 @@ let popupObserver: MutationObserver | null = null;
 let injectedElements: HTMLElement[] = [];
 let boundChangeHandler: ((event: Event) => void) | null = null;
 let changeTarget: Element | null = null;
+
+/**
+ * Convert standard XYZ tile Y to latitude (EPSG:3857 spherical Mercator inverse).
+ */
+function sphericalTileYToLatitude(tileY: number, zoom: number): number {
+  const n = Math.PI * (1 - (2 * tileY) / (1 << zoom));
+  return Math.atan(Math.sinh(n));
+}
+
+/**
+ * Convert latitude to tile Y in EPSG:3395 (ellipsoidal Mercator) tile grid.
+ */
+function latitudeToEllipsoidalTileY(latitude: number, zoom: number): number {
+  const sinLatitude = Math.sin(latitude);
+  const mercatorY =
+    EARTH_RADIUS *
+    Math.log(
+      Math.tan(Math.PI / 4 + latitude / 2) *
+        Math.pow(
+          (1 - WGS84_ECCENTRICITY * sinLatitude) / (1 + WGS84_ECCENTRICITY * sinLatitude),
+          HALF_ECCENTRICITY,
+        ),
+    );
+  return Math.floor(((1 << zoom) * (1 - mercatorY / MERCATOR_EXTENT)) / 2);
+}
+
+/**
+ * Adjust tile Y from EPSG:3857 (spherical Mercator) to EPSG:3395 (ellipsoidal Mercator).
+ *
+ * EPSG:3857 uses a sphere, EPSG:3395 uses the WGS84 ellipsoid. The difference
+ * causes a latitude-dependent offset (up to ~36 km at 57°N). This function
+ * converts tile Y so that a tile server expecting ellipsoidal coordinates
+ * returns the correct geographic area.
+ */
+export function adjustTileYToEllipsoidal(tileY: number, zoom: number): number {
+  const latitude = sphericalTileYToLatitude(tileY, zoom);
+  return latitudeToEllipsoidalTileY(latitude, zoom);
+}
+
+/**
+ * Detect tile servers that use EPSG:3395 (ellipsoidal Mercator) by URL pattern.
+ * These servers require Y coordinate adjustment to align with OpenLayers' EPSG:3857 map.
+ */
+export function needsEllipsoidalProjection(url: string): boolean {
+  try {
+    const parsed = new URL(url.replace(/\{[xyz]\}/g, '0'));
+    return parsed.hostname.startsWith('core-renderer-tiles.maps.');
+  } catch {
+    return false;
+  }
+}
 
 export function findBaseTileLayer(olMap: IOlMap): TileLayer | null {
   for (const layer of olMap.getLayers().getArray()) {
@@ -76,13 +133,35 @@ function unlockGameSource(): void {
   hasGameRequest = false;
 }
 
+/**
+ * Build a tileUrlFunction that adjusts Y coordinates for EPSG:3395 tile servers.
+ *
+ * Different OpenLayers versions pass tile coordinates in different formats:
+ * some use negative internal encoding (y = -(row + 1)), others pass standard
+ * XYZ y directly. We handle both by normalizing negative values.
+ */
+function buildEllipsoidalTileUrlFunction(urlTemplate: string): (coord: number[]) => string {
+  return (coord: number[]) => {
+    const zoom = coord[0];
+    const x = coord[1];
+    const y = coord[2] < 0 ? -coord[2] - 1 : coord[2];
+    const adjustedY = adjustTileYToEllipsoidal(y, zoom);
+    return urlTemplate
+      .replace('{z}', String(zoom))
+      .replace('{x}', String(x))
+      .replace('{y}', String(adjustedY));
+  };
+}
+
 function applyTileSource(url: string, variant: string): void {
   const OlXyz = window.ol?.source?.XYZ;
   if (!url || !OlXyz || !gameTileLayer) return;
 
   lockGameSource();
 
-  const source = new OlXyz({ url });
+  const source = needsEllipsoidalProjection(url)
+    ? new OlXyz({ tileUrlFunction: buildEllipsoidalTileUrlFunction(url) })
+    : new OlXyz({ url });
   if (originalSetSource) {
     originalSetSource(source);
   }

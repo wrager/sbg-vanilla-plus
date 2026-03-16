@@ -78,7 +78,12 @@ interface IOlGlobal {
   layer?: { Vector?: new (opts: Record<string, unknown>) => IOlLayer };
   source?: {
     Vector?: new () => IOlVectorSource;
-    XYZ?: new (opts: { url: string; crossOrigin?: string; attributions?: string }) => IOlTileSource;
+    XYZ?: new (opts: {
+      url?: string;
+      crossOrigin?: string;
+      attributions?: string;
+      tileUrlFunction?: (coord: number[]) => string;
+    }) => IOlTileSource;
   };
   style?: {
     Style?: new (opts: Record<string, unknown>) => unknown;
