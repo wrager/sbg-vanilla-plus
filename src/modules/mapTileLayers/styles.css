@@ -1,0 +1,14 @@
+.svp-tile-url-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  font-size: 12px;
+  background: var(--background);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.svp-tile-url-input::placeholder {
+  color: var(--text-disabled);
+}

@@ -41,9 +41,19 @@ export interface IOlVectorSource {
   un(type: string, listener: () => void): void;
 }
 
+export interface IOlTileSource {
+  readonly __brand?: 'OlTileSource';
+}
+
 export interface IOlLayer {
   get(key: string): unknown;
   getSource(): IOlVectorSource | null;
+}
+
+export function hasTileSource(layer: IOlLayer): layer is IOlLayer & {
+  setSource(source: unknown): void;
+} {
+  return 'setSource' in layer && typeof (layer as Record<string, unknown>).setSource === 'function';
 }
 
 export interface IOlInteraction {
@@ -73,7 +83,15 @@ export interface IOlMap {
 interface IOlGlobal {
   Map: { prototype: { getView: () => IOlView } };
   layer?: { Vector?: new (opts: Record<string, unknown>) => IOlLayer };
-  source?: { Vector?: new () => IOlVectorSource };
+  source?: {
+    Vector?: new () => IOlVectorSource;
+    XYZ?: new (opts: {
+      url?: string;
+      crossOrigin?: string;
+      attributions?: string;
+      tileUrlFunction?: (coord: number[]) => string;
+    }) => IOlTileSource;
+  };
   style?: {
     Style?: new (opts: Record<string, unknown>) => unknown;
     Text?: new (opts: Record<string, unknown>) => unknown;

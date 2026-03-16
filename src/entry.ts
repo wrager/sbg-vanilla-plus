@@ -14,6 +14,7 @@ import { keyCountOnPoints } from './modules/keyCountOnPoints/keyCountOnPoints';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
 import { nextPointNavigation } from './modules/nextPointNavigation/nextPointNavigation';
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
+import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 
 if (!isDisabled()) {
   initErrorLog();
@@ -31,5 +32,6 @@ if (!isDisabled()) {
     keyCountOnPoints,
     nextPointNavigation,
     singleFingerRotation,
+    mapTileLayers,
   ]);
 }
