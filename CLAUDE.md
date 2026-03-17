@@ -1,6 +1,6 @@
-# SBG Vanilla+ — Правила проекта
+# Правила работы над проектом
 
-Юзерскрипт для SBG (мобильная браузерная геолокационная игра). Модифицирует UI/UX, читает (не изменяет) ответы API.
+Юзерскрипт для SBG (мобильная браузерная геолокационная игра). Модифицирует UI/UX.
 
 ## Критические запреты (нарушение = перманентный бан в игре)
 
@@ -13,15 +13,21 @@
 
 `npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build`
 
-Если `format:check` падает — сначала `npx prettier --write .`
+Если `format:check` падает — запустить `npx prettier --write .`, а затем повторить.
 
 ## Код
 
-- **Запрещён `as`-кастинг** без type guards — даже в тестах. Вместо `as` использовать type guards (`is`-функции, `in`-проверки, `instanceof`). В крайнем случае `as` допустим только с комментарием, объясняющим почему guard невозможен
-- **Запрещено отключение ESLint** (`eslint-disable`) — даже в тестах. В крайнем случае допустимо только с оправданием в комментарии
 - При изменении **lifecycle-кода** (init/enable/disable модулей) — проверять ВСЕ фазы, а не только изменяемую
-- Перед правкой существующей фичи — **сначала искать в `refs/`** (Read/Grep). Если `refs/` нет — `npm run refs:fetch`
-- **Не угадывать** DOM-классы/ID игровых элементов — запросить HTML из DevTools у пользователя
+- Перед реализацией новой фичи или перед сложным исправлением существующей — **сначала искать в `refs/`** (Read/Grep). Если `refs/` нет — запустить `npm run refs:fetch`
+- **Не угадывать** DOM-классы/ID игровых элементов — посмотреть в референсах или запросить HTML из DevTools у пользователя
+- Любое написание или изменение кода должно соответвовать docs/dev-principles.md и docs/codestyle.md
+- Любое изменение в архитектуре или в ключевых механизмах должно соответстовать docs/architecture.md
+- Любое использование терминов доменной области должно соответствовать словарю docs/glossary.md. Если используется новый термин, словарь должен актуализироваться в этом же коммите.
+
+## Исследование
+
+- Перед новой фичей/правкой — **изучить модули проекта и референсы**
+- При проблемах с API или платформой — **сначала документация/спецификация**, не перебирать варианты
 
 ## Модули
 
@@ -31,12 +37,12 @@
 
 ## README
 
-- Таблица модулей **всегда актуальна**: при изменении `name`, `id`, `category`, `description` — обновить в том же коммите
+- Таблица модулей должна быть **всегда актуальна**: при изменении `name`, `id`, `category`, `description` — обновить в том же коммите
 - **Порядок** = экран настроек: `CATEGORY_ORDER` (`ui` → `map` → `feature` → `utility` → `fix`), внутри категории — по порядку в `bootstrap()` в `entry.ts`
 
 ## Стили
 
-- **Не хардкодить цвета** — CSS custom properties из `:root`: `--background`, `--text`, `--border`, `--accent`, `--team-0..3`, `--level-1..10`
+- **Не хардкодить цвета** — CSS custom properties из refs/game/css/variables.css.
 - Тема: `localStorage['settings']` → поле `theme` (`"light"` / `"dark"`)
 
 ## Терминология
@@ -45,4 +51,4 @@
 
 ## Документация
 
-[docs/architecture.md](docs/architecture.md) · [docs/codestyle.md](docs/codestyle.md) · [docs/glossary.md](docs/glossary.md)
+[docs/architecture.md](docs/architecture.md) · [docs/dev-principles.md](docs/dev-principles.md) · [docs/codestyle.md](docs/codestyle.md) · [docs/glossary.md](docs/glossary.md)

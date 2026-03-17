@@ -15,3 +15,5 @@
 7. Создать тег `v<версия>`.
 
 **Не пушить.** Пользователь пушит сам. Workflow `.github/workflows/release.yml` автоматически создаст GitHub Release с userscript в ассетах.
+
+**Релизный коммит** — только релизные файлы (RELEASE_NOTES.md, package.json, package-lock.json). Правки кода — отдельные коммиты ДО релиза.
