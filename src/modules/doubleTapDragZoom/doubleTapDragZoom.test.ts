@@ -22,9 +22,13 @@ if (typeof globalThis.TouchEvent === 'undefined') {
   (globalThis as Record<string, unknown>).TouchEvent = TouchEventPolyfill;
 }
 
-jest.mock('../../core/olMap', () => ({
-  getOlMap: jest.fn(),
-}));
+jest.mock('../../core/olMap', () => {
+  const actual: Record<string, unknown> = jest.requireActual('../../core/olMap');
+  return {
+    ...actual,
+    getOlMap: jest.fn(),
+  };
+});
 
 import { doubleTapDragZoom } from './doubleTapDragZoom';
 import { getOlMap } from '../../core/olMap';
@@ -41,11 +45,22 @@ class MockDoubleClickZoom implements IOlInteraction {
   }
 }
 
+class MockDragPan implements IOlInteraction {
+  private active = true;
+  setActive(value: boolean): void {
+    this.active = value;
+  }
+  getActive(): boolean {
+    return this.active;
+  }
+}
+
 let mockSetZoom: jest.Mock;
 let currentZoom: number;
 let mockView: IOlView;
 let mockMap: IOlMap;
 let doubleClickZoom: MockDoubleClickZoom;
+let dragPan: MockDragPan;
 let viewport: HTMLDivElement;
 let canvas: HTMLCanvasElement;
 
@@ -98,12 +113,13 @@ beforeEach(async () => {
   };
 
   doubleClickZoom = new MockDoubleClickZoom();
+  dragPan = new MockDragPan();
   mockMap = {
     getView: () => mockView,
     getSize: () => [800, 600],
     getLayers: jest.fn() as unknown as IOlMap['getLayers'],
     getInteractions: () => ({
-      getArray: () => [doubleClickZoom],
+      getArray: () => [doubleClickZoom, dragPan],
     }),
     addLayer: jest.fn(),
     removeLayer: jest.fn(),
@@ -120,7 +136,7 @@ beforeEach(async () => {
 
   window.ol = {
     Map: { prototype: { getView: jest.fn() } },
-    interaction: { DoubleClickZoom: MockDoubleClickZoom },
+    interaction: { DoubleClickZoom: MockDoubleClickZoom, DragPan: MockDragPan },
   } as unknown as typeof window.ol;
 
   await doubleTapDragZoom.init();
@@ -256,6 +272,40 @@ describe('doubleTapDragZoom', () => {
     expect(doubleClickZoom.getActive()).toBe(false);
   });
 
+  test('disables DragPan when entering secondTapDown state', () => {
+    // First tap
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    dispatchTouch('touchend');
+
+    // Second tap — enters secondTapDown
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+
+    expect(dragPan.getActive()).toBe(false);
+  });
+
+  test('restores DragPan on gesture reset', () => {
+    // Enter secondTapDown
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    dispatchTouch('touchend');
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    expect(dragPan.getActive()).toBe(false);
+
+    // Touchend resets gesture
+    dispatchTouch('touchend');
+
+    expect(dragPan.getActive()).toBe(true);
+  });
+
+  test('restores DragPan on module disable', async () => {
+    // Enter zooming state
+    doubleTapAndDrag(200, 200, 300);
+    expect(dragPan.getActive()).toBe(false);
+
+    await doubleTapDragZoom.disable();
+
+    expect(dragPan.getActive()).toBe(true);
+  });
+
   test('disable re-enables DoubleClickZoom interactions', async () => {
     await doubleTapDragZoom.disable();
     expect(doubleClickZoom.getActive()).toBe(true);
@@ -358,12 +408,13 @@ describe('doubleTapDragZoom', () => {
     const enablePromise = doubleTapDragZoom.enable();
     await doubleTapDragZoom.disable();
 
-    // Re-create fresh interaction since previous one was re-enabled
+    // Re-create fresh interactions since previous ones were re-enabled
     const freshInteraction = new MockDoubleClickZoom();
+    const freshDragPan = new MockDragPan();
     mockMap = {
       ...mockMap,
       getInteractions: () => ({
-        getArray: () => [freshInteraction],
+        getArray: () => [freshInteraction, freshDragPan],
       }),
     };
     resolveMap(mockMap);

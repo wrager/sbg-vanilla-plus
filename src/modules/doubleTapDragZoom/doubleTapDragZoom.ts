@@ -1,6 +1,6 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import type { IOlInteraction, IOlMap } from '../../core/olMap';
-import { getOlMap } from '../../core/olMap';
+import { findDragPanInteractions, getOlMap } from '../../core/olMap';
 
 const MODULE_ID = 'doubleTapDragZoom';
 
@@ -20,6 +20,7 @@ type GestureState = 'idle' | 'firstTapDown' | 'waitingSecondTap' | 'secondTapDow
 let map: IOlMap | null = null;
 let enabled = false;
 let disabledInteractions: IOlInteraction[] = [];
+let disabledDragPanInteractions: IOlInteraction[] = [];
 
 // Gesture state
 let state: GestureState = 'idle';
@@ -35,8 +36,24 @@ function isDoubleClickZoom(interaction: IOlInteraction): boolean {
   return DoubleClickZoom !== undefined && interaction instanceof DoubleClickZoom;
 }
 
+function disableDragPan(): void {
+  if (!map) return;
+  disabledDragPanInteractions = findDragPanInteractions(map);
+  for (const interaction of disabledDragPanInteractions) {
+    interaction.setActive(false);
+  }
+}
+
+function restoreDragPan(): void {
+  for (const interaction of disabledDragPanInteractions) {
+    interaction.setActive(true);
+  }
+  disabledDragPanInteractions = [];
+}
+
 function resetGesture(): void {
   state = 'idle';
+  restoreDragPan();
   if (secondTapTimer !== null) {
     clearTimeout(secondTapTimer);
     secondTapTimer = null;
@@ -98,6 +115,7 @@ function onTouchStart(event: TouchEvent): void {
     state = 'secondTapDown';
     initialY = touch.clientY;
     initialZoom = zoom;
+    disableDragPan();
     event.preventDefault();
     return;
   }
@@ -175,28 +193,16 @@ function onTouchEndCapture(event: TouchEvent): void {
   }
 }
 
-// Блокируем pointermove во время жеста зума, чтобы OL DragPan
-// не панорамировал карту параллельно с нашим зумом.
-function onPointerMove(event: PointerEvent): void {
-  if (state === 'zooming' && event.pointerType === 'touch') {
-    event.stopImmediatePropagation();
-  }
-}
-
 function addListeners(): void {
   document.addEventListener('touchstart', onTouchStartCapture, { capture: true, passive: false });
   document.addEventListener('touchmove', onTouchMoveCapture, { capture: true, passive: false });
   document.addEventListener('touchend', onTouchEndCapture, { capture: true });
-  document.addEventListener('pointermove', onPointerMove as EventListener, { capture: true });
 }
 
 function removeListeners(): void {
   document.removeEventListener('touchstart', onTouchStartCapture, { capture: true });
   document.removeEventListener('touchmove', onTouchMoveCapture, { capture: true });
   document.removeEventListener('touchend', onTouchEndCapture, { capture: true });
-  document.removeEventListener('pointermove', onPointerMove as EventListener, {
-    capture: true,
-  });
 }
 
 function disableDoubleClickZoomInteractions(): void {

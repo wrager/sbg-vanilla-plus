@@ -23,7 +23,7 @@ if (typeof globalThis.TouchEvent === 'undefined') {
 }
 
 jest.mock('../../core/olMap', () => {
-  const actual = jest.requireActual('../../core/olMap') as Record<string, unknown>;
+  const actual: Record<string, unknown> = jest.requireActual('../../core/olMap');
   return {
     ...actual,
     getOlMap: jest.fn(),
