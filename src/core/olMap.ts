@@ -126,6 +126,15 @@ declare global {
   }
 }
 
+export function isDragPan(interaction: IOlInteraction): boolean {
+  const DragPan = window.ol?.interaction?.DragPan;
+  return DragPan !== undefined && interaction instanceof DragPan;
+}
+
+export function findDragPanInteractions(map: IOlMap): IOlInteraction[] {
+  return map.getInteractions().getArray().filter(isDragPan);
+}
+
 let captured: IOlMap | null = null;
 const resolvers: ((map: IOlMap) => void)[] = [];
 
