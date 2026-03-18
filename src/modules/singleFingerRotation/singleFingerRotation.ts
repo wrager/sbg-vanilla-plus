@@ -1,6 +1,6 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import type { IOlMap } from '../../core/olMap';
-import { getOlMap } from '../../core/olMap';
+import type { IOlInteraction, IOlMap } from '../../core/olMap';
+import { findDragPanInteractions, getOlMap } from '../../core/olMap';
 import { waitForElement } from '../../core/dom';
 
 const MODULE_ID = 'singleFingerRotation';
@@ -10,6 +10,7 @@ let map: IOlMap | null = null;
 let latestPoint: [number, number] | null = null;
 let inflateExtent = false;
 let enabled = false;
+let disabledDragPanInteractions: IOlInteraction[] = [];
 
 function isFollowActive(): boolean {
   return localStorage.getItem('follow') === 'true';
@@ -41,8 +42,24 @@ function applyRotation(delta: number): void {
   view.setRotation(view.getRotation() + delta);
 }
 
+function disableDragPan(): void {
+  if (!map) return;
+  disabledDragPanInteractions = findDragPanInteractions(map);
+  for (const interaction of disabledDragPanInteractions) {
+    interaction.setActive(false);
+  }
+}
+
+function restoreDragPan(): void {
+  for (const interaction of disabledDragPanInteractions) {
+    interaction.setActive(true);
+  }
+  disabledDragPanInteractions = [];
+}
+
 function resetGesture(): void {
   latestPoint = null;
+  restoreDragPan();
 }
 
 function onTouchStart(event: TouchEvent): void {
@@ -55,6 +72,7 @@ function onTouchStart(event: TouchEvent): void {
 
   const touch = event.targetTouches[0];
   latestPoint = [touch.clientX, touch.clientY];
+  disableDragPan();
 }
 
 function onTouchMove(event: TouchEvent): void {
@@ -75,21 +93,11 @@ function onTouchEnd(): void {
   resetGesture();
 }
 
-// Блокируем pointermove во время жеста, чтобы OL's DragPan не
-// панорамировал карту параллельно с нашим поворотом. Touch events
-// не подавляют pointer events — нужен отдельный перехват в capture-фазе.
-function onPointerMove(event: PointerEvent): void {
-  if (latestPoint && event.pointerType === 'touch') {
-    event.stopImmediatePropagation();
-  }
-}
-
 function addListeners(): void {
   if (!viewport) return;
   viewport.addEventListener('touchstart', onTouchStart);
   viewport.addEventListener('touchmove', onTouchMove, { passive: false });
   viewport.addEventListener('touchend', onTouchEnd);
-  document.addEventListener('pointermove', onPointerMove as EventListener, { capture: true });
 }
 
 function removeListeners(): void {
@@ -97,9 +105,6 @@ function removeListeners(): void {
   viewport.removeEventListener('touchstart', onTouchStart);
   viewport.removeEventListener('touchmove', onTouchMove);
   viewport.removeEventListener('touchend', onTouchEnd);
-  document.removeEventListener('pointermove', onPointerMove as EventListener, {
-    capture: true,
-  });
 }
 
 export const singleFingerRotation: IFeatureModule = {
@@ -154,6 +159,7 @@ export const singleFingerRotation: IFeatureModule = {
     enabled = false;
     inflateExtent = false;
     removeListeners();
+    restoreDragPan();
     resetGesture();
   },
 };

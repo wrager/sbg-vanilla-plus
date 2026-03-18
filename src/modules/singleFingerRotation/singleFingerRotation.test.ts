@@ -1,4 +1,4 @@
-import type { IOlMap, IOlView } from '../../core/olMap';
+import type { IOlInteraction, IOlMap, IOlView } from '../../core/olMap';
 
 // jsdom does not implement Touch/TouchEvent — polyfill with the properties we need
 class TouchPolyfill {
@@ -22,9 +22,13 @@ if (typeof globalThis.TouchEvent === 'undefined') {
   (globalThis as Record<string, unknown>).TouchEvent = TouchEventPolyfill;
 }
 
-jest.mock('../../core/olMap', () => ({
-  getOlMap: jest.fn(),
-}));
+jest.mock('../../core/olMap', () => {
+  const actual = jest.requireActual('../../core/olMap') as Record<string, unknown>;
+  return {
+    ...actual,
+    getOlMap: jest.fn(),
+  };
+});
 
 jest.mock('../../core/dom', () => ({
   waitForElement: jest.fn(),
@@ -37,9 +41,20 @@ import { waitForElement } from '../../core/dom';
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 const mockWaitForElement = waitForElement as jest.MockedFunction<typeof waitForElement>;
 
+class MockDragPan implements IOlInteraction {
+  private active = true;
+  setActive(value: boolean): void {
+    this.active = value;
+  }
+  getActive(): boolean {
+    return this.active;
+  }
+}
+
 let realSetRotation: jest.Mock;
 let mockView: IOlView;
 let mockMap: IOlMap;
+let dragPan: MockDragPan;
 let viewport: HTMLDivElement;
 let canvas: HTMLCanvasElement;
 
@@ -78,11 +93,12 @@ beforeEach(async () => {
     },
     getZoom: () => 17,
   };
+  dragPan = new MockDragPan();
   mockMap = {
     getView: () => mockView,
     getSize: () => [800, 600],
     getLayers: jest.fn() as unknown as IOlMap['getLayers'],
-    getInteractions: () => ({ getArray: () => [] }),
+    getInteractions: () => ({ getArray: () => [dragPan] }),
     addLayer: jest.fn(),
     removeLayer: jest.fn(),
     updateSize: jest.fn(),
@@ -93,6 +109,11 @@ beforeEach(async () => {
   canvas = document.createElement('canvas');
   viewport.appendChild(canvas);
   document.body.appendChild(viewport);
+
+  window.ol = {
+    Map: { prototype: { getView: jest.fn() } },
+    interaction: { DragPan: MockDragPan },
+  } as unknown as typeof window.ol;
 
   mockWaitForElement.mockResolvedValue(viewport);
   mockGetOlMap.mockResolvedValue(mockMap);
@@ -109,6 +130,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await singleFingerRotation.disable();
   viewport.remove();
+  delete window.ol;
 });
 
 test('does not rotate when FW is off', () => {
@@ -226,6 +248,43 @@ test('accounts for view padding when calculating rotation center', () => {
   // End: atan2(405-405, 600-400) = 0
   // Delta = PI/2
   expect(rotation).toBeCloseTo(Math.PI / 2, 1);
+});
+
+test('disables DragPan during rotation gesture in follow mode', () => {
+  localStorage.setItem('follow', 'true');
+
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+
+  expect(dragPan.getActive()).toBe(false);
+});
+
+test('restores DragPan on touchend', () => {
+  localStorage.setItem('follow', 'true');
+
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+  dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+  dispatchTouch('touchend');
+
+  expect(dragPan.getActive()).toBe(true);
+});
+
+test('restores DragPan on disable', async () => {
+  localStorage.setItem('follow', 'true');
+
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+  expect(dragPan.getActive()).toBe(false);
+
+  await singleFingerRotation.disable();
+
+  expect(dragPan.getActive()).toBe(true);
+});
+
+test('does not disable DragPan when follow mode is off', () => {
+  localStorage.setItem('follow', 'false');
+
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+
+  expect(dragPan.getActive()).toBe(true);
 });
 
 test('preventDefault is called on touchmove during gesture', () => {
