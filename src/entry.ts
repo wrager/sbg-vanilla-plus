@@ -9,6 +9,7 @@ import { shiftMapCenterDown } from './modules/shiftMapCenterDown/shiftMapCenterD
 import { disableDoubleTapZoom } from './modules/disableDoubleTapZoom/disableDoubleTapZoom';
 import { doubleTapDragZoom } from './modules/doubleTapDragZoom/doubleTapDragZoom';
 import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
+import { groupErrorToasts } from './modules/groupErrorToasts/groupErrorToasts';
 import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
 import { keyCountOnPoints } from './modules/keyCountOnPoints/keyCountOnPoints';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
@@ -27,6 +28,7 @@ if (!isDisabled()) {
     largerPointTapArea,
     disableDoubleTapZoom,
     doubleTapDragZoom,
+    groupErrorToasts,
     drawButtonFix,
     keepScreenOn,
     keyCountOnPoints,
