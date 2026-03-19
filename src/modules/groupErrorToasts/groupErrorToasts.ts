@@ -31,6 +31,10 @@ interface ITrackedToast {
   originalText: string;
 }
 
+interface IToastElement extends HTMLElement {
+  timeOutValue?: ReturnType<typeof setTimeout>;
+}
+
 declare global {
   interface Window {
     Toastify: ToastifyFactory;
@@ -47,6 +51,30 @@ function getContainerIdentity(selector: Element | null): string {
 
 function getDeduplicationKey(text: string, selector: Element | null): string {
   return `${text}::${getContainerIdentity(selector)}`;
+}
+
+function removeToastElementImmediately(instance: IToastifyInstance): void {
+  const element = instance.toastElement as IToastElement | null;
+  if (!element) return;
+
+  if (element.timeOutValue) {
+    clearTimeout(element.timeOutValue);
+  }
+  element.remove();
+}
+
+function wrapCallback(
+  toast: IToastifyInstance,
+  key: string,
+  tracked: Map<string, ITrackedToast>,
+): void {
+  const originalCallback = toast.options.callback;
+  toast.options.callback = () => {
+    if (tracked.get(key)?.instance === toast) {
+      tracked.delete(key);
+    }
+    originalCallback?.();
+  };
 }
 
 function createToastifyWrapper(
@@ -67,27 +95,29 @@ function createToastifyWrapper(
       const key = getDeduplicationKey(text, toast.options.selector);
       const existing = tracked.get(key);
 
-      if (existing) {
+      if (existing?.instance.toastElement?.parentNode) {
         const newCount = existing.count + 1;
-        existing.instance.hideToast();
         toast.options.text = `${existing.originalText} (×${newCount})`;
+
+        // Update tracking before firing old callback
         tracked.set(key, {
           instance: toast,
           count: newCount,
           originalText: existing.originalText,
         });
-      } else {
-        tracked.set(key, { instance: toast, count: 1, originalText: text });
+
+        // Remove old element instantly (no fade-out animation)
+        // and fire its callback for popup_toasts cleanup
+        removeToastElementImmediately(existing.instance);
+        existing.instance.options.callback?.();
+
+        wrapCallback(toast, key, tracked);
+        originalShowToast();
+        return;
       }
 
-      const originalCallback = toast.options.callback;
-      toast.options.callback = () => {
-        if (tracked.get(key)?.instance === toast) {
-          tracked.delete(key);
-        }
-        originalCallback?.();
-      };
-
+      tracked.set(key, { instance: toast, count: 1, originalText: text });
+      wrapCallback(toast, key, tracked);
       originalShowToast();
     };
 
