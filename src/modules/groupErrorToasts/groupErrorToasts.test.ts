@@ -12,56 +12,49 @@ interface IMockToastOptions {
 interface IMockToast {
   options: IMockToastOptions;
   toastElement: HTMLElement | null;
-  showToast: jest.Mock;
+  showToast(): void;
   hideToast: jest.Mock;
 }
 
-interface IMockToastifyOptions {
-  text?: string;
-  className?: string;
-  selector?: Element | null;
-}
+function setupMockToastify(): void {
+  const proto = {
+    showToast(this: IMockToast) {
+      const element = document.createElement('div');
+      element.className = 'toastify on';
+      element.innerHTML = this.options.text;
+      const container = (this.options.selector as HTMLElement | null) ?? document.body;
+      container.appendChild(element);
+      this.toastElement = element;
+    },
+    hideToast: jest.fn(),
+  };
 
-function createMockToastify(): jest.Mock<IMockToast, [IMockToastifyOptions]> {
-  return jest.fn((options: IMockToastifyOptions) => {
-    const toast: IMockToast = {
-      options: {
-        text: options.text ?? '',
-        className: options.className ?? 'interaction-toast',
-        selector: options.selector ?? null,
-        id: Math.round(Math.random() * 1e5),
-        callback: null,
-        duration: 3000,
-      },
-      toastElement: null,
-      showToast: jest.fn(() => {
-        const element = document.createElement('div');
-        element.className = 'toastify on';
-        element.innerHTML = toast.options.text;
-        const container = (toast.options.selector as HTMLElement | null) ?? document.body;
-        container.appendChild(element);
-        toast.toastElement = element;
-      }),
-      hideToast: jest.fn(),
+  const factory = function (options: Partial<IMockToastOptions>): IMockToast {
+    const toast: IMockToast = Object.create(proto) as IMockToast;
+    toast.options = {
+      text: options.text ?? '',
+      className: options.className ?? 'interaction-toast',
+      selector: options.selector ?? null,
+      id: Math.round(Math.random() * 1e5),
+      callback: null,
+      duration: 3000,
     };
+    toast.toastElement = null;
+    toast.hideToast = jest.fn();
     return toast;
-  });
-}
+  };
+  factory.prototype = proto;
 
-function asMock(toast: ReturnType<typeof window.Toastify>): IMockToast {
-  return toast as unknown as IMockToast;
+  window.Toastify = factory as unknown as typeof window.Toastify;
 }
 
 function fireCallback(toast: ReturnType<typeof window.Toastify>): void {
-  asMock(toast).options.callback?.();
+  (toast as unknown as IMockToast).options.callback?.();
 }
 
 describe('groupErrorToasts', () => {
-  let mockToastify: jest.Mock<IMockToast, [IMockToastifyOptions]>;
-
   beforeEach(() => {
-    mockToastify = createMockToastify();
-    window.Toastify = mockToastify as unknown as typeof window.Toastify;
+    setupMockToastify();
   });
 
   afterEach(async () => {
@@ -171,7 +164,6 @@ describe('groupErrorToasts', () => {
     toast1.options.className = 'error-toast';
     toast1.showToast();
 
-    // Simulate toast expiration via callback
     fireCallback(toast1);
 
     const toast2 = window.Toastify({ text: 'error' });
@@ -194,10 +186,8 @@ describe('groupErrorToasts', () => {
 
     expect(toast2.options.text).toBe('error (×2)');
 
-    // Simulate toast1's callback firing asynchronously (after hideToast animation)
     fireCallback(toast1);
 
-    // Toast3 should still group with toast2
     const toast3 = window.Toastify({ text: 'error' });
     toast3.options.className = 'error-toast';
     toast3.showToast();
@@ -220,16 +210,19 @@ describe('groupErrorToasts', () => {
     toast2.options.className = 'error-toast';
     toast2.showToast();
 
-    // Old element removed from DOM immediately (no hideToast call)
     expect(oldElement?.parentNode).toBeNull();
-    expect(asMock(toast1).hideToast).not.toHaveBeenCalled();
+    expect((toast1 as unknown as IMockToast).hideToast).not.toHaveBeenCalled();
   });
 
-  test('disable restores original Toastify', async () => {
+  test('disable restores original showToast', async () => {
+    const originalShowToast = window.Toastify.prototype.showToast;
     await groupErrorToasts.enable();
+
+    expect(window.Toastify.prototype.showToast).not.toBe(originalShowToast);
+
     await groupErrorToasts.disable();
 
-    expect(window.Toastify).toBe(mockToastify);
+    expect(window.Toastify.prototype.showToast).toBe(originalShowToast);
   });
 
   test('original callback is preserved and called', async () => {
@@ -241,7 +234,6 @@ describe('groupErrorToasts', () => {
     toast.options.callback = originalCallback;
     toast.showToast();
 
-    // Simulate toast expiration
     fireCallback(toast);
 
     expect(originalCallback).toHaveBeenCalled();
@@ -260,7 +252,6 @@ describe('groupErrorToasts', () => {
     toast2.options.className = 'error-toast';
     toast2.showToast();
 
-    // Old toast's callback should have been called for cleanup
     expect(gameCallback).toHaveBeenCalled();
   });
 });

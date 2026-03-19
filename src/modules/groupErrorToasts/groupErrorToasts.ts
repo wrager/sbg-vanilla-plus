@@ -23,7 +23,15 @@ interface IToastifyInstance {
   hideToast(): void;
 }
 
-type ToastifyFactory = (options: Partial<IToastifyOptions>) => IToastifyInstance;
+interface IToastifyPrototype {
+  showToast(this: IToastifyInstance): void;
+  [key: string]: unknown;
+}
+
+interface IToastifyFactory {
+  (options: Partial<IToastifyOptions>): IToastifyInstance;
+  prototype: IToastifyPrototype;
+}
 
 interface ITrackedToast {
   instance: IToastifyInstance;
@@ -37,12 +45,11 @@ interface IToastElement extends HTMLElement {
 
 declare global {
   interface Window {
-    Toastify: ToastifyFactory;
+    Toastify: IToastifyFactory;
   }
 }
 
-let originalToastify: ToastifyFactory | null = null;
-let activeErrorToasts: Map<string, ITrackedToast> | null = null;
+let restorePatch: (() => void) | null = null;
 
 function getContainerIdentity(selector: Element | null): string {
   if (!selector) return 'body';
@@ -68,64 +75,54 @@ function wrapCallback(
   key: string,
   tracked: Map<string, ITrackedToast>,
 ): void {
-  const originalCallback = toast.options.callback;
+  const previousCallback = toast.options.callback;
   toast.options.callback = () => {
     if (tracked.get(key)?.instance === toast) {
       tracked.delete(key);
     }
-    originalCallback?.();
+    previousCallback?.();
   };
 }
 
-function createToastifyWrapper(
-  original: ToastifyFactory,
-  tracked: Map<string, ITrackedToast>,
-): ToastifyFactory {
-  const wrapper = function (options: Partial<IToastifyOptions>): IToastifyInstance {
-    const toast = original(options);
-    const originalShowToast = toast.showToast.bind(toast);
+function installPatch(proto: IToastifyPrototype): () => void {
+  const tracked = new Map<string, ITrackedToast>();
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- called via .call(this)
+  const original = proto.showToast;
 
-    toast.showToast = function () {
-      if (toast.options.className !== ERROR_TOAST_CLASS) {
-        originalShowToast();
-        return;
-      }
+  proto.showToast = function (this: IToastifyInstance) {
+    if (this.options.className !== ERROR_TOAST_CLASS) {
+      original.call(this);
+      return;
+    }
 
-      const text = toast.options.text;
-      const key = getDeduplicationKey(text, toast.options.selector);
-      const existing = tracked.get(key);
+    const text = this.options.text;
+    const key = getDeduplicationKey(text, this.options.selector);
+    const existing = tracked.get(key);
 
-      if (existing?.instance.toastElement?.parentNode) {
-        const newCount = existing.count + 1;
-        toast.options.text = `${existing.originalText} (×${newCount})`;
+    if (existing?.instance.toastElement?.parentNode) {
+      const newCount = existing.count + 1;
+      this.options.text = `${existing.originalText} (×${newCount})`;
 
-        // Update tracking before firing old callback
-        tracked.set(key, {
-          instance: toast,
-          count: newCount,
-          originalText: existing.originalText,
-        });
+      tracked.set(key, {
+        instance: this,
+        count: newCount,
+        originalText: existing.originalText,
+      });
 
-        // Remove old element instantly (no fade-out animation)
-        // and fire its callback for popup_toasts cleanup
-        removeToastElementImmediately(existing.instance);
-        existing.instance.options.callback?.();
+      removeToastElementImmediately(existing.instance);
+      existing.instance.options.callback?.();
+    } else {
+      tracked.set(key, { instance: this, count: 1, originalText: text });
+    }
 
-        wrapCallback(toast, key, tracked);
-        originalShowToast();
-        return;
-      }
-
-      tracked.set(key, { instance: toast, count: 1, originalText: text });
-      wrapCallback(toast, key, tracked);
-      originalShowToast();
-    };
-
-    return toast;
+    wrapCallback(this, key, tracked);
+    original.call(this);
   };
 
-  Object.assign(wrapper, original);
-  return wrapper;
+  return () => {
+    proto.showToast = original;
+    tracked.clear();
+  };
 }
 
 export const groupErrorToasts: IFeatureModule = {
@@ -139,15 +136,10 @@ export const groupErrorToasts: IFeatureModule = {
   category: 'ui',
   init() {},
   enable() {
-    originalToastify = window.Toastify;
-    activeErrorToasts = new Map();
-    window.Toastify = createToastifyWrapper(originalToastify, activeErrorToasts);
+    restorePatch = installPatch(window.Toastify.prototype);
   },
   disable() {
-    if (originalToastify) {
-      window.Toastify = originalToastify;
-      originalToastify = null;
-    }
-    activeErrorToasts = null;
+    restorePatch?.();
+    restorePatch = null;
   },
 };
