@@ -29,9 +29,7 @@ function createMockToastify(): jest.Mock<IMockToast, [IMockToastifyOptions]> {
         callback: null,
       },
       showToast: jest.fn(),
-      hideToast: jest.fn(() => {
-        toast.options.callback?.();
-      }),
+      hideToast: jest.fn(),
     };
     return toast;
   });
@@ -39,6 +37,10 @@ function createMockToastify(): jest.Mock<IMockToast, [IMockToastifyOptions]> {
 
 function asMock(toast: ReturnType<typeof window.Toastify>): IMockToast {
   return toast as unknown as IMockToast;
+}
+
+function fireCallback(toast: ReturnType<typeof window.Toastify>): void {
+  asMock(toast).options.callback?.();
 }
 
 describe('groupErrorToasts', () => {
@@ -152,7 +154,7 @@ describe('groupErrorToasts', () => {
     toast1.showToast();
 
     // Simulate toast expiration via callback
-    asMock(toast1).options.callback?.();
+    fireCallback(toast1);
 
     const toast2 = window.Toastify({ text: 'error' });
     toast2.options.className = 'error-toast';
@@ -160,6 +162,31 @@ describe('groupErrorToasts', () => {
 
     expect(asMock(toast1).hideToast).not.toHaveBeenCalled();
     expect(toast2.options.text).toBe('error');
+  });
+
+  test('async callback from old toast does not remove new toast from tracking', async () => {
+    await groupErrorToasts.enable();
+
+    const toast1 = window.Toastify({ text: 'error' });
+    toast1.options.className = 'error-toast';
+    toast1.showToast();
+
+    const toast2 = window.Toastify({ text: 'error' });
+    toast2.options.className = 'error-toast';
+    toast2.showToast();
+
+    expect(toast2.options.text).toBe('error (×2)');
+
+    // Simulate toast1's callback firing asynchronously after hideToast animation
+    fireCallback(toast1);
+
+    // Toast3 should still group with toast2 despite toast1's late callback
+    const toast3 = window.Toastify({ text: 'error' });
+    toast3.options.className = 'error-toast';
+    toast3.showToast();
+
+    expect(asMock(toast2).hideToast).toHaveBeenCalled();
+    expect(toast3.options.text).toBe('error (×3)');
   });
 
   test('disable restores original Toastify', async () => {
@@ -179,7 +206,7 @@ describe('groupErrorToasts', () => {
     toast.showToast();
 
     // Simulate toast expiration
-    asMock(toast).options.callback?.();
+    fireCallback(toast);
 
     expect(originalCallback).toHaveBeenCalled();
   });

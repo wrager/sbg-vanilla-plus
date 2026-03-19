@@ -24,11 +24,11 @@ if (!isDisabled()) {
   bootstrap([
     collapsibleTopPanel,
     enhancedPointPopupUi,
+    groupErrorToasts,
     shiftMapCenterDown,
     largerPointTapArea,
     disableDoubleTapZoom,
     doubleTapDragZoom,
-    groupErrorToasts,
     drawButtonFix,
     keepScreenOn,
     keyCountOnPoints,

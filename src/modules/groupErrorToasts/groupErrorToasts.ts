@@ -82,7 +82,9 @@ function createToastifyWrapper(
 
       const originalCallback = toast.options.callback;
       toast.options.callback = () => {
-        tracked.delete(key);
+        if (tracked.get(key)?.instance === toast) {
+          tracked.delete(key);
+        }
         originalCallback?.();
       };
 
@@ -104,7 +106,7 @@ export const groupErrorToasts: IFeatureModule = {
     ru: 'Группирует одинаковые тосты ошибок в один со счётчиком вместо накопления',
   },
   defaultEnabled: true,
-  category: 'fix',
+  category: 'ui',
   init() {},
   enable() {
     originalToastify = window.Toastify;
