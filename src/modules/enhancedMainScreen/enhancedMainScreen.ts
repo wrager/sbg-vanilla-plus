@@ -156,8 +156,8 @@ export const enhancedMainScreen: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Enhanced Main Screen', ru: 'Улучшенный главный экран' },
   description: {
-    en: 'Collapses the top-left panel on the map screen to show only inventory and OPS button',
-    ru: 'Сворачивает верхнюю панель экрана с картой, показывая только инвентарь и кнопку ОРПЦ',
+    en: 'Collapses the top-left panel and centers the attack button on the map screen',
+    ru: 'Сворачивает верхнюю панель и центрирует кнопку атаки на экране с картой',
   },
   defaultEnabled: true,
   category: 'ui',

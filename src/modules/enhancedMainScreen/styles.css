@@ -54,3 +54,10 @@
 #svp-top-expand:active {
   opacity: 1;
 }
+
+/* Центрирование кнопки «Атака» по горизонтали экрана */
+#attack-menu {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+}

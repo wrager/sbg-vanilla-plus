@@ -7,7 +7,7 @@ class ResizeObserverStub {
 }
 globalThis.ResizeObserver = ResizeObserverStub;
 
-const TOPLEFT_HTML = `
+const MAIN_SCREEN_HTML = `
 <div class="topleft-container">
   <div class="self-info">
     <div class="self-info__entry">Name: <span id="self-info__name">wrager</span></div>
@@ -21,6 +21,11 @@ const TOPLEFT_HTML = `
     <button id="settings">Settings</button>
   </div>
   <div class="effects"></div>
+</div>
+<div class="bottom-container">
+  <button id="toggle-follow-btn">СЛ</button>
+  <button id="attack-menu">Атака</button>
+  <button id="notifs-menu">Отбивки</button>
 </div>`;
 
 function flushPromises(): Promise<void> {
@@ -40,7 +45,7 @@ function getEntryFor(id: string): HTMLElement | null {
 
 describe('enhancedMainScreen', () => {
   beforeEach(() => {
-    document.body.innerHTML = TOPLEFT_HTML;
+    document.body.innerHTML = MAIN_SCREEN_HTML;
   });
 
   afterEach(async () => {
