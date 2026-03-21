@@ -3,6 +3,8 @@ import { $, injectStyles, removeStyles } from '../../core/dom';
 import { t } from '../../core/l10n';
 import { getOlMap } from '../../core/olMap';
 import type { IOlFeature, IOlMap, IOlLayer, IOlMapEvent, IOlVectorSource } from '../../core/olMap';
+import { loadSettings, isModuleEnabled } from '../../core/settings/storage';
+import { doubleTapDragZoom } from '../doubleTapDragZoom/doubleTapDragZoom';
 import css from './styles.css?inline';
 
 const MODULE_ID = 'refsOnMap';
@@ -153,6 +155,7 @@ const teamCache = new Map<string, number>();
 let teamLoadAborted = false;
 let overallRefsToDelete = 0;
 let uniqueRefsToDelete = 0;
+let doubleTapDragZoomDisabledByViewer = false;
 
 // ── style function ───────────────────────────────────────────────────────────
 
@@ -481,6 +484,12 @@ function showViewer(): void {
   hideGameUi();
   setGameLayersVisible(false);
 
+  const settings = loadSettings();
+  if (isModuleEnabled(settings, doubleTapDragZoom.id, doubleTapDragZoom.defaultEnabled)) {
+    void doubleTapDragZoom.disable();
+    doubleTapDragZoomDisabledByViewer = true;
+  }
+
   // Create one feature per ref (not per point)
   for (const ref of refs) {
     const mapCoords = olProj.fromLonLat(ref.c);
@@ -548,6 +557,11 @@ function hideViewer(): void {
   }
 
   restoreFollowMode();
+
+  if (doubleTapDragZoomDisabledByViewer) {
+    void doubleTapDragZoom.enable();
+    doubleTapDragZoomDisabledByViewer = false;
+  }
 }
 
 // ── tab visibility ───────────────────────────────────────────────────────────

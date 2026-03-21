@@ -328,9 +328,27 @@ jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
 }));
 
+jest.mock('../../core/settings/storage', () => ({
+  loadSettings: jest.fn(() => ({ version: 3, modules: {}, errors: {} })),
+  isModuleEnabled: jest.fn(() => true),
+}));
+
+jest.mock('../doubleTapDragZoom/doubleTapDragZoom', () => ({
+  doubleTapDragZoom: {
+    id: 'doubleTapDragZoom',
+    defaultEnabled: true,
+    enable: jest.fn(() => Promise.resolve()),
+    disable: jest.fn(),
+  },
+}));
+
 import { getOlMap } from '../../core/olMap';
+import { isModuleEnabled } from '../../core/settings/storage';
+import { doubleTapDragZoom } from '../doubleTapDragZoom/doubleTapDragZoom';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
+const mockIsModuleEnabled = isModuleEnabled as jest.MockedFunction<typeof isModuleEnabled>;
+const mockDoubleTapDragZoom = doubleTapDragZoom as jest.Mocked<typeof doubleTapDragZoom>;
 
 describe('refsOnMap enable/disable', () => {
   let view: ReturnType<typeof makeView>;
@@ -449,6 +467,9 @@ describe('refsOnMap viewer', () => {
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('follow');
     document.body.innerHTML = '';
+    (mockDoubleTapDragZoom.disable as jest.Mock).mockClear();
+    (mockDoubleTapDragZoom.enable as jest.Mock).mockClear();
+    mockIsModuleEnabled.mockReturnValue(true);
   });
 
   test('disables follow mode when opening viewer', () => {
@@ -523,5 +544,41 @@ describe('refsOnMap viewer', () => {
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     expect(trash.style.display).toBe('none');
+  });
+
+  test('disables doubleTapDragZoom when opening viewer', () => {
+    mockIsModuleEnabled.mockReturnValue(true);
+    setInventoryCache();
+    clickShowButton();
+
+    expect(mockDoubleTapDragZoom.disable).toHaveBeenCalled();
+  });
+
+  test('restores doubleTapDragZoom when closing viewer', () => {
+    mockIsModuleEnabled.mockReturnValue(true);
+    setInventoryCache();
+    clickShowButton();
+    clickCloseButton();
+
+    expect(mockDoubleTapDragZoom.enable).toHaveBeenCalled();
+  });
+
+  test('does not disable doubleTapDragZoom when it is not enabled', () => {
+    mockIsModuleEnabled.mockReturnValue(false);
+    (mockDoubleTapDragZoom.disable as jest.Mock).mockClear();
+    setInventoryCache();
+    clickShowButton();
+
+    expect(mockDoubleTapDragZoom.disable).not.toHaveBeenCalled();
+  });
+
+  test('does not restore doubleTapDragZoom if it was not disabled by viewer', () => {
+    mockIsModuleEnabled.mockReturnValue(false);
+    (mockDoubleTapDragZoom.enable as jest.Mock).mockClear();
+    setInventoryCache();
+    clickShowButton();
+    clickCloseButton();
+
+    expect(mockDoubleTapDragZoom.enable).not.toHaveBeenCalled();
   });
 });
