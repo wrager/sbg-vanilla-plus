@@ -9,6 +9,20 @@ type Migration = (settings: ISvpSettings) => ISvpSettings;
 const migrations: Migration[] = [
   // v1 → v2: добавлено поле errors
   (s) => ({ ...s, errors: {} }),
+  // v2 → v3: переименование модуля collapsibleTopPanel → enhancedMainScreen
+  (s) => {
+    const modules = { ...s.modules };
+    if ('collapsibleTopPanel' in modules) {
+      modules['enhancedMainScreen'] = modules['collapsibleTopPanel'];
+      delete modules['collapsibleTopPanel'];
+    }
+    const errors = { ...s.errors };
+    if ('collapsibleTopPanel' in errors) {
+      errors['enhancedMainScreen'] = errors['collapsibleTopPanel'];
+      delete errors['collapsibleTopPanel'];
+    }
+    return { ...s, modules, errors };
+  },
 ];
 
 function isSvpSettings(val: unknown): val is ISvpSettings {

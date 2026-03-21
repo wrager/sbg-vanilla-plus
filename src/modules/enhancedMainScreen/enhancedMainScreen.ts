@@ -2,7 +2,7 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 import { $, $$, injectStyles, removeStyles, waitForElement } from '../../core/dom';
 import css from './styles.css?inline';
 
-const MODULE_ID = 'collapsibleTopPanel';
+const MODULE_ID = 'enhancedMainScreen';
 const SUMMARY_ID = 'svp-inv-summary';
 const TOGGLE_ID = 'svp-top-toggle';
 const EXPAND_ID = 'svp-top-expand';
@@ -152,12 +152,12 @@ async function setup(): Promise<() => void> {
   };
 }
 
-export const collapsibleTopPanel: IFeatureModule = {
+export const enhancedMainScreen: IFeatureModule = {
   id: MODULE_ID,
-  name: { en: 'Collapsible Top Panel', ru: 'Сворачиваемая верхняя панель' },
+  name: { en: 'Enhanced Main Screen', ru: 'Улучшенный главный экран' },
   description: {
-    en: 'Collapses the top-left panel to show only inventory and OPS button',
-    ru: 'Сворачивает верхнюю панель, показывая только инвентарь и кнопку ОРПЦ',
+    en: 'Collapses the top-left panel on the map screen to show only inventory and OPS button',
+    ru: 'Сворачивает верхнюю панель экрана с картой, показывая только инвентарь и кнопку ОРПЦ',
   },
   defaultEnabled: true,
   category: 'ui',

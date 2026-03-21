@@ -66,9 +66,26 @@ describe('settings/storage', () => {
   test('migration from v1 adds errors field', () => {
     localStorage.setItem('svp_settings', JSON.stringify({ version: 1, modules: { test: true } }));
     const settings = loadSettings();
-    expect(settings.version).toBe(2);
+    expect(settings.version).toBe(3);
     expect(settings.errors).toEqual({});
     expect(settings.modules.test).toBe(true);
+  });
+
+  test('migration from v2 renames collapsibleTopPanel to enhancedMainScreen', () => {
+    localStorage.setItem(
+      'svp_settings',
+      JSON.stringify({
+        version: 2,
+        modules: { collapsibleTopPanel: false },
+        errors: { collapsibleTopPanel: 'some error' },
+      }),
+    );
+    const settings = loadSettings();
+    expect(settings.version).toBe(3);
+    expect(settings.modules['enhancedMainScreen']).toBe(false);
+    expect(settings.modules['collapsibleTopPanel']).toBeUndefined();
+    expect(settings.errors['enhancedMainScreen']).toBe('some error');
+    expect(settings.errors['collapsibleTopPanel']).toBeUndefined();
   });
 
   test('migration creates versioned backup', () => {

@@ -3,7 +3,7 @@ import { bootstrap } from './core/bootstrap';
 import { initErrorLog } from './core/errorLog';
 import { initOlMapCapture } from './core/olMap';
 import { installSbgFlavor } from './core/sbgFlavor';
-import { collapsibleTopPanel } from './modules/collapsibleTopPanel/collapsibleTopPanel';
+import { enhancedMainScreen } from './modules/enhancedMainScreen/enhancedMainScreen';
 import { enhancedPointPopupUi } from './modules/enhancedPointPopupUi/enhancedPointPopupUi';
 import { shiftMapCenterDown } from './modules/shiftMapCenterDown/shiftMapCenterDown';
 import { disableDoubleTapZoom } from './modules/disableDoubleTapZoom/disableDoubleTapZoom';
@@ -24,7 +24,7 @@ if (!isDisabled()) {
   installSbgFlavor();
   initOlMapCapture();
   bootstrap([
-    collapsibleTopPanel,
+    enhancedMainScreen,
     enhancedPointPopupUi,
     groupErrorToasts,
     shiftMapCenterDown,

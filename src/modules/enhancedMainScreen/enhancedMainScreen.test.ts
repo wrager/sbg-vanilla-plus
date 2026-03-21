@@ -1,4 +1,4 @@
-import { collapsibleTopPanel } from './collapsibleTopPanel';
+import { enhancedMainScreen } from './enhancedMainScreen';
 
 class ResizeObserverStub {
   observe(): void {}
@@ -38,33 +38,33 @@ function getEntryFor(id: string): HTMLElement | null {
   return el instanceof HTMLElement ? el : null;
 }
 
-describe('collapsibleTopPanel', () => {
+describe('enhancedMainScreen', () => {
   beforeEach(() => {
     document.body.innerHTML = TOPLEFT_HTML;
   });
 
   afterEach(async () => {
-    await collapsibleTopPanel.disable();
+    await enhancedMainScreen.disable();
     document.body.innerHTML = '';
   });
 
   test('has correct module metadata', () => {
-    expect(collapsibleTopPanel.id).toBe('collapsibleTopPanel');
-    expect(collapsibleTopPanel.category).toBe('ui');
-    expect(collapsibleTopPanel.defaultEnabled).toBe(true);
+    expect(enhancedMainScreen.id).toBe('enhancedMainScreen');
+    expect(enhancedMainScreen.category).toBe('ui');
+    expect(enhancedMainScreen.defaultEnabled).toBe(true);
   });
 
   test('injects styles on enable', async () => {
-    await collapsibleTopPanel.enable();
+    await enhancedMainScreen.enable();
     await flushPromises();
 
-    const style = document.getElementById('svp-collapsibleTopPanel');
+    const style = document.getElementById('svp-enhancedMainScreen');
     expect(style).not.toBeNull();
     expect(style?.tagName).toBe('STYLE');
   });
 
   test('hides all entries and extra buttons by default', async () => {
-    await collapsibleTopPanel.enable();
+    await enhancedMainScreen.enable();
     await flushPromises();
 
     expect(getEntryFor('self-info__name')?.style.display).toBe('none');
@@ -75,7 +75,7 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('shows summary, expand button and hides toggle when collapsed', async () => {
-    await collapsibleTopPanel.enable();
+    await enhancedMainScreen.enable();
     await flushPromises();
 
     const summary = document.getElementById('svp-inv-summary');
@@ -91,7 +91,7 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('expands on container mousedown (not OPS)', async () => {
-    await collapsibleTopPanel.enable();
+    await enhancedMainScreen.enable();
     await flushPromises();
 
     const summary = document.getElementById('svp-inv-summary');
@@ -108,7 +108,7 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('expands on expand button mousedown', async () => {
-    await collapsibleTopPanel.enable();
+    await enhancedMainScreen.enable();
     await flushPromises();
 
     const expandBtn = document.getElementById('svp-top-expand');
@@ -121,7 +121,7 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('does not expand when clicking OPS', async () => {
-    await collapsibleTopPanel.enable();
+    await enhancedMainScreen.enable();
     await flushPromises();
 
     const ops = document.getElementById('ops');
@@ -133,7 +133,7 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('collapses on toggle mousedown', async () => {
-    await collapsibleTopPanel.enable();
+    await enhancedMainScreen.enable();
     await flushPromises();
 
     // Expand first
@@ -152,7 +152,7 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('mirrors inventory overflow color to summary', async () => {
-    await collapsibleTopPanel.enable();
+    await enhancedMainScreen.enable();
     await flushPromises();
 
     const invEntry = getEntryFor('self-info__inv');
@@ -173,17 +173,17 @@ describe('collapsibleTopPanel', () => {
   });
 
   test('cleans up on disable', async () => {
-    await collapsibleTopPanel.enable();
+    await enhancedMainScreen.enable();
     await flushPromises();
 
-    await collapsibleTopPanel.disable();
+    await enhancedMainScreen.disable();
 
     const container = document.querySelector('.topleft-container');
     expect(container?.classList.contains('svp-collapsed')).toBe(false);
     expect(document.getElementById('svp-top-toggle')).toBeNull();
     expect(document.getElementById('svp-top-expand')).toBeNull();
     expect(document.getElementById('svp-inv-summary')).toBeNull();
-    expect(document.getElementById('svp-collapsibleTopPanel')).toBeNull();
+    expect(document.getElementById('svp-enhancedMainScreen')).toBeNull();
     expect(getEntryFor('self-info__name')?.style.display).toBe('');
   });
 });
