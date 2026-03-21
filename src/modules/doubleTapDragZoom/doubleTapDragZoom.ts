@@ -24,7 +24,7 @@ let disabledDragPanInteractions: IOlInteraction[] = [];
 
 // Gesture state
 let state: GestureState = 'idle';
-let firstTapTime = 0;
+let firstTapStartTimestamp = 0;
 let firstTapX = 0;
 let firstTapY = 0;
 let secondTapTimer: ReturnType<typeof setTimeout> | null = null;
@@ -83,7 +83,7 @@ function onTouchStart(event: TouchEvent): void {
 
   if (state === 'idle') {
     state = 'firstTapDown';
-    firstTapTime = Date.now();
+    firstTapStartTimestamp = event.timeStamp;
     firstTapX = touch.clientX;
     firstTapY = touch.clientY;
     return;
@@ -94,7 +94,7 @@ function onTouchStart(event: TouchEvent): void {
       resetGesture();
       // Начать новый первый тап
       state = 'firstTapDown';
-      firstTapTime = Date.now();
+      firstTapStartTimestamp = event.timeStamp;
       firstTapX = touch.clientX;
       firstTapY = touch.clientY;
       return;
@@ -123,7 +123,7 @@ function onTouchStart(event: TouchEvent): void {
   // Любое другое состояние — сброс и начало нового цикла
   resetGesture();
   state = 'firstTapDown';
-  firstTapTime = Date.now();
+  firstTapStartTimestamp = event.timeStamp;
   firstTapX = touch.clientX;
   firstTapY = touch.clientY;
 }
@@ -151,9 +151,12 @@ function onTouchMove(event: TouchEvent): void {
   }
 }
 
-function onTouchEnd(): void {
+// Используем event.timeStamp вместо Date.now(), чтобы измерять реальную
+// длительность тапа — без учёта блокировки event loop другими обработчиками
+// (OL pointerup может блокировать главный поток на 100–200мс).
+function onTouchEnd(event: TouchEvent): void {
   if (state === 'firstTapDown') {
-    const elapsed = Date.now() - firstTapTime;
+    const elapsed = event.timeStamp - firstTapStartTimestamp;
     if (elapsed < TAP_DURATION_THRESHOLD) {
       state = 'waitingSecondTap';
       secondTapTimer = setTimeout(() => {
@@ -187,7 +190,7 @@ function onTouchMoveCapture(event: TouchEvent): void {
 
 function onTouchEndCapture(event: TouchEvent): void {
   const wasActive = state === 'secondTapDown' || state === 'zooming';
-  onTouchEnd();
+  onTouchEnd(event);
   if (wasActive) {
     event.stopPropagation();
   }

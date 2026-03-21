@@ -12,9 +12,15 @@ class TouchPolyfill {
 
 class TouchEventPolyfill extends UIEvent {
   readonly targetTouches: readonly TouchPolyfill[];
-  constructor(type: string, init: { cancelable?: boolean; targetTouches?: TouchPolyfill[] } = {}) {
+  constructor(
+    type: string,
+    init: { cancelable?: boolean; targetTouches?: TouchPolyfill[]; timeStamp?: number } = {},
+  ) {
     super(type, { bubbles: true, cancelable: init.cancelable });
     this.targetTouches = init.targetTouches ?? [];
+    if (init.timeStamp !== undefined) {
+      Object.defineProperty(this, 'timeStamp', { value: init.timeStamp });
+    }
   }
 }
 
@@ -66,7 +72,7 @@ let canvas: HTMLCanvasElement;
 
 function dispatchTouch(
   type: 'touchstart' | 'touchmove' | 'touchend',
-  options: { clientX?: number; clientY?: number; targetTouches?: number } = {},
+  options: { clientX?: number; clientY?: number; targetTouches?: number; timeStamp?: number } = {},
 ): TouchEventPolyfill {
   const touchCount = options.targetTouches ?? (type === 'touchend' ? 0 : 1);
   const touch = new TouchPolyfill({ clientX: options.clientX, clientY: options.clientY });
@@ -75,6 +81,7 @@ function dispatchTouch(
   const event = new TouchEventPolyfill(type, {
     cancelable: true,
     targetTouches: touches,
+    timeStamp: options.timeStamp,
   });
 
   canvas.dispatchEvent(event);
@@ -354,12 +361,11 @@ describe('doubleTapDragZoom', () => {
   });
 
   test('long first tap does not transition to waitingSecondTap', () => {
-    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    const startTime = performance.now();
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300, timeStamp: startTime });
 
-    // Simulate long press by advancing time beyond TAP_DURATION_THRESHOLD
-    jest.advanceTimersByTime(250);
-
-    dispatchTouch('touchend');
+    // Simulate long press: touchend timeStamp на 250ms позже touchstart
+    dispatchTouch('touchend', { timeStamp: startTime + 250 });
 
     // Second tap — should not work as double-tap
     dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
