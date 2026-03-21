@@ -116,7 +116,12 @@ describe('largerPointTapArea enable/disable', () => {
 
     await largerPointTapArea.disable();
 
-    expect(mockMap.forEachFeatureAtPixel).toBe(forEachOriginal);
+    // After disable, the method should behave like the original (no hitTolerance injection)
+    const callback = jest.fn();
+    forEachOriginal.mockClear();
+    mockMap.forEachFeatureAtPixel([10, 20], callback);
+
+    expect(forEachOriginal).toHaveBeenCalledWith([10, 20], callback);
   });
 
   test('enable is idempotent — does not double-patch', async () => {

@@ -14,6 +14,7 @@ import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
 import { keyCountOnPoints } from './modules/keyCountOnPoints/keyCountOnPoints';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
 import { nextPointNavigation } from './modules/nextPointNavigation/nextPointNavigation';
+import { refsOnMap } from './modules/refsOnMap/refsOnMap';
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
 import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
@@ -35,6 +36,7 @@ if (!isDisabled()) {
     inventoryCleanup,
     keyCountOnPoints,
     nextPointNavigation,
+    refsOnMap,
     singleFingerRotation,
     mapTileLayers,
   ]);

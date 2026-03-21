@@ -1,0 +1,36 @@
+.svp-refs-on-map-button {
+  background: none;
+  border: 1px solid var(--border-transp);
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.svp-refs-on-map-close {
+  position: fixed;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  font-size: 1.5em;
+  padding: 0 0.1em;
+  align-self: center;
+}
+
+.svp-refs-on-map-trash {
+  position: fixed;
+  bottom: 100px;
+  right: 20px;
+  z-index: 10;
+  background: var(--background-transp);
+  border: 1px solid var(--border-transp);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  font-size: 14px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 48px;
+  text-align: center;
+}

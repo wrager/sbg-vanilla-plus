@@ -31,11 +31,15 @@ export interface IOlFeature {
   getId(): string | number | undefined;
   setId(id: string): void;
   setStyle(style: unknown): void;
+  get?(key: string): unknown;
+  set?(key: string, value: unknown): void;
+  getProperties?(): Record<string, unknown>;
 }
 
 export interface IOlVectorSource {
   getFeatures(): IOlFeature[];
   addFeature(feature: IOlFeature): void;
+  removeFeature?(feature: IOlFeature): void;
   clear(): void;
   on(type: string, listener: () => void): void;
   un(type: string, listener: () => void): void;
@@ -48,6 +52,8 @@ export interface IOlTileSource {
 export interface IOlLayer {
   get(key: string): unknown;
   getSource(): IOlVectorSource | null;
+  setVisible?(visible: boolean): void;
+  getVisible?(): boolean;
 }
 
 export function hasTileSource(layer: IOlLayer): layer is IOlLayer & {
@@ -78,6 +84,13 @@ export interface IOlMap {
   getPixelFromCoordinate?(coordinate: number[]): number[];
   getCoordinateFromPixel?(pixel: number[]): number[];
   dispatchEvent?(event: IOlMapEvent): void;
+  on?(type: string, listener: (event: IOlMapEvent) => void): void;
+  un?(type: string, listener: (event: IOlMapEvent) => void): void;
+  forEachFeatureAtPixel?(
+    pixel: number[],
+    callback: (feature: IOlFeature, layer: IOlLayer) => void,
+    options?: { hitTolerance?: number; layerFilter?: (layer: IOlLayer) => boolean },
+  ): void;
 }
 
 interface IOlGlobal {
@@ -96,9 +109,11 @@ interface IOlGlobal {
     Text?: new (opts: Record<string, unknown>) => unknown;
     Fill?: new (opts: Record<string, unknown>) => unknown;
     Stroke?: new (opts: Record<string, unknown>) => unknown;
+    Circle?: new (opts: Record<string, unknown>) => unknown;
   };
   Feature?: new (opts?: Record<string, unknown>) => IOlFeature;
   geom?: { Point?: new (coords: number[]) => { getCoordinates(): number[] } };
+  proj?: { fromLonLat?(coordinate: number[]): number[] };
   interaction?: {
     DoubleClickZoom?: new () => IOlInteraction;
     DragPan?: new () => IOlInteraction;

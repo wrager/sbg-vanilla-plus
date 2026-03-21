@@ -1,25 +1,11 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { getOlMap } from '../../core/olMap';
-import type { IOlMap } from '../../core/olMap';
+import type { IOlFeature, IOlLayer, IOlMap } from '../../core/olMap';
 
 const MODULE_ID = 'largerPointTapArea';
 const HIT_TOLERANCE_PX = 15;
 
-type FeatureCallback = (...args: unknown[]) => unknown;
-type ForEachFeatureAtPixel = (
-  pixel: number[],
-  callback: FeatureCallback,
-  options?: Record<string, unknown>,
-) => unknown;
-
-function hasForEachFeatureAtPixel(
-  object: IOlMap,
-): object is IOlMap & { forEachFeatureAtPixel: ForEachFeatureAtPixel } {
-  return (
-    'forEachFeatureAtPixel' in object &&
-    typeof (object as Record<string, unknown>).forEachFeatureAtPixel === 'function'
-  );
-}
+type ForEachFeatureAtPixel = NonNullable<IOlMap['forEachFeatureAtPixel']>;
 
 let map: IOlMap | null = null;
 let originalMethod: ForEachFeatureAtPixel | null = null;
@@ -38,19 +24,18 @@ export const largerPointTapArea: IFeatureModule = {
 
   enable() {
     return getOlMap().then((olMap) => {
-      if (originalMethod) return;
-      if (!hasForEachFeatureAtPixel(olMap)) return;
+      if (originalMethod || !olMap.forEachFeatureAtPixel) return;
 
       map = olMap;
-      originalMethod = olMap.forEachFeatureAtPixel;
+      originalMethod = olMap.forEachFeatureAtPixel.bind(olMap);
       const saved = originalMethod;
 
-      olMap.forEachFeatureAtPixel = function (
+      olMap.forEachFeatureAtPixel = (
         pixel: number[],
-        callback: FeatureCallback,
-        options?: Record<string, unknown>,
-      ) {
-        return saved.call(this, pixel, callback, {
+        callback: (feature: IOlFeature, layer: IOlLayer) => void,
+        options?: { hitTolerance?: number; layerFilter?: (layer: IOlLayer) => boolean },
+      ) => {
+        saved(pixel, callback, {
           ...options,
           hitTolerance: HIT_TOLERANCE_PX,
         });
@@ -59,7 +44,7 @@ export const largerPointTapArea: IFeatureModule = {
   },
 
   disable() {
-    if (map && originalMethod && hasForEachFeatureAtPixel(map)) {
+    if (map && originalMethod && map.forEachFeatureAtPixel) {
       map.forEachFeatureAtPixel = originalMethod;
     }
     originalMethod = null;
