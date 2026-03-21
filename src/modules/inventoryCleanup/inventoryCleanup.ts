@@ -123,10 +123,10 @@ export const inventoryCleanup: IFeatureModule = {
     ru: 'Автоочистка инвентаря',
   },
   description: {
-    en: 'Automatically removes excess items before discover',
-    ru: 'Автоматически удаляет лишние предметы перед изучением',
+    en: 'Automatically removes excess items when discovering points',
+    ru: 'Автоматически удаляет лишние предметы при изучении точек',
   },
-  defaultEnabled: false,
+  defaultEnabled: true,
   category: 'utility',
 
   init() {},

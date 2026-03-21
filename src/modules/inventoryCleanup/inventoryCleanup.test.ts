@@ -619,7 +619,7 @@ describe('inventoryCleanup module', () => {
   test('has correct metadata', () => {
     expect(inventoryCleanup.id).toBe('inventoryCleanup');
     expect(inventoryCleanup.category).toBe('utility');
-    expect(inventoryCleanup.defaultEnabled).toBe(false);
+    expect(inventoryCleanup.defaultEnabled).toBe(true);
     expect(inventoryCleanup.name.ru).toBe('Автоочистка инвентаря');
     expect(inventoryCleanup.name.en).toBe('Inventory auto-cleanup');
   });
