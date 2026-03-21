@@ -3,6 +3,7 @@ import { initModules } from './moduleRegistry';
 import {
   loadSettings,
   saveSettings,
+  persistModuleDefaults,
   isModuleEnabled,
   setModuleError,
   clearModuleError,
@@ -11,6 +12,7 @@ import { initSettingsUI } from './settings/ui';
 
 export function bootstrap(modules: IFeatureModule[]): void {
   let settings = loadSettings();
+  settings = persistModuleDefaults(settings, modules);
 
   const errorDisplay = new Map<string, (message: string | null) => void>();
 

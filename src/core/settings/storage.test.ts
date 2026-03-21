@@ -1,6 +1,7 @@
 import {
   loadSettings,
   saveSettings,
+  persistModuleDefaults,
   isModuleEnabled,
   setModuleEnabled,
   setModuleError,
@@ -115,5 +116,27 @@ describe('settings/storage', () => {
   test('restoreBackup returns defaults when no backup exists', () => {
     const result = restoreBackup(99);
     expect(result).toEqual(DEFAULT_SETTINGS);
+  });
+
+  test('persistModuleDefaults writes defaults for missing modules', () => {
+    const result = persistModuleDefaults(DEFAULT_SETTINGS, [
+      { id: 'alpha', defaultEnabled: true },
+      { id: 'beta', defaultEnabled: false },
+    ]);
+    expect(result.modules['alpha']).toBe(true);
+    expect(result.modules['beta']).toBe(false);
+  });
+
+  test('persistModuleDefaults does not overwrite existing module state', () => {
+    const settings = setModuleEnabled(DEFAULT_SETTINGS, 'alpha', false);
+    const result = persistModuleDefaults(settings, [{ id: 'alpha', defaultEnabled: true }]);
+    expect(result.modules['alpha']).toBe(false);
+  });
+
+  test('persistModuleDefaults preserves unrelated modules', () => {
+    const settings = setModuleEnabled(DEFAULT_SETTINGS, 'existing', true);
+    const result = persistModuleDefaults(settings, [{ id: 'newModule', defaultEnabled: false }]);
+    expect(result.modules['existing']).toBe(true);
+    expect(result.modules['newModule']).toBe(false);
   });
 });

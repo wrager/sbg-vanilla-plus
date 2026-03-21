@@ -89,6 +89,19 @@ export function restoreBackup(version: number): ISvpSettings {
   return parsed;
 }
 
+export function persistModuleDefaults(
+  settings: ISvpSettings,
+  modules: ReadonlyArray<{ id: string; defaultEnabled: boolean }>,
+): ISvpSettings {
+  let updated = settings;
+  for (const mod of modules) {
+    if (!(mod.id in updated.modules)) {
+      updated = setModuleEnabled(updated, mod.id, mod.defaultEnabled);
+    }
+  }
+  return updated;
+}
+
 export function isModuleEnabled(
   settings: ISvpSettings,
   id: string,
