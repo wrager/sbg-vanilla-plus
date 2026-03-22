@@ -1,4 +1,5 @@
 import type { IDeletionEntry } from './cleanupCalculator';
+import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER } from '../../core/gameConstants';
 
 export interface IDeleteResult {
   total: number;
@@ -34,7 +35,7 @@ function groupByType(deletions: readonly IDeletionEntry[]): Map<number, Record<s
 }
 
 /** Типы предметов, удаление которых разрешено. Ключи и спецпредметы защищены. */
-const DELETABLE_TYPES = new Set([1, 2]); // ядра, катализаторы
+const DELETABLE_TYPES = new Set([ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER]);
 
 export async function deleteInventoryItems(
   deletions: readonly IDeletionEntry[],

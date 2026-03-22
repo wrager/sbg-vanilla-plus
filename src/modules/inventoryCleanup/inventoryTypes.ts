@@ -1,27 +1,34 @@
+import {
+  ITEM_TYPE_CORE,
+  ITEM_TYPE_CATALYSER,
+  ITEM_TYPE_REFERENCE,
+  ITEM_TYPE_BROOM,
+} from '../../core/gameConstants';
+
 export interface IInventoryCore {
   g: string;
-  t: 1;
+  t: typeof ITEM_TYPE_CORE;
   l: number;
   a: number;
 }
 
 export interface IInventoryCatalyser {
   g: string;
-  t: 2;
+  t: typeof ITEM_TYPE_CATALYSER;
   l: number;
   a: number;
 }
 
 export interface IInventoryReference {
   g: string;
-  t: 3;
+  t: typeof ITEM_TYPE_REFERENCE;
   l: string;
   a: number;
 }
 
 export interface IInventoryBroom {
   g: string;
-  t: 4;
+  t: typeof ITEM_TYPE_BROOM;
   l: number;
   a: number;
 }
@@ -40,7 +47,7 @@ export function isInventoryCore(value: unknown): value is IInventoryCore {
   return (
     isRecord(value) &&
     typeof value.g === 'string' &&
-    value.t === 1 &&
+    value.t === ITEM_TYPE_CORE &&
     typeof value.l === 'number' &&
     typeof value.a === 'number'
   );
@@ -50,7 +57,7 @@ export function isInventoryCatalyser(value: unknown): value is IInventoryCatalys
   return (
     isRecord(value) &&
     typeof value.g === 'string' &&
-    value.t === 2 &&
+    value.t === ITEM_TYPE_CATALYSER &&
     typeof value.l === 'number' &&
     typeof value.a === 'number'
   );
@@ -60,7 +67,7 @@ export function isInventoryReference(value: unknown): value is IInventoryReferen
   return (
     isRecord(value) &&
     typeof value.g === 'string' &&
-    value.t === 3 &&
+    value.t === ITEM_TYPE_REFERENCE &&
     typeof value.l === 'string' &&
     typeof value.a === 'number'
   );
@@ -70,7 +77,7 @@ export function isInventoryBroom(value: unknown): value is IInventoryBroom {
   return (
     isRecord(value) &&
     typeof value.g === 'string' &&
-    value.t === 4 &&
+    value.t === ITEM_TYPE_BROOM &&
     typeof value.l === 'number' &&
     typeof value.a === 'number'
   );

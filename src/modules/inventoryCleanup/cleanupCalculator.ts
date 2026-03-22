@@ -2,11 +2,12 @@ import type { IInventoryItem } from './inventoryTypes';
 import type { ICleanupLimits } from './cleanupSettings';
 import type { ILocalizedString } from '../../core/l10n';
 import { t } from '../../core/l10n';
+import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 
 const TYPE_LABELS: Partial<Record<number, ILocalizedString>> = {
-  1: { en: 'Co', ru: 'Я' },
-  2: { en: 'Ca', ru: 'К' },
-  3: { en: 'Ref', ru: 'Кл' },
+  [ITEM_TYPE_CORE]: { en: 'Co', ru: 'Я' },
+  [ITEM_TYPE_CATALYSER]: { en: 'Ca', ru: 'К' },
+  [ITEM_TYPE_REFERENCE]: { en: 'Ref', ru: 'Кл' },
 };
 
 export interface IDeletionEntry {
@@ -30,15 +31,15 @@ export function calculateDeletions(
 ): IDeletionEntry[] {
   const deletions: IDeletionEntry[] = [];
 
-  const coresByLevel = groupByLevel(items, 1);
-  addLevelDeletions(coresByLevel, limits.cores, 1, deletions);
+  const coresByLevel = groupByLevel(items, ITEM_TYPE_CORE);
+  addLevelDeletions(coresByLevel, limits.cores, ITEM_TYPE_CORE, deletions);
 
-  const catalysersByLevel = groupByLevel(items, 2);
-  addLevelDeletions(catalysersByLevel, limits.catalysers, 2, deletions);
+  const catalysersByLevel = groupByLevel(items, ITEM_TYPE_CATALYSER);
+  addLevelDeletions(catalysersByLevel, limits.catalysers, ITEM_TYPE_CATALYSER, deletions);
 
   // Удаление ключей временно отключено до реализации модуля «Избранные точки».
   // Когда модуль будет готов — заменить -1 на limits.references.
-  addFlatDeletions(items, 3, -1, deletions);
+  addFlatDeletions(items, ITEM_TYPE_REFERENCE, -1, deletions);
 
   return deletions;
 }
