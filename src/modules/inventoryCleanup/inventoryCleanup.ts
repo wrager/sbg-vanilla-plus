@@ -7,7 +7,7 @@ import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
 
 const MODULE_ID = 'inventoryCleanup';
 
-const ACTION_SELECTORS = '#discover';
+const ACTION_SELECTORS = '#discover, .discover-mod';
 const TOAST_DURATION = 3000;
 const DEBUG_INV_KEY = 'svp_debug_inv';
 

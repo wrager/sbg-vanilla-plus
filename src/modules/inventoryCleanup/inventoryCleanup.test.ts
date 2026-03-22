@@ -931,6 +931,94 @@ describe('inventoryCleanup module', () => {
     consoleSpy.mockRestore();
   });
 
+  test('click on discover-mod (no-key) triggers cleanup', async () => {
+    const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+    const invElement = document.createElement('span');
+    invElement.id = 'self-info__inv';
+    invElement.textContent = '2950';
+    document.body.appendChild(invElement);
+
+    const limElement = document.createElement('span');
+    limElement.id = 'self-info__inv-lim';
+    limElement.textContent = '3000';
+    document.body.appendChild(limElement);
+
+    const settings = defaultCleanupSettings();
+    settings.limits.cores[5] = 0;
+    saveCleanupSettings(settings);
+
+    localStorage.setItem('inventory-cache', JSON.stringify([{ g: 'c1', t: 1, l: 5, a: 8 }]));
+
+    void inventoryCleanup.enable();
+
+    const button = document.createElement('button');
+    button.classList.add('discover-mod');
+    button.dataset['wish'] = '2';
+    document.body.appendChild(button);
+    button.click();
+
+    await flushPromises();
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Удалить'),
+      expect.arrayContaining([expect.objectContaining({ guid: 'c1', amount: 8 })]),
+    );
+
+    void inventoryCleanup.disable();
+    invElement.remove();
+    limElement.remove();
+    button.remove();
+    document.querySelector('.svp-cleanup-toast')?.remove();
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('svp_inventoryCleanup');
+    consoleSpy.mockRestore();
+  });
+
+  test('click on discover-mod (key-only) triggers cleanup', async () => {
+    const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+    const invElement = document.createElement('span');
+    invElement.id = 'self-info__inv';
+    invElement.textContent = '2950';
+    document.body.appendChild(invElement);
+
+    const limElement = document.createElement('span');
+    limElement.id = 'self-info__inv-lim';
+    limElement.textContent = '3000';
+    document.body.appendChild(limElement);
+
+    const settings = defaultCleanupSettings();
+    settings.limits.cores[5] = 0;
+    saveCleanupSettings(settings);
+
+    localStorage.setItem('inventory-cache', JSON.stringify([{ g: 'c1', t: 1, l: 5, a: 8 }]));
+
+    void inventoryCleanup.enable();
+
+    const button = document.createElement('button');
+    button.classList.add('discover-mod');
+    button.dataset['wish'] = '3';
+    document.body.appendChild(button);
+    button.click();
+
+    await flushPromises();
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Удалить'),
+      expect.arrayContaining([expect.objectContaining({ guid: 'c1', amount: 8 })]),
+    );
+
+    void inventoryCleanup.disable();
+    invElement.remove();
+    limElement.remove();
+    button.remove();
+    document.querySelector('.svp-cleanup-toast')?.remove();
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('svp_inventoryCleanup');
+    consoleSpy.mockRestore();
+  });
+
   test('concurrent clicks do not trigger duplicate cleanup', async () => {
     const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
 
