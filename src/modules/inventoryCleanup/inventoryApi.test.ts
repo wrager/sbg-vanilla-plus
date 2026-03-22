@@ -153,6 +153,45 @@ describe('deleteInventoryItems', () => {
     );
   });
 
+  test('rejects deletion of references (type 3)', async () => {
+    const deletions: IDeletionEntry[] = [{ guid: 'r1', type: 3, level: null, amount: 5 }];
+
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+      'Удаление предметов типа 3 запрещено',
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('rejects deletion of brooms (type 4)', async () => {
+    const deletions: IDeletionEntry[] = [{ guid: 'b1', type: 4, level: 0, amount: 1 }];
+
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+      'Удаление предметов типа 4 запрещено',
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('rejects deletion of erasers (type 5)', async () => {
+    const deletions: IDeletionEntry[] = [{ guid: 'e1', type: 5, level: 1, amount: 1 }];
+
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+      'Удаление предметов типа 5 запрещено',
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('rejects mixed batch with forbidden type', async () => {
+    const deletions: IDeletionEntry[] = [
+      { guid: 'c1', type: 1, level: 5, amount: 3 },
+      { guid: 'r1', type: 3, level: null, amount: 1 },
+    ];
+
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+      'Удаление предметов типа 3 запрещено',
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   test('aggregates amounts for same guid', async () => {
     mockFetchSuccess(90);
 

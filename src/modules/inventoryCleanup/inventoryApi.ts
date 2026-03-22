@@ -33,9 +33,18 @@ function groupByType(deletions: readonly IDeletionEntry[]): Map<number, Record<s
   return grouped;
 }
 
+/** Типы предметов, удаление которых разрешено. Ключи и спецпредметы защищены. */
+const DELETABLE_TYPES = new Set([1, 2]); // ядра, катализаторы
+
 export async function deleteInventoryItems(
   deletions: readonly IDeletionEntry[],
 ): Promise<IDeleteResult> {
+  for (const entry of deletions) {
+    if (!DELETABLE_TYPES.has(entry.type)) {
+      throw new Error(`Удаление предметов типа ${entry.type} запрещено`);
+    }
+  }
+
   const grouped = groupByType(deletions);
   let lastTotal = 0;
 
