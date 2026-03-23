@@ -8,10 +8,13 @@ import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
 const MODULE_ID = 'inventoryCleanup';
 
 const ACTION_SELECTORS = '#discover, .discover-mod';
+const INVENTORY_CACHE_KEY = 'inventory-cache';
 const TOAST_DURATION = 3000;
 const DEBUG_INV_KEY = 'svp_debug_inv';
 
 let cleanupInProgress = false;
+let discoverPending = false;
+let originalSetItem: typeof Storage.prototype.setItem | null = null;
 
 function readDebugInvCount(): number | null {
   const match = /[#&]svp-inv=(\d+)/.exec(location.hash);
@@ -104,7 +107,7 @@ async function runCleanupImpl(): Promise<void> {
   }
 }
 
-function isDiscoverAvailable(target: EventTarget | null): boolean {
+function isDiscoverButton(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
   const button = target.closest(ACTION_SELECTORS);
   if (!(button instanceof HTMLButtonElement)) return false;
@@ -112,8 +115,35 @@ function isDiscoverAvailable(target: EventTarget | null): boolean {
 }
 
 function onClickCapture(event: Event): void {
-  if (!isDiscoverAvailable(event.target)) return;
+  if (!isDiscoverButton(event.target)) return;
+  discoverPending = true;
+}
+
+function onInventoryCacheUpdated(): void {
+  discoverPending = false;
   void runCleanup();
+}
+
+function installSetItemInterceptor(): void {
+  // eslint-disable-next-line @typescript-eslint/unbound-method
+  originalSetItem = Storage.prototype.setItem;
+  const saved = originalSetItem;
+
+  Storage.prototype.setItem = (key: string, value: string): void => {
+    saved.call(localStorage, key, value);
+    if (key === INVENTORY_CACHE_KEY && discoverPending) {
+      // Запустить очистку в следующей микротаске, чтобы игра завершила
+      // обработку ответа discover (обновление DOM-счётчика и т.д.)
+      void Promise.resolve().then(onInventoryCacheUpdated);
+    }
+  };
+}
+
+function uninstallSetItemInterceptor(): void {
+  if (originalSetItem) {
+    Storage.prototype.setItem = originalSetItem;
+    originalSetItem = null;
+  }
 }
 
 export const inventoryCleanup: IFeatureModule = {
@@ -133,11 +163,14 @@ export const inventoryCleanup: IFeatureModule = {
 
   enable() {
     document.addEventListener('click', onClickCapture, true);
+    installSetItemInterceptor();
     initCleanupSettingsUi();
   },
 
   disable() {
     document.removeEventListener('click', onClickCapture, true);
+    uninstallSetItemInterceptor();
+    discoverPending = false;
     destroyCleanupSettingsUi();
   },
 };

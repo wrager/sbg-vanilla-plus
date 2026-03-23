@@ -683,6 +683,12 @@ describe('inventoryCleanup module', () => {
     }
   }
 
+  /** Симулирует запись игрой в inventory-cache после ответа discover */
+  function simulateDiscoverResponse(): void {
+    const cache = localStorage.getItem('inventory-cache') ?? '[]';
+    localStorage.setItem('inventory-cache', cache);
+  }
+
   test('click on discover triggers cleanup when inventory is near limit', async () => {
     const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
 
@@ -708,6 +714,7 @@ describe('inventoryCleanup module', () => {
     button.id = 'discover';
     document.body.appendChild(button);
     button.click();
+    simulateDiscoverResponse();
 
     await flushPromises();
 
@@ -762,6 +769,7 @@ describe('inventoryCleanup module', () => {
     button.id = 'discover';
     document.body.appendChild(button);
     button.click();
+    simulateDiscoverResponse();
 
     await flushPromises();
 
@@ -837,6 +845,7 @@ describe('inventoryCleanup module', () => {
     button.id = 'discover';
     document.body.appendChild(button);
     button.click();
+    simulateDiscoverResponse();
 
     await flushPromises();
 
@@ -874,6 +883,8 @@ describe('inventoryCleanup module', () => {
     button.id = 'deploy';
     document.body.appendChild(button);
     button.click();
+    // Запись в inventory-cache без предшествующего клика по discover не должна вызвать очистку
+    simulateDiscoverResponse();
 
     await flushPromises();
 
@@ -917,6 +928,7 @@ describe('inventoryCleanup module', () => {
     document.body.appendChild(button);
 
     span.click();
+    simulateDiscoverResponse();
 
     await flushPromises();
 
@@ -957,6 +969,7 @@ describe('inventoryCleanup module', () => {
     button.dataset['wish'] = '2';
     document.body.appendChild(button);
     button.click();
+    simulateDiscoverResponse();
 
     await flushPromises();
 
@@ -1001,6 +1014,7 @@ describe('inventoryCleanup module', () => {
     button.dataset['wish'] = '3';
     document.body.appendChild(button);
     button.click();
+    simulateDiscoverResponse();
 
     await flushPromises();
 
@@ -1014,6 +1028,47 @@ describe('inventoryCleanup module', () => {
     limElement.remove();
     button.remove();
     document.querySelector('.svp-cleanup-toast')?.remove();
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('svp_inventoryCleanup');
+    consoleSpy.mockRestore();
+  });
+
+  test('click on discover without inventory-cache update does not trigger cleanup', async () => {
+    const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+    const invElement = document.createElement('span');
+    invElement.id = 'self-info__inv';
+    invElement.textContent = '2950';
+    document.body.appendChild(invElement);
+
+    const limElement = document.createElement('span');
+    limElement.id = 'self-info__inv-lim';
+    limElement.textContent = '3000';
+    document.body.appendChild(limElement);
+
+    const settings = defaultCleanupSettings();
+    settings.limits.cores[5] = 0;
+    saveCleanupSettings(settings);
+
+    localStorage.setItem('inventory-cache', JSON.stringify([{ g: 'c1', t: 1, l: 5, a: 8 }]));
+
+    void inventoryCleanup.enable();
+
+    const button = document.createElement('button');
+    button.id = 'discover';
+    document.body.appendChild(button);
+    button.click();
+    // Не вызываем simulateDiscoverResponse — сервер не ответил
+
+    await flushPromises();
+
+    expect(consoleSpy).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    void inventoryCleanup.disable();
+    invElement.remove();
+    limElement.remove();
+    button.remove();
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('svp_inventoryCleanup');
     consoleSpy.mockRestore();
@@ -1046,7 +1101,9 @@ describe('inventoryCleanup module', () => {
     document.body.appendChild(button);
 
     button.click();
+    simulateDiscoverResponse();
     button.click();
+    simulateDiscoverResponse();
 
     await flushPromises();
 
