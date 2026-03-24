@@ -15,7 +15,7 @@ import { keyCountOnPoints } from './modules/keyCountOnPoints/keyCountOnPoints';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
 import { nextPointNavigation } from './modules/nextPointNavigation/nextPointNavigation';
 import { refsOnMap } from './modules/refsOnMap/refsOnMap';
-import { repairButtonAlwaysEnabled } from './modules/repairButtonAlwaysEnabled/repairButtonAlwaysEnabled';
+import { repairAtFullCharge } from './modules/repairAtFullCharge/repairAtFullCharge';
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
 import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
@@ -38,7 +38,7 @@ if (!isDisabled()) {
     keyCountOnPoints,
     nextPointNavigation,
     refsOnMap,
-    repairButtonAlwaysEnabled,
+    repairAtFullCharge,
     singleFingerRotation,
     mapTileLayers,
   ]);
