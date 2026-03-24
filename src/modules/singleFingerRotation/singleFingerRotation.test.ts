@@ -30,16 +30,10 @@ jest.mock('../../core/olMap', () => {
   };
 });
 
-jest.mock('../../core/dom', () => ({
-  waitForElement: jest.fn(),
-}));
-
 import { singleFingerRotation } from './singleFingerRotation';
 import { getOlMap } from '../../core/olMap';
-import { waitForElement } from '../../core/dom';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
-const mockWaitForElement = waitForElement as jest.MockedFunction<typeof waitForElement>;
 
 class MockDragPan implements IOlInteraction {
   private active = true;
@@ -115,7 +109,6 @@ beforeEach(async () => {
     interaction: { DragPan: MockDragPan },
   } as unknown as typeof window.ol;
 
-  mockWaitForElement.mockResolvedValue(viewport);
   mockGetOlMap.mockResolvedValue(mockMap);
 
   Object.defineProperty(window, 'innerWidth', { value: 800, writable: true });

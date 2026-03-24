@@ -1,7 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import type { IOlInteraction, IOlMap } from '../../core/olMap';
 import { findDragPanInteractions, getOlMap } from '../../core/olMap';
-import { waitForElement } from '../../core/dom';
+import { $ } from '../../core/dom';
 
 const MODULE_ID = 'singleFingerRotation';
 
@@ -120,31 +120,34 @@ export const singleFingerRotation: IFeatureModule = {
   defaultEnabled: true,
   category: 'map',
   init() {
-    return Promise.all([
-      waitForElement('.ol-viewport').then((element) => {
-        if (element instanceof HTMLElement) {
-          viewport = element;
+    return getOlMap().then((olMap) => {
+      map = olMap;
+
+      // .ol-viewport создаётся конструктором ol.Map — гарантированно есть
+      // в DOM к моменту резолва getOlMap(). waitForElement не используем,
+      // чтобы не зависеть от его таймаута: если авторизация в игре длится
+      // дольше 10с, waitForElement реджектится и модуль не инициализируется.
+      const viewportElement = $('.ol-viewport');
+      if (viewportElement instanceof HTMLElement) {
+        viewport = viewportElement;
+      }
+
+      // Игра запрашивает точки через view.calculateExtent(map.getSize()),
+      // но перезапрашивает только при смещении центра >30м или изменении
+      // зума — поворот не вызывает перезагрузку. Расширяем extent до
+      // диагонали вьюпорта, чтобы загруженная область покрывала любой
+      // угол поворота (аналогично shiftMapCenterDown для padding).
+      // Wrapper создаётся один раз, переключается флагом в enable/disable.
+      const view = olMap.getView();
+      const originalCalculateExtent = view.calculateExtent.bind(view);
+      view.calculateExtent = (size?: number[]) => {
+        if (inflateExtent && size) {
+          const diagonal = Math.ceil(Math.sqrt(size[0] ** 2 + size[1] ** 2));
+          return originalCalculateExtent([diagonal, diagonal]);
         }
-      }),
-      getOlMap().then((olMap) => {
-        map = olMap;
-        // Игра запрашивает точки через view.calculateExtent(map.getSize()),
-        // но перезапрашивает только при смещении центра >30м или изменении
-        // зума — поворот не вызывает перезагрузку. Расширяем extent до
-        // диагонали вьюпорта, чтобы загруженная область покрывала любой
-        // угол поворота (аналогично shiftMapCenterDown для padding).
-        // Wrapper создаётся один раз, переключается флагом в enable/disable.
-        const view = olMap.getView();
-        const originalCalculateExtent = view.calculateExtent.bind(view);
-        view.calculateExtent = (size?: number[]) => {
-          if (inflateExtent && size) {
-            const diagonal = Math.ceil(Math.sqrt(size[0] ** 2 + size[1] ** 2));
-            return originalCalculateExtent([diagonal, diagonal]);
-          }
-          return originalCalculateExtent(size);
-        };
-      }),
-    ]).then(() => {
+        return originalCalculateExtent(size);
+      };
+
       if (enabled) {
         addListeners();
       }
