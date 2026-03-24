@@ -7,7 +7,7 @@ import { enhancedMainScreen } from './modules/enhancedMainScreen/enhancedMainScr
 import { enhancedPointPopupUi } from './modules/enhancedPointPopupUi/enhancedPointPopupUi';
 import { shiftMapCenterDown } from './modules/shiftMapCenterDown/shiftMapCenterDown';
 import { disableDoubleTapZoom } from './modules/disableDoubleTapZoom/disableDoubleTapZoom';
-import { doubleTapDragZoom } from './modules/doubleTapDragZoom/doubleTapDragZoom';
+import { ngrsZoom } from './modules/ngrsZoom/ngrsZoom';
 import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
 import { groupErrorToasts } from './modules/groupErrorToasts/groupErrorToasts';
 import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
@@ -31,7 +31,7 @@ if (!isDisabled()) {
     shiftMapCenterDown,
     largerPointTapArea,
     disableDoubleTapZoom,
-    doubleTapDragZoom,
+    ngrsZoom,
     drawButtonFix,
     keepScreenOn,
     inventoryCleanup,

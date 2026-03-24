@@ -2,7 +2,7 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 import type { IOlInteraction, IOlMap } from '../../core/olMap';
 import { findDragPanInteractions, getOlMap } from '../../core/olMap';
 
-const MODULE_ID = 'doubleTapDragZoom';
+const MODULE_ID = 'ngrsZoom';
 
 /** Максимальная длительность нажатия, чтобы считаться тапом (мс) */
 const TAP_DURATION_THRESHOLD = 200;
@@ -224,11 +224,11 @@ function restoreDoubleClickZoomInteractions(): void {
   disabledInteractions = [];
 }
 
-export const doubleTapDragZoom: IFeatureModule = {
+export const ngrsZoom: IFeatureModule = {
   id: MODULE_ID,
   name: {
-    en: 'Double-Tap Drag Zoom',
-    ru: 'Зум перетаскиванием по двойному тапу',
+    en: 'Ngrs Zoom',
+    ru: 'Нгрс-зум',
   },
   description: {
     en: 'Double-tap and drag up/down to zoom in/out smoothly',

@@ -36,7 +36,7 @@ jest.mock('../../core/olMap', () => {
   };
 });
 
-import { doubleTapDragZoom } from './doubleTapDragZoom';
+import { ngrsZoom } from './ngrsZoom';
 import { getOlMap } from '../../core/olMap';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
@@ -146,23 +146,23 @@ beforeEach(async () => {
     interaction: { DoubleClickZoom: MockDoubleClickZoom, DragPan: MockDragPan },
   } as unknown as typeof window.ol;
 
-  await doubleTapDragZoom.init();
-  await doubleTapDragZoom.enable();
+  await ngrsZoom.init();
+  await ngrsZoom.enable();
 });
 
 afterEach(async () => {
-  await doubleTapDragZoom.disable();
+  await ngrsZoom.disable();
   viewport.remove();
   delete window.ol;
   jest.restoreAllMocks();
   jest.useRealTimers();
 });
 
-describe('doubleTapDragZoom', () => {
+describe('ngrsZoom', () => {
   test('has correct module metadata', () => {
-    expect(doubleTapDragZoom.id).toBe('doubleTapDragZoom');
-    expect(doubleTapDragZoom.category).toBe('map');
-    expect(doubleTapDragZoom.defaultEnabled).toBe(true);
+    expect(ngrsZoom.id).toBe('ngrsZoom');
+    expect(ngrsZoom.category).toBe('map');
+    expect(ngrsZoom.defaultEnabled).toBe(true);
   });
 
   test('double-tap + drag up zooms in', () => {
@@ -308,18 +308,18 @@ describe('doubleTapDragZoom', () => {
     doubleTapAndDrag(200, 200, 300);
     expect(dragPan.getActive()).toBe(false);
 
-    await doubleTapDragZoom.disable();
+    await ngrsZoom.disable();
 
     expect(dragPan.getActive()).toBe(true);
   });
 
   test('disable re-enables DoubleClickZoom interactions', async () => {
-    await doubleTapDragZoom.disable();
+    await ngrsZoom.disable();
     expect(doubleClickZoom.getActive()).toBe(true);
   });
 
   test('disable removes listeners and stops zooming', async () => {
-    await doubleTapDragZoom.disable();
+    await ngrsZoom.disable();
 
     doubleTapAndDrag(200, 200, 300);
 
@@ -402,7 +402,7 @@ describe('doubleTapDragZoom', () => {
 
   test('disable before map ready does not deactivate interaction', async () => {
     // Reset module state
-    await doubleTapDragZoom.disable();
+    await ngrsZoom.disable();
 
     let resolveMap!: (map: IOlMap) => void;
     mockGetOlMap.mockReturnValue(
@@ -411,8 +411,8 @@ describe('doubleTapDragZoom', () => {
       }),
     );
 
-    const enablePromise = doubleTapDragZoom.enable();
-    await doubleTapDragZoom.disable();
+    const enablePromise = ngrsZoom.enable();
+    await ngrsZoom.disable();
 
     // Re-create fresh interactions since previous ones were re-enabled
     const freshInteraction = new MockDoubleClickZoom();
