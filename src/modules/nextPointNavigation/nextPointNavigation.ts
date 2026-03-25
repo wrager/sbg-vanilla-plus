@@ -65,17 +65,25 @@ export function findNearestInRange(
   radiusMeters: number,
   visitedSet: Set<string | number>,
 ): IOlFeature | null {
+  const candidates = features.filter((feature) => {
+    const id = feature.getId();
+    if (id === undefined || visitedSet.has(id)) return false;
+    const coords = feature.getGeometry().getCoordinates();
+    return getGeodeticDistance(center, coords) <= radiusMeters;
+  });
+  return findNearestByDistance(center, candidates);
+}
+
+/**
+ * Ближайшая feature из массива по проецированному расстоянию.
+ * Быстро и достаточно для порядка внутри ограниченного радиуса.
+ */
+export function findNearestByDistance(center: number[], features: IOlFeature[]): IOlFeature | null {
   let nearest: IOlFeature | null = null;
   let minDistanceSquared = Infinity;
 
   for (const feature of features) {
-    const id = feature.getId();
-    if (id === undefined || visitedSet.has(id)) continue;
-
     const coords = feature.getGeometry().getCoordinates();
-    if (getGeodeticDistance(center, coords) > radiusMeters) continue;
-
-    // Внутри радиуса сортируем по проецированному расстоянию (быстро, достаточно для порядка)
     const dx = coords[0] - center[0];
     const dy = coords[1] - center[1];
     const distanceSquared = dx * dx + dy * dy;
@@ -87,6 +95,40 @@ export function findNearestInRange(
   }
 
   return nearest;
+}
+
+// ── Приоритет по полезности ──────────────────────────────────────────────────
+
+/** Точка имеет свободные слоты для деплоя (< 6 ядер). refs/game/script.js:1246 */
+export function hasFreeSlots(feature: IOlFeature): boolean {
+  const cores = feature.get?.('cores');
+  return cores === undefined || (typeof cores === 'number' && cores < 6);
+}
+
+/** Точка доступна для изучения (нет активного кулдауна). refs/game/script.js:636-638 */
+export function isDiscoverable(feature: IOlFeature): boolean {
+  const id = feature.getId();
+  if (id === undefined) return false;
+  const cooldowns = JSON.parse(localStorage.getItem('cooldowns') ?? '{}') as Record<
+    string,
+    { t?: number; c?: number } | undefined
+  >;
+  const cooldown = cooldowns[String(id)];
+  if (!cooldown?.t) return true;
+  return cooldown.t <= Date.now() && (cooldown.c ?? 0) > 0;
+}
+
+/**
+ * Выбор следующей точки с приоритетом по полезности.
+ * Порядок: свободные слоты → доступна для изучения → любая.
+ * Внутри каждого приоритета — ближайшая по расстоянию.
+ */
+export function findNextByPriority(center: number[], candidates: IOlFeature[]): IOlFeature | null {
+  return (
+    findNearestByDistance(center, candidates.filter(hasFreeSlots)) ??
+    findNearestByDistance(center, candidates.filter(isDiscoverable)) ??
+    findNearestByDistance(center, candidates)
+  );
 }
 
 // ── Слои и координаты ───────────────────────────────────────────────────────
@@ -146,13 +188,23 @@ function tryNavigateInRange(): boolean {
   rangeVisited.add(currentId);
 
   const features = pointsSource.getFeatures();
-  let next = findNearestInRange(playerCoordinates, features, INTERACTION_RANGE, rangeVisited);
+  const inRange = findFeaturesInRange(playerCoordinates, features, INTERACTION_RANGE);
+  const candidates = inRange.filter((feature) => {
+    const id = feature.getId();
+    return id !== undefined && !rangeVisited.has(id);
+  });
+
+  let next = findNextByPriority(playerCoordinates, candidates);
 
   // Все in-range посещены — зацикливаем
   if (!next) {
     rangeVisited.clear();
     rangeVisited.add(currentId);
-    next = findNearestInRange(playerCoordinates, features, INTERACTION_RANGE, rangeVisited);
+    const cycledCandidates = inRange.filter((feature) => {
+      const id = feature.getId();
+      return id !== undefined && !rangeVisited.has(id);
+    });
+    next = findNextByPriority(playerCoordinates, cycledCandidates);
   }
 
   if (!next) return false;

@@ -1,6 +1,10 @@
 import {
   findFeaturesInRange,
   findNearestInRange,
+  findNearestByDistance,
+  findNextByPriority,
+  hasFreeSlots,
+  isDiscoverable,
   getGeodeticDistance,
   nextPointNavigation,
 } from './nextPointNavigation';
@@ -60,12 +64,17 @@ afterAll(() => {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function makeFeature(id: string, coords: number[]): IOlFeature {
+function makeFeature(
+  id: string,
+  coords: number[],
+  properties?: Record<string, unknown>,
+): IOlFeature {
   return {
     getGeometry: () => ({ getCoordinates: () => coords }),
     getId: () => id,
     setId: jest.fn(),
     setStyle: jest.fn(),
+    get: (key: string) => properties?.[key],
   };
 }
 
@@ -200,6 +209,123 @@ describe('findNearestInRange', () => {
 
   test('returns null for empty features', () => {
     expect(findNearestInRange([0, 0], [], 10, new Set())).toBeNull();
+  });
+});
+
+// ── findNearestByDistance ─────────────────────────────────────────────────────
+
+describe('findNearestByDistance', () => {
+  test('returns nearest feature by projected distance', () => {
+    const features = [makeFeature('far', [8, 0]), makeFeature('near', [2, 0])];
+    expect(findNearestByDistance([0, 0], features)?.getId()).toBe('near');
+  });
+
+  test('returns null for empty array', () => {
+    expect(findNearestByDistance([0, 0], [])).toBeNull();
+  });
+});
+
+// ── hasFreeSlots ─────────────────────────────────────────────────────────────
+
+describe('hasFreeSlots', () => {
+  test('returns true when cores is undefined', () => {
+    expect(hasFreeSlots(makeFeature('p1', [0, 0]))).toBe(true);
+  });
+
+  test('returns true when cores < 6', () => {
+    expect(hasFreeSlots(makeFeature('p1', [0, 0], { cores: 3 }))).toBe(true);
+  });
+
+  test('returns false when cores = 6', () => {
+    expect(hasFreeSlots(makeFeature('p1', [0, 0], { cores: 6 }))).toBe(false);
+  });
+
+  test('returns true when cores = 0', () => {
+    expect(hasFreeSlots(makeFeature('p1', [0, 0], { cores: 0 }))).toBe(true);
+  });
+});
+
+// ── isDiscoverable ───────────────────────────────────────────────────────────
+
+describe('isDiscoverable', () => {
+  beforeEach(() => {
+    localStorage.removeItem('cooldowns');
+  });
+
+  test('returns true when no cooldown entry', () => {
+    expect(isDiscoverable(makeFeature('p1', [0, 0]))).toBe(true);
+  });
+
+  test('returns true when cooldown expired and attempts remain', () => {
+    localStorage.setItem('cooldowns', JSON.stringify({ p1: { t: Date.now() - 1000, c: 2 } }));
+    expect(isDiscoverable(makeFeature('p1', [0, 0]))).toBe(true);
+  });
+
+  test('returns false when cooldown is active', () => {
+    localStorage.setItem('cooldowns', JSON.stringify({ p1: { t: Date.now() + 60000, c: 2 } }));
+    expect(isDiscoverable(makeFeature('p1', [0, 0]))).toBe(false);
+  });
+
+  test('returns false when no attempts remaining', () => {
+    localStorage.setItem('cooldowns', JSON.stringify({ p1: { t: Date.now() - 1000, c: 0 } }));
+    expect(isDiscoverable(makeFeature('p1', [0, 0]))).toBe(false);
+  });
+
+  test('returns false for feature without id', () => {
+    const noId: IOlFeature = {
+      getGeometry: () => ({ getCoordinates: () => [0, 0] }),
+      getId: () => undefined,
+      setId: jest.fn(),
+      setStyle: jest.fn(),
+    };
+    expect(isDiscoverable(noId)).toBe(false);
+  });
+});
+
+// ── findNextByPriority ───────────────────────────────────────────────────────
+
+describe('findNextByPriority', () => {
+  test('prioritizes point with free slots over closer full point', () => {
+    const full = makeFeature('full', [2, 0], { cores: 6 });
+    const free = makeFeature('free', [8, 0], { cores: 3 });
+    expect(findNextByPriority([0, 0], [full, free])?.getId()).toBe('free');
+  });
+
+  test('prioritizes discoverable when no free-slot points', () => {
+    localStorage.setItem(
+      'cooldowns',
+      JSON.stringify({
+        blocked: { t: Date.now() + 60000, c: 2 },
+      }),
+    );
+    const blocked = makeFeature('blocked', [2, 0], { cores: 6 });
+    const discoverable = makeFeature('discoverable', [8, 0], { cores: 6 });
+    expect(findNextByPriority([0, 0], [blocked, discoverable])?.getId()).toBe('discoverable');
+    localStorage.removeItem('cooldowns');
+  });
+
+  test('falls back to nearest when no prioritized points', () => {
+    localStorage.setItem(
+      'cooldowns',
+      JSON.stringify({
+        a: { t: Date.now() + 60000, c: 2 },
+        b: { t: Date.now() + 60000, c: 2 },
+      }),
+    );
+    const farther = makeFeature('a', [8, 0], { cores: 6 });
+    const closer = makeFeature('b', [2, 0], { cores: 6 });
+    expect(findNextByPriority([0, 0], [farther, closer])?.getId()).toBe('b');
+    localStorage.removeItem('cooldowns');
+  });
+
+  test('returns null for empty candidates', () => {
+    expect(findNextByPriority([0, 0], [])).toBeNull();
+  });
+
+  test('picks nearest among free-slot points', () => {
+    const far = makeFeature('far', [8, 0], { cores: 3 });
+    const near = makeFeature('near', [2, 0], { cores: 1 });
+    expect(findNextByPriority([0, 0], [far, near])?.getId()).toBe('near');
   });
 });
 
