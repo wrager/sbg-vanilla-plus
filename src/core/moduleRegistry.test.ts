@@ -1,4 +1,10 @@
-import { initModules, runModuleAction, type IFeatureModule } from './moduleRegistry';
+import {
+  initModules,
+  runModuleAction,
+  registerModules,
+  getModuleById,
+  type IFeatureModule,
+} from './moduleRegistry';
 
 function createMockModule(overrides: Partial<IFeatureModule> = {}): IFeatureModule {
   return {
@@ -310,5 +316,28 @@ describe('initModules', () => {
       'delayed-enable-fail',
       expect.stringContaining('enable timeout'),
     );
+  });
+});
+
+// ── registerModules / getModuleById ──────────────────────────────────────────
+
+describe('registerModules / getModuleById', () => {
+  afterEach(() => {
+    registerModules([]);
+  });
+
+  test('getModuleById returns registered module', () => {
+    const mod = createMockModule({ id: 'testA' });
+    registerModules([mod]);
+    expect(getModuleById('testA')).toBe(mod);
+  });
+
+  test('getModuleById returns undefined for unknown id', () => {
+    registerModules([createMockModule({ id: 'testA' })]);
+    expect(getModuleById('unknown')).toBeUndefined();
+  });
+
+  test('getModuleById returns undefined when no modules registered', () => {
+    expect(getModuleById('anything')).toBeUndefined();
   });
 });

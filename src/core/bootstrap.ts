@@ -1,5 +1,5 @@
 import type { IFeatureModule } from './moduleRegistry';
-import { initModules } from './moduleRegistry';
+import { initModules, registerModules } from './moduleRegistry';
 import {
   loadSettings,
   saveSettings,
@@ -11,6 +11,7 @@ import {
 import { initSettingsUI } from './settings/ui';
 
 export function bootstrap(modules: IFeatureModule[]): void {
+  registerModules(modules);
   let settings = loadSettings();
   settings = persistModuleDefaults(settings, modules);
 

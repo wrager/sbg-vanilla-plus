@@ -36,6 +36,22 @@ function handleModuleError(
   onError?.(mod.id, message);
 }
 
+// ── Реестр модулей ───────────────────────────────────────────────────────────
+
+let registeredModules: readonly IFeatureModule[] = [];
+
+/** Регистрирует массив модулей для lookup по id. Вызывается из bootstrap(). */
+export function registerModules(modules: readonly IFeatureModule[]): void {
+  registeredModules = modules;
+}
+
+/** Возвращает модуль по id или undefined, если не найден. */
+export function getModuleById(id: string): IFeatureModule | undefined {
+  return registeredModules.find((mod) => mod.id === id);
+}
+
+// ── Lifecycle ────────────────────────────────────────────────────────────────
+
 export function runModuleAction(
   action: () => void | Promise<void>,
   onError: (e: unknown) => void,

@@ -4,10 +4,10 @@ import { t } from '../../core/l10n';
 import { getOlMap } from '../../core/olMap';
 import type { IOlFeature, IOlMap, IOlLayer, IOlMapEvent, IOlVectorSource } from '../../core/olMap';
 import { loadSettings, isModuleEnabled } from '../../core/settings/storage';
+import { getModuleById } from '../../core/moduleRegistry';
 import { readFullInventoryReferences, INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 import type { IInventoryReferenceFull } from '../../core/inventoryTypes';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
-import { ngrsZoom } from '../ngrsZoom/ngrsZoom';
 import css from './styles.css?inline';
 
 const MODULE_ID = 'refsOnMap';
@@ -444,9 +444,13 @@ function showViewer(): void {
   hideGameUi();
   setGameLayersVisible(false);
 
+  const ngrsZoomModule = getModuleById('ngrsZoom');
   const settings = loadSettings();
-  if (isModuleEnabled(settings, ngrsZoom.id, ngrsZoom.defaultEnabled)) {
-    void ngrsZoom.disable();
+  if (
+    ngrsZoomModule &&
+    isModuleEnabled(settings, ngrsZoomModule.id, ngrsZoomModule.defaultEnabled)
+  ) {
+    void ngrsZoomModule.disable();
     ngrsZoomDisabledByViewer = true;
   }
 
@@ -519,7 +523,8 @@ function hideViewer(): void {
   restoreFollowMode();
 
   if (ngrsZoomDisabledByViewer) {
-    void ngrsZoom.enable();
+    const ngrsZoomModule = getModuleById('ngrsZoom');
+    if (ngrsZoomModule) void ngrsZoomModule.enable();
     ngrsZoomDisabledByViewer = false;
   }
 }
