@@ -4,7 +4,7 @@ import {
   isInventoryReference,
   isInventoryBroom,
   isInventoryItem,
-} from './inventoryTypes';
+} from '../../core/inventoryTypes';
 import { parseInventoryCache } from './inventoryParser';
 import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
 import type { ICleanupLimits } from './cleanupSettings';

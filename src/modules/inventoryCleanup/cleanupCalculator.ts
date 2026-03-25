@@ -1,4 +1,4 @@
-import type { IInventoryItem } from './inventoryTypes';
+import type { IInventoryItem } from '../../core/inventoryTypes';
 import type { ICleanupLimits } from './cleanupSettings';
 import type { ILocalizedString } from '../../core/l10n';
 import { t } from '../../core/l10n';

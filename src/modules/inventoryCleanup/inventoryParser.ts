@@ -1,5 +1,5 @@
-import type { IInventoryItem } from './inventoryTypes';
-import { isInventoryItem } from './inventoryTypes';
+import type { IInventoryItem } from '../../core/inventoryTypes';
+import { isInventoryItem } from '../../core/inventoryTypes';
 
 export function parseInventoryCache(): IInventoryItem[] {
   const raw = localStorage.getItem('inventory-cache');

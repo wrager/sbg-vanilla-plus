@@ -3,7 +3,7 @@ import {
   ITEM_TYPE_CATALYSER,
   ITEM_TYPE_REFERENCE,
   ITEM_TYPE_BROOM,
-} from '../../core/gameConstants';
+} from './gameConstants';
 
 export interface IInventoryCore {
   g: string;
@@ -24,6 +24,12 @@ export interface IInventoryReference {
   t: typeof ITEM_TYPE_REFERENCE;
   l: string;
   a: number;
+}
+
+/** Полные данные ключа из inventory-cache (включая координаты и название точки). */
+export interface IInventoryReferenceFull extends IInventoryReference {
+  c: [number, number];
+  ti: string;
 }
 
 export interface IInventoryBroom {
@@ -70,6 +76,19 @@ export function isInventoryReference(value: unknown): value is IInventoryReferen
     value.t === ITEM_TYPE_REFERENCE &&
     typeof value.l === 'string' &&
     typeof value.a === 'number'
+  );
+}
+
+export function isInventoryReferenceFull(value: unknown): value is IInventoryReferenceFull {
+  if (!isInventoryReference(value)) return false;
+  // as unknown as: после isInventoryReference TS сужает тип, Record-каст требует промежуточный unknown
+  const record = value as unknown as Record<string, unknown>;
+  return (
+    Array.isArray(record.c) &&
+    record.c.length === 2 &&
+    typeof record.c[0] === 'number' &&
+    typeof record.c[1] === 'number' &&
+    typeof record.ti === 'string'
   );
 }
 
