@@ -2,6 +2,7 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 import { getOlMap, findLayerByName } from '../../core/olMap';
 import type { IOlMap, IOlVectorSource, IOlLayer } from '../../core/olMap';
 import { readInventoryReferences } from '../../core/inventoryCache';
+import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 
 const MODULE_ID = 'keyCountOnPoints';
 const MIN_ZOOM = 15;
@@ -45,10 +46,8 @@ function renderLabels(): void {
   const OlStroke = ol?.style?.Stroke;
   if (!OlFeature || !OlPoint || !OlStyle || !OlText || !OlFill || !OlStroke) return;
 
-  const textColor =
-    getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#000000';
-  const bgColor =
-    getComputedStyle(document.documentElement).getPropertyValue('--background').trim() || '#ffffff';
+  const textColor = getTextColor();
+  const bgColor = getBackgroundColor();
 
   for (const feature of pointsSource.getFeatures()) {
     const id = feature.getId();

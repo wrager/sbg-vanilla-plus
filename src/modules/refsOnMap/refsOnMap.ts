@@ -6,6 +6,7 @@ import type { IOlFeature, IOlMap, IOlLayer, IOlMapEvent, IOlVectorSource } from 
 import { loadSettings, isModuleEnabled } from '../../core/settings/storage';
 import { readFullInventoryReferences, INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 import type { IInventoryReferenceFull } from '../../core/inventoryTypes';
+import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 import { ngrsZoom } from '../ngrsZoom/ngrsZoom';
 import css from './styles.css?inline';
 
@@ -164,11 +165,8 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
     const strokeColor = isSelected ? SELECTED_COLOR : teamColor;
     const strokeWidth = isSelected ? 4 : 3;
 
-    const textColor =
-      getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#000000';
-    const backgroundColor =
-      getComputedStyle(document.documentElement).getPropertyValue('--background').trim() ||
-      '#ffffff';
+    const textColor = getTextColor();
+    const backgroundColor = getBackgroundColor();
 
     const styles: unknown[] = [
       new OlStyle({
