@@ -1,4 +1,5 @@
 import { isDisabled } from './core/killswitch';
+import { installGameScriptPatcher } from './core/gameScriptPatcher';
 import { bootstrap } from './core/bootstrap';
 import { initErrorLog } from './core/errorLog';
 import { initOlMapCapture } from './core/olMap';
@@ -22,26 +23,42 @@ import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
 
 if (!isDisabled()) {
-  initErrorLog();
-  installSbgFlavor();
+  // Перехваты, которые должны быть установлены ДО парсинга DOM:
+  // - gameScriptPatcher: override Element.prototype.append до того как mobile-check
+  //   скрипт создаст <script type="module" src="script@...">
+  // - olMapCapture: defineProperty на window.ol до загрузки OL-скрипта
+  installGameScriptPatcher();
   initOlMapCapture();
-  bootstrap([
-    enhancedMainScreen,
-    enhancedPointPopupUi,
-    swipeToClosePopup,
-    groupErrorToasts,
-    shiftMapCenterDown,
-    largerPointTapArea,
-    disableDoubleTapZoom,
-    ngrsZoom,
-    drawButtonFix,
-    keepScreenOn,
-    inventoryCleanup,
-    keyCountOnPoints,
-    nextPointNavigation,
-    refsOnMap,
-    repairAtFullCharge,
-    singleFingerRotation,
-    mapTileLayers,
-  ]);
+
+  // bootstrap() создаёт DOM-элементы (settings panel), для чего нужен document.head.
+  // При document-start head ещё не существует — откладываем до DOMContentLoaded.
+  function init(): void {
+    initErrorLog();
+    installSbgFlavor();
+    bootstrap([
+      enhancedMainScreen,
+      enhancedPointPopupUi,
+      swipeToClosePopup,
+      groupErrorToasts,
+      shiftMapCenterDown,
+      largerPointTapArea,
+      disableDoubleTapZoom,
+      ngrsZoom,
+      drawButtonFix,
+      keepScreenOn,
+      inventoryCleanup,
+      keyCountOnPoints,
+      nextPointNavigation,
+      refsOnMap,
+      repairAtFullCharge,
+      singleFingerRotation,
+      mapTileLayers,
+    ]);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 }

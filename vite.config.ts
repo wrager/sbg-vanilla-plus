@@ -32,7 +32,7 @@ export default defineConfig(({ command }) => {
           description,
           author: 'wrager',
           match: [MATCH],
-          'run-at': 'document-idle',
+          'run-at': 'document-start',
           grant: 'none',
           license: 'MIT',
           ...(isDev
