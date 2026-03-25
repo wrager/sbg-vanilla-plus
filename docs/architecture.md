@@ -2,7 +2,7 @@
 
 ## Один скрипт
 
-Один userscript `sbg-vanilla-plus.user.js` — все модули в одном бандле. Модули организованы по категориям: `style`, `feature`, `bugfix`.
+Один userscript `sbg-vanilla-plus.user.js` — все модули в одном бандле.
 
 ## Интерфейс модуля
 
@@ -12,10 +12,12 @@ interface IFeatureModule {
   name: ILocalizedString; // { en, ru }
   description: ILocalizedString; // { en, ru }
   defaultEnabled: boolean;
-  category: 'style' | 'feature' | 'bugfix';
-  init(): void; // один раз при загрузке
-  enable(): void;
-  disable(): void;
+  category: 'ui' | 'map' | 'feature' | 'utility' | 'fix';
+  requiresReload?: boolean; // при переключении — перезагрузка страницы
+  status?: 'ready' | 'failed'; // runtime-статус после init/enable
+  init(): void | Promise<void>; // один раз при загрузке
+  enable(): void | Promise<void>;
+  disable(): void | Promise<void>;
 }
 ```
 
@@ -23,15 +25,31 @@ interface IFeatureModule {
 
 **Killswitch** — `src/core/killswitch.ts`: проверка `#svp-disabled=1` в hash/sessionStorage.
 
-**Отказоустойчивость** — каждый модуль в `try/catch` при init/enable. Сломанный помечается `failed`, не блокирует остальные.
+**Отказоустойчивость** — каждый модуль в `try/catch` при init/enable. Сломанный помечается `failed`, не блокирует остальные. Поддерживаются как синхронные, так и async-фазы: если init/enable возвращает `Promise`, bootstrap ожидает его завершения.
 
 **CSS-инъекция** — `import styles from './styles.css?inline'` → `injectStyles(css, id)` → `<style id="svp-{id}">`.
 
-**Настройки** — `localStorage['svp_settings']`: `{ version: number, modules: Record<string, boolean> }`. Миграции через массив `migrations[]`.
+**Настройки** — `localStorage['svp_settings']`: `{ version: number, modules: Record<string, boolean>, errors: Record<string, string> }`. Миграции через массив `migrations[]` с автоматическим бэкапом.
 
-**Панель настроек** — кнопка ⚙ открывает полноэкранную панель. Модули сгруппированы по категориям: Стилизация, Фичи, Багфиксы.
+**Панель настроек** — кнопка ⚙ открывает полноэкранную панель. Модули сгруппированы по категориям: Интерфейс, Карта, Фичи, Утилиты, Багфиксы.
 
-**Версия SBG** — `SBG_COMPATIBLE_VERSION` в `gameVersion.ts`. Проверяет заголовок `x-sbg-version` из `/api/self`.
+**OL Map capture** — `src/core/olMap.ts`: перехват `ol.Map.prototype.getView()` через Proxy для захвата экземпляра карты (игра хранит `map` в локальной переменной). Если `window.ol` ещё не загружен — перехват через `Object.defineProperty`. Предоставляет `getOlMap(): Promise<IOlMap>`, утилиты `findDragPanInteractions()`, `findLayerByName()`, `createDragPanControl()`.
+
+**Локализация** — `src/core/l10n.ts`: `ILocalizedString = { en, ru }`, функция `t()` выбирает текст по языку игры.
+
+**Игровые константы** — `src/core/gameConstants.ts`: типы предметов инвентаря (`ITEM_TYPE_CORE`, `ITEM_TYPE_CATALYSER`, `ITEM_TYPE_REFERENCE`, `ITEM_TYPE_BROOM`).
+
+**Типы инвентаря** — `src/core/inventoryTypes.ts`: интерфейсы и type guard'ы для всех типов предметов.
+
+**Кэш инвентаря** — `src/core/inventoryCache.ts`: чтение и парсинг `inventory-cache` из localStorage.
+
+**Цвета темы** — `src/core/themeColors.ts`: чтение CSS custom properties (`--text`, `--background`).
+
+**Лог ошибок** — `src/core/errorLog.ts`: перехват `console.error`/`console.warn` и глобальных ошибок, хранение последних 50 записей.
+
+**Баг-репорты** — `src/core/bugReport.ts`: формирование отчёта с версиями, настройками и логом ошибок.
+
+**Версия SBG** — `src/core/gameVersion.ts`: `SBG_COMPATIBLE_VERSION`. Проверяет заголовок `x-sbg-version` из `/api/self`.
 
 **SBG Flavor** — `src/core/sbgFlavor.ts`: перехватывает глобальный `fetch` и добавляет заголовок `x-sbg-flavor: VanillaPlus/{version}` ко всем запросам. Если другие скрипты уже установили этот заголовок, значение дополняется через пробел. Формат как у User-Agent. Запрошено разработчиком игры для статистики.
 
@@ -101,32 +119,34 @@ interface IFeatureModule {
 ```
 src/
 ├── core/
-│   ├── bootstrap.ts
-│   ├── killswitch.ts
-│   ├── moduleRegistry.ts
-│   ├── dom.ts
-│   ├── gameEvents.ts
-│   ├── gameVersion.ts
-│   ├── sbgFlavor.ts
+│   ├── bootstrap.ts        # Оркестрация модулей
+│   ├── killswitch.ts        # Отключение скрипта
+│   ├── moduleRegistry.ts    # Интерфейс и lifecycle модулей
+│   ├── dom.ts               # DOM-утилиты ($, $$, waitForElement, injectStyles)
+│   ├── olMap.ts             # OL Map capture + утилиты (findLayerByName, DragPan)
+│   ├── gameConstants.ts     # Константы игры (типы предметов)
+│   ├── inventoryTypes.ts    # Типы предметов инвентаря + type guards
+│   ├── inventoryCache.ts    # Чтение inventory-cache из localStorage
+│   ├── themeColors.ts       # Чтение CSS custom properties темы
+│   ├── gameEvents.ts        # Наблюдение за DOM-событиями игры
+│   ├── gameVersion.ts       # Проверка совместимости версий
+│   ├── sbgFlavor.ts         # Заголовок x-sbg-flavor
+│   ├── errorLog.ts          # Перехват и хранение ошибок
+│   ├── bugReport.ts         # Формирование баг-репортов
+│   ├── l10n.ts              # Локализация (en/ru)
 │   └── settings/
-│       ├── types.ts
-│       ├── defaults.ts
-│       ├── storage.ts
-│       └── ui.ts
+│       ├── types.ts         # ISvpSettings
+│       ├── defaults.ts      # Дефолтные настройки
+│       ├── storage.ts       # localStorage + миграции
+│       └── ui.ts            # Панель настроек
 ├── modules/
-│   ├── style/
-│   │   └── <moduleName>/
-│   │       ├── <moduleName>.ts
-│   │       ├── <moduleName>.test.ts
-│   │       └── styles.css
-│   ├── feature/
-│   │   └── <moduleName>/
-│   │       ├── <moduleName>.ts
-│   │       └── <moduleName>.test.ts
-│   └── bugfix/
-│       └── <moduleName>/
-│           ├── <moduleName>.ts
-│           └── <moduleName>.test.ts
+│   └── <moduleName>/
+│       ├── <moduleName>.ts       # Реализация модуля
+│       ├── <moduleName>.test.ts  # Тесты модуля
+│       ├── styles.css            # Стили (опционально)
+│       └── <helper>.ts           # Вспомогательные файлы (опционально)
 ├── types/
-└── entry.ts
+│   ├── tampermonkey.d.ts    # Типы Tampermonkey API
+│   └── vite.d.ts            # Типы Vite-ассетов
+└── entry.ts                 # Точка входа
 ```
