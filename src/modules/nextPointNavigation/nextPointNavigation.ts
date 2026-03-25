@@ -157,6 +157,16 @@ function findFeatureById(id: string): IOlFeature | null {
 // ── Открытие попапа ─────────────────────────────────────────────────────────
 
 function openPointPopup(guid: string): void {
+  // Прямой вызов showInfo — надёжнее fake click (нет промахов, нет retry).
+  // Доступен если скрипт игры пропатчен (src/core/gameScriptPatcher.ts).
+  if (typeof window.showInfo === 'function') {
+    // Скрыть текущий попап перед открытием нового (как в CUI, refs/cui/index.js:4626)
+    document.querySelector('.info.popup')?.classList.add('hidden');
+    window.showInfo(guid);
+    return;
+  }
+
+  // Fallback: fake click через карту (если скрипт не пропатчен)
   if (
     !map ||
     typeof map.dispatchEvent !== 'function' ||

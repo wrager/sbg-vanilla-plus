@@ -426,6 +426,59 @@ describe('nextPointNavigation enable/disable', () => {
     expect(olMap.getPixelFromCoordinate).toHaveBeenCalledWith([20, 20]);
   });
 
+  test('uses window.showInfo when available', async () => {
+    const mockShowInfo = jest.fn();
+    window.showInfo = mockShowInfo;
+
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
+    button.click();
+
+    expect(mockShowInfo).toHaveBeenCalledWith('p2');
+    // Не должен использовать fake click
+    expect(olMap.dispatchEvent).not.toHaveBeenCalled();
+
+    delete window.showInfo;
+  });
+
+  test('hides popup before calling showInfo', async () => {
+    const mockShowInfo = jest.fn();
+    window.showInfo = mockShowInfo;
+
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
+    button.click();
+
+    expect(popup.classList.contains('hidden')).toBe(true);
+
+    delete window.showInfo;
+  });
+
+  test('falls back to fake click when showInfo not available', async () => {
+    delete window.showInfo;
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
+    button.click();
+
+    // Должен использовать fake click
+    expect(olMap.getPixelFromCoordinate).toHaveBeenCalledWith([20, 20]);
+  });
+
   test('skips out-of-range points', async () => {
     // Только p1 в ренже, p3 далеко
     pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p3', [200, 200])]);
