@@ -126,6 +126,15 @@ afterEach(async () => {
   delete window.ol;
 });
 
+test('rotates when follow is not explicitly set (default state)', () => {
+  // При первой загрузке игры localStorage.follow === null.
+  // Игра считает follow активным по умолчанию (null != 'false').
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+  dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+
+  expect(realSetRotation).toHaveBeenCalled();
+});
+
 test('does not rotate when FW is off', () => {
   localStorage.setItem('follow', 'false');
 

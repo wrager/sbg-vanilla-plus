@@ -13,7 +13,9 @@ let enabled = false;
 let disabledDragPanInteractions: IOlInteraction[] = [];
 
 function isFollowActive(): boolean {
-  return localStorage.getItem('follow') === 'true';
+  // Игра считает follow активным по умолчанию (null != 'false'),
+  // неактивным — только при явном 'false' в localStorage.
+  return localStorage.getItem('follow') !== 'false';
 }
 
 function getScreenCenter(): { x: number; y: number } {
