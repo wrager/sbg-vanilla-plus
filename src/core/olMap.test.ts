@@ -1,5 +1,5 @@
-import type { IOlLayer, IOlMap, IOlView } from './olMap';
-import { findLayerByName } from './olMap';
+import type { IOlInteraction, IOlLayer, IOlMap, IOlView } from './olMap';
+import { createDragPanControl, findLayerByName } from './olMap';
 
 function createFakeView(): IOlView {
   return {
@@ -268,5 +268,95 @@ describe('findLayerByName', () => {
   test('returns null for empty layers array', () => {
     const map = makeMap([]);
     expect(findLayerByName(map, 'points')).toBeNull();
+  });
+});
+
+// ── createDragPanControl ─────────────────────────────────────────────────────
+
+describe('createDragPanControl', () => {
+  function makeDragPan(): IOlInteraction & { active: boolean } {
+    const interaction = {
+      active: true,
+      setActive(value: boolean) {
+        interaction.active = value;
+      },
+      getActive() {
+        return interaction.active;
+      },
+    };
+    return interaction;
+  }
+
+  function makeMapWithDragPan(interactions: IOlInteraction[]): IOlMap {
+    // DragPan detection relies on instanceof — mock window.ol.interaction.DragPan
+    // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- заглушка для instanceof
+    const FakeDragPan = class {};
+    window.ol = {
+      Map: { prototype: { getView: jest.fn() } },
+      interaction: {
+        DragPan: FakeDragPan as unknown as new () => IOlInteraction,
+      },
+    } as typeof window.ol;
+
+    // Make interactions instances of FakeDragPan
+    for (const interaction of interactions) {
+      Object.setPrototypeOf(interaction, FakeDragPan.prototype);
+    }
+
+    return {
+      getView: createFakeView,
+      getSize: () => [800, 600],
+      getLayers: () => ({ getArray: () => [] }),
+      getInteractions: () => ({ getArray: () => interactions }),
+      addLayer: jest.fn(),
+      removeLayer: jest.fn(),
+      updateSize: jest.fn(),
+    };
+  }
+
+  afterEach(() => {
+    delete window.ol;
+  });
+
+  test('disable deactivates DragPan interactions', () => {
+    const dragPan = makeDragPan();
+    const map = makeMapWithDragPan([dragPan]);
+    const control = createDragPanControl(map);
+
+    control.disable();
+    expect(dragPan.active).toBe(false);
+  });
+
+  test('restore reactivates previously disabled interactions', () => {
+    const dragPan = makeDragPan();
+    const map = makeMapWithDragPan([dragPan]);
+    const control = createDragPanControl(map);
+
+    control.disable();
+    control.restore();
+    expect(dragPan.active).toBe(true);
+  });
+
+  test('restore after restore is a no-op', () => {
+    const dragPan = makeDragPan();
+    const map = makeMapWithDragPan([dragPan]);
+    const control = createDragPanControl(map);
+
+    control.disable();
+    control.restore();
+    dragPan.active = false; // externally disabled
+    control.restore(); // should not re-enable
+    expect(dragPan.active).toBe(false);
+  });
+
+  test('instances are isolated', () => {
+    const dragPan = makeDragPan();
+    const map = makeMapWithDragPan([dragPan]);
+    const controlA = createDragPanControl(map);
+    const controlB = createDragPanControl(map);
+
+    controlA.disable();
+    controlB.restore(); // B hasn't disabled anything — no effect
+    expect(dragPan.active).toBe(false);
   });
 });

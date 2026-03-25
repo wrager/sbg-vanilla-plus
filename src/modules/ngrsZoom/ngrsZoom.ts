@@ -1,6 +1,6 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import type { IOlInteraction, IOlMap } from '../../core/olMap';
-import { findDragPanInteractions, getOlMap } from '../../core/olMap';
+import type { IDragPanControl, IOlInteraction, IOlMap } from '../../core/olMap';
+import { createDragPanControl, getOlMap } from '../../core/olMap';
 
 const MODULE_ID = 'ngrsZoom';
 
@@ -20,7 +20,7 @@ type GestureState = 'idle' | 'firstTapDown' | 'waitingSecondTap' | 'secondTapDow
 let map: IOlMap | null = null;
 let enabled = false;
 let disabledInteractions: IOlInteraction[] = [];
-let disabledDragPanInteractions: IOlInteraction[] = [];
+let dragPanControl: IDragPanControl | null = null;
 
 // Gesture state
 let state: GestureState = 'idle';
@@ -36,24 +36,9 @@ function isDoubleClickZoom(interaction: IOlInteraction): boolean {
   return DoubleClickZoom !== undefined && interaction instanceof DoubleClickZoom;
 }
 
-function disableDragPan(): void {
-  if (!map) return;
-  disabledDragPanInteractions = findDragPanInteractions(map);
-  for (const interaction of disabledDragPanInteractions) {
-    interaction.setActive(false);
-  }
-}
-
-function restoreDragPan(): void {
-  for (const interaction of disabledDragPanInteractions) {
-    interaction.setActive(true);
-  }
-  disabledDragPanInteractions = [];
-}
-
 function resetGesture(): void {
   state = 'idle';
-  restoreDragPan();
+  dragPanControl?.restore();
   if (secondTapTimer !== null) {
     clearTimeout(secondTapTimer);
     secondTapTimer = null;
@@ -115,7 +100,7 @@ function onTouchStart(event: TouchEvent): void {
     state = 'secondTapDown';
     initialY = touch.clientY;
     initialZoom = zoom;
-    disableDragPan();
+    dragPanControl?.disable();
     event.preventDefault();
     return;
   }
@@ -239,6 +224,7 @@ export const ngrsZoom: IFeatureModule = {
   init() {
     return getOlMap().then((olMap) => {
       map = olMap;
+      dragPanControl = createDragPanControl(olMap);
       if (enabled) {
         disableDoubleClickZoomInteractions();
         addListeners();

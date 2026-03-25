@@ -154,6 +154,30 @@ export function findDragPanInteractions(map: IOlMap): IOlInteraction[] {
   return map.getInteractions().getArray().filter(isDragPan);
 }
 
+export interface IDragPanControl {
+  disable(): void;
+  restore(): void;
+}
+
+/** Создаёт изолированный контроллер DragPan для модуля. Каждый модуль держит свой экземпляр. */
+export function createDragPanControl(map: IOlMap): IDragPanControl {
+  let disabled: IOlInteraction[] = [];
+  return {
+    disable() {
+      disabled = findDragPanInteractions(map);
+      for (const interaction of disabled) {
+        interaction.setActive(false);
+      }
+    },
+    restore() {
+      for (const interaction of disabled) {
+        interaction.setActive(true);
+      }
+      disabled = [];
+    },
+  };
+}
+
 export function findLayerByName(map: IOlMap, name: string): IOlLayer | null {
   for (const layer of map.getLayers().getArray()) {
     if (layer.get('name') === name) return layer;

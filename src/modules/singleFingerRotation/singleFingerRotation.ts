@@ -1,16 +1,16 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import type { IOlInteraction, IOlMap } from '../../core/olMap';
-import { findDragPanInteractions, getOlMap } from '../../core/olMap';
+import type { IDragPanControl, IOlMap } from '../../core/olMap';
+import { createDragPanControl, getOlMap } from '../../core/olMap';
 import { $ } from '../../core/dom';
 
 const MODULE_ID = 'singleFingerRotation';
 
 let viewport: HTMLElement | null = null;
 let map: IOlMap | null = null;
+let dragPanControl: IDragPanControl | null = null;
 let latestPoint: [number, number] | null = null;
 let inflateExtent = false;
 let enabled = false;
-let disabledDragPanInteractions: IOlInteraction[] = [];
 
 function isFollowActive(): boolean {
   // Игра считает follow активным по умолчанию (null != 'false'),
@@ -44,24 +44,9 @@ function applyRotation(delta: number): void {
   view.setRotation(view.getRotation() + delta);
 }
 
-function disableDragPan(): void {
-  if (!map) return;
-  disabledDragPanInteractions = findDragPanInteractions(map);
-  for (const interaction of disabledDragPanInteractions) {
-    interaction.setActive(false);
-  }
-}
-
-function restoreDragPan(): void {
-  for (const interaction of disabledDragPanInteractions) {
-    interaction.setActive(true);
-  }
-  disabledDragPanInteractions = [];
-}
-
 function resetGesture(): void {
   latestPoint = null;
-  restoreDragPan();
+  dragPanControl?.restore();
 }
 
 function onTouchStart(event: TouchEvent): void {
@@ -74,7 +59,7 @@ function onTouchStart(event: TouchEvent): void {
 
   const touch = event.targetTouches[0];
   latestPoint = [touch.clientX, touch.clientY];
-  disableDragPan();
+  dragPanControl?.disable();
 }
 
 function onTouchMove(event: TouchEvent): void {
@@ -124,6 +109,7 @@ export const singleFingerRotation: IFeatureModule = {
   init() {
     return getOlMap().then((olMap) => {
       map = olMap;
+      dragPanControl = createDragPanControl(olMap);
 
       // .ol-viewport создаётся конструктором ol.Map — гарантированно есть
       // в DOM к моменту резолва getOlMap(). waitForElement не используем,
@@ -164,7 +150,7 @@ export const singleFingerRotation: IFeatureModule = {
     enabled = false;
     inflateExtent = false;
     removeListeners();
-    restoreDragPan();
+    dragPanControl?.restore();
     resetGesture();
   },
 };

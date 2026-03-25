@@ -207,6 +207,7 @@ describe('keyCountOnPoints metadata', () => {
 // Mock getOlMap to return a controlled map
 jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- jest.requireActual returns any
   findLayerByName: jest.requireActual('../../core/olMap').findLayerByName,
 }));
 
