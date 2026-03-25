@@ -1,4 +1,4 @@
-import { isInventoryRefFull, readRefsFromCache, refsOnMap } from './refsOnMap';
+import { refsOnMap } from './refsOnMap';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -219,85 +219,6 @@ function setInventoryCache(): void {
   ];
   localStorage.setItem('inventory-cache', JSON.stringify(items));
 }
-
-// ── isInventoryRefFull ───────────────────────────────────────────────────────
-
-describe('isInventoryRefFull', () => {
-  test('accepts valid ref item', () => {
-    expect(
-      isInventoryRefFull({ t: 3, a: 5, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Title' }),
-    ).toBe(true);
-  });
-
-  test('rejects non-ref type', () => {
-    expect(
-      isInventoryRefFull({ t: 1, a: 5, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Title' }),
-    ).toBe(false);
-  });
-
-  test('rejects missing coords', () => {
-    expect(isInventoryRefFull({ t: 3, a: 5, g: 'ref-1', l: 'point-1', ti: 'Title' })).toBe(false);
-  });
-
-  test('rejects non-array coords', () => {
-    expect(
-      isInventoryRefFull({ t: 3, a: 5, c: 'bad', g: 'ref-1', l: 'point-1', ti: 'Title' }),
-    ).toBe(false);
-  });
-
-  test('rejects coords with wrong length', () => {
-    expect(isInventoryRefFull({ t: 3, a: 5, c: [1], g: 'ref-1', l: 'point-1', ti: 'Title' })).toBe(
-      false,
-    );
-  });
-
-  test('rejects missing title', () => {
-    expect(isInventoryRefFull({ t: 3, a: 5, c: [1, 2], g: 'ref-1', l: 'point-1' })).toBe(false);
-  });
-
-  test('rejects null', () => {
-    expect(isInventoryRefFull(null)).toBe(false);
-  });
-
-  test('rejects primitive', () => {
-    expect(isInventoryRefFull(42)).toBe(false);
-  });
-});
-
-// ── readRefsFromCache ────────────────────────────────────────────────────────
-
-describe('readRefsFromCache', () => {
-  afterEach(() => {
-    localStorage.removeItem('inventory-cache');
-  });
-
-  test('returns empty array when no cache', () => {
-    expect(readRefsFromCache()).toEqual([]);
-  });
-
-  test('returns empty array on invalid JSON', () => {
-    localStorage.setItem('inventory-cache', '{broken');
-    expect(readRefsFromCache()).toEqual([]);
-  });
-
-  test('returns empty array when cache is not array', () => {
-    localStorage.setItem('inventory-cache', '{"t":3}');
-    expect(readRefsFromCache()).toEqual([]);
-  });
-
-  test('filters only valid ref items', () => {
-    const items = [
-      { t: 3, a: 2, c: [100, 13], g: 'r1', l: 'p1', ti: 'A' },
-      { t: 1, a: 5, l: 'p2' },
-      { t: 3, a: 1, c: [101, 14], g: 'r2', l: 'p2', ti: 'B' },
-    ];
-    localStorage.setItem('inventory-cache', JSON.stringify(items));
-    const result = readRefsFromCache();
-    expect(result).toHaveLength(2);
-    expect(result[0].g).toBe('r1');
-    expect(result[1].g).toBe('r2');
-  });
-});
 
 // ── module metadata ──────────────────────────────────────────────────────────
 

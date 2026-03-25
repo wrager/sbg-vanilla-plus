@@ -4,6 +4,8 @@ import { t } from '../../core/l10n';
 import { getOlMap } from '../../core/olMap';
 import type { IOlFeature, IOlMap, IOlLayer, IOlMapEvent, IOlVectorSource } from '../../core/olMap';
 import { loadSettings, isModuleEnabled } from '../../core/settings/storage';
+import { readFullInventoryReferences, INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
+import type { IInventoryReferenceFull } from '../../core/inventoryTypes';
 import { ngrsZoom } from '../ngrsZoom/ngrsZoom';
 import css from './styles.css?inline';
 
@@ -23,46 +25,6 @@ const REFS_TAB_TYPE = 3;
 // ID элементов из модуля collapsibleTopPanel — связь закреплена явно
 const COLLAPSIBLE_TOGGLE_ID = 'svp-top-toggle';
 const COLLAPSIBLE_EXPAND_ID = 'svp-top-expand';
-
-// ── inventory data ───────────────────────────────────────────────────────────
-
-interface IInventoryRefFull {
-  t: 3;
-  a: number;
-  c: [number, number];
-  g: string;
-  l: string;
-  ti: string;
-}
-
-export function isInventoryRefFull(value: unknown): value is IInventoryRefFull {
-  if (typeof value !== 'object' || value === null) return false;
-  const record = value as Record<string, unknown>;
-  return (
-    record.t === 3 &&
-    typeof record.a === 'number' &&
-    Array.isArray(record.c) &&
-    record.c.length === 2 &&
-    typeof record.c[0] === 'number' &&
-    typeof record.c[1] === 'number' &&
-    typeof record.g === 'string' &&
-    typeof record.l === 'string' &&
-    typeof record.ti === 'string'
-  );
-}
-
-export function readRefsFromCache(): IInventoryRefFull[] {
-  const raw = localStorage.getItem('inventory-cache');
-  if (!raw) return [];
-  let items: unknown;
-  try {
-    items = JSON.parse(raw) as unknown;
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(items)) return [];
-  return items.filter(isInventoryRefFull);
-}
 
 // ── team loading ─────────────────────────────────────────────────────────────
 
@@ -114,7 +76,7 @@ async function deleteRefsFromServer(items: Record<string, number>): Promise<IDel
 }
 
 function removeRefsFromCache(deletedGuids: Set<string>): void {
-  const raw = localStorage.getItem('inventory-cache');
+  const raw = localStorage.getItem(INVENTORY_CACHE_KEY);
   if (!raw) return;
   let items: unknown[];
   try {
@@ -129,7 +91,7 @@ function removeRefsFromCache(deletedGuids: Set<string>): void {
     if (record.t !== REFS_TAB_TYPE) return true;
     return typeof record.g === 'string' && !deletedGuids.has(record.g);
   });
-  localStorage.setItem('inventory-cache', JSON.stringify(filtered));
+  localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(filtered));
 }
 
 function updateInventoryCounter(total: number): void {
@@ -353,7 +315,7 @@ async function handleDeleteClick(): Promise<void> {
 
 // ── team loading (per-ref) ───────────────────────────────────────────────────
 
-async function loadTeamDataForRefs(refs: IInventoryRefFull[]): Promise<void> {
+async function loadTeamDataForRefs(refs: IInventoryReferenceFull[]): Promise<void> {
   // Collect unique point GUIDs that aren't cached
   const pointGuids = new Set<string>();
   for (const ref of refs) {
@@ -464,7 +426,7 @@ function restoreGameUi(): void {
 function showViewer(): void {
   if (viewerOpen || !olMap || !refsSource) return;
 
-  const refs = readRefsFromCache();
+  const refs = readFullInventoryReferences();
   if (refs.length === 0) return;
 
   const ol = window.ol;
