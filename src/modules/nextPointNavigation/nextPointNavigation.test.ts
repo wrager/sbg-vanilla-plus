@@ -491,6 +491,146 @@ describe('nextPointNavigation enable/disable', () => {
     const button = document.querySelector('.svp-next-point-button') as HTMLButtonElement;
     expect(button.disabled).toBe(true);
   });
+
+  test('disables button when only the current point is in range', async () => {
+    // p1 в ренже (dist≈14), p2 вне ренжа (dist≈283)
+    pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p2', [200, 200])]);
+    playerSrc = makeSource([makeFeature('player', [0, 0])]);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
+      view,
+    );
+    mockGetOlMap.mockResolvedValue(olMap);
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+
+  test('enables button when another point is also in range', async () => {
+    // p1 (dist≈14) и p2 (dist≈28) оба в ренже
+    pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p2', [20, 20])]);
+    playerSrc = makeSource([makeFeature('player', [0, 0])]);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
+      view,
+    );
+    mockGetOlMap.mockResolvedValue(olMap);
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+  });
+
+  test('enables button when current point is out of range but others are in range', async () => {
+    // p1 вне ренжа, p2 в ренже (dist≈14)
+    pointsSrc = makeSource([makeFeature('p1', [200, 200]), makeFeature('p2', [10, 10])]);
+    playerSrc = makeSource([makeFeature('player', [0, 0])]);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
+      view,
+    );
+    mockGetOlMap.mockResolvedValue(olMap);
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+  });
+
+  test('updates button state when pointsSource emits change', async () => {
+    // Начинаем с одной точкой в ренже (текущая) — кнопка disabled
+    const features = [makeFeature('p1', [10, 10])];
+    const listeners = new Map<string, (() => void)[]>();
+    const dynamicSource: IOlVectorSource = {
+      getFeatures: () => features,
+      addFeature: jest.fn(),
+      clear: jest.fn(),
+      on(type: string, callback: () => void) {
+        const array = listeners.get(type) ?? [];
+        array.push(callback);
+        listeners.set(type, array);
+      },
+      un(type: string, callback: () => void) {
+        const array = listeners.get(type) ?? [];
+        listeners.set(
+          type,
+          array.filter((listener) => listener !== callback),
+        );
+      },
+    };
+
+    playerSrc = makeSource([makeFeature('player', [0, 0])]);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', dynamicSource), makeLayer('player', playerSrc)],
+      view,
+    );
+    mockGetOlMap.mockResolvedValue(olMap);
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+
+    // Добавляем вторую точку и эмитим change
+    features.push(makeFeature('p2', [20, 20]));
+    for (const callback of listeners.get('change') ?? []) {
+      callback();
+    }
+
+    expect(button.disabled).toBe(false);
+  });
+
+  test('cleans up source change listener on disable', async () => {
+    const listeners = new Map<string, (() => void)[]>();
+    const trackingSource: IOlVectorSource = {
+      getFeatures: () => [makeFeature('p1', [10, 10])],
+      addFeature: jest.fn(),
+      clear: jest.fn(),
+      on(type: string, callback: () => void) {
+        const array = listeners.get(type) ?? [];
+        array.push(callback);
+        listeners.set(type, array);
+      },
+      un(type: string, callback: () => void) {
+        const array = listeners.get(type) ?? [];
+        listeners.set(
+          type,
+          array.filter((listener) => listener !== callback),
+        );
+      },
+    };
+
+    playerSrc = makeSource([makeFeature('player', [0, 0])]);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', trackingSource), makeLayer('player', playerSrc)],
+      view,
+    );
+    mockGetOlMap.mockResolvedValue(olMap);
+    await nextPointNavigation.enable();
+
+    const changeListenersAfterEnable = listeners.get('change')?.length ?? 0;
+    expect(changeListenersAfterEnable).toBeGreaterThan(0);
+
+    await nextPointNavigation.disable();
+
+    const changeListenersAfterDisable = listeners.get('change')?.length ?? 0;
+    expect(changeListenersAfterDisable).toBe(0);
+  });
 });
 
 // ── autozoom ────────────────────────────────────────────────────────────────

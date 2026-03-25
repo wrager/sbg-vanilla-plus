@@ -23,6 +23,7 @@ let popupObserver: MutationObserver | null = null;
 let playerMoveHandler: (() => void) | null = null;
 let autozoomInProgress = false;
 let onRangeButtonClick: (() => void) | null = null;
+let sourceChangeHandler: (() => void) | null = null;
 
 // ── Геодезическое расстояние ────────────────────────────────────────────────
 
@@ -218,12 +219,13 @@ function navigateInRange(): void {
 
 // ── Инъекция кнопки ─────────────────────────────────────────────────────────
 
-function hasInRangePoints(): boolean {
+function hasInRangePoints(excludePointId: string | null): boolean {
   if (!pointsSource) return false;
   const playerCoordinates = getPlayerCoordinates();
   if (!playerCoordinates) return false;
   const features = pointsSource.getFeatures();
-  return findFeaturesInRange(playerCoordinates, features, INTERACTION_RANGE).length > 0;
+  const inRange = findFeaturesInRange(playerCoordinates, features, INTERACTION_RANGE);
+  return inRange.some((feature) => feature.getId() !== excludePointId);
 }
 
 function injectButton(popup: Element): void {
@@ -247,8 +249,8 @@ function injectButton(popup: Element): void {
     buttonsContainer.appendChild(rangeButton);
   }
 
-  // Кнопка всегда видна, disabled когда in-range точек нет
-  const inRange = hasInRangePoints();
+  // Кнопка всегда видна, disabled когда других in-range точек нет
+  const inRange = hasInRangePoints(getPopupPointId());
   const rangeButton = popup.querySelector<HTMLButtonElement>(`.${BUTTON_CLASS}`);
   if (rangeButton) {
     rangeButton.disabled = !inRange;
@@ -266,7 +268,7 @@ function updateButtonStates(): void {
 
   const rangeButton = popup.querySelector<HTMLButtonElement>(`.${BUTTON_CLASS}`);
   if (rangeButton) {
-    rangeButton.disabled = !hasInRangePoints();
+    rangeButton.disabled = !hasInRangePoints(getPopupPointId());
   }
 }
 
@@ -373,6 +375,13 @@ export const nextPointNavigation: IFeatureModule = {
       injectStyles(styles, MODULE_ID);
       observePopup();
 
+      // Обновлять disabled-состояние кнопки при изменении набора точек
+      // (сервер подгрузил новые точки после смены viewport)
+      sourceChangeHandler = () => {
+        updateButtonStates();
+      };
+      pointsSource.on('change', sourceChangeHandler);
+
       // Обновлять disabled-состояние кнопки при движении игрока
       // (точки входят/выходят из ренжа). Игра диспатчит playermove на .info.
       const infoElement = document.querySelector('.info');
@@ -394,6 +403,11 @@ export const nextPointNavigation: IFeatureModule = {
     if (playerMoveHandler) {
       document.querySelector('.info')?.removeEventListener('playermove', playerMoveHandler);
       playerMoveHandler = null;
+    }
+
+    if (pointsSource && sourceChangeHandler) {
+      pointsSource.un('change', sourceChangeHandler);
+      sourceChangeHandler = null;
     }
 
     removeButton();
