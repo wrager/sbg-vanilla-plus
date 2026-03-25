@@ -1,5 +1,5 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
+import { readInventoryReferences } from '../../core/inventoryCache';
 
 const MODULE_ID = 'repairAtFullCharge';
 
@@ -21,20 +21,7 @@ function isSameTeam(): boolean {
 function hasKeysForPoint(): boolean {
   const pointGuid = document.querySelector('.info')?.getAttribute('data-guid');
   if (!pointGuid) return false;
-  try {
-    const raw = localStorage.getItem('inventory-cache');
-    if (!raw) return false;
-    const items: unknown[] = JSON.parse(raw) as unknown[];
-    return items.some(
-      (item) =>
-        typeof item === 'object' &&
-        item !== null &&
-        (item as { t: number }).t === ITEM_TYPE_REFERENCE &&
-        (item as { l: unknown }).l === pointGuid,
-    );
-  } catch {
-    return false;
-  }
+  return readInventoryReferences().some((ref) => ref.l === pointGuid);
 }
 
 export const repairAtFullCharge: IFeatureModule = {

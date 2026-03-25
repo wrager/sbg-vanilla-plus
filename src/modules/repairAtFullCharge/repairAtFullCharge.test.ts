@@ -29,7 +29,7 @@ function createRepairButton(disabled = true): HTMLButtonElement {
   return button;
 }
 
-function setInventory(items: { t: number; l: string }[]): void {
+function setInventory(items: { g: string; t: number; l: string; a: number }[]): void {
   localStorage.setItem('inventory-cache', JSON.stringify(items));
 }
 
@@ -42,7 +42,7 @@ describe('repairAtFullCharge', () => {
 
   test('removes disabled when same team and has keys', async () => {
     setupDom({ playerTeam: 1, pointTeam: 1, pointGuid: 'point-123' });
-    setInventory([{ t: 3, l: 'point-123' }]);
+    setInventory([{ g: 'r1', t: 3, l: 'point-123', a: 1 }]);
 
     await repairAtFullCharge.enable();
     const button = createRepairButton(false);
@@ -53,7 +53,7 @@ describe('repairAtFullCharge', () => {
 
   test('keeps disabled when different team', async () => {
     setupDom({ playerTeam: 1, pointTeam: 2, pointGuid: 'point-123' });
-    setInventory([{ t: 3, l: 'point-123' }]);
+    setInventory([{ g: 'r1', t: 3, l: 'point-123', a: 1 }]);
 
     await repairAtFullCharge.enable();
     const button = createRepairButton(false);
@@ -64,7 +64,7 @@ describe('repairAtFullCharge', () => {
 
   test('keeps disabled when no keys for this point', async () => {
     setupDom({ playerTeam: 1, pointTeam: 1, pointGuid: 'point-123' });
-    setInventory([{ t: 3, l: 'other-point' }]);
+    setInventory([{ g: 'r2', t: 3, l: 'other-point', a: 1 }]);
 
     await repairAtFullCharge.enable();
     const button = createRepairButton(false);
@@ -86,7 +86,7 @@ describe('repairAtFullCharge', () => {
 
   test('does not affect other buttons', async () => {
     setupDom();
-    setInventory([{ t: 3, l: 'point-123' }]);
+    setInventory([{ g: 'r1', t: 3, l: 'point-123', a: 1 }]);
 
     await repairAtFullCharge.enable();
     const other = document.createElement('button');
@@ -99,7 +99,7 @@ describe('repairAtFullCharge', () => {
 
   test('disable stops removing the attribute', async () => {
     setupDom();
-    setInventory([{ t: 3, l: 'point-123' }]);
+    setInventory([{ g: 'r1', t: 3, l: 'point-123', a: 1 }]);
 
     await repairAtFullCharge.enable();
     await repairAtFullCharge.disable();
