@@ -1,5 +1,6 @@
 import type { IDeletionEntry } from './cleanupCalculator';
 import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER } from '../../core/gameConstants';
+import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 
 export interface IDeleteResult {
   total: number;
@@ -82,7 +83,7 @@ export async function deleteInventoryItems(
 }
 
 export function updateInventoryCache(deletions: readonly IDeletionEntry[]): void {
-  const raw = localStorage.getItem('inventory-cache');
+  const raw = localStorage.getItem(INVENTORY_CACHE_KEY);
   if (!raw) {
     console.warn('[SVP inventoryCleanup] inventory-cache отсутствует, пропуск обновления');
     return;
@@ -109,5 +110,5 @@ export function updateInventoryCache(deletions: readonly IDeletionEntry[]): void
   }
 
   cache = cache.filter((item) => item.a > 0);
-  localStorage.setItem('inventory-cache', JSON.stringify(cache));
+  localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(cache));
 }

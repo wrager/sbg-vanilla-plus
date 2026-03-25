@@ -1,4 +1,5 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
+import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 import { parseInventoryCache } from './inventoryParser';
 import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
@@ -8,7 +9,6 @@ import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
 const MODULE_ID = 'inventoryCleanup';
 
 const ACTION_SELECTORS = '#discover, .discover-mod';
-const INVENTORY_CACHE_KEY = 'inventory-cache';
 const TOAST_DURATION = 3000;
 const DEBUG_INV_KEY = 'svp_debug_inv';
 
