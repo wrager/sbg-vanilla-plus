@@ -5,6 +5,7 @@ import { initOlMapCapture } from './core/olMap';
 import { installSbgFlavor } from './core/sbgFlavor';
 import { enhancedMainScreen } from './modules/enhancedMainScreen/enhancedMainScreen';
 import { enhancedPointPopupUi } from './modules/enhancedPointPopupUi/enhancedPointPopupUi';
+import { swipeToClosePopup } from './modules/swipeToClosePopup/swipeToClosePopup';
 import { shiftMapCenterDown } from './modules/shiftMapCenterDown/shiftMapCenterDown';
 import { disableDoubleTapZoom } from './modules/disableDoubleTapZoom/disableDoubleTapZoom';
 import { ngrsZoom } from './modules/ngrsZoom/ngrsZoom';
@@ -27,6 +28,7 @@ if (!isDisabled()) {
   bootstrap([
     enhancedMainScreen,
     enhancedPointPopupUi,
+    swipeToClosePopup,
     groupErrorToasts,
     shiftMapCenterDown,
     largerPointTapArea,
