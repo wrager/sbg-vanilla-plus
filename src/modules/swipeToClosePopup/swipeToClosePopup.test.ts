@@ -30,6 +30,12 @@ import { swipeToClosePopup } from './swipeToClosePopup';
 
 let popup: HTMLDivElement;
 
+/** Проверить что свайп-стили (translate/rotate) сброшены */
+function expectNoSwipeStyles(): void {
+  expect(popup.style.getPropertyValue('translate')).toBe('');
+  expect(popup.style.getPropertyValue('rotate')).toBe('');
+}
+
 function createPopupDom(): HTMLDivElement {
   const div = document.createElement('div');
   div.className = 'info popup';
@@ -141,7 +147,7 @@ describe('swipeToClosePopup', () => {
     jest.advanceTimersByTime(SAFETY_TIMEOUT);
 
     expect(popup.classList.contains('hidden')).toBe(false);
-    expect(popup.style.transform).toBe('');
+    expectNoSwipeStyles();
     expect(popup.style.opacity).toBe('');
   });
 
@@ -150,7 +156,7 @@ describe('swipeToClosePopup', () => {
     dispatchTouch(header, 'touchstart', { clientX: 200, clientY: 200 });
     dispatchTouch(header, 'touchmove', { clientX: 202, clientY: 230 });
 
-    expect(popup.style.transform).toBe('');
+    expectNoSwipeStyles();
   });
 
   test('multi-touch cancels gesture', () => {
@@ -160,7 +166,7 @@ describe('swipeToClosePopup', () => {
     // Мультитач — жест отменяется
     dispatchTouch(header, 'touchmove', { clientX: 220, clientY: 200, targetTouches: 2 });
 
-    expect(popup.style.transform).toBe('');
+    expectNoSwipeStyles();
   });
 
   test('touches on deploy carousel are excluded', () => {
@@ -168,7 +174,7 @@ describe('swipeToClosePopup', () => {
     dispatchTouch(carousel, 'touchstart', { clientX: 200, clientY: 200 });
     dispatchTouch(carousel, 'touchmove', { clientX: 350, clientY: 200 });
 
-    expect(popup.style.transform).toBe('');
+    expectNoSwipeStyles();
   });
 
   test('touchcancel resets gesture', () => {
@@ -176,16 +182,20 @@ describe('swipeToClosePopup', () => {
     swipeHorizontal(header, 100, 250);
     dispatchTouch(header, 'touchcancel');
 
-    expect(popup.style.transform).toBe('');
+    expectNoSwipeStyles();
     expect(popup.classList.contains('hidden')).toBe(false);
   });
 
-  test('applies transform and opacity during swipe', () => {
+  test('applies swipe styles during gesture', () => {
     const header = popup.querySelector('.i-header') as HTMLElement;
+    const spy = jest.spyOn(popup.style, 'setProperty');
+
     swipeHorizontal(header, 100, 200);
 
-    expect(popup.style.transform).toContain('translateX');
-    expect(popup.style.transform).toContain('rotate');
+    // translate/rotate — CSS Transforms Level 2, не поддерживаются jsdom.
+    // Проверяем через spy на setProperty и через opacity (поддерживается).
+    expect(spy).toHaveBeenCalledWith('translate', expect.stringContaining('px'));
+    expect(spy).toHaveBeenCalledWith('rotate', expect.stringContaining('deg'));
     expect(popup.style.opacity).not.toBe('');
     expect(popup.style.opacity).not.toBe('1');
   });
@@ -196,7 +206,7 @@ describe('swipeToClosePopup', () => {
 
     await swipeToClosePopup.disable();
 
-    expect(popup.style.transform).toBe('');
+    expectNoSwipeStyles();
     expect(popup.style.opacity).toBe('');
     expect(popup.style.willChange).toBe('');
   });
@@ -227,7 +237,7 @@ describe('swipeToClosePopup', () => {
     jest.advanceTimersByTime(SAFETY_TIMEOUT);
 
     expect(popup.classList.contains('hidden')).toBe(true);
-    expect(popup.style.transform).toBe('');
+    expectNoSwipeStyles();
     expect(popup.style.opacity).toBe('');
     expect(popup.style.willChange).toBe('');
     expect(popup.classList.contains('svp-swipe-animating')).toBe(false);
@@ -274,7 +284,7 @@ describe('swipeToClosePopup', () => {
     dispatchTouch(header, 'touchstart', { clientX: 200, clientY: 200 });
     dispatchTouch(header, 'touchend');
 
-    expect(popup.style.transform).toBe('');
+    expectNoSwipeStyles();
     expect(popup.classList.contains('hidden')).toBe(false);
   });
 

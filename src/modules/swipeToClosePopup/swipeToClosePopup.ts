@@ -31,15 +31,21 @@ let startTimestamp = 0;
 let popup: HTMLElement | null = null;
 let safetyTimer: ReturnType<typeof setTimeout> | null = null;
 
-function applyTransform(element: HTMLElement, deltaX: number): void {
+/**
+ * Применить смещение и поворот через отдельные CSS-свойства translate/rotate.
+ * Они compose с существующим transform попапа (центрирование), не перезаписывая его.
+ */
+function applySwipeStyles(element: HTMLElement, deltaX: number): void {
   const rotation = (deltaX / window.innerWidth) * MAX_ROTATION;
   const opacity = Math.max(0, 1 - Math.abs(deltaX) / OPACITY_DISTANCE);
-  element.style.transform = `translateX(${deltaX}px) rotate(${rotation}deg)`;
+  element.style.setProperty('translate', `${deltaX}px`);
+  element.style.setProperty('rotate', `${rotation}deg`);
   element.style.opacity = String(opacity);
 }
 
 function resetElementStyles(element: HTMLElement): void {
-  element.style.transform = '';
+  element.style.removeProperty('translate');
+  element.style.removeProperty('rotate');
   element.style.opacity = '';
   element.style.willChange = '';
   element.classList.remove('svp-swipe-animating');
@@ -80,7 +86,7 @@ function animateDismiss(direction: number): void {
   safetyTimer = setTimeout(finish, ANIMATION_DURATION + ANIMATION_SAFETY_MARGIN);
 
   requestAnimationFrame(() => {
-    applyTransform(animatingElement, targetX);
+    applySwipeStyles(animatingElement, targetX);
   });
 }
 
@@ -106,7 +112,8 @@ function animateReturn(): void {
   safetyTimer = setTimeout(finish, ANIMATION_DURATION + ANIMATION_SAFETY_MARGIN);
 
   requestAnimationFrame(() => {
-    animatingElement.style.transform = 'translateX(0px) rotate(0deg)';
+    animatingElement.style.setProperty('translate', '0px');
+    animatingElement.style.setProperty('rotate', '0deg');
     animatingElement.style.opacity = '1';
   });
 }
@@ -130,7 +137,7 @@ function onTouchStart(event: TouchEvent): void {
   state = 'tracking';
 
   if (popup) {
-    popup.style.willChange = 'transform, opacity';
+    popup.style.willChange = 'translate, rotate, opacity';
   }
 }
 
@@ -161,7 +168,7 @@ function onTouchMove(event: TouchEvent): void {
 
   event.preventDefault();
   currentDeltaX = deltaX;
-  if (popup) applyTransform(popup, deltaX);
+  if (popup) applySwipeStyles(popup, deltaX);
 }
 
 function onTouchEnd(event: TouchEvent): void {

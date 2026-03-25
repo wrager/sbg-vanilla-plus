@@ -1,5 +1,16 @@
+/* Блокировать горизонтальный pan браузера на попапе, чтобы свайп не двигал вьюпорт */
+.info.popup {
+  touch-action: pan-y;
+}
+
+/* Разрешить горизонтальный свайп карусели простановки ядер (Splide) */
+.info.popup .deploy-slider-wrp {
+  touch-action: manipulation;
+}
+
 .svp-swipe-animating {
   transition:
-    transform 0.3s ease-out,
+    translate 0.3s ease-out,
+    rotate 0.3s ease-out,
     opacity 0.3s ease-out;
 }
