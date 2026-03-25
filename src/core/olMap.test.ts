@@ -1,4 +1,5 @@
-import type { IOlView } from './olMap';
+import type { IOlLayer, IOlMap, IOlView } from './olMap';
+import { findLayerByName } from './olMap';
 
 function createFakeView(): IOlView {
   return {
@@ -229,4 +230,43 @@ test('retries hook when ol available but defineProperty missed', async () => {
   expect(captured).toBe(fakeMap);
 
   warnSpy.mockRestore();
+});
+
+// ── findLayerByName ──────────────────────────────────────────────────────────
+
+describe('findLayerByName', () => {
+  function makeLayer(name: string): IOlLayer {
+    return {
+      get: (key: string) => (key === 'name' ? name : undefined),
+      getSource: () => null,
+    };
+  }
+
+  function makeMap(layers: IOlLayer[]): IOlMap {
+    return {
+      getView: createFakeView,
+      getSize: () => [800, 600],
+      getLayers: () => ({ getArray: () => layers }),
+      getInteractions: () => ({ getArray: () => [] }),
+      addLayer: jest.fn(),
+      removeLayer: jest.fn(),
+      updateSize: jest.fn(),
+    };
+  }
+
+  test('returns layer with matching name', () => {
+    const target = makeLayer('points');
+    const map = makeMap([makeLayer('regions'), target, makeLayer('lines')]);
+    expect(findLayerByName(map, 'points')).toBe(target);
+  });
+
+  test('returns null when no layer matches', () => {
+    const map = makeMap([makeLayer('regions'), makeLayer('lines')]);
+    expect(findLayerByName(map, 'points')).toBeNull();
+  });
+
+  test('returns null for empty layers array', () => {
+    const map = makeMap([]);
+    expect(findLayerByName(map, 'points')).toBeNull();
+  });
 });

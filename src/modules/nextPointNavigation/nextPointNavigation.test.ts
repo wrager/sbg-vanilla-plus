@@ -230,6 +230,7 @@ describe('nextPointNavigation metadata', () => {
 
 jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
+  findLayerByName: jest.requireActual('../../core/olMap').findLayerByName,
 }));
 
 import { getOlMap } from '../../core/olMap';

@@ -154,6 +154,13 @@ export function findDragPanInteractions(map: IOlMap): IOlInteraction[] {
   return map.getInteractions().getArray().filter(isDragPan);
 }
 
+export function findLayerByName(map: IOlMap, name: string): IOlLayer | null {
+  for (const layer of map.getLayers().getArray()) {
+    if (layer.get('name') === name) return layer;
+  }
+  return null;
+}
+
 let captured: IOlMap | null = null;
 const resolvers: ((map: IOlMap) => void)[] = [];
 let hooked = false;

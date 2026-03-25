@@ -1,5 +1,5 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { getOlMap } from '../../core/olMap';
+import { getOlMap, findLayerByName } from '../../core/olMap';
 import type { IOlMap, IOlVectorSource, IOlLayer } from '../../core/olMap';
 import { readInventoryReferences } from '../../core/inventoryCache';
 
@@ -79,13 +79,6 @@ function scheduleRender(): void {
   debounceTimer = setTimeout(renderLabels, DEBOUNCE_MS);
 }
 
-function findPointsLayer(olMap: IOlMap): IOlLayer | null {
-  for (const layer of olMap.getLayers().getArray()) {
-    if (layer.get('name') === 'points') return layer;
-  }
-  return null;
-}
-
 export const keyCountOnPoints: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Key count on points', ru: 'Количество ключей на точках' },
@@ -105,7 +98,7 @@ export const keyCountOnPoints: IFeatureModule = {
       const OlVectorLayer = ol?.layer?.Vector;
       if (!OlVectorSource || !OlVectorLayer) return;
 
-      const pointsLayer = findPointsLayer(olMap);
+      const pointsLayer = findLayerByName(olMap, 'points');
       if (!pointsLayer) return;
 
       const src = pointsLayer.getSource();

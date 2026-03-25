@@ -1,7 +1,7 @@
 import { injectStyles, removeStyles, waitForElement } from '../../core/dom';
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { getOlMap } from '../../core/olMap';
-import type { IOlMap, IOlFeature, IOlVectorSource, IOlLayer } from '../../core/olMap';
+import { getOlMap, findLayerByName } from '../../core/olMap';
+import type { IOlMap, IOlFeature, IOlVectorSource } from '../../core/olMap';
 import styles from './styles.css?inline';
 
 const MODULE_ID = 'nextPointNavigation';
@@ -89,13 +89,6 @@ export function findNearestInRange(
 }
 
 // ── Слои и координаты ───────────────────────────────────────────────────────
-
-function findLayerByName(olMap: IOlMap, name: string): IOlLayer | null {
-  for (const layer of olMap.getLayers().getArray()) {
-    if (layer.get('name') === name) return layer;
-  }
-  return null;
-}
 
 function getPlayerCoordinates(): number[] | null {
   if (!playerSource) return null;
