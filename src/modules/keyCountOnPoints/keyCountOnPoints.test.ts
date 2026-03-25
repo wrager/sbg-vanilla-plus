@@ -145,9 +145,9 @@ describe('buildRefCounts', () => {
 
   test('counts refs per point', () => {
     const items = [
-      { t: 3, l: 'point-1', a: 2 },
-      { t: 3, l: 'point-1', a: 1 },
-      { t: 3, l: 'point-2', a: 3 },
+      { g: 'r1', t: 3, l: 'point-1', a: 2 },
+      { g: 'r2', t: 3, l: 'point-1', a: 1 },
+      { g: 'r3', t: 3, l: 'point-2', a: 3 },
     ];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
     const counts = buildRefCounts();
@@ -157,8 +157,8 @@ describe('buildRefCounts', () => {
 
   test('ignores non-ref item types', () => {
     const items = [
-      { t: 1, l: 'point-1', a: 5 }, // not a ref
-      { t: 3, l: 'point-2', a: 2 },
+      { g: 'c1', t: 1, l: 'point-1', a: 5 }, // not a ref
+      { g: 'r1', t: 3, l: 'point-2', a: 2 },
     ];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
     const counts = buildRefCounts();
@@ -168,9 +168,9 @@ describe('buildRefCounts', () => {
 
   test('ignores items with missing fields', () => {
     const items = [
-      { t: 3, a: 1 }, // missing l
-      { t: 3, l: 42, a: 1 }, // l is not string
-      { t: 3, l: 'point-ok', a: 1 },
+      { t: 3, a: 1 }, // missing g and l
+      { g: 'r1', t: 3, l: 42, a: 1 }, // l is not string
+      { g: 'r2', t: 3, l: 'point-ok', a: 1 },
     ];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
     const counts = buildRefCounts();

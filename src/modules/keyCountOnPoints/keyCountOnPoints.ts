@@ -1,45 +1,17 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { getOlMap } from '../../core/olMap';
 import type { IOlMap, IOlVectorSource, IOlLayer } from '../../core/olMap';
+import { readInventoryReferences } from '../../core/inventoryCache';
 
 const MODULE_ID = 'keyCountOnPoints';
 const MIN_ZOOM = 15;
 const DEBOUNCE_MS = 100;
 
-interface InventoryRef {
-  t: 3;
-  l: string;
-  a: number;
-}
-
-function isInventoryRef(val: unknown): val is InventoryRef {
-  return (
-    typeof val === 'object' &&
-    val !== null &&
-    't' in val &&
-    (val as Record<string, unknown>).t === 3 &&
-    'l' in val &&
-    typeof (val as Record<string, unknown>).l === 'string' &&
-    'a' in val &&
-    typeof (val as Record<string, unknown>).a === 'number'
-  );
-}
-
 export function buildRefCounts(): Map<string, number> {
-  const raw = localStorage.getItem('inventory-cache');
-  if (!raw) return new Map();
-  let items: unknown;
-  try {
-    items = JSON.parse(raw) as unknown;
-  } catch {
-    return new Map();
-  }
-  if (!Array.isArray(items)) return new Map();
+  const refs = readInventoryReferences();
   const counts = new Map<string, number>();
-  for (const item of items) {
-    if (isInventoryRef(item)) {
-      counts.set(item.l, (counts.get(item.l) ?? 0) + item.a);
-    }
+  for (const ref of refs) {
+    counts.set(ref.l, (counts.get(ref.l) ?? 0) + ref.a);
   }
   return counts;
 }
