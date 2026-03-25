@@ -6,21 +6,62 @@ import styles from './styles.css?inline';
 
 const MODULE_ID = 'nextPointNavigation';
 const BUTTON_CLASS = 'svp-next-point-button';
+const INTERACTION_RANGE = 45;
+const AUTOZOOM_THRESHOLD = 16;
+const AUTOZOOM_TARGET = 17;
+const AUTOZOOM_TIMEOUT_MS = 3000;
 
 let map: IOlMap | null = null;
 let pointsSource: IOlVectorSource | null = null;
-const visited = new Set<string | number>();
-let chainOrigin: number[] | null = null;
+let playerSource: IOlVectorSource | null = null;
+const rangeVisited = new Set<string | number>();
 let expectedNextGuid: string | null = null;
 let lastSeenGuid: string | null = null;
 let fakeClickRetries = 0;
 const MAX_FAKE_CLICK_RETRIES = 3;
 let popupObserver: MutationObserver | null = null;
-let onButtonClick: (() => void) | null = null;
+let playerMoveHandler: (() => void) | null = null;
+let autozoomInProgress = false;
+let onRangeButtonClick: (() => void) | null = null;
 
-export function findNearestUnvisited(
-  origin: number[],
+// ── Геодезическое расстояние ────────────────────────────────────────────────
+
+/**
+ * Геодезическое расстояние между двумя точками в проецированных координатах (EPSG:3857).
+ * Возвращает расстояние в метрах. Использует ol.sphere.getLength — тот же метод,
+ * что и игра в isInRange/getDistance (refs/game/script.js:2751-2757).
+ */
+export function getGeodeticDistance(coordsA: number[], coordsB: number[]): number {
+  const ol = window.ol;
+  if (!ol?.geom?.LineString || !ol.sphere?.getLength) return Infinity;
+
+  const line = new ol.geom.LineString([coordsA, coordsB]);
+  return ol.sphere.getLength(line);
+}
+
+// ── Поиск features ──────────────────────────────────────────────────────────
+
+export function findFeaturesInRange(
+  center: number[],
   features: IOlFeature[],
+  radiusMeters: number,
+): IOlFeature[] {
+  const result: IOlFeature[] = [];
+  for (const feature of features) {
+    const id = feature.getId();
+    if (id === undefined) continue;
+    const coords = feature.getGeometry().getCoordinates();
+    if (getGeodeticDistance(center, coords) <= radiusMeters) {
+      result.push(feature);
+    }
+  }
+  return result;
+}
+
+export function findNearestInRange(
+  center: number[],
+  features: IOlFeature[],
+  radiusMeters: number,
   visitedSet: Set<string | number>,
 ): IOlFeature | null {
   let nearest: IOlFeature | null = null;
@@ -31,8 +72,11 @@ export function findNearestUnvisited(
     if (id === undefined || visitedSet.has(id)) continue;
 
     const coords = feature.getGeometry().getCoordinates();
-    const dx = coords[0] - origin[0];
-    const dy = coords[1] - origin[1];
+    if (getGeodeticDistance(center, coords) > radiusMeters) continue;
+
+    // Внутри радиуса сортируем по проецированному расстоянию (быстро, достаточно для порядка)
+    const dx = coords[0] - center[0];
+    const dy = coords[1] - center[1];
     const distanceSquared = dx * dx + dy * dy;
 
     if (distanceSquared < minDistanceSquared) {
@@ -44,11 +88,20 @@ export function findNearestUnvisited(
   return nearest;
 }
 
-function findPointsLayer(olMap: IOlMap): IOlLayer | null {
+// ── Слои и координаты ───────────────────────────────────────────────────────
+
+function findLayerByName(olMap: IOlMap, name: string): IOlLayer | null {
   for (const layer of olMap.getLayers().getArray()) {
-    if (layer.get('name') === 'points') return layer;
+    if (layer.get('name') === name) return layer;
   }
   return null;
+}
+
+function getPlayerCoordinates(): number[] | null {
+  if (!playerSource) return null;
+  const features = playerSource.getFeatures();
+  if (features.length === 0) return null;
+  return features[0].getGeometry().getCoordinates();
 }
 
 function getPopupPointId(): string | null {
@@ -64,6 +117,8 @@ function findFeatureById(id: string): IOlFeature | null {
   }
   return null;
 }
+
+// ── Открытие попапа ─────────────────────────────────────────────────────────
 
 function openPointPopup(guid: string): void {
   if (
@@ -83,91 +138,180 @@ function openPointPopup(guid: string): void {
   map.dispatchEvent({ type: 'click', pixel, originalEvent: {} });
 }
 
-function navigateToNext(): void {
-  if (!map || !pointsSource) return;
+// ── Навигация: in-range цикл (кнопка ↻) ────────────────────────────────────
+
+function tryNavigateInRange(): boolean {
+  if (!map || !pointsSource) return false;
 
   const currentId = getPopupPointId();
-  if (!currentId) return;
+  if (!currentId) return false;
 
-  const currentFeature = findFeatureById(currentId);
-  if (!currentFeature) return;
+  const playerCoordinates = getPlayerCoordinates();
+  if (!playerCoordinates) return false;
 
-  // Первый клик в цепочке — запомнить начальную точку
-  if (!chainOrigin) {
-    chainOrigin = currentFeature.getGeometry().getCoordinates();
-  }
-
-  visited.add(currentId);
+  rangeVisited.add(currentId);
 
   const features = pointsSource.getFeatures();
-  const next = findNearestUnvisited(chainOrigin, features, visited);
+  let next = findNearestInRange(playerCoordinates, features, INTERACTION_RANGE, rangeVisited);
 
+  // Все in-range посещены — зацикливаем
   if (!next) {
-    visited.clear();
-    chainOrigin = null;
-    return;
+    rangeVisited.clear();
+    rangeVisited.add(currentId);
+    next = findNearestInRange(playerCoordinates, features, INTERACTION_RANGE, rangeVisited);
   }
 
-  const nextId = next.getId();
-  if (nextId === undefined) return;
+  if (!next) return false;
 
-  visited.add(nextId);
+  const nextId = next.getId();
+  if (nextId === undefined) return false;
+
   openPointPopup(String(nextId));
+  return true;
+}
+
+/**
+ * Кратковременный сдвиг viewport к игроку для загрузки ближних точек.
+ * Игра автоматически вызывает requestEntities при смене viewport,
+ * что загружает точки в новой области. После загрузки обновляет
+ * состояние кнопки (disabled/enabled).
+ */
+function autozoomAndNavigate(): void {
+  if (!map || !pointsSource) return;
+
+  const view = map.getView();
+  const currentZoom = view.getZoom?.();
+  if (currentZoom === undefined || currentZoom >= AUTOZOOM_THRESHOLD) return;
+
+  const playerCoordinates = getPlayerCoordinates();
+  if (!playerCoordinates) return;
+
+  autozoomInProgress = true;
+
+  const savedCenter = view.getCenter();
+  const savedZoom = currentZoom;
+
+  view.setCenter(playerCoordinates);
+  view.setZoom?.(AUTOZOOM_TARGET);
+
+  // Ждём загрузку точек через source 'change' или таймаут
+  let resolved = false;
+
+  const finish = (): void => {
+    if (resolved) return;
+    resolved = true;
+    autozoomInProgress = false;
+    pointsSource?.un('change', onSourceChange);
+
+    // Восстанавливаем viewport
+    view.setCenter(savedCenter);
+    view.setZoom?.(savedZoom);
+
+    // Обновляем состояние кнопки (могли появиться in-range точки)
+    updateButtonStates();
+  };
+
+  const onSourceChange = (): void => {
+    finish();
+  };
+
+  pointsSource.on('change', onSourceChange);
+  setTimeout(finish, AUTOZOOM_TIMEOUT_MS);
+}
+
+function navigateInRange(): void {
+  tryNavigateInRange();
+}
+
+// ── Инъекция кнопки ─────────────────────────────────────────────────────────
+
+function hasInRangePoints(): boolean {
+  if (!pointsSource) return false;
+  const playerCoordinates = getPlayerCoordinates();
+  if (!playerCoordinates) return false;
+  const features = pointsSource.getFeatures();
+  return findFeaturesInRange(playerCoordinates, features, INTERACTION_RANGE).length > 0;
 }
 
 function injectButton(popup: Element): void {
-  if (popup.querySelector(`.${BUTTON_CLASS}`)) return;
-
   const buttonsContainer = popup.querySelector('.i-buttons');
   if (!buttonsContainer) return;
 
-  const button = document.createElement('button');
-  button.className = BUTTON_CLASS;
-  button.textContent = '→';
-  button.title = 'Следующая ближайшая точка';
+  if (!popup.querySelector(`.${BUTTON_CLASS}`)) {
+    const rangeButton = document.createElement('button');
+    rangeButton.className = BUTTON_CLASS;
+    rangeButton.textContent = '→';
+    rangeButton.title = 'Следующая точка в радиусе взаимодействия';
 
-  onButtonClick = () => {
-    navigateToNext();
-  };
-  button.addEventListener('click', (event) => {
-    event.stopPropagation();
-    onButtonClick?.();
-  });
+    onRangeButtonClick = () => {
+      navigateInRange();
+    };
+    rangeButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      onRangeButtonClick?.();
+    });
 
-  buttonsContainer.appendChild(button);
+    buttonsContainer.appendChild(rangeButton);
+  }
+
+  // Кнопка всегда видна, disabled когда in-range точек нет
+  const inRange = hasInRangePoints();
+  const rangeButton = popup.querySelector<HTMLButtonElement>(`.${BUTTON_CLASS}`);
+  if (rangeButton) {
+    rangeButton.disabled = !inRange;
+  }
+
+  // Автозум: если in-range точек нет и зум низкий — подгрузить точки рядом с игроком
+  if (!inRange && !autozoomInProgress) {
+    autozoomAndNavigate();
+  }
+}
+
+function updateButtonStates(): void {
+  const popup = document.querySelector('.info.popup');
+  if (!popup || popup.classList.contains('hidden')) return;
+
+  const rangeButton = popup.querySelector<HTMLButtonElement>(`.${BUTTON_CLASS}`);
+  if (rangeButton) {
+    rangeButton.disabled = !hasInRangePoints();
+  }
 }
 
 function removeButton(): void {
   document.querySelector(`.${BUTTON_CLASS}`)?.remove();
-  onButtonClick = null;
+  onRangeButtonClick = null;
 }
+
+// ── Наблюдение за попапом ───────────────────────────────────────────────────
 
 function onPopupMutation(popup: Element): void {
   const isVisible = !popup.classList.contains('hidden');
   if (isVisible) {
     const currentGuid = (popup as HTMLElement).dataset.guid ?? null;
-    // MutationObserver может сработать несколько раз для одного открытия
-    // (class, data-guid, childList). Обнулять expectedNextGuid только
-    // когда он совпал или когда точно ручное открытие другой точки.
     if (expectedNextGuid !== null) {
       if (currentGuid === lastSeenGuid && fakeClickRetries < MAX_FAKE_CLICK_RETRIES) {
         // Фейковый клик переоткрыл ту же точку — повторить навигацию
         fakeClickRetries++;
         expectedNextGuid = null;
-        navigateToNext();
+        navigateInRange();
         return;
       }
+      // Retry исчерпаны или попап открылся для другой точки.
+      // Если фейковый клик так и не попал в цель — пометить цель как visited,
+      // чтобы следующий клик перешёл к другой точке, а не зациклился.
+      if (currentGuid === lastSeenGuid && expectedNextGuid) {
+        rangeVisited.add(expectedNextGuid);
+      }
       fakeClickRetries = 0;
-      // Наша навигация открыла попап. Фейковый клик мог попасть
-      // в соседнюю точку — принимаем открывшуюся как часть цепочки.
+      // Фейковый клик мог попасть в соседнюю точку — принимаем как часть цепочки.
       if (currentGuid !== expectedNextGuid && currentGuid) {
-        visited.add(currentGuid);
+        rangeVisited.add(currentGuid);
       }
       expectedNextGuid = null;
     } else if (currentGuid !== lastSeenGuid) {
+      // Ручное открытие другой точки — сбрасываем цепочку
       fakeClickRetries = 0;
-      visited.clear();
-      chainOrigin = null;
+      rangeVisited.clear();
     }
     lastSeenGuid = currentGuid;
     injectButton(popup);
@@ -204,12 +348,14 @@ function observePopup(): void {
   });
 }
 
+// ── Модуль ──────────────────────────────────────────────────────────────────
+
 export const nextPointNavigation: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Next point navigation', ru: 'Переход к следующей точке' },
   description: {
-    en: 'Navigate sequentially to the nearest unvisited points from the popup',
-    ru: 'Последовательная навигация по ближайшим точкам из попапа',
+    en: 'Cycle through points in interaction range',
+    ru: 'Зацикленная навигация по точкам в радиусе взаимодействия',
   },
   defaultEnabled: true,
   category: 'feature',
@@ -218,17 +364,31 @@ export const nextPointNavigation: IFeatureModule = {
 
   enable() {
     return getOlMap().then((olMap) => {
-      const pointsLayer = findPointsLayer(olMap);
+      const pointsLayer = findLayerByName(olMap, 'points');
       if (!pointsLayer) return;
 
       const source = pointsLayer.getSource();
       if (!source) return;
 
+      const playerLayer = findLayerByName(olMap, 'player');
+      const playerLayerSource = playerLayer?.getSource() ?? null;
+
       map = olMap;
       pointsSource = source;
+      playerSource = playerLayerSource;
 
       injectStyles(styles, MODULE_ID);
       observePopup();
+
+      // Обновлять disabled-состояние кнопки при движении игрока
+      // (точки входят/выходят из ренжа). Игра диспатчит playermove на .info.
+      const infoElement = document.querySelector('.info');
+      if (infoElement) {
+        playerMoveHandler = () => {
+          updateButtonStates();
+        };
+        infoElement.addEventListener('playermove', playerMoveHandler);
+      }
     });
   },
 
@@ -238,15 +398,21 @@ export const nextPointNavigation: IFeatureModule = {
       popupObserver = null;
     }
 
+    if (playerMoveHandler) {
+      document.querySelector('.info')?.removeEventListener('playermove', playerMoveHandler);
+      playerMoveHandler = null;
+    }
+
     removeButton();
     removeStyles(MODULE_ID);
 
     map = null;
     pointsSource = null;
-    visited.clear();
-    chainOrigin = null;
+    playerSource = null;
+    rangeVisited.clear();
     expectedNextGuid = null;
     lastSeenGuid = null;
     fakeClickRetries = 0;
+    autozoomInProgress = false;
   },
 };

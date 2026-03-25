@@ -112,7 +112,11 @@ interface IOlGlobal {
     Circle?: new (opts: Record<string, unknown>) => unknown;
   };
   Feature?: new (opts?: Record<string, unknown>) => IOlFeature;
-  geom?: { Point?: new (coords: number[]) => { getCoordinates(): number[] } };
+  geom?: {
+    Point?: new (coords: number[]) => { getCoordinates(): number[] };
+    LineString?: new (coords: number[][]) => { getCoordinates(): number[][] };
+  };
+  sphere?: { getLength(geometry: unknown): number };
   proj?: { fromLonLat?(coordinate: number[]): number[] };
   interaction?: {
     DoubleClickZoom?: new () => IOlInteraction;

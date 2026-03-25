@@ -1,5 +1,62 @@
-import { findNearestUnvisited, nextPointNavigation } from './nextPointNavigation';
+import {
+  findFeaturesInRange,
+  findNearestInRange,
+  getGeodeticDistance,
+  nextPointNavigation,
+} from './nextPointNavigation';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
+
+// ── OL mocks ────────────────────────────────────────────────────────────────
+
+function mockLineStringLength(coordsA: number[], coordsB: number[]): number {
+  const dx = coordsA[0] - coordsB[0];
+  const dy = coordsA[1] - coordsB[1];
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function makeView(zoom = 17): IOlView {
+  let currentZoom = zoom;
+  return {
+    padding: [0, 0, 0, 0],
+    getCenter: () => [0, 0],
+    setCenter: jest.fn(),
+    calculateExtent: () => [0, 0, 0, 0],
+    changed: () => {},
+    getRotation: () => 0,
+    setRotation: () => {},
+    getZoom: () => currentZoom,
+    setZoom: jest.fn((z: number) => {
+      currentZoom = z;
+    }),
+  };
+}
+
+beforeAll(() => {
+  window.ol = {
+    Map: { prototype: { getView: makeView } },
+    geom: {
+      LineString: class {
+        private coords: number[][];
+        constructor(coords: number[][]) {
+          this.coords = coords;
+        }
+        getCoordinates() {
+          return this.coords;
+        }
+      },
+    },
+    sphere: {
+      getLength: (geometry: { getCoordinates(): number[][] }) => {
+        const coords = geometry.getCoordinates();
+        return mockLineStringLength(coords[0], coords[1]);
+      },
+    },
+  };
+});
+
+afterAll(() => {
+  window.ol = undefined;
+});
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -18,30 +75,18 @@ function makeSource(features: IOlFeature[] = []): IOlVectorSource {
     getFeatures: () => features,
     addFeature: jest.fn(),
     clear: jest.fn(),
-    on(type: string, cb: () => void) {
-      const arr = listeners.get(type) ?? [];
-      arr.push(cb);
-      listeners.set(type, arr);
+    on(type: string, callback: () => void) {
+      const array = listeners.get(type) ?? [];
+      array.push(callback);
+      listeners.set(type, array);
     },
-    un(type: string, cb: () => void) {
-      const arr = listeners.get(type) ?? [];
+    un(type: string, callback: () => void) {
+      const array = listeners.get(type) ?? [];
       listeners.set(
         type,
-        arr.filter((l) => l !== cb),
+        array.filter((listener) => listener !== callback),
       );
     },
-  };
-}
-
-function makeView(): IOlView {
-  return {
-    padding: [0, 0, 0, 0],
-    getCenter: () => [0, 0],
-    setCenter: jest.fn(),
-    calculateExtent: () => [0, 0, 0, 0],
-    changed: () => {},
-    getRotation: () => 0,
-    setRotation: () => {},
   };
 }
 
@@ -69,54 +114,92 @@ function makeMapWithDispatch(
   };
 }
 
-// ── findNearestUnvisited ─────────────────────────────────────────────────────
+// ── getGeodeticDistance ──────────────────────────────────────────────────────
 
-describe('findNearestUnvisited', () => {
-  test('returns nearest feature by distance', () => {
+describe('getGeodeticDistance', () => {
+  test('returns distance between two points', () => {
+    const distance = getGeodeticDistance([0, 0], [3, 4]);
+    expect(distance).toBeCloseTo(5);
+  });
+
+  test('returns 0 for same point', () => {
+    expect(getGeodeticDistance([10, 20], [10, 20])).toBe(0);
+  });
+
+  test('returns Infinity when ol is not available', () => {
+    const originalOl = window.ol;
+    window.ol = undefined;
+    expect(getGeodeticDistance([0, 0], [1, 1])).toBe(Infinity);
+    window.ol = originalOl;
+  });
+});
+
+// ── findFeaturesInRange ─────────────────────────────────────────────────────
+
+describe('findFeaturesInRange', () => {
+  test('returns features within radius', () => {
     const features = [
-      makeFeature('far', [100, 100]),
       makeFeature('near', [1, 1]),
-      makeFeature('mid', [50, 50]),
+      makeFeature('far', [100, 100]),
+      makeFeature('mid', [3, 4]),
     ];
-    const result = findNearestUnvisited([0, 0], features, new Set());
-    expect(result?.getId()).toBe('near');
+    const result = findFeaturesInRange([0, 0], features, 10);
+    const ids = result.map((feature) => feature.getId());
+    expect(ids).toContain('near');
+    expect(ids).toContain('mid');
+    expect(ids).not.toContain('far');
   });
 
-  test('skips features in visited set', () => {
-    const features = [makeFeature('near', [1, 1]), makeFeature('far', [10, 10])];
-    const visited = new Set<string | number>(['near']);
-    const result = findNearestUnvisited([0, 0], features, visited);
-    expect(result?.getId()).toBe('far');
+  test('returns empty array when no features in range', () => {
+    const features = [makeFeature('far', [100, 100])];
+    expect(findFeaturesInRange([0, 0], features, 5)).toHaveLength(0);
   });
 
-  test('returns null when all features are visited', () => {
-    const features = [makeFeature('a', [1, 1]), makeFeature('b', [2, 2])];
-    const visited = new Set<string | number>(['a', 'b']);
-    const result = findNearestUnvisited([0, 0], features, visited);
-    expect(result).toBeNull();
-  });
-
-  test('returns null when features array is empty', () => {
-    const result = findNearestUnvisited([0, 0], [], new Set());
-    expect(result).toBeNull();
-  });
-
-  test('skips features with undefined id', () => {
+  test('skips features without id', () => {
     const noId: IOlFeature = {
       getGeometry: () => ({ getCoordinates: () => [1, 1] }),
       getId: () => undefined,
       setId: jest.fn(),
       setStyle: jest.fn(),
     };
-    const withId = makeFeature('valid', [10, 10]);
-    const result = findNearestUnvisited([0, 0], [noId, withId], new Set());
-    expect(result?.getId()).toBe('valid');
+    expect(findFeaturesInRange([0, 0], [noId], 10)).toHaveLength(0);
+  });
+});
+
+// ── findNearestInRange ──────────────────────────────────────────────────────
+
+describe('findNearestInRange', () => {
+  test('returns nearest unvisited feature within radius', () => {
+    const features = [
+      makeFeature('far', [8, 0]),
+      makeFeature('near', [2, 0]),
+      makeFeature('mid', [5, 0]),
+    ];
+    const result = findNearestInRange([0, 0], features, 10, new Set());
+    expect(result?.getId()).toBe('near');
   });
 
-  test('handles single feature correctly', () => {
-    const features = [makeFeature('only', [5, 5])];
-    const result = findNearestUnvisited([0, 0], features, new Set());
-    expect(result?.getId()).toBe('only');
+  test('skips visited features', () => {
+    const features = [makeFeature('near', [2, 0]), makeFeature('far', [8, 0])];
+    const visited = new Set<string | number>(['near']);
+    const result = findNearestInRange([0, 0], features, 10, visited);
+    expect(result?.getId()).toBe('far');
+  });
+
+  test('returns null when all in-range features are visited', () => {
+    const features = [makeFeature('a', [1, 0]), makeFeature('b', [2, 0])];
+    const visited = new Set<string | number>(['a', 'b']);
+    expect(findNearestInRange([0, 0], features, 10, visited)).toBeNull();
+  });
+
+  test('ignores features outside radius', () => {
+    const features = [makeFeature('near', [2, 0]), makeFeature('out', [50, 0])];
+    const visited = new Set<string | number>(['near']);
+    expect(findNearestInRange([0, 0], features, 10, visited)).toBeNull();
+  });
+
+  test('returns null for empty features', () => {
+    expect(findNearestInRange([0, 0], [], 10, new Set())).toBeNull();
   });
 });
 
@@ -155,17 +238,26 @@ const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 
 describe('nextPointNavigation enable/disable', () => {
   let pointsSrc: IOlVectorSource;
+  let playerSrc: IOlVectorSource;
   let view: IOlView;
   let olMap: IOlMap & { dispatchEvent: jest.Mock; getPixelFromCoordinate: jest.Mock };
 
   beforeEach(() => {
-    pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p2', [20, 20])]);
+    // p1=[10,10] (dist≈14), p2=[20,20] (dist≈28), p3=[200,200]
+    // Игрок в [0,0], INTERACTION_RANGE=45
+    // p1 и p2 в ренже, p3 вне ренжа
+    pointsSrc = makeSource([
+      makeFeature('p1', [10, 10]),
+      makeFeature('p2', [20, 20]),
+      makeFeature('p3', [200, 200]),
+    ]);
+    playerSrc = makeSource([makeFeature('player', [0, 0])]);
     view = makeView();
     const pointsLayer = makeLayer('points', pointsSrc);
-    olMap = makeMapWithDispatch([pointsLayer], view);
+    const playerLayer = makeLayer('player', playerSrc);
+    olMap = makeMapWithDispatch([pointsLayer, playerLayer], view);
     mockGetOlMap.mockResolvedValue(olMap);
 
-    // Create popup element in DOM
     const popup = document.createElement('div');
     popup.className = 'info popup';
     const buttonsContainer = document.createElement('div');
@@ -189,24 +281,72 @@ describe('nextPointNavigation enable/disable', () => {
   test('removes button on disable', async () => {
     await nextPointNavigation.enable();
     await nextPointNavigation.disable();
-    const button = document.querySelector('.svp-next-point-button');
-    expect(button).toBeNull();
+    expect(document.querySelector('.svp-next-point-button')).toBeNull();
   });
 
-  test('dispatches fake click on navigation', async () => {
+  test('navigates to nearest in-range point', async () => {
     await nextPointNavigation.enable();
 
     const popup = document.querySelector('.info.popup') as HTMLElement;
     popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const button = document.querySelector('.svp-next-point-button') as HTMLElement;
     button.click();
 
-    expect(olMap.dispatchEvent).toHaveBeenCalledWith({
-      type: 'click',
-      pixel: [100, 200],
-      originalEvent: {},
-    });
+    // От игрока [0,0] ближайшая непосещённая в ренже = p2
+    expect(olMap.getPixelFromCoordinate).toHaveBeenCalledWith([20, 20]);
+  });
+
+  test('skips out-of-range points', async () => {
+    // Только p1 в ренже, p3 далеко
+    pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p3', [200, 200])]);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
+      view,
+    );
+    mockGetOlMap.mockResolvedValue(olMap);
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
+    olMap.dispatchEvent.mockClear();
+    button.click();
+
+    // p1 единственная в ренже — цикл не найдёт другую точку
+    expect(olMap.dispatchEvent).not.toHaveBeenCalled();
+  });
+
+  test('cycles when all in-range visited', async () => {
+    pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p2', [20, 20])]);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
+      view,
+    );
+    mockGetOlMap.mockResolvedValue(olMap);
+    await nextPointNavigation.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
+
+    // Первый клик: p1 visited → p2
+    button.click();
+    expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([20, 20]);
+
+    // Симулируем открытие p2
+    popup.dataset.guid = 'p2';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Второй клик: все visited → цикл → p1
+    olMap.getPixelFromCoordinate.mockClear();
+    button.click();
+    expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([10, 10]);
   });
 
   test('does not move the map on navigation', async () => {
@@ -234,8 +374,7 @@ describe('nextPointNavigation enable/disable', () => {
     const otherLayer = makeLayer('other', makeSource());
     mockGetOlMap.mockResolvedValue(makeMapWithDispatch([otherLayer], view));
     await nextPointNavigation.enable();
-    const button = document.querySelector('.svp-next-point-button');
-    expect(button).toBeNull();
+    expect(document.querySelector('.svp-next-point-button')).toBeNull();
   });
 
   test('double disable does not throw', async () => {
@@ -252,24 +391,21 @@ describe('nextPointNavigation enable/disable', () => {
 
     const button = document.querySelector('.svp-next-point-button') as HTMLElement;
 
-    // Начинаем цепочку
     button.click();
     expect(olMap.dispatchEvent).toHaveBeenCalledTimes(1);
 
-    // Симулируем что попап открылся для p2 (ожидаемая точка)
+    // Симулируем открытие p2 (ожидаемая точка)
     popup.dataset.guid = 'p2';
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // Симулируем ручное открытие другой точки (p1 снова)
+    // Ручное открытие другой точки (p1 снова)
     popup.dataset.guid = 'p1';
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // Следующий клик должен начать новую цепочку от p1
+    // Цепочка сбросилась — p2 снова доступна
     olMap.dispatchEvent.mockClear();
     olMap.getPixelFromCoordinate.mockClear();
     button.click();
-
-    // Если цепочка сбросилась, p2 снова доступна (не в visited)
     expect(olMap.getPixelFromCoordinate).toHaveBeenCalledWith([20, 20]);
   });
 
@@ -279,7 +415,10 @@ describe('nextPointNavigation enable/disable', () => {
       makeFeature('p2', [20, 20]),
       makeFeature('p3', [30, 30]),
     ]);
-    olMap = makeMapWithDispatch([makeLayer('points', pointsSrc)], view);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
+      view,
+    );
     mockGetOlMap.mockResolvedValue(olMap);
     await nextPointNavigation.enable();
 
@@ -289,20 +428,17 @@ describe('nextPointNavigation enable/disable', () => {
 
     const button = document.querySelector('.svp-next-point-button') as HTMLElement;
 
-    // Первый клик: навигация к p2
     button.click();
     expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([20, 20]);
 
-    // Симулируем что фейковый клик переоткрыл p1 (ту же точку):
-    // guid не меняется, но childList mutation триггерит observer
+    // Фейковый клик переоткрыл ту же точку
     const temp = document.createElement('span');
     popup.appendChild(temp);
     await new Promise((resolve) => setTimeout(resolve, 0));
     temp.remove();
 
-    // Модуль должен был вызвать navigateToNext() повторно,
-    // p2 уже в visited → следующая p3
-    expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([30, 30]);
+    // Retry — p2 не в visited → снова p2
+    expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([20, 20]);
   });
 
   test('accepts different point when fake click misses target', async () => {
@@ -311,7 +447,10 @@ describe('nextPointNavigation enable/disable', () => {
       makeFeature('p2', [20, 20]),
       makeFeature('p3', [30, 30]),
     ]);
-    olMap = makeMapWithDispatch([makeLayer('points', pointsSrc)], view);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
+      view,
+    );
     mockGetOlMap.mockResolvedValue(olMap);
     await nextPointNavigation.enable();
 
@@ -320,7 +459,6 @@ describe('nextPointNavigation enable/disable', () => {
 
     const button = document.querySelector('.svp-next-point-button') as HTMLElement;
 
-    // Клик: навигация к p2 (ожидаемая)
     button.click();
     expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([20, 20]);
 
@@ -328,40 +466,98 @@ describe('nextPointNavigation enable/disable', () => {
     popup.dataset.guid = 'p3';
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // p3 принята как часть цепочки → следующий клик не сбрасывает
+    // p3 принята, p2 доступна (не была в visited)
     olMap.getPixelFromCoordinate.mockClear();
     button.click();
-
-    // p2 и p3 в visited, p1 — chainOrigin → нет непосещённых
-    // (p1 в visited, p2 в visited из navigateToNext, p3 в visited из observer)
-    expect(olMap.getPixelFromCoordinate).not.toHaveBeenCalled();
+    expect(olMap.getPixelFromCoordinate).toHaveBeenCalledWith([20, 20]);
   });
 
-  test('always searches from the original point in a chain', async () => {
-    pointsSrc = makeSource([
-      makeFeature('p1', [10, 10]),
-      makeFeature('p2', [20, 20]),
-      makeFeature('p3', [15, 15]),
-    ]);
-    olMap = makeMapWithDispatch([makeLayer('points', pointsSrc)], view);
+  test('disables button when no in-range points', async () => {
+    playerSrc = makeSource([makeFeature('player', [1000, 1000])]);
+    pointsSrc = makeSource([makeFeature('p1', [10, 10])]);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
+      view,
+    );
     mockGetOlMap.mockResolvedValue(olMap);
     await nextPointNavigation.enable();
 
     const popup = document.querySelector('.info.popup') as HTMLElement;
     popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
+    const button = document.querySelector('.svp-next-point-button') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+});
 
-    // Первый клик: от p1 ближайшая — p3 ([15,15], dist²=50)
-    button.click();
-    expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([15, 15]);
+// ── autozoom ────────────────────────────────────────────────────────────────
 
-    // Симулируем что попап открылся на p3
-    popup.dataset.guid = 'p3';
+describe('autozoom', () => {
+  let playerSrc: IOlVectorSource;
+  let view: IOlView;
+  let olMap: IOlMap & { dispatchEvent: jest.Mock; getPixelFromCoordinate: jest.Mock };
 
-    // Второй клик: ищем снова от p1 (не от p3!) — p2 ([20,20], dist²=200)
-    olMap.dispatchEvent.mockClear();
-    button.click();
-    expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([20, 20]);
+  beforeEach(() => {
+    jest.useFakeTimers();
+    playerSrc = makeSource([makeFeature('player', [0, 0])]);
+    view = makeView(14);
+  });
+
+  afterEach(async () => {
+    jest.useRealTimers();
+    await nextPointNavigation.disable();
+    document.querySelector('.info.popup')?.remove();
+  });
+
+  test('triggers autozoom when no in-range points and zoom is low', async () => {
+    const pointsSrc = makeSource([makeFeature('p1', [200, 200])]);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
+      view,
+    );
+    mockGetOlMap.mockResolvedValue(olMap);
+
+    const popup = document.createElement('div');
+    popup.className = 'info popup';
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.className = 'i-buttons';
+    popup.appendChild(buttonsContainer);
+    document.body.appendChild(popup);
+
+    await nextPointNavigation.enable();
+
+    popup.dataset.guid = 'p1';
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(view.setCenter).toHaveBeenCalledWith([0, 0]);
+    expect(view.setZoom).toHaveBeenCalledWith(17);
+
+    await jest.advanceTimersByTimeAsync(3000);
+    expect(view.setCenter).toHaveBeenCalledTimes(2);
+  });
+
+  test('does not autozoom when zoom is high enough', async () => {
+    view = makeView(17);
+    const pointsSrc = makeSource([makeFeature('p1', [200, 200])]);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
+      view,
+    );
+    mockGetOlMap.mockResolvedValue(olMap);
+
+    const popup = document.createElement('div');
+    popup.className = 'info popup';
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.className = 'i-buttons';
+    popup.appendChild(buttonsContainer);
+    document.body.appendChild(popup);
+
+    await nextPointNavigation.enable();
+
+    popup.dataset.guid = 'p1';
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(view.setZoom).not.toHaveBeenCalled();
   });
 });
