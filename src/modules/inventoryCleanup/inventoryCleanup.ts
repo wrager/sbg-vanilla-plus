@@ -15,6 +15,7 @@ const DEBUG_INV_KEY = 'svp_debug_inv';
 let cleanupInProgress = false;
 let discoverPending = false;
 let originalSetItem: typeof Storage.prototype.setItem | null = null;
+let setItemPatchTarget: 'instance' | 'prototype' | null = null;
 
 function readDebugInvCount(): number | null {
   const match = /[#&]svp-inv=(\d+)/.exec(location.hash);
@@ -126,23 +127,41 @@ function onInventoryCacheUpdated(): void {
 
 function installSetItemInterceptor(): void {
   // eslint-disable-next-line @typescript-eslint/unbound-method
-  originalSetItem = Storage.prototype.setItem;
-  const saved = originalSetItem;
+  const nativeSetItem = localStorage.setItem;
+  originalSetItem = nativeSetItem;
 
-  Storage.prototype.setItem = (key: string, value: string): void => {
-    saved.call(localStorage, key, value);
+  const wrapper = function (key: string, value: string): void {
+    nativeSetItem.call(localStorage, key, value);
     if (key === INVENTORY_CACHE_KEY && discoverPending) {
       // Запустить очистку в следующей микротаске, чтобы игра завершила
       // обработку ответа discover (обновление DOM-счётчика и т.д.)
       void Promise.resolve().then(onInventoryCacheUpdated);
     }
   };
+
+  // В некоторых WebView (Android 16+ / Chrome 146+) localStorage.setItem —
+  // собственное свойство объекта, а не унаследованное от Storage.prototype.
+  // Патч прототипа в этом случае не перехватывает вызовы localStorage.setItem().
+  // Пробуем патчить localStorage напрямую; если среда не позволяет (jsdom),
+  // откатываемся на прототип.
+  localStorage.setItem = wrapper;
+  if (localStorage.setItem === wrapper) {
+    setItemPatchTarget = 'instance';
+  } else {
+    Storage.prototype.setItem = wrapper;
+    setItemPatchTarget = 'prototype';
+  }
 }
 
 function uninstallSetItemInterceptor(): void {
-  if (originalSetItem) {
-    Storage.prototype.setItem = originalSetItem;
+  if (originalSetItem && setItemPatchTarget) {
+    if (setItemPatchTarget === 'instance') {
+      localStorage.setItem = originalSetItem;
+    } else {
+      Storage.prototype.setItem = originalSetItem;
+    }
     originalSetItem = null;
+    setItemPatchTarget = null;
   }
 }
 
