@@ -129,7 +129,7 @@ function isOlGlobal(val: unknown): val is IOlGlobal {
     typeof val === 'object' &&
     val !== null &&
     'Map' in val &&
-    typeof val.Map === 'object' &&
+    (typeof val.Map === 'object' || typeof val.Map === 'function') &&
     val.Map !== null &&
     'prototype' in val.Map &&
     typeof val.Map.prototype === 'object' &&
