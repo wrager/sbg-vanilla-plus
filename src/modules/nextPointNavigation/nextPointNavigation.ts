@@ -157,6 +157,8 @@ function findFeatureById(id: string): IOlFeature | null {
 // ── Открытие попапа ─────────────────────────────────────────────────────────
 
 function openPointPopup(guid: string): void {
+  expectedNextGuid = guid;
+
   // Прямой вызов showInfo — надёжнее fake click (нет промахов, нет retry).
   // Доступен если скрипт игры пропатчен (src/core/gameScriptPatcher.ts).
   if (typeof window.showInfo === 'function') {
@@ -178,13 +180,12 @@ function openPointPopup(guid: string): void {
   const feature = findFeatureById(guid);
   if (!feature) return;
 
-  expectedNextGuid = guid;
   const coords = feature.getGeometry().getCoordinates();
   const pixel = map.getPixelFromCoordinate(coords);
   map.dispatchEvent({ type: 'click', pixel, originalEvent: {} });
 }
 
-// ── Навигация: in-range цикл (кнопка ↻) ────────────────────────────────────
+// ── Навигация: in-range цикл (кнопка →) ─────────────────────────────────────
 
 function tryNavigateInRange(): boolean {
   if (!map || !pointsSource) return false;
