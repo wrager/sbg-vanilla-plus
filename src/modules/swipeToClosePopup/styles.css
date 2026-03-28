@@ -8,7 +8,7 @@
   touch-action: manipulation;
 }
 
-.svp-swipe-animating {
+.info.popup.svp-swipe-animating {
   transition:
     translate 0.3s ease-out,
     rotate 0.3s ease-out,

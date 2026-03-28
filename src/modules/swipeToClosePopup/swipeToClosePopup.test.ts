@@ -91,6 +91,12 @@ function swipeHorizontal(element: HTMLElement, startX: number, endX: number, y =
 /** Timestamp для touchend после swipeHorizontal (baseTime + 200ms) */
 const SWIPE_END_TIMESTAMP = 1200;
 
+async function flushMutations(): Promise<void> {
+  // MutationObserver callbacks в jsdom приходят в microtask очереди.
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 beforeEach(async () => {
   jest.useFakeTimers();
   jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
@@ -243,6 +249,31 @@ describe('swipeToClosePopup', () => {
     expect(popup.classList.contains('svp-swipe-animating')).toBe(false);
   });
 
+  test('transitionend from child element does not finish dismiss early', () => {
+    const header = popup.querySelector('.i-header') as HTMLElement;
+    const title = popup.querySelector('#i-title') as HTMLElement;
+    swipeHorizontal(header, 100, 250);
+    dispatchTouch(header, 'touchend', { timeStamp: SWIPE_END_TIMESTAMP });
+
+    title.dispatchEvent(new Event('transitionend', { bubbles: true }));
+    expect(popup.classList.contains('hidden')).toBe(false);
+
+    jest.advanceTimersByTime(SAFETY_TIMEOUT);
+    expect(popup.classList.contains('hidden')).toBe(true);
+  });
+
+  test('dismiss clicks popup-close button', () => {
+    const closeButton = popup.querySelector('.popup-close') as HTMLButtonElement;
+    const clickSpy = jest.spyOn(closeButton, 'click');
+    const header = popup.querySelector('.i-header') as HTMLElement;
+
+    swipeHorizontal(header, 100, 250);
+    dispatchTouch(header, 'touchend', { timeStamp: SWIPE_END_TIMESTAMP });
+    jest.advanceTimersByTime(SAFETY_TIMEOUT);
+
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+  });
+
   test('fast velocity swipe dismisses even with short distance', () => {
     const header = popup.querySelector('.i-header') as HTMLElement;
     const startTime = 1000;
@@ -286,6 +317,80 @@ describe('swipeToClosePopup', () => {
 
     expectNoSwipeStyles();
     expect(popup.classList.contains('hidden')).toBe(false);
+  });
+
+  test('observer resets stale styles when hidden is removed', async () => {
+    popup.classList.add('hidden');
+    await flushMutations();
+
+    popup.style.setProperty('translate', '120px');
+    popup.style.setProperty('rotate', '6deg');
+    popup.style.opacity = '0';
+    popup.classList.add('svp-swipe-animating');
+
+    popup.classList.remove('hidden');
+    await flushMutations();
+
+    expectNoSwipeStyles();
+    expect(popup.style.opacity).toBe('');
+    expect(popup.classList.contains('svp-swipe-animating')).toBe(false);
+  });
+
+  test('observer resets stale styles when data-guid changes on visible popup', async () => {
+    popup.dataset.guid = 'point-1';
+    await flushMutations();
+
+    popup.style.setProperty('translate', '80px');
+    popup.style.setProperty('rotate', '-4deg');
+    popup.style.opacity = '0';
+    popup.classList.add('svp-swipe-animating');
+
+    popup.dataset.guid = 'point-2';
+    await flushMutations();
+
+    expectNoSwipeStyles();
+    expect(popup.style.opacity).toBe('');
+    expect(popup.classList.contains('svp-swipe-animating')).toBe(false);
+  });
+
+  test('touchstart sanitizes stale swipe styles before tracking', () => {
+    popup.style.setProperty('translate', '60px');
+    popup.style.setProperty('rotate', '3deg');
+    popup.style.opacity = '0';
+    popup.classList.add('svp-swipe-animating');
+
+    const header = popup.querySelector('.i-header') as HTMLElement;
+    dispatchTouch(header, 'touchstart', { clientX: 200, clientY: 200 });
+
+    expectNoSwipeStyles();
+    expect(popup.style.opacity).toBe('');
+    expect(popup.classList.contains('svp-swipe-animating')).toBe(false);
+    expect(popup.style.willChange).toBe('translate, rotate, opacity');
+  });
+
+  test('fallback dismisses when popup-close button is missing', () => {
+    popup.querySelector('.popup-close')?.remove();
+    const header = popup.querySelector('.i-header') as HTMLElement;
+
+    swipeHorizontal(header, 100, 250);
+    dispatchTouch(header, 'touchend', { timeStamp: SWIPE_END_TIMESTAMP });
+    jest.advanceTimersByTime(SAFETY_TIMEOUT);
+
+    expect(popup.classList.contains('hidden')).toBe(true);
+  });
+
+  test('no stale styles after dismiss and reopen cycle', async () => {
+    const header = popup.querySelector('.i-header') as HTMLElement;
+    swipeHorizontal(header, 100, 250);
+    dispatchTouch(header, 'touchend', { timeStamp: SWIPE_END_TIMESTAMP });
+    jest.advanceTimersByTime(SAFETY_TIMEOUT);
+
+    popup.classList.remove('hidden');
+    await flushMutations();
+
+    expectNoSwipeStyles();
+    expect(popup.style.opacity).toBe('');
+    expect(popup.classList.contains('svp-swipe-animating')).toBe(false);
   });
 
   test('enable without popup element does not throw', async () => {
