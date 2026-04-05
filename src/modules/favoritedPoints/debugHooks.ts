@@ -23,6 +23,7 @@ export interface ISvpFavsDebug {
   tracePointFetches: () => void;
   stopTracePointFetches: () => void;
   printStuckItems: () => void;
+  debugViewport: () => void;
 }
 
 interface IPointRequestRecord {
@@ -153,6 +154,44 @@ export function installDebugHooks(): void {
       console.log(`DOM: элементов с классом loading без loaded: ${stuck.length}`);
       for (const item of Array.from(stuck).slice(0, 20)) {
         console.log(`  ${item.dataset.ref ?? '?'} classList=${item.className}`);
+      }
+      console.groupEnd();
+    },
+    debugViewport: (): void => {
+      const content = document.querySelector<HTMLElement>('.inventory__content');
+      if (!content) {
+        console.warn('[SVP debug] .inventory__content не найден');
+        return;
+      }
+      const bar = document.querySelector<HTMLElement>('.svp-fav-filter-bar');
+      const items = Array.from(
+        content.querySelectorAll<HTMLElement>('.inventory__item[data-ref]'),
+      );
+      console.group('[SVP debug] viewport инвентаря');
+      console.log(
+        `content: scrollTop=${content.scrollTop}, clientHeight=${content.clientHeight}, scrollHeight=${content.scrollHeight}`,
+      );
+      console.log(`content.offsetParent:`, content.offsetParent);
+      if (bar) {
+        console.log(
+          `filter bar: height=${bar.offsetHeight}, offsetTop=${bar.offsetTop}, offsetParent=`,
+          bar.offsetParent,
+        );
+      } else {
+        console.log('filter bar: не найден');
+      }
+      console.log(`Всего ключей в DOM: ${items.length}`);
+      // Выводим первые 5, последние 5 и все БЕЗ loaded.
+      const withoutLoaded = items.filter((item) => !item.classList.contains('loaded'));
+      console.log(`Ключей без loaded: ${withoutLoaded.length}`);
+      const scrollTop = content.scrollTop;
+      const clientHeight = content.clientHeight;
+      console.log('Ключи без loaded и их видимость по игровой формуле:');
+      for (const item of withoutLoaded) {
+        const inRange = item.offsetTop >= scrollTop && item.offsetTop <= scrollTop + clientHeight;
+        console.log(
+          `  ${item.dataset.ref ?? '?'} offsetTop=${item.offsetTop} parent=${item.offsetParent?.tagName}.${item.offsetParent?.className.split(' ')[0] ?? ''} inRange=${inRange} classes=${item.className}`,
+        );
       }
       console.groupEnd();
     },
