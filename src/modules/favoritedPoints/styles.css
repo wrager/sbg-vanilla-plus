@@ -185,8 +185,10 @@
 .svp-fav-settings-warning {
   font-size: 11px;
   color: var(--accent, #ffcc33);
-  padding: 2px 0 4px;
-  margin-top: -4px;
+  /* Прижимаем предупреждение к кнопке импорта выше, а ниже — большой отступ до
+     кнопки экспорта, чтобы визуально не было путаницы, к чему относится текст. */
+  margin-top: -6px;
+  margin-bottom: 14px;
 }
 
 .svp-fav-settings-counter {
