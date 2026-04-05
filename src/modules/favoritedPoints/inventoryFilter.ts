@@ -1,50 +1,45 @@
 import { waitForElement } from '../../core/dom';
-import { isFavorited, getFavoritesCount, FAVORITES_CHANGED_EVENT } from './favoritesStore';
+import {
+  isFavorited,
+  getFavoritesCount,
+  addFavorite,
+  removeFavorite,
+  FAVORITES_CHANGED_EVENT,
+} from './favoritesStore';
 
 const FILTER_BAR_CLASS = 'svp-fav-filter-bar';
 const FILTER_CHECKBOX_CLASS = 'svp-fav-filter-checkbox';
-const FILTER_ATTR = 'data-svp-fav-filter';
 const FAV_ITEM_CLASS = 'svp-is-fav';
+const ITEM_STAR_CLASS = 'svp-inv-item-star';
+
+// Игровой класс «скрыт». Игровая функция getRefsData пропускает элементы с этим
+// классом (script.js:2212), что предотвращает шквал /api/point запросов при фильтре.
+const GAME_HIDDEN_CLASS = 'hidden';
+// Маркер, что мы САМИ установили hidden — чтобы при выключении фильтра снять только
+// свои hidden, не трогая те, что игра поставила для других целей.
+const FILTER_HIDDEN_MARK = 'svp-fav-filter-hidden';
 
 const INVENTORY_CONTENT_SELECTOR = '.inventory__content';
+const INVENTORY_POPUP_SELECTOR = '.inventory.popup';
 const REFS_TAB = '3';
 
-// Чекбокс хранится в localStorage — чтобы состояние сохранялось между открытиями инвентаря.
-const STATE_KEY = 'svp_favFilterEnabled';
+// Звезда в элементе инвентаря (SVG).
+const STAR_SVG = `
+<svg viewBox="0 0 576 512" width="16" height="16" aria-hidden="true">
+  <path d="M287.9 0c9.2 0 17.6 5.2 21.6 13.5l68.6 141.3 153.2 22.6c9 1.3 16.5 7.6 19.3 16.3s.5 18.1-6 24.5L433.6 328.4l26.2 155.6c1.5 9-2.2 18.1-9.7 23.5s-17.3 6-25.3 1.7l-137-73.2L151 509.1c-8.1 4.3-17.9 3.7-25.3-1.7s-11.2-14.5-9.7-23.5l26.2-155.6L31.1 218.2c-6.5-6.4-8.7-15.9-6-24.5s10.3-15 19.3-16.3l153.2-22.6L266.3 13.5C270.4 5.2 278.7 0 287.9 0z"/>
+</svg>
+`;
 
 let contentObserver: MutationObserver | null = null;
+let popupObserver: MutationObserver | null = null;
 let filterBar: HTMLElement | null = null;
 let checkbox: HTMLInputElement | null = null;
 let countSpan: HTMLSpanElement | null = null;
 let changeHandler: (() => void) | null = null;
-
-function loadFilterState(): boolean {
-  return localStorage.getItem(STATE_KEY) === '1';
-}
-
-function saveFilterState(enabled: boolean): void {
-  if (enabled) {
-    localStorage.setItem(STATE_KEY, '1');
-  } else {
-    localStorage.removeItem(STATE_KEY);
-  }
-}
+let filterEnabled = false;
 
 function getCurrentTab(content: Element): string | null {
   return (content as HTMLElement).dataset.tab ?? null;
-}
-
-/** Проставляет класс избранного на всех видимых ключах. Идемпотентно. */
-function markFavoriteItems(content: Element): void {
-  const items = content.querySelectorAll<HTMLElement>('.inventory__item[data-ref]');
-  for (const item of items) {
-    const pointGuid = item.dataset.ref;
-    if (pointGuid && isFavorited(pointGuid)) {
-      item.classList.add(FAV_ITEM_CLASS);
-    } else {
-      item.classList.remove(FAV_ITEM_CLASS);
-    }
-  }
 }
 
 function updateFilterBarVisibility(content: Element): void {
@@ -53,18 +48,87 @@ function updateFilterBarVisibility(content: Element): void {
   filterBar.classList.toggle('svp-hidden', !isRefsTab);
 }
 
-function applyFilterAttribute(content: Element, enabled: boolean): void {
-  if (enabled) {
-    (content as HTMLElement).setAttribute(FILTER_ATTR, '1');
-  } else {
-    (content as HTMLElement).removeAttribute(FILTER_ATTR);
-  }
-}
-
 function updateCountLabel(): void {
   if (countSpan) {
     countSpan.textContent = String(getFavoritesCount());
   }
+}
+
+async function onItemStarClick(
+  event: Event,
+  item: HTMLElement,
+  starButton: HTMLButtonElement,
+): Promise<void> {
+  event.stopPropagation();
+  event.preventDefault();
+  const pointGuid = item.dataset.ref;
+  if (!pointGuid) return;
+  starButton.disabled = true;
+  try {
+    if (isFavorited(pointGuid)) {
+      await removeFavorite(pointGuid);
+    } else {
+      await addFavorite(pointGuid);
+    }
+  } catch (error) {
+    console.error('[SVP favoritedPoints] ошибка сохранения избранного:', error);
+  } finally {
+    starButton.disabled = false;
+  }
+}
+
+function injectItemStar(item: HTMLElement): void {
+  if (item.querySelector(`.${ITEM_STAR_CLASS}`)) return;
+  const star = document.createElement('button');
+  star.type = 'button';
+  star.className = ITEM_STAR_CLASS;
+  star.innerHTML = STAR_SVG;
+  star.addEventListener('click', (event) => {
+    void onItemStarClick(event, item, star);
+  });
+  item.appendChild(star);
+}
+
+function updateItemStarState(item: HTMLElement): void {
+  const star = item.querySelector<HTMLButtonElement>(`.${ITEM_STAR_CLASS}`);
+  if (!star) return;
+  const pointGuid = item.dataset.ref;
+  const favorited = pointGuid !== undefined && isFavorited(pointGuid);
+  star.classList.toggle('is-filled', favorited);
+  star.setAttribute('aria-pressed', favorited ? 'true' : 'false');
+  star.title = favorited ? 'Убрать из избранного' : 'Добавить в избранное';
+}
+
+/** Проставляет метки, звезду и скрывает/показывает элементы согласно фильтру. */
+function processItems(content: Element): void {
+  const items = content.querySelectorAll<HTMLElement>('.inventory__item[data-ref]');
+  for (const item of items) {
+    const pointGuid = item.dataset.ref;
+    const favorited = pointGuid !== undefined && pointGuid !== '' && isFavorited(pointGuid);
+
+    if (favorited) {
+      item.classList.add(FAV_ITEM_CLASS);
+    } else {
+      item.classList.remove(FAV_ITEM_CLASS);
+    }
+
+    injectItemStar(item);
+    updateItemStarState(item);
+
+    if (filterEnabled && !favorited) {
+      item.classList.add(GAME_HIDDEN_CLASS);
+      item.classList.add(FILTER_HIDDEN_MARK);
+    } else if (item.classList.contains(FILTER_HIDDEN_MARK)) {
+      item.classList.remove(GAME_HIDDEN_CLASS);
+      item.classList.remove(FILTER_HIDDEN_MARK);
+    }
+  }
+}
+
+function setFilterEnabled(content: Element, enabled: boolean): void {
+  filterEnabled = enabled;
+  if (checkbox) checkbox.checked = enabled;
+  processItems(content);
 }
 
 function createFilterBar(content: Element): HTMLElement {
@@ -77,11 +141,9 @@ function createFilterBar(content: Element): HTMLElement {
   checkbox = document.createElement('input');
   checkbox.type = 'checkbox';
   checkbox.className = FILTER_CHECKBOX_CLASS;
-  checkbox.checked = loadFilterState();
+  checkbox.checked = false;
   checkbox.addEventListener('change', () => {
-    const enabled = checkbox?.checked ?? false;
-    saveFilterState(enabled);
-    applyFilterAttribute(content, enabled);
+    setFilterEnabled(content, checkbox?.checked ?? false);
   });
 
   const text = document.createElement('span');
@@ -107,34 +169,52 @@ function ensureFilterBarInjected(content: Element): void {
   // Вставляем перед списком предметов, внутри .inventory (родитель content).
   content.parentElement?.insertBefore(filterBar, content);
   updateFilterBarVisibility(content);
-  applyFilterAttribute(content, loadFilterState());
 }
 
 function onContentMutation(content: Element): void {
   updateFilterBarVisibility(content);
   if (getCurrentTab(content) === REFS_TAB) {
-    markFavoriteItems(content);
+    processItems(content);
     updateCountLabel();
+  }
+}
+
+function onInventoryPopupMutation(popup: Element, content: Element): void {
+  // Попап инвентаря открылся заново — сбросить фильтр.
+  if (!popup.classList.contains('hidden')) {
+    if (filterEnabled) {
+      setFilterEnabled(content, false);
+    }
   }
 }
 
 function startObserving(content: Element): void {
   ensureFilterBarInjected(content);
-  // Первичная проставка классов — если таб уже активен.
   onContentMutation(content);
 
   contentObserver = new MutationObserver(() => {
     onContentMutation(content);
   });
-  // childList — ловит перерисовку списка (drawInventory делает .empty().forEach(createItem)).
-  // attributes data-tab — ловит переключение между табами.
   contentObserver.observe(content, {
     attributes: true,
     attributeFilter: ['data-tab'],
     childList: true,
   });
 
-  // Событие из store: пользователь нажал звезду (или отладочный API) — обновить метки.
+  // Сброс состояния чекбокса при каждом новом открытии инвентаря.
+  const popup = document.querySelector(INVENTORY_POPUP_SELECTOR);
+  if (popup) {
+    popupObserver = new MutationObserver(() => {
+      onInventoryPopupMutation(popup, content);
+    });
+    popupObserver.observe(popup, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+  }
+
+  // Событие из store: пользователь нажал звезду (в попапе или в инвентаре),
+  // импорт, отладочный API — обновить метки.
   changeHandler = () => {
     onContentMutation(content);
   };
@@ -160,6 +240,8 @@ export function installInventoryFilter(): void {
 export function uninstallInventoryFilter(): void {
   contentObserver?.disconnect();
   contentObserver = null;
+  popupObserver?.disconnect();
+  popupObserver = null;
   if (changeHandler) {
     document.removeEventListener(FAVORITES_CHANGED_EVENT, changeHandler);
     changeHandler = null;
@@ -168,23 +250,18 @@ export function uninstallInventoryFilter(): void {
   filterBar = null;
   checkbox = null;
   countSpan = null;
-  // Убрать атрибут и классы из DOM игры.
+  filterEnabled = false;
+
   const content = document.querySelector(INVENTORY_CONTENT_SELECTOR);
   if (content) {
-    content.removeAttribute(FILTER_ATTR);
-    const marked = content.querySelectorAll(`.${FAV_ITEM_CLASS}`);
-    for (const item of marked) {
+    const items = content.querySelectorAll<HTMLElement>('.inventory__item[data-ref]');
+    for (const item of items) {
       item.classList.remove(FAV_ITEM_CLASS);
+      if (item.classList.contains(FILTER_HIDDEN_MARK)) {
+        item.classList.remove(GAME_HIDDEN_CLASS);
+        item.classList.remove(FILTER_HIDDEN_MARK);
+      }
+      item.querySelector(`.${ITEM_STAR_CLASS}`)?.remove();
     }
   }
-}
-
-/** Вызывать после изменений в избранных, чтобы обновить текущий вид. */
-export function refreshInventoryFilter(): void {
-  const content = document.querySelector(INVENTORY_CONTENT_SELECTOR);
-  if (!content) return;
-  if (getCurrentTab(content) === REFS_TAB) {
-    markFavoriteItems(content);
-  }
-  updateCountLabel();
 }
