@@ -17,7 +17,10 @@ const ITEM_STAR_CLASS = 'svp-inv-item-star';
 const GAME_HIDDEN_CLASS = 'hidden';
 // Маркер, что мы САМИ установили hidden — чтобы при выключении фильтра снять только
 // свои hidden, не трогая те, что игра поставила для других целей.
-const FILTER_HIDDEN_MARK = 'svp-fav-filter-hidden';
+// ВАЖНО: в названии класса НЕЛЬЗЯ использовать слово "hidden" — игровой regex
+// /\b(?:loaded|loading|hidden)\b/ матчит его по границе слова (дефис = не-word char),
+// и игра перестаёт подгружать данные для таких элементов даже после снятия game hidden.
+const FILTER_MARK_CLASS = 'svp-fav-filtered';
 
 const INVENTORY_CONTENT_SELECTOR = '.inventory__content';
 const INVENTORY_POPUP_SELECTOR = '.inventory.popup';
@@ -122,10 +125,10 @@ function processItems(content: Element): void {
 
     if (filterEnabled && !favorited) {
       item.classList.add(GAME_HIDDEN_CLASS);
-      item.classList.add(FILTER_HIDDEN_MARK);
-    } else if (item.classList.contains(FILTER_HIDDEN_MARK)) {
+      item.classList.add(FILTER_MARK_CLASS);
+    } else if (item.classList.contains(FILTER_MARK_CLASS)) {
       item.classList.remove(GAME_HIDDEN_CLASS);
-      item.classList.remove(FILTER_HIDDEN_MARK);
+      item.classList.remove(FILTER_MARK_CLASS);
     }
   }
 }
@@ -266,9 +269,9 @@ export function uninstallInventoryFilter(): void {
     const items = content.querySelectorAll<HTMLElement>('.inventory__item[data-ref]');
     for (const item of items) {
       item.classList.remove(FAV_ITEM_CLASS);
-      if (item.classList.contains(FILTER_HIDDEN_MARK)) {
+      if (item.classList.contains(FILTER_MARK_CLASS)) {
         item.classList.remove(GAME_HIDDEN_CLASS);
-        item.classList.remove(FILTER_HIDDEN_MARK);
+        item.classList.remove(FILTER_MARK_CLASS);
       }
       item.querySelector(`.${ITEM_STAR_CLASS}`)?.remove();
     }

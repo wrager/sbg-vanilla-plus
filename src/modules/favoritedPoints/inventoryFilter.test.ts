@@ -142,7 +142,7 @@ describe('inventoryFilter', () => {
     checkbox.dispatchEvent(new Event('change'));
     expect(item1.classList.contains('hidden')).toBe(false);
     expect(item2.classList.contains('hidden')).toBe(true);
-    expect(item2.classList.contains('svp-fav-filter-hidden')).toBe(true);
+    expect(item2.classList.contains('svp-fav-filtered')).toBe(true);
   });
 
   test('чекбокс выключен → игровой hidden снимается только с наших элементов', async () => {
@@ -196,7 +196,7 @@ describe('inventoryFilter', () => {
     await flush();
 
     expect(checkbox.checked).toBe(false);
-    const items = content.querySelectorAll('.svp-fav-filter-hidden');
+    const items = content.querySelectorAll('.svp-fav-filtered');
     expect(items).toHaveLength(0);
   });
 
@@ -326,6 +326,6 @@ describe('inventoryFilter', () => {
     expect(item1.querySelector('.svp-inv-item-star')).toBeNull();
     expect(item1.classList.contains('svp-is-fav')).toBe(false);
     expect(item2.classList.contains('hidden')).toBe(false);
-    expect(item2.classList.contains('svp-fav-filter-hidden')).toBe(false);
+    expect(item2.classList.contains('svp-fav-filtered')).toBe(false);
   });
 });
