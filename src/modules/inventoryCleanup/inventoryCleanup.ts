@@ -7,6 +7,7 @@ import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './c
 import { loadCleanupSettings } from './cleanupSettings';
 import { initCleanupSettingsUi, destroyCleanupSettingsUi } from './cleanupSettingsUi';
 import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
+import { installSlowRefsDelete, uninstallSlowRefsDelete } from './slowRefsDelete';
 
 const MODULE_ID = 'inventoryCleanup';
 
@@ -218,6 +219,7 @@ export const inventoryCleanup: IFeatureModule = {
     document.addEventListener('click', onClickCapture, true);
     installSetItemInterceptor();
     initCleanupSettingsUi();
+    installSlowRefsDelete();
   },
 
   disable() {
@@ -225,5 +227,6 @@ export const inventoryCleanup: IFeatureModule = {
     uninstallSetItemInterceptor();
     discoverPending = false;
     destroyCleanupSettingsUi();
+    uninstallSlowRefsDelete();
   },
 };

@@ -118,6 +118,70 @@
   color: var(--accent);
 }
 
+/* Кнопка медленного удаления по фракциям (в filter bar избранных) */
+.svp-cleanup-slow-refs-button {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.2));
+  border-radius: 4px;
+  background: var(--background, rgba(0, 0, 0, 0.3));
+  color: var(--text, #ddd);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.svp-cleanup-slow-refs-button:hover {
+  background: var(--accent, #ffcc33);
+  color: var(--background, #000);
+}
+
+/* Модалка прогресса медленного удаления */
+.svp-cleanup-slow-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10010;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.svp-cleanup-slow-modal-box {
+  background: var(--background, #1a1a1a);
+  color: var(--text, #ddd);
+  border: 1px solid var(--border, #444);
+  border-radius: 6px;
+  padding: 16px 20px;
+  min-width: 260px;
+  max-width: 400px;
+}
+
+.svp-cleanup-slow-modal-status {
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.svp-cleanup-slow-progress {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.svp-cleanup-slow-progress-bar {
+  height: 100%;
+  width: 0;
+  background: #ffcc33;
+  transition: width 0.15s ease;
+}
+
+.svp-cleanup-slow-counter {
+  font-size: 11px;
+  color: var(--text-disabled, #888);
+  text-align: right;
+  margin-top: 4px;
+}
+
 .svp-cleanup-footer {
   flex-shrink: 0;
   padding: 6px 8px 40px;
