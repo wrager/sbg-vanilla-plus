@@ -136,45 +136,45 @@ export async function removeFavorite(pointGuid: string): Promise<void> {
   emitChange();
 }
 
-export interface IExportPayload {
-  version: 1;
-  favorites: IFavoriteRecord[];
-}
-
+/** Экспорт: простой массив GUID'ов точек (формат для миграции между браузерами). */
 export async function exportToJson(): Promise<string> {
   const db = await openDb();
   const tx = db.transaction(STORE_NAME, 'readonly');
   const store = tx.objectStore(STORE_NAME);
   const records: unknown[] = await promisifyRequest(store.getAll());
-  const valid = records.filter(isFavoriteRecord);
-  const payload: IExportPayload = { version: 1, favorites: valid };
-  return JSON.stringify(payload, null, 2);
+  const guids = records
+    .filter(isFavoriteRecord)
+    .map((record) => record.guid)
+    .sort();
+  return JSON.stringify(guids, null, 2);
 }
 
-function isExportPayload(value: unknown): value is IExportPayload {
-  if (typeof value !== 'object' || value === null) return false;
-  const record = value as Record<string, unknown>;
-  if (record.version !== 1) return false;
-  if (!Array.isArray(record.favorites)) return false;
-  return record.favorites.every(isFavoriteRecord);
+function isGuidArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
-/** Добавляет записи из JSON, не удаляет существующие (merge). */
+/**
+ * Импорт в режиме REPLACE: удаляет ВСЕ существующие избранные, затем добавляет
+ * записи из массива. Cooldown существующих записей теряется (формат хранит
+ * только GUID). Новые записи создаются с cooldown=null.
+ */
 export async function importFromJson(json: string): Promise<number> {
   const parsed: unknown = JSON.parse(json);
-  if (!isExportPayload(parsed)) {
-    throw new Error('Некорректный формат JSON избранных');
+  if (!isGuidArray(parsed)) {
+    throw new Error('Некорректный формат JSON: ожидается массив GUID-строк');
   }
   const db = await openDb();
   const tx = db.transaction(STORE_NAME, 'readwrite');
   const store = tx.objectStore(STORE_NAME);
-  for (const record of parsed.favorites) {
+  await promisifyRequest(store.clear());
+  for (const guid of parsed) {
+    const record: IFavoriteRecord = { guid, cooldown: null };
     await promisifyRequest(store.put(record));
-    memoryGuids.add(record.guid);
-    cooldownByGuid.set(record.guid, record.cooldown);
   }
+  memoryGuids = new Set(parsed);
+  cooldownByGuid = new Map(parsed.map((guid) => [guid, null]));
   emitChange();
-  return parsed.favorites.length;
+  return parsed.length;
 }
 
 /** Только для тестов: сбрасывает кеш и закрывает БД. */

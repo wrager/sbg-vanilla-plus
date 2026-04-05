@@ -98,68 +98,102 @@ describe('favoritesStore', () => {
     // Наш addFavorite должен сохранить 99999 как cooldown.
     await addFavorite('guid-1');
 
-    // Проверяем напрямую через экспорт.
-    const json = await exportToJson();
-    const parsed = JSON.parse(json) as { favorites: { guid: string; cooldown: number | null }[] };
-    expect(parsed.favorites).toHaveLength(1);
-    expect(parsed.favorites[0].guid).toBe('guid-1');
-    expect(parsed.favorites[0].cooldown).toBe(99999);
+    // Публичный export не возвращает cooldown, но запись в БД должна его содержать.
+    // Проверяем через низкоуровневый доступ к IDB.
+    const request2 = indexedDB.open('CUI');
+    const db2 = await new Promise<IDBDatabase>((resolve, reject) => {
+      request2.onsuccess = (): void => {
+        resolve(request2.result);
+      };
+      request2.onerror = (): void => {
+        reject(request2.error instanceof Error ? request2.error : new Error('open failed'));
+      };
+    });
+    const tx2 = db2.transaction('favorites', 'readonly');
+    const stored = await new Promise<unknown>((resolve, reject) => {
+      const req = tx2.objectStore('favorites').get('guid-1');
+      req.onsuccess = (): void => {
+        resolve(req.result);
+      };
+      req.onerror = (): void => {
+        reject(req.error instanceof Error ? req.error : new Error('get failed'));
+      };
+    });
+    db2.close();
+    expect(stored).toEqual({ guid: 'guid-1', cooldown: 99999 });
   });
 
-  test('exportToJson возвращает валидный JSON со всеми записями', async () => {
+  test('exportToJson возвращает массив GUID-строк', async () => {
+    await loadFavorites();
+    await addFavorite('guid-b');
+    await addFavorite('guid-a');
+
+    const json = await exportToJson();
+    const parsed = JSON.parse(json) as unknown;
+    expect(Array.isArray(parsed)).toBe(true);
+    // Отсортировано для стабильности.
+    expect(parsed).toEqual(['guid-a', 'guid-b']);
+  });
+
+  test('importFromJson ЗАМЕНЯЕТ все существующие записи (replace mode)', async () => {
+    await loadFavorites();
+    await addFavorite('old-1');
+    await addFavorite('old-2');
+
+    const count = await importFromJson(JSON.stringify(['new-1', 'new-2', 'new-3']));
+    expect(count).toBe(3);
+    expect(isFavorited('old-1')).toBe(false);
+    expect(isFavorited('old-2')).toBe(false);
+    expect(isFavorited('new-1')).toBe(true);
+    expect(getFavoritesCount()).toBe(3);
+  });
+
+  test('importFromJson валидирует формат — массив строк', async () => {
+    await loadFavorites();
+    await expect(importFromJson('{}')).rejects.toThrow('Некорректный формат');
+    await expect(importFromJson('[1, 2, 3]')).rejects.toThrow();
+    await expect(importFromJson('[{"guid":"x"}]')).rejects.toThrow();
+  });
+
+  test('importFromJson очищает БД если передан пустой массив', async () => {
     await loadFavorites();
     await addFavorite('guid-1');
     await addFavorite('guid-2');
 
-    const json = await exportToJson();
-    const parsed = JSON.parse(json) as { version: number; favorites: unknown[] };
-    expect(parsed.version).toBe(1);
-    expect(parsed.favorites).toHaveLength(2);
+    const count = await importFromJson('[]');
+    expect(count).toBe(0);
+    expect(getFavoritesCount()).toBe(0);
+
+    // Проверяем через повторную загрузку.
+    resetForTests();
+    await loadFavorites();
+    expect(getFavoritesCount()).toBe(0);
   });
 
-  test('importFromJson добавляет записи в БД и обновляет кеш', async () => {
+  test('importFromJson новые записи имеют cooldown=null', async () => {
     await loadFavorites();
-    await addFavorite('existing');
+    await importFromJson(JSON.stringify(['new-1']));
 
-    const importJson = JSON.stringify({
-      version: 1,
-      favorites: [
-        { guid: 'imported-1', cooldown: null },
-        { guid: 'imported-2', cooldown: 54321 },
-      ],
+    const request = indexedDB.open('CUI');
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = (): void => {
+        resolve(request.result);
+      };
+      request.onerror = (): void => {
+        reject(request.error instanceof Error ? request.error : new Error('open failed'));
+      };
     });
-
-    const count = await importFromJson(importJson);
-    expect(count).toBe(2);
-    expect(isFavorited('existing')).toBe(true);
-    expect(isFavorited('imported-1')).toBe(true);
-    expect(isFavorited('imported-2')).toBe(true);
-    expect(getFavoritesCount()).toBe(3);
-  });
-
-  test('importFromJson валидирует формат', async () => {
-    await loadFavorites();
-    await expect(importFromJson('{}')).rejects.toThrow('Некорректный формат');
-    await expect(importFromJson('{"version":2,"favorites":[]}')).rejects.toThrow();
-    await expect(importFromJson('{"version":1,"favorites":[{"guid":123}]}')).rejects.toThrow();
-  });
-
-  test('importFromJson перезаписывает существующий cooldown', async () => {
-    await loadFavorites();
-    await addFavorite('guid-1');
-
-    await importFromJson(
-      JSON.stringify({
-        version: 1,
-        favorites: [{ guid: 'guid-1', cooldown: 77777 }],
-      }),
-    );
-
-    const exportJson = await exportToJson();
-    const parsed = JSON.parse(exportJson) as {
-      favorites: { guid: string; cooldown: number | null }[];
-    };
-    const record = parsed.favorites.find((r) => r.guid === 'guid-1');
-    expect(record?.cooldown).toBe(77777);
+    const tx = db.transaction('favorites', 'readonly');
+    const stored = await new Promise<unknown>((resolve, reject) => {
+      const req = tx.objectStore('favorites').get('new-1');
+      req.onsuccess = (): void => {
+        resolve(req.result);
+      };
+      req.onerror = (): void => {
+        reject(req.error instanceof Error ? req.error : new Error('get failed'));
+      };
+    });
+    db.close();
+    expect(stored).toEqual({ guid: 'new-1', cooldown: null });
   });
 });
