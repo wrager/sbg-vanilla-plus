@@ -160,6 +160,12 @@ function onInventoryCacheUpdated(): void {
 }
 
 function installSetItemInterceptor(): void {
+  // Идемпотентность: если wrapper уже установлен (originalSetItem заполнен),
+  // повторный enable() без disable() обернул бы wrapper в новый wrapper,
+  // искажая цепочку восстановления в disable(). Это бы повредило localStorage
+  // при последующем disable — восстанавливался бы предыдущий wrapper, а не нативная функция.
+  if (originalSetItem !== null) return;
+
   // eslint-disable-next-line @typescript-eslint/unbound-method
   const nativeSetItem = localStorage.setItem;
   originalSetItem = nativeSetItem;
