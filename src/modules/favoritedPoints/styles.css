@@ -182,6 +182,13 @@
   user-select: none;
 }
 
+.svp-fav-settings-warning {
+  font-size: 11px;
+  color: var(--accent, #ffcc33);
+  padding: 2px 0 4px;
+  margin-top: -4px;
+}
+
 .svp-fav-settings-counter {
   color: var(--text-disabled, #888);
   font-size: 12px;

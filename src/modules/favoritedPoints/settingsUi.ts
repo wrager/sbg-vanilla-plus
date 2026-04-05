@@ -67,6 +67,11 @@ function buildPanel(): HTMLElement {
   importWrapper.appendChild(importLabel);
   content.appendChild(importWrapper);
 
+  const importWarning = document.createElement('div');
+  importWarning.className = 'svp-fav-settings-warning';
+  importWarning.textContent = '⚠️ Текущий список избранного будет полностью перезаписан';
+  content.appendChild(importWarning);
+
   // Экспорт (скачать JSON).
   const exportButton = document.createElement('button');
   exportButton.type = 'button';
