@@ -1,6 +1,9 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
+import { injectStyles, removeStyles } from '../../core/dom';
 import { getFavoritesCount, loadFavorites } from './favoritesStore';
 import { installDebugHooks, uninstallDebugHooks } from './debugHooks';
+import { installStarButton, uninstallStarButton } from './starButton';
+import styles from './styles.css?inline';
 
 const MODULE_ID = 'favoritedPoints';
 
@@ -25,12 +28,15 @@ export const favoritedPoints: IFeatureModule = {
   },
 
   enable() {
-    // UI-интеграции (звезда, фильтр, hideLastFavRef) будут подключены в следующих коммитах.
+    injectStyles(styles, MODULE_ID);
+    installStarButton();
     installDebugHooks();
     console.log('[SVP favoritedPoints] отладочный API доступен в window.svpFavs');
   },
 
   disable() {
+    uninstallStarButton();
+    removeStyles(MODULE_ID);
     uninstallDebugHooks();
   },
 };

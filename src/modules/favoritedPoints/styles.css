@@ -1,0 +1,45 @@
+.svp-fav-star {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 50%;
+  color: #ccc;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition:
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.svp-fav-star svg {
+  fill: currentColor;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 24;
+  paint-order: stroke fill;
+}
+
+.svp-fav-star:hover {
+  transform: scale(1.1);
+}
+
+.svp-fav-star.is-filled {
+  color: #ffcc33;
+}
+
+.svp-fav-star[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.i-image-box {
+  position: relative;
+}
