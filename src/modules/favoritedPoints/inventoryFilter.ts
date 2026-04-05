@@ -150,6 +150,10 @@ function setFilterEnabled(content: Element, enabled: boolean): void {
   filterEnabled = enabled;
   if (checkbox) checkbox.checked = enabled;
   processItems(content);
+  // Сбрасываем скролл на начало списка — при смене фильтра пользователь
+  // всегда видит топ релевантного набора ключей, а не зависает на позиции,
+  // которая после фильтрации может оказаться в пустоте.
+  (content as HTMLElement).scrollTop = 0;
   // Игра подгружает данные ключей только на событии scroll (script.js:876).
   // После смены фильтра набор видимых ключей меняется — тригерим scroll,
   // чтобы игра запросила данные для ключей, попавших в viewport.

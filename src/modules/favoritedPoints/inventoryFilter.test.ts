@@ -324,6 +324,17 @@ describe('inventoryFilter', () => {
     expect(star1.classList.contains('is-filled')).toBe(false);
   });
 
+  test('переключение чекбокса сбрасывает скролл в начало', () => {
+    const { content } = createInventoryDom('3');
+    addKeyItem(content, 'point-1');
+    installInventoryFilter();
+    content.scrollTop = 200;
+    const checkbox = findCheckbox();
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+    expect(content.scrollTop).toBe(0);
+  });
+
   test('переключение чекбокса пересчитывает фильтр заново', async () => {
     await addFavorite('point-1');
     const { content } = createInventoryDom('3');
