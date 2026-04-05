@@ -312,7 +312,7 @@ function ensureButton(bar: Element): void {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = BUTTON_CLASS;
-  button.textContent = 'Очистить по фракциям';
+  button.textContent = 'Очистить ключи';
   button.addEventListener('click', (event) => {
     event.preventDefault();
     void runSlowDelete();
