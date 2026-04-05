@@ -188,7 +188,14 @@
 }
 
 .svp-fav-settings-import-wrapper {
-  display: inline-block;
+  display: block;
+}
+
+/* Кнопки внутри content — на всю ширину. В footer остаются inline. */
+.svp-fav-settings-content .svp-fav-settings-button {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .svp-fav-settings-button {
