@@ -1,5 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
+import { getModuleById } from '../../core/moduleRegistry';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
+import { getFavoritedGuids } from '../../core/favoritesStore';
 import { parseInventoryCache } from './inventoryParser';
 import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
@@ -85,11 +87,15 @@ async function runCleanupImpl(): Promise<void> {
   const items = parseInventoryCache();
   if (items.length === 0) return;
 
-  // TODO (следующий коммит): пробрасывать реальные избранные GUID и статус
-  // модуля favoritedPoints. Сейчас ключи автоочисткой не удаляются.
+  // Ключи удаляются только если модуль favoritedPoints готов — иначе у нас нет
+  // гарантии, что избранные загружены в memory cache. Защита от потери ключей
+  // от избранных точек при любых сбоях инициализации favoritedPoints.
+  const favoritedPointsStatus = getModuleById('favoritedPoints')?.status ?? null;
+  const referencesEnabled = favoritedPointsStatus === 'ready';
+  const favoritedGuids = referencesEnabled ? getFavoritedGuids() : new Set<string>();
   const deletions = calculateDeletions(items, settings.limits, {
-    favoritedGuids: new Set<string>(),
-    referencesEnabled: false,
+    favoritedGuids,
+    referencesEnabled,
   });
   if (deletions.length === 0) return;
 
@@ -102,8 +108,10 @@ async function runCleanupImpl(): Promise<void> {
   );
 
   try {
+    // Финальный guard: перечитываем избранные из memory cache ПЕРЕД отправкой
+    // DELETE-запроса, чтобы учесть изменения с момента calculateDeletions.
     const result = await deleteInventoryItems(deletions, {
-      favoritedGuids: new Set<string>(),
+      favoritedGuids: getFavoritedGuids(),
     });
     updateInventoryCache(deletions);
     updateDomInventoryCount(result.total);
