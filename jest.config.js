@@ -6,6 +6,7 @@ export default {
   testEnvironment: 'jsdom',
   roots: ['<rootDir>/src'],
   moduleFileExtensions: ['ts', 'js'],
+  setupFiles: ['<rootDir>/src/__mocks__/jestPolyfills.ts', 'fake-indexeddb/auto'],
   moduleNameMapper: {
     '\\.css\\?inline$': '<rootDir>/src/__mocks__/cssMock.ts',
   },

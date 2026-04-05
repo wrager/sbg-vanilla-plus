@@ -22,6 +22,7 @@ import { repairAtFullCharge } from './modules/repairAtFullCharge/repairAtFullCha
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
 import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
+import { favoritedPoints } from './modules/favoritedPoints/favoritedPoints';
 
 if (!isDisabled()) {
   // Перехваты, которые должны быть установлены ДО парсинга DOM:
@@ -48,6 +49,7 @@ if (!isDisabled()) {
       ngrsZoom,
       drawButtonFix,
       keepScreenOn,
+      favoritedPoints,
       inventoryCleanup,
       keyCountOnPoints,
       nextPointNavigation,
