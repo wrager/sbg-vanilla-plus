@@ -89,6 +89,35 @@
   text-align: center;
 }
 
+.svp-cleanup-references-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-transp);
+}
+
+.svp-cleanup-radio-label {
+  display: block;
+  font-size: 12px;
+  margin: 4px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.svp-cleanup-ref-inputs {
+  margin-top: 4px;
+  padding-left: 20px;
+}
+
+.svp-cleanup-hint {
+  font-size: 10px;
+  color: var(--text-disabled);
+  padding: 4px 0;
+}
+
+.svp-cleanup-hint-warning {
+  color: var(--accent);
+}
+
 .svp-cleanup-footer {
   flex-shrink: 0;
   padding: 6px 8px 40px;

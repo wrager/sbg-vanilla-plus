@@ -1,7 +1,8 @@
 import { injectStyles, removeStyles } from '../../core/dom';
 import { t } from '../../core/l10n';
 import type { ILocalizedString } from '../../core/l10n';
-import type { ICleanupSettings } from './cleanupSettings';
+import { getModuleById } from '../../core/moduleRegistry';
+import type { ICleanupSettings, ReferencesMode } from './cleanupSettings';
 import { loadCleanupSettings, saveCleanupSettings } from './cleanupSettings';
 import styles from './styles.css?inline';
 
@@ -24,6 +25,36 @@ const CORES_LABEL: ILocalizedString = { en: 'Cores', ru: 'Ядра' };
 const CATALYSERS_LABEL: ILocalizedString = { en: 'Catalysers', ru: 'Катализаторы' };
 const LEVEL_LABEL: ILocalizedString = { en: 'Level', ru: 'Ур.' };
 const UNLIMITED_HINT: ILocalizedString = { en: '-1 = unlimited', ru: '-1 = без лимита' };
+const REFERENCES_LABEL: ILocalizedString = { en: 'Keys', ru: 'Ключи' };
+const REF_MODE_OFF_LABEL: ILocalizedString = { en: 'Off', ru: 'Не удалять' };
+const REF_MODE_FAST_LABEL: ILocalizedString = {
+  en: 'Fast (single limit, auto)',
+  ru: 'Быстро (общий лимит, автоматически)',
+};
+const REF_MODE_SLOW_LABEL: ILocalizedString = {
+  en: 'Slow (allied/hostile, manual)',
+  ru: 'Медленно (свои/чужие, вручную)',
+};
+const REF_FAST_LIMIT_LABEL: ILocalizedString = {
+  en: 'Total keys limit',
+  ru: 'Общий лимит ключей',
+};
+const REF_ALLIED_LIMIT_LABEL: ILocalizedString = {
+  en: 'Allied keys limit',
+  ru: 'Лимит своих',
+};
+const REF_HOSTILE_LIMIT_LABEL: ILocalizedString = {
+  en: 'Hostile keys limit',
+  ru: 'Лимит чужих',
+};
+const REF_DISABLED_HINT: ILocalizedString = {
+  en: 'Enable "Favorited points" module to manage key deletion',
+  ru: 'Включите модуль «Избранные точки», чтобы настроить удаление ключей',
+};
+const REF_SLOW_HINT: ILocalizedString = {
+  en: 'Slow mode runs manually from the keys inventory tab',
+  ru: 'Медленный режим запускается вручную через кнопку в табе ключей инвентаря',
+};
 
 let panel: HTMLElement | null = null;
 let configureButton: HTMLElement | null = null;
@@ -72,6 +103,122 @@ function createLevelInputs(
 
   section.appendChild(grid);
   container.appendChild(section);
+}
+
+function createNumberInput(
+  labelText: string,
+  value: number,
+  onChange: (value: number) => void,
+): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'svp-cleanup-row';
+
+  const label = document.createElement('span');
+  label.className = 'svp-cleanup-row-label';
+  label.textContent = labelText;
+
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.className = 'svp-cleanup-row-input';
+  input.min = '-1';
+  input.value = String(value);
+  input.addEventListener('change', () => {
+    const parsed = parseInt(input.value, 10);
+    const clamped = Number.isFinite(parsed) && parsed >= 0 ? parsed : -1;
+    input.value = String(clamped);
+    onChange(clamped);
+  });
+
+  row.appendChild(label);
+  row.appendChild(input);
+  return row;
+}
+
+function createReferencesSection(draft: ICleanupSettings, refsEnabled: boolean): HTMLElement {
+  const section = document.createElement('div');
+  section.className = 'svp-cleanup-references-section';
+
+  const title = document.createElement('div');
+  title.className = 'svp-cleanup-section-title';
+  title.textContent = t(REFERENCES_LABEL);
+  section.appendChild(title);
+
+  if (!refsEnabled) {
+    const hint = document.createElement('div');
+    hint.className = 'svp-cleanup-hint svp-cleanup-hint-warning';
+    hint.textContent = t(REF_DISABLED_HINT);
+    section.appendChild(hint);
+    return section;
+  }
+
+  const modeGroupName = 'svp-cleanup-ref-mode';
+  const modes: { value: ReferencesMode; label: ILocalizedString }[] = [
+    { value: 'off', label: REF_MODE_OFF_LABEL },
+    { value: 'fast', label: REF_MODE_FAST_LABEL },
+    { value: 'slow', label: REF_MODE_SLOW_LABEL },
+  ];
+
+  const inputsContainer = document.createElement('div');
+  inputsContainer.className = 'svp-cleanup-ref-inputs';
+
+  function renderInputs(): void {
+    inputsContainer.innerHTML = '';
+    if (draft.limits.referencesMode === 'fast') {
+      inputsContainer.appendChild(
+        createNumberInput(t(REF_FAST_LIMIT_LABEL), draft.limits.referencesFastLimit, (value) => {
+          draft.limits.referencesFastLimit = value;
+        }),
+      );
+    } else if (draft.limits.referencesMode === 'slow') {
+      inputsContainer.appendChild(
+        createNumberInput(
+          t(REF_ALLIED_LIMIT_LABEL),
+          draft.limits.referencesAlliedLimit,
+          (value) => {
+            draft.limits.referencesAlliedLimit = value;
+          },
+        ),
+      );
+      inputsContainer.appendChild(
+        createNumberInput(
+          t(REF_HOSTILE_LIMIT_LABEL),
+          draft.limits.referencesHostileLimit,
+          (value) => {
+            draft.limits.referencesHostileLimit = value;
+          },
+        ),
+      );
+      const slowHint = document.createElement('div');
+      slowHint.className = 'svp-cleanup-hint';
+      slowHint.textContent = t(REF_SLOW_HINT);
+      inputsContainer.appendChild(slowHint);
+    }
+  }
+
+  for (const mode of modes) {
+    const label = document.createElement('label');
+    label.className = 'svp-cleanup-radio-label';
+
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = modeGroupName;
+    radio.value = mode.value;
+    radio.checked = draft.limits.referencesMode === mode.value;
+    radio.addEventListener('change', () => {
+      if (radio.checked) {
+        draft.limits.referencesMode = mode.value;
+        renderInputs();
+      }
+    });
+
+    label.appendChild(radio);
+    label.appendChild(document.createTextNode(' ' + t(mode.label)));
+    section.appendChild(label);
+  }
+
+  section.appendChild(inputsContainer);
+  renderInputs();
+  return section;
 }
 
 function buildPanel(
@@ -124,7 +271,8 @@ function buildPanel(
     draft.limits.catalysers[level] = value;
   });
 
-  // TODO: секция настройки лимита ключей — добавить после реализации модуля «Избранные точки»
+  const refsEnabled = getModuleById('favoritedPoints')?.status === 'ready';
+  content.appendChild(createReferencesSection(draft, refsEnabled));
 
   element.appendChild(content);
 
