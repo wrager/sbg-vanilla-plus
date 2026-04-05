@@ -46,21 +46,12 @@ function buildPanel(): HTMLElement {
   counter.textContent = `Всего избранных точек: ${getFavoritesCount()}`;
   content.appendChild(counter);
 
-  // Экспорт/импорт
-  const exportButton = document.createElement('button');
-  exportButton.type = 'button';
-  exportButton.className = 'svp-fav-settings-button';
-  exportButton.textContent = 'Экспорт в JSON';
-  exportButton.addEventListener('click', () => {
-    void downloadExport();
-  });
-  content.appendChild(exportButton);
-
+  // Импорт из JSON (сверху, чтобы был ближе к счётчику — видно эффект замены).
   const importWrapper = document.createElement('div');
   importWrapper.className = 'svp-fav-settings-import-wrapper';
   const importLabel = document.createElement('label');
   importLabel.className = 'svp-fav-settings-button';
-  importLabel.textContent = 'Импорт из JSON';
+  importLabel.textContent = '⬆️ Импорт из JSON';
   const importInput = document.createElement('input');
   importInput.type = 'file';
   importInput.accept = 'application/json,.json';
@@ -75,6 +66,16 @@ function buildPanel(): HTMLElement {
   importLabel.appendChild(importInput);
   importWrapper.appendChild(importLabel);
   content.appendChild(importWrapper);
+
+  // Экспорт (скачать JSON).
+  const exportButton = document.createElement('button');
+  exportButton.type = 'button';
+  exportButton.className = 'svp-fav-settings-button';
+  exportButton.textContent = '⬇️ Скачать JSON';
+  exportButton.addEventListener('click', () => {
+    void downloadExport();
+  });
+  content.appendChild(exportButton);
 
   element.appendChild(content);
 
