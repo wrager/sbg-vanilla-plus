@@ -1,0 +1,4 @@
+/* !important на случай, если игра устанавливает inline-стиль через jQuery .show()/.hide() */
+#attack-slider-close {
+  display: none !important;
+}

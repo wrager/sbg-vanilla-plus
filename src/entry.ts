@@ -12,6 +12,7 @@ import { disableDoubleTapZoom } from './modules/disableDoubleTapZoom/disableDoub
 import { ngrsZoom } from './modules/ngrsZoom/ngrsZoom';
 import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
 import { groupErrorToasts } from './modules/groupErrorToasts/groupErrorToasts';
+import { removeAttackCloseButton } from './modules/removeAttackCloseButton/removeAttackCloseButton';
 import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
 import { keyCountOnPoints } from './modules/keyCountOnPoints/keyCountOnPoints';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
@@ -40,6 +41,7 @@ if (!isDisabled()) {
       enhancedPointPopupUi,
       swipeToClosePopup,
       groupErrorToasts,
+      removeAttackCloseButton,
       shiftMapCenterDown,
       largerPointTapArea,
       disableDoubleTapZoom,
