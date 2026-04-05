@@ -1,5 +1,5 @@
 import { installStarButton, uninstallStarButton } from './starButton';
-import { addFavorite, loadFavorites, isFavorited, resetForTests } from './favoritesStore';
+import { addFavorite, loadFavorites, isFavorited, resetForTests } from '../../core/favoritesStore';
 
 const STAR_CLASS = 'svp-fav-star';
 

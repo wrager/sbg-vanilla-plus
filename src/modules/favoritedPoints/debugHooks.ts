@@ -9,7 +9,7 @@ import {
   removeFavorite,
   exportToJson,
   importFromJson,
-} from './favoritesStore';
+} from '../../core/favoritesStore';
 
 export interface ISvpFavsDebug {
   list: () => string[];

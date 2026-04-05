@@ -1,5 +1,5 @@
 import { installInventoryFilter, uninstallInventoryFilter } from './inventoryFilter';
-import { addFavorite, loadFavorites, isFavorited, resetForTests } from './favoritesStore';
+import { addFavorite, loadFavorites, isFavorited, resetForTests } from '../../core/favoritesStore';
 
 async function resetIdb(): Promise<void> {
   resetForTests();

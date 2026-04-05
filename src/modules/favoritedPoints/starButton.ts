@@ -4,7 +4,7 @@ import {
   isFavorited,
   removeFavorite,
   FAVORITES_CHANGED_EVENT,
-} from './favoritesStore';
+} from '../../core/favoritesStore';
 
 const STAR_CLASS = 'svp-fav-star';
 const POPUP_SELECTOR = '.info.popup';

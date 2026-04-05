@@ -5,7 +5,7 @@ import {
   addFavorite,
   removeFavorite,
   FAVORITES_CHANGED_EVENT,
-} from './favoritesStore';
+} from '../../core/favoritesStore';
 
 const FILTER_BAR_CLASS = 'svp-fav-filter-bar';
 const FILTER_CHECKBOX_CLASS = 'svp-fav-filter-checkbox';
