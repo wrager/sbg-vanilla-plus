@@ -45,6 +45,19 @@
 }
 
 /* Фильтр «Только избранные» в табе ключей инвентаря */
+
+/*
+ * .inventory__content в игре без position — offsetParent items уходит на
+ * .inventory. Из-за нашего filter bar выше content в .inventory появляется
+ * вертикальный сдвиг (~высота бара), и игровой getRefsData мимо: items
+ * имеют offsetTop от .inventory, а scrollTop/clientHeight читаются у content.
+ * Делаем content позиционированным — items становятся относительными к
+ * content, система координат игры снова консистентна.
+ */
+.inventory__content {
+  position: relative;
+}
+
 .svp-fav-filter-bar {
   padding: 6px 12px;
   border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
