@@ -20,7 +20,21 @@ export interface ISvpFavsDebug {
   export: () => Promise<string>;
   import: (json: string) => Promise<number>;
   clear: () => Promise<number>;
+  tracePointFetches: () => void;
+  stopTracePointFetches: () => void;
+  printStuckItems: () => void;
 }
+
+interface IPointRequestRecord {
+  guid: string;
+  startedAt: number;
+  finishedAt: number | null;
+  status: 'pending' | 'ok' | 'error' | 'aborted';
+  error?: string;
+}
+
+let fetchTrace: IPointRequestRecord[] = [];
+let originalFetch: typeof window.fetch | null = null;
 
 declare global {
   interface Window {
@@ -54,6 +68,93 @@ export function installDebugHooks(): void {
       }
       console.log(`[SVP favoritedPoints] очищено записей: ${guids.length}`);
       return guids.length;
+    },
+    tracePointFetches: (): void => {
+      if (originalFetch) {
+        console.log('[SVP debug] трассировка уже включена');
+        return;
+      }
+      originalFetch = window.fetch;
+      fetchTrace = [];
+      window.fetch = function (input, init) {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        const match = /\/api\/point\?guid=([a-z0-9.]+)/i.exec(url);
+        if (!match || !originalFetch) {
+          return originalFetch ? originalFetch.call(this, input, init) : fetch(input, init);
+        }
+        const guid = match[1];
+        const record: IPointRequestRecord = {
+          guid,
+          startedAt: performance.now(),
+          finishedAt: null,
+          status: 'pending',
+        };
+        fetchTrace.push(record);
+        console.log(
+          `[SVP trace] → /api/point ${guid} (pending=${fetchTrace.filter((r) => r.status === 'pending').length})`,
+        );
+        return originalFetch.call(this, input, init).then(
+          (response) => {
+            record.finishedAt = performance.now();
+            record.status = 'ok';
+            console.log(
+              `[SVP trace] ← /api/point ${guid} OK ${Math.round(record.finishedAt - record.startedAt)}ms`,
+            );
+            return response;
+          },
+          (error: unknown) => {
+            record.finishedAt = performance.now();
+            const message = error instanceof Error ? error.message : String(error);
+            const name = error instanceof Error ? error.name : '';
+            record.status =
+              name === 'AbortError' || message.includes('abort') ? 'aborted' : 'error';
+            record.error = `${name}: ${message}`;
+            console.log(
+              `[SVP trace] ✕ /api/point ${guid} ${record.status} ${Math.round(
+                record.finishedAt - record.startedAt,
+              )}ms: ${record.error}`,
+            );
+            throw error;
+          },
+        );
+      };
+      console.log(
+        '[SVP debug] трассировка /api/point включена. Воспроизведи сценарий, потом svpFavs.printStuckItems()',
+      );
+    },
+    stopTracePointFetches: (): void => {
+      if (!originalFetch) return;
+      window.fetch = originalFetch;
+      originalFetch = null;
+      console.log('[SVP debug] трассировка /api/point выключена');
+    },
+    printStuckItems: (): void => {
+      const pending = fetchTrace.filter((r) => r.status === 'pending');
+      const aborted = fetchTrace.filter((r) => r.status === 'aborted');
+      const errored = fetchTrace.filter((r) => r.status === 'error');
+      console.group('[SVP debug] итог трассировки /api/point');
+      console.log(`Всего запросов: ${fetchTrace.length}`);
+      console.log(`  OK: ${fetchTrace.filter((r) => r.status === 'ok').length}`);
+      console.log(`  Aborted: ${aborted.length}`);
+      console.log(`  Error: ${errored.length}`);
+      console.log(`  Pending (незавершённые): ${pending.length}`);
+      if (pending.length > 0) {
+        console.warn('Висящие запросы (await apiQuery не завершился):');
+        for (const record of pending) {
+          const age = Math.round(performance.now() - record.startedAt);
+          console.warn(`  ${record.guid} — ${age}мс назад`);
+        }
+      }
+      // DOM: какие инвентарь-элементы имеют loading без loaded.
+      const stuck = document.querySelectorAll<HTMLElement>(
+        '.inventory__item[data-ref].loading:not(.loaded)',
+      );
+      console.log(`DOM: элементов с классом loading без loaded: ${stuck.length}`);
+      for (const item of Array.from(stuck).slice(0, 20)) {
+        console.log(`  ${item.dataset.ref ?? '?'} classList=${item.className}`);
+      }
+      console.groupEnd();
     },
   };
 }
