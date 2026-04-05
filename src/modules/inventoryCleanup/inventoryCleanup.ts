@@ -85,7 +85,12 @@ async function runCleanupImpl(): Promise<void> {
   const items = parseInventoryCache();
   if (items.length === 0) return;
 
-  const deletions = calculateDeletions(items, settings.limits);
+  // TODO (следующий коммит): пробрасывать реальные избранные GUID и статус
+  // модуля favoritedPoints. Сейчас ключи автоочисткой не удаляются.
+  const deletions = calculateDeletions(items, settings.limits, {
+    favoritedGuids: new Set<string>(),
+    referencesEnabled: false,
+  });
   if (deletions.length === 0) return;
 
   const totalAmount = deletions.reduce((sum, entry) => sum + entry.amount, 0);

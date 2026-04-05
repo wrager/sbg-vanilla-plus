@@ -1,4 +1,5 @@
-import type { IInventoryItem } from '../../core/inventoryTypes';
+import type { IInventoryItem, IInventoryReference } from '../../core/inventoryTypes';
+import { isInventoryReference } from '../../core/inventoryTypes';
 import type { ICleanupLimits } from './cleanupSettings';
 import type { ILocalizedString } from '../../core/l10n';
 import { t } from '../../core/l10n';
@@ -15,6 +16,18 @@ export interface IDeletionEntry {
   type: number;
   level: number | null;
   amount: number;
+  /** GUID точки — только для ключей (references). Используется для финального guard. */
+  pointGuid?: string;
+}
+
+export interface ICalculateDeletionsOptions {
+  /** GUID избранных точек — ключи от них никогда не попадают в deletions. */
+  favoritedGuids: ReadonlySet<string>;
+  /**
+   * true, если модуль favoritedPoints загружен и готов (status=ready).
+   * false — автоочистка не трогает ключи независимо от referencesMode.
+   */
+  referencesEnabled: boolean;
 }
 
 export function shouldRunCleanup(
@@ -28,6 +41,7 @@ export function shouldRunCleanup(
 export function calculateDeletions(
   items: readonly IInventoryItem[],
   limits: ICleanupLimits,
+  options: ICalculateDeletionsOptions,
 ): IDeletionEntry[] {
   const deletions: IDeletionEntry[] = [];
 
@@ -37,9 +51,12 @@ export function calculateDeletions(
   const catalysersByLevel = groupByLevel(items, ITEM_TYPE_CATALYSER);
   addLevelDeletions(catalysersByLevel, limits.catalysers, ITEM_TYPE_CATALYSER, deletions);
 
-  // Удаление ключей временно отключено до реализации модуля «Избранные точки».
-  // Когда модуль будет готов — заменить -1 на limits.references.
-  addFlatDeletions(items, ITEM_TYPE_REFERENCE, -1, deletions);
+  // Ключи удаляются только в режиме 'fast' и только если модуль favoritedPoints готов.
+  // Режим 'slow' (раздельные лимиты по фракциям) срабатывает вручную через отдельную
+  // кнопку — там нужны /api/point запросы для определения фракции каждой точки.
+  if (options.referencesEnabled && limits.referencesMode === 'fast') {
+    addReferenceDeletions(items, limits.referencesFastLimit, options.favoritedGuids, deletions);
+  }
 
   return deletions;
 }
@@ -85,15 +102,21 @@ function addLevelDeletions(
   }
 }
 
-function addFlatDeletions(
+function addReferenceDeletions(
   items: readonly IInventoryItem[],
-  type: number,
   limit: number,
+  favoritedGuids: ReadonlySet<string>,
   deletions: IDeletionEntry[],
 ): void {
   if (limit === -1) return;
 
-  const matching = items.filter((item) => item.t === type && item.a > 0);
+  // Отфильтровать ключи избранных точек ПЕРЕД расчётом лимита — их не должно быть
+  // в списке ни в каких подсчётах. Даже при лимите 0 эти ключи остаются в инвентаре.
+  const matching: IInventoryReference[] = items.filter(
+    (item): item is IInventoryReference =>
+      isInventoryReference(item) && item.a > 0 && !favoritedGuids.has(item.l),
+  );
+
   const total = matching.reduce((sum, item) => sum + item.a, 0);
   let excess = total - limit;
   if (excess <= 0) return;
@@ -101,7 +124,14 @@ function addFlatDeletions(
   for (const item of matching) {
     if (excess <= 0) break;
     const toDelete = Math.min(item.a, excess);
-    deletions.push({ guid: item.g, type, level: null, amount: toDelete });
+    const pointGuid = item.l;
+    deletions.push({
+      guid: item.g,
+      type: ITEM_TYPE_REFERENCE,
+      level: null,
+      amount: toDelete,
+      pointGuid,
+    });
     excess -= toDelete;
   }
 }
