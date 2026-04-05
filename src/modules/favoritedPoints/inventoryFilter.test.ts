@@ -34,10 +34,32 @@ function createInventoryDom(activeTab: string, hidden = false): IInventoryDom {
 }
 
 function addKeyItem(content: HTMLElement, pointGuid: string): HTMLElement {
+  // Симулируем структуру ключа из игры (script.js:2176-2189):
+  // item > controls + item-left (title+descr) + ic-repair
   const item = document.createElement('div');
   item.className = 'inventory__item';
   item.dataset.guid = `item-${pointGuid}`;
   item.dataset.ref = pointGuid;
+
+  const controls = document.createElement('div');
+  controls.className = 'inventory__item-controls';
+  item.appendChild(controls);
+
+  const left = document.createElement('div');
+  left.className = 'inventory__item-left';
+  const title = document.createElement('span');
+  title.className = 'inventory__item-title';
+  title.textContent = 'Title';
+  left.appendChild(title);
+  const descr = document.createElement('span');
+  descr.className = 'inventory__item-descr';
+  left.appendChild(descr);
+  item.appendChild(left);
+
+  const repair = document.createElement('button');
+  repair.className = 'inventory__ic-repair';
+  item.appendChild(repair);
+
   content.appendChild(item);
   return item;
 }

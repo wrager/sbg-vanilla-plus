@@ -79,6 +79,11 @@ async function onItemStarClick(
 
 function injectItemStar(item: HTMLElement): void {
   if (item.querySelector(`.${ITEM_STAR_CLASS}`)) return;
+  // Вставляем звезду внутрь .inventory__item-left слева от заголовка —
+  // чтобы не ломать сетку (grid-template-columns) самого item и не перекрывать
+  // кнопку починки справа.
+  const leftBlock = item.querySelector('.inventory__item-left');
+  if (!leftBlock) return;
   const star = document.createElement('button');
   star.type = 'button';
   star.className = ITEM_STAR_CLASS;
@@ -86,7 +91,7 @@ function injectItemStar(item: HTMLElement): void {
   star.addEventListener('click', (event) => {
     void onItemStarClick(event, item, star);
   });
-  item.appendChild(star);
+  leftBlock.insertBefore(star, leftBlock.firstChild);
 }
 
 function updateItemStarState(item: HTMLElement): void {
@@ -129,6 +134,10 @@ function setFilterEnabled(content: Element, enabled: boolean): void {
   filterEnabled = enabled;
   if (checkbox) checkbox.checked = enabled;
   processItems(content);
+  // Игра подгружает данные ключей только на событии scroll (script.js:876).
+  // После смены фильтра набор видимых ключей меняется — тригерим scroll,
+  // чтобы игра запросила данные для ключей, попавших в viewport.
+  content.dispatchEvent(new Event('scroll', { bubbles: true }));
 }
 
 function createFilterBar(content: Element): HTMLElement {

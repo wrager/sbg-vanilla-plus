@@ -68,17 +68,19 @@
   font-weight: bold;
 }
 
-/* Звезда внутри элемента инвентаря */
-.inventory__item[data-ref] {
+/* Звезда внутри элемента инвентаря — слева от заголовка */
+.inventory__item[data-ref] .inventory__item-left {
   position: relative;
+  padding-left: 26px;
 }
 
 .svp-inv-item-star {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 24px;
-  height: 24px;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
   padding: 0;
   margin: 0;
   border: none;
