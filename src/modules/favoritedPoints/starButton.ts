@@ -95,15 +95,18 @@ function startObserving(popup: Element): void {
   popupObserver = new MutationObserver(() => {
     injectStarButton(popup);
   });
+  // Следим ТОЛЬКО за атрибутами самого попапа (class, data-guid).
+  // subtree:true вызывает бесконечный цикл: updateButtonState меняет атрибуты
+  // кнопки → observer срабатывает → снова updateButtonState → и так до зависания.
   popupObserver.observe(popup, {
     attributes: true,
     attributeFilter: ['class', 'data-guid'],
-    childList: true,
-    subtree: true,
   });
 }
 
 export function installStarButton(): void {
+  // Идемпотентность: если уже установлено — не дублировать observer.
+  if (popupObserver) return;
   const existing = document.querySelector(POPUP_SELECTOR);
   if (existing) {
     startObserving(existing);
