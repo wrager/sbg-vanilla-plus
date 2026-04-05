@@ -4,6 +4,7 @@ import { getFavoritesCount, loadFavorites } from '../../core/favoritesStore';
 import { installDebugHooks, uninstallDebugHooks } from './debugHooks';
 import { installStarButton, uninstallStarButton } from './starButton';
 import { installInventoryFilter, uninstallInventoryFilter } from './inventoryFilter';
+import { installLastRefProtection, uninstallLastRefProtection } from './lastRefProtection';
 import styles from './styles.css?inline';
 
 const MODULE_ID = 'favoritedPoints';
@@ -32,6 +33,7 @@ export const favoritedPoints: IFeatureModule = {
     injectStyles(styles, MODULE_ID);
     installStarButton();
     installInventoryFilter();
+    installLastRefProtection();
     installDebugHooks();
     console.log('[SVP favoritedPoints] отладочный API доступен в window.svpFavs');
   },
@@ -39,6 +41,7 @@ export const favoritedPoints: IFeatureModule = {
   disable() {
     uninstallStarButton();
     uninstallInventoryFilter();
+    uninstallLastRefProtection();
     removeStyles(MODULE_ID);
     uninstallDebugHooks();
   },
