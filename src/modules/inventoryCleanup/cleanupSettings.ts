@@ -1,7 +1,19 @@
+export type ReferencesMode = 'off' | 'fast' | 'slow';
+
 export interface ICleanupLimits {
   cores: Record<number, number>;
   catalysers: Record<number, number>;
-  references: number;
+  /**
+   * Режим удаления ключей:
+   * - 'off': автоочистка не трогает ключи.
+   * - 'fast': один общий лимит referencesFastLimit; работает синхронно в автоочистке.
+   * - 'slow': раздельные лимиты allied/hostile; требует /api/point для каждого
+   *   уникального GUID точки, вызывается только вручную по кнопке.
+   */
+  referencesMode: ReferencesMode;
+  referencesFastLimit: number;
+  referencesAlliedLimit: number;
+  referencesHostileLimit: number;
 }
 
 export interface ICleanupSettings {
@@ -12,6 +24,7 @@ export interface ICleanupSettings {
 
 const STORAGE_KEY = 'svp_inventoryCleanup';
 const MIN_FREE_SLOTS_FLOOR = 20;
+const CURRENT_VERSION = 2;
 
 function defaultLevelLimits(): Record<number, number> {
   const limits: Record<number, number> = {};
@@ -23,11 +36,14 @@ function defaultLevelLimits(): Record<number, number> {
 
 export function defaultCleanupSettings(): ICleanupSettings {
   return {
-    version: 1,
+    version: CURRENT_VERSION,
     limits: {
       cores: defaultLevelLimits(),
       catalysers: defaultLevelLimits(),
-      references: -1,
+      referencesMode: 'off',
+      referencesFastLimit: -1,
+      referencesAlliedLimit: -1,
+      referencesHostileLimit: -1,
     },
     minFreeSlots: 100,
   };
@@ -45,7 +61,39 @@ function isLevelLimits(value: unknown): value is Record<number, number> {
   return true;
 }
 
-function isCleanupLimits(value: unknown): value is ICleanupLimits {
+function isReferencesMode(value: unknown): value is ReferencesMode {
+  return value === 'off' || value === 'fast' || value === 'slow';
+}
+
+function isCleanupLimitsV2(value: unknown): value is ICleanupLimits {
+  if (!isRecord(value)) return false;
+  return (
+    isLevelLimits(value.cores) &&
+    isLevelLimits(value.catalysers) &&
+    isReferencesMode(value.referencesMode) &&
+    typeof value.referencesFastLimit === 'number' &&
+    typeof value.referencesAlliedLimit === 'number' &&
+    typeof value.referencesHostileLimit === 'number'
+  );
+}
+
+function isCleanupSettingsV2(value: unknown): value is ICleanupSettings {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.version === 'number' &&
+    isCleanupLimitsV2(value.limits) &&
+    typeof value.minFreeSlots === 'number'
+  );
+}
+
+/** v1 limits: old format with `references: number`. */
+interface ICleanupLimitsV1 {
+  cores: Record<number, number>;
+  catalysers: Record<number, number>;
+  references: number;
+}
+
+function isCleanupLimitsV1(value: unknown): value is ICleanupLimitsV1 {
   if (!isRecord(value)) return false;
   return (
     isLevelLimits(value.cores) &&
@@ -54,13 +102,39 @@ function isCleanupLimits(value: unknown): value is ICleanupLimits {
   );
 }
 
-function isCleanupSettings(value: unknown): value is ICleanupSettings {
+interface ICleanupSettingsV1 {
+  version: number;
+  limits: ICleanupLimitsV1;
+  minFreeSlots: number;
+}
+
+function isCleanupSettingsV1(value: unknown): value is ICleanupSettingsV1 {
   if (!isRecord(value)) return false;
   return (
     typeof value.version === 'number' &&
-    isCleanupLimits(value.limits) &&
+    value.version === 1 &&
+    isCleanupLimitsV1(value.limits) &&
     typeof value.minFreeSlots === 'number'
   );
+}
+
+function migrateV1ToV2(v1: ICleanupSettingsV1): ICleanupSettings {
+  // v1: references: -1 означало «не удалять». Переводим в 'off'.
+  // v1: references >= 0 означало общий лимит. Переводим в 'fast' с тем же числом.
+  const { references } = v1.limits;
+  const mode: ReferencesMode = references === -1 ? 'off' : 'fast';
+  return {
+    version: 2,
+    limits: {
+      cores: v1.limits.cores,
+      catalysers: v1.limits.catalysers,
+      referencesMode: mode,
+      referencesFastLimit: references,
+      referencesAlliedLimit: -1,
+      referencesHostileLimit: -1,
+    },
+    minFreeSlots: v1.minFreeSlots,
+  };
 }
 
 export function loadCleanupSettings(): ICleanupSettings {
@@ -74,12 +148,22 @@ export function loadCleanupSettings(): ICleanupSettings {
     return defaultCleanupSettings();
   }
 
-  if (!isCleanupSettings(parsed)) return defaultCleanupSettings();
-  if (parsed.minFreeSlots < MIN_FREE_SLOTS_FLOOR) {
-    parsed.minFreeSlots = MIN_FREE_SLOTS_FLOOR;
+  if (isCleanupSettingsV1(parsed)) {
+    const migrated = migrateV1ToV2(parsed);
+    saveCleanupSettings(migrated);
+    return applyRuntimeGuards(migrated);
   }
-  sanitizeLimits(parsed.limits);
-  return parsed;
+
+  if (!isCleanupSettingsV2(parsed)) return defaultCleanupSettings();
+  return applyRuntimeGuards(parsed);
+}
+
+function applyRuntimeGuards(settings: ICleanupSettings): ICleanupSettings {
+  if (settings.minFreeSlots < MIN_FREE_SLOTS_FLOOR) {
+    settings.minFreeSlots = MIN_FREE_SLOTS_FLOOR;
+  }
+  sanitizeLimits(settings.limits);
+  return settings;
 }
 
 /** Clamp invalid negative limits (not -1) to 0. */
@@ -91,12 +175,16 @@ function sanitizeLevelLimits(limits: Record<number, number>): void {
   }
 }
 
+function sanitizeRefLimit(value: number): number {
+  return value < -1 ? 0 : value;
+}
+
 function sanitizeLimits(limits: ICleanupLimits): void {
   sanitizeLevelLimits(limits.cores);
   sanitizeLevelLimits(limits.catalysers);
-  if (limits.references < -1) {
-    limits.references = 0;
-  }
+  limits.referencesFastLimit = sanitizeRefLimit(limits.referencesFastLimit);
+  limits.referencesAlliedLimit = sanitizeRefLimit(limits.referencesAlliedLimit);
+  limits.referencesHostileLimit = sanitizeRefLimit(limits.referencesHostileLimit);
 }
 
 export function saveCleanupSettings(settings: ICleanupSettings): void {

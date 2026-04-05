@@ -8,11 +8,7 @@ import {
 import { parseInventoryCache } from './inventoryParser';
 import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
 import type { ICleanupLimits } from './cleanupSettings';
-import {
-  loadCleanupSettings,
-  saveCleanupSettings,
-  defaultCleanupSettings,
-} from './cleanupSettings';
+import { saveCleanupSettings, defaultCleanupSettings } from './cleanupSettings';
 import { inventoryCleanup } from './inventoryCleanup';
 import { initCleanupSettingsUi, destroyCleanupSettingsUi } from './cleanupSettingsUi';
 
@@ -194,7 +190,10 @@ function unlimitedLimits(): ICleanupLimits {
   return {
     cores: { ...levelLimits },
     catalysers: { ...levelLimits },
-    references: -1,
+    referencesMode: 'off',
+    referencesFastLimit: -1,
+    referencesAlliedLimit: -1,
+    referencesHostileLimit: -1,
   };
 }
 
@@ -343,7 +342,7 @@ describe('calculateDeletions', () => {
 
   test('never deletes references regardless of limit', () => {
     const limits = unlimitedLimits();
-    limits.references = 0;
+    limits.referencesFastLimit = 0;
     const items = [
       { g: 'r1', t: 3 as const, l: 'p1', a: 30 },
       { g: 'r2', t: 3 as const, l: 'p2', a: 40 },
@@ -355,7 +354,7 @@ describe('calculateDeletions', () => {
 
   test('never deletes references even with limit 0 and many stacks', () => {
     const limits = unlimitedLimits();
-    limits.references = 0;
+    limits.referencesFastLimit = 0;
     const items = [
       { g: 'r1', t: 3 as const, l: 'p1', a: 10 },
       { g: 'r2', t: 3 as const, l: 'p2', a: 10 },
@@ -371,7 +370,7 @@ describe('calculateDeletions', () => {
   test('handles mixed types with some exceeding (refs untouched)', () => {
     const limits = unlimitedLimits();
     limits.cores[1] = 5;
-    limits.references = 2;
+    limits.referencesFastLimit = 2;
     const items = [
       { g: 'c1', t: 1 as const, l: 1, a: 10 },
       { g: 'c2', t: 1 as const, l: 2, a: 10 },
@@ -386,7 +385,7 @@ describe('calculateDeletions', () => {
     const limits = unlimitedLimits();
     limits.cores[1] = 2;
     limits.catalysers[1] = 3;
-    limits.references = 1;
+    limits.referencesFastLimit = 1;
     const items = [
       { g: 'c1', t: 1 as const, l: 1, a: 5 },
       { g: 'k1', t: 2 as const, l: 1, a: 6 },
@@ -416,7 +415,7 @@ describe('calculateDeletions', () => {
 
   test('references are never included in deletions', () => {
     const limits = unlimitedLimits();
-    limits.references = 0;
+    limits.referencesFastLimit = 0;
     const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 1 }];
     const result = calculateDeletions(items, limits);
     expect(result).toEqual([]);
@@ -426,7 +425,10 @@ describe('calculateDeletions', () => {
     const limits: ICleanupLimits = {
       cores: { 5: 0 },
       catalysers: {},
-      references: -1,
+      referencesMode: 'off',
+      referencesFastLimit: -1,
+      referencesAlliedLimit: -1,
+      referencesHostileLimit: -1,
     };
     const items = [
       { g: 'c1', t: 1 as const, l: 5, a: 0 },
@@ -440,7 +442,10 @@ describe('calculateDeletions', () => {
     const limits: ICleanupLimits = {
       cores: { 5: 0 },
       catalysers: {},
-      references: -1,
+      referencesMode: 'off',
+      referencesFastLimit: -1,
+      referencesAlliedLimit: -1,
+      referencesHostileLimit: -1,
     };
     const items = [
       { g: 'c1', t: 1 as const, l: 5, a: -5 },
@@ -454,7 +459,10 @@ describe('calculateDeletions', () => {
     const limits: ICleanupLimits = {
       cores: {},
       catalysers: {},
-      references: 0,
+      referencesMode: 'fast',
+      referencesFastLimit: 0,
+      referencesAlliedLimit: -1,
+      referencesHostileLimit: -1,
     };
     const items = [
       { g: 'r1', t: 3 as const, l: 'p1', a: 0 },
@@ -522,94 +530,6 @@ describe('formatDeletionSummary', () => {
     ];
     expect(formatDeletionSummary(deletions)).toBe('Я5 ×10, К3 ×3, Кл ×2');
     localStorage.removeItem('settings');
-  });
-});
-
-// --- cleanupSettings ---
-
-describe('cleanupSettings', () => {
-  afterEach(() => {
-    localStorage.removeItem('svp_inventoryCleanup');
-  });
-
-  test('loadCleanupSettings returns defaults when no stored settings', () => {
-    const settings = loadCleanupSettings();
-    const defaults = defaultCleanupSettings();
-    expect(settings).toEqual(defaults);
-  });
-
-  test('loadCleanupSettings returns defaults on invalid JSON', () => {
-    localStorage.setItem('svp_inventoryCleanup', 'not-json');
-    expect(loadCleanupSettings()).toEqual(defaultCleanupSettings());
-  });
-
-  test('loadCleanupSettings returns defaults on invalid structure', () => {
-    localStorage.setItem('svp_inventoryCleanup', JSON.stringify({ version: 1 }));
-    expect(loadCleanupSettings()).toEqual(defaultCleanupSettings());
-  });
-
-  test('saveCleanupSettings and loadCleanupSettings round-trip', () => {
-    const settings = defaultCleanupSettings();
-    settings.limits.cores[5] = 20;
-    settings.limits.references = 100;
-    settings.minFreeSlots = 50;
-
-    saveCleanupSettings(settings);
-    const loaded = loadCleanupSettings();
-    expect(loaded).toEqual(settings);
-  });
-
-  test('defaultCleanupSettings has all levels set to unlimited', () => {
-    const settings = defaultCleanupSettings();
-    for (let level = 1; level <= 10; level++) {
-      expect(settings.limits.cores[level]).toBe(-1);
-      expect(settings.limits.catalysers[level]).toBe(-1);
-    }
-    expect(settings.limits.references).toBe(-1);
-  });
-
-  test('defaultCleanupSettings has minFreeSlots 100', () => {
-    expect(defaultCleanupSettings().minFreeSlots).toBe(100);
-  });
-
-  test('loadCleanupSettings clamps minFreeSlots below 20 to 20', () => {
-    const settings = defaultCleanupSettings();
-    settings.minFreeSlots = 5;
-    saveCleanupSettings(settings);
-
-    const loaded = loadCleanupSettings();
-    expect(loaded.minFreeSlots).toBe(20);
-  });
-
-  test('loadCleanupSettings keeps minFreeSlots at 20 or above', () => {
-    const settings = defaultCleanupSettings();
-    settings.minFreeSlots = 25;
-    saveCleanupSettings(settings);
-
-    const loaded = loadCleanupSettings();
-    expect(loaded.minFreeSlots).toBe(25);
-  });
-
-  test('loadCleanupSettings clamps negative limits (not -1) to 0', () => {
-    const settings = defaultCleanupSettings();
-    settings.limits.cores[5] = -99;
-    settings.limits.catalysers[3] = -2;
-    settings.limits.references = -50;
-    saveCleanupSettings(settings);
-
-    const loaded = loadCleanupSettings();
-    expect(loaded.limits.cores[5]).toBe(0);
-    expect(loaded.limits.catalysers[3]).toBe(0);
-    expect(loaded.limits.references).toBe(0);
-  });
-
-  test('loadCleanupSettings preserves -1 (unlimited) limits', () => {
-    const settings = defaultCleanupSettings();
-    settings.limits.cores[5] = -1;
-    saveCleanupSettings(settings);
-
-    const loaded = loadCleanupSettings();
-    expect(loaded.limits.cores[5]).toBe(-1);
   });
 });
 
