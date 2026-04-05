@@ -297,6 +297,55 @@ describe('inventoryFilter', () => {
     expect(coreItem.classList.contains('svp-is-fav')).toBe(false);
   });
 
+  test('при активном фильтре снятие звезды НЕ скрывает элемент сразу', async () => {
+    await addFavorite('point-1');
+    await addFavorite('point-2');
+    const { content } = createInventoryDom('3');
+    const item1 = addKeyItem(content, 'point-1');
+    addKeyItem(content, 'point-2');
+    const item3 = addKeyItem(content, 'point-3');
+    installInventoryFilter();
+    const checkbox = findCheckbox();
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+    expect(item3.classList.contains('hidden')).toBe(true);
+    expect(item1.classList.contains('hidden')).toBe(false);
+
+    // Снимаем point-1 из избранных через звезду item1.
+    const star1 = findItemStar(item1);
+    star1.click();
+    await flush();
+
+    // item1 НЕ должен исчезнуть — фильтр не пересчитывается по клику звезды.
+    expect(item1.classList.contains('hidden')).toBe(false);
+    expect(item1.classList.contains('svp-fav-filtered')).toBe(false);
+    // Но метка svp-is-fav снялась, звезда больше не жёлтая.
+    expect(item1.classList.contains('svp-is-fav')).toBe(false);
+    expect(star1.classList.contains('is-filled')).toBe(false);
+  });
+
+  test('переключение чекбокса пересчитывает фильтр заново', async () => {
+    await addFavorite('point-1');
+    const { content } = createInventoryDom('3');
+    const item1 = addKeyItem(content, 'point-1');
+    installInventoryFilter();
+    const checkbox = findCheckbox();
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+
+    // Снимаем избранное через звезду (фильтр ещё активен).
+    findItemStar(item1).click();
+    await flush();
+    expect(item1.classList.contains('hidden')).toBe(false);
+
+    // Переключаем чекбокс off-on → item1 теперь не избранный, фильтр скрывает его.
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event('change'));
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+    expect(item1.classList.contains('hidden')).toBe(true);
+  });
+
   test('изменение избранных через store обновляет метки и звёзды', async () => {
     const { content } = createInventoryDom('3');
     const item1 = addKeyItem(content, 'point-1');

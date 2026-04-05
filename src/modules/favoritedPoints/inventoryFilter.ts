@@ -107,22 +107,29 @@ function updateItemStarState(item: HTMLElement): void {
   star.title = favorited ? 'Убрать из избранного' : 'Добавить в избранное';
 }
 
-/** Проставляет метки, звезду и скрывает/показывает элементы согласно фильтру. */
-function processItems(content: Element): void {
+/**
+ * Обновляет визуальное состояние меток, звёзды. НЕ трогает hidden-классы —
+ * это важно для случая, когда пользователь убрал точку из избранного через
+ * звезду в инвентаре: элемент не должен мгновенно скрываться, только при
+ * следующем переключении фильтра или открытии инвентаря.
+ */
+function updateItemMarks(content: Element): void {
   const items = content.querySelectorAll<HTMLElement>('.inventory__item[data-ref]');
   for (const item of items) {
     const pointGuid = item.dataset.ref;
     const favorited = pointGuid !== undefined && pointGuid !== '' && isFavorited(pointGuid);
-
-    if (favorited) {
-      item.classList.add(FAV_ITEM_CLASS);
-    } else {
-      item.classList.remove(FAV_ITEM_CLASS);
-    }
-
+    item.classList.toggle(FAV_ITEM_CLASS, favorited);
     injectItemStar(item);
     updateItemStarState(item);
+  }
+}
 
+/** Применяет текущее состояние фильтра к классам hidden. */
+function applyFilter(content: Element): void {
+  const items = content.querySelectorAll<HTMLElement>('.inventory__item[data-ref]');
+  for (const item of items) {
+    const pointGuid = item.dataset.ref;
+    const favorited = pointGuid !== undefined && pointGuid !== '' && isFavorited(pointGuid);
     if (filterEnabled && !favorited) {
       item.classList.add(GAME_HIDDEN_CLASS);
       item.classList.add(FILTER_MARK_CLASS);
@@ -131,6 +138,12 @@ function processItems(content: Element): void {
       item.classList.remove(FILTER_MARK_CLASS);
     }
   }
+}
+
+/** Полный пересчёт: метки + фильтр. Вызывается при смене фильтра/табa/перерисовке. */
+function processItems(content: Element): void {
+  updateItemMarks(content);
+  applyFilter(content);
 }
 
 function setFilterEnabled(content: Element, enabled: boolean): void {
@@ -183,12 +196,21 @@ function ensureFilterBarInjected(content: Element): void {
   updateFilterBarVisibility(content);
 }
 
+/** Реакция на мутации контента (смена таба, перерисовка списка игрой). */
 function onContentMutation(content: Element): void {
   updateFilterBarVisibility(content);
   if (getCurrentTab(content) === REFS_TAB) {
     processItems(content);
     updateCountLabel();
   }
+}
+
+/** Реакция на изменение избранных (звезда, debug API). Только метки, не фильтр. */
+function onFavoritesChanged(content: Element): void {
+  if (getCurrentTab(content) === REFS_TAB) {
+    updateItemMarks(content);
+  }
+  updateCountLabel();
 }
 
 function onInventoryPopupMutation(popup: Element, content: Element): void {
@@ -226,9 +248,10 @@ function startObserving(content: Element): void {
   }
 
   // Событие из store: пользователь нажал звезду (в попапе или в инвентаре),
-  // импорт, отладочный API — обновить метки.
+  // импорт, отладочный API — обновить ТОЛЬКО метки/звёзды, не перестраивать
+  // фильтр (иначе снятая звезда мгновенно скроет элемент из текущего вида).
   changeHandler = () => {
-    onContentMutation(content);
+    onFavoritesChanged(content);
   };
   document.addEventListener(FAVORITES_CHANGED_EVENT, changeHandler);
 }
