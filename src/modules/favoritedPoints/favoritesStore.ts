@@ -3,6 +3,12 @@
 // только CUI (таймер остывания точки); наш модуль его не использует, но обязан
 // сохранять существующие значения при upsert, чтобы не затереть данные CUI.
 
+export const FAVORITES_CHANGED_EVENT = 'svp:favorites-changed';
+
+function emitChange(): void {
+  document.dispatchEvent(new CustomEvent(FAVORITES_CHANGED_EVENT));
+}
+
 const DB_NAME = 'CUI';
 const STORE_NAME = 'favorites';
 const CUI_DB_VERSION = 9;
@@ -117,6 +123,7 @@ export async function addFavorite(pointGuid: string): Promise<void> {
   await promisifyRequest(store.put(record));
   memoryGuids.add(pointGuid);
   cooldownByGuid.set(pointGuid, cooldown);
+  emitChange();
 }
 
 export async function removeFavorite(pointGuid: string): Promise<void> {
@@ -126,6 +133,7 @@ export async function removeFavorite(pointGuid: string): Promise<void> {
   await promisifyRequest(store.delete(pointGuid));
   memoryGuids.delete(pointGuid);
   cooldownByGuid.delete(pointGuid);
+  emitChange();
 }
 
 export interface IExportPayload {
@@ -165,6 +173,7 @@ export async function importFromJson(json: string): Promise<number> {
     memoryGuids.add(record.guid);
     cooldownByGuid.set(record.guid, record.cooldown);
   }
+  emitChange();
   return parsed.favorites.length;
 }
 

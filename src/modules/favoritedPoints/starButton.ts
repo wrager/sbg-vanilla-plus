@@ -1,5 +1,10 @@
 import { waitForElement } from '../../core/dom';
-import { addFavorite, isFavorited, removeFavorite } from './favoritesStore';
+import {
+  addFavorite,
+  isFavorited,
+  removeFavorite,
+  FAVORITES_CHANGED_EVENT,
+} from './favoritesStore';
 
 const STAR_CLASS = 'svp-fav-star';
 const POPUP_SELECTOR = '.info.popup';
@@ -14,8 +19,8 @@ const STAR_SVG = `
 `;
 
 let popupObserver: MutationObserver | null = null;
-let bodyObserver: MutationObserver | null = null;
 let clickAbortController: AbortController | null = null;
+let changeHandler: (() => void) | null = null;
 
 function findStarButton(popup: Element): HTMLButtonElement | null {
   return popup.querySelector<HTMLButtonElement>(`.${STAR_CLASS}`);
@@ -102,6 +107,12 @@ function startObserving(popup: Element): void {
     attributes: true,
     attributeFilter: ['class', 'data-guid'],
   });
+
+  // Синхронизация с внешними изменениями (debug API, фильтр инвентаря, импорт).
+  changeHandler = (): void => {
+    injectStarButton(popup);
+  };
+  document.addEventListener(FAVORITES_CHANGED_EVENT, changeHandler);
 }
 
 export function installStarButton(): void {
@@ -125,10 +136,12 @@ export function installStarButton(): void {
 export function uninstallStarButton(): void {
   popupObserver?.disconnect();
   popupObserver = null;
-  bodyObserver?.disconnect();
-  bodyObserver = null;
   clickAbortController?.abort();
   clickAbortController = null;
+  if (changeHandler) {
+    document.removeEventListener(FAVORITES_CHANGED_EVENT, changeHandler);
+    changeHandler = null;
+  }
   document.querySelector(`.${STAR_CLASS}`)?.remove();
 }
 

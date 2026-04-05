@@ -43,3 +43,31 @@
 .i-image-box {
   position: relative;
 }
+
+/* Фильтр «Только избранные» в табе ключей инвентаря */
+.svp-fav-filter-bar {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  font-size: 0.9em;
+}
+
+.svp-fav-filter-bar.svp-hidden {
+  display: none;
+}
+
+.svp-fav-filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.svp-fav-filter-count {
+  color: #ffcc33;
+  font-weight: bold;
+}
+
+.inventory__content[data-svp-fav-filter='1'] .inventory__item[data-ref]:not(.svp-is-fav) {
+  display: none;
+}
