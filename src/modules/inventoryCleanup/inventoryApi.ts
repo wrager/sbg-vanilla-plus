@@ -1,5 +1,5 @@
 import type { IDeletionEntry } from './cleanupCalculator';
-import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER } from '../../core/gameConstants';
+import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 
 export interface IDeleteResult {
@@ -35,15 +35,35 @@ function groupByType(deletions: readonly IDeletionEntry[]): Map<number, Record<s
   return grouped;
 }
 
-/** Типы предметов, удаление которых разрешено. Ключи и спецпредметы защищены. */
-const DELETABLE_TYPES = new Set([ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER]);
+/** Типы предметов, удаление которых разрешено. Спецпредметы (вёники) защищены. */
+const DELETABLE_TYPES = new Set([ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE]);
+
+export interface IDeleteInventoryOptions {
+  /**
+   * Снимок GUID избранных точек на момент вызова — финальный guard перед DELETE.
+   * Даже если ключ прошёл фильтрацию в calculateDeletions, перед отправкой
+   * запроса мы ещё раз проверяем, что его pointGuid нет в этом наборе.
+   */
+  favoritedGuids: ReadonlySet<string>;
+}
 
 export async function deleteInventoryItems(
   deletions: readonly IDeletionEntry[],
+  options: IDeleteInventoryOptions,
 ): Promise<IDeleteResult> {
   for (const entry of deletions) {
     if (!DELETABLE_TYPES.has(entry.type)) {
       throw new Error(`Удаление предметов типа ${entry.type} запрещено`);
+    }
+    if (entry.type === ITEM_TYPE_REFERENCE) {
+      if (entry.pointGuid === undefined) {
+        throw new Error(`Ключ ${entry.guid} без pointGuid не может быть удалён (guard избранных)`);
+      }
+      if (options.favoritedGuids.has(entry.pointGuid)) {
+        throw new Error(
+          `Ключ от избранной точки ${entry.pointGuid} не может быть удалён (guard избранных)`,
+        );
+      }
     }
   }
 

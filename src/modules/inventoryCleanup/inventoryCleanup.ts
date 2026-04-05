@@ -102,7 +102,9 @@ async function runCleanupImpl(): Promise<void> {
   );
 
   try {
-    const result = await deleteInventoryItems(deletions);
+    const result = await deleteInventoryItems(deletions, {
+      favoritedGuids: new Set<string>(),
+    });
     updateInventoryCache(deletions);
     updateDomInventoryCount(result.total);
     showCleanupToast(`Очистка (${totalAmount}): ${summary}`);
