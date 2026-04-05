@@ -71,14 +71,17 @@
 /* Звезда внутри элемента инвентаря — слева от заголовка */
 .inventory__item[data-ref] .inventory__item-left {
   position: relative;
+}
+
+.inventory__item[data-ref] .inventory__item-title {
   padding-left: 26px;
+  display: inline-block;
 }
 
 .svp-inv-item-star {
   position: absolute;
-  top: 50%;
+  top: 0;
   left: 0;
-  transform: translateY(-50%);
   width: 22px;
   height: 22px;
   padding: 0;
