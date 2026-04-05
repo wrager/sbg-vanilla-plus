@@ -113,9 +113,28 @@ async function runCleanupImpl(): Promise<void> {
     const result = await deleteInventoryItems(deletions, {
       favoritedGuids: getFavoritedGuids(),
     });
-    updateInventoryCache(deletions);
-    updateDomInventoryCount(result.total);
-    showCleanupToast(`Очистка (${totalAmount}): ${summary}`);
+    // Симулированные записи (ключи в альфе) на сервере не удалились — не трогаем
+    // ни inventory-cache, ни DOM-счётчик для этих записей.
+    const simulatedGuids = new Set(result.simulatedReferenceDeletions.map((entry) => entry.guid));
+    const realDeletions = deletions.filter((entry) => !simulatedGuids.has(entry.guid));
+    updateInventoryCache(realDeletions);
+    if (result.total > 0) {
+      updateDomInventoryCount(result.total);
+    }
+
+    const simulatedAmount = result.simulatedReferenceDeletions.reduce(
+      (sum, entry) => sum + entry.amount,
+      0,
+    );
+    if (simulatedAmount > 0 && realDeletions.length === 0) {
+      showCleanupToast(`Симуляция: удалилось бы ${simulatedAmount} ключей`);
+    } else if (simulatedAmount > 0) {
+      showCleanupToast(
+        `Очистка (${totalAmount - simulatedAmount}): ${summary}; симуляция ${simulatedAmount} ключей`,
+      );
+    } else {
+      showCleanupToast(`Очистка (${totalAmount}): ${summary}`);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error('[SVP inventoryCleanup] Ошибка удаления:', message);

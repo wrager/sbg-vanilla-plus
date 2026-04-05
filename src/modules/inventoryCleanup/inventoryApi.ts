@@ -4,7 +4,20 @@ import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 
 export interface IDeleteResult {
   total: number;
+  /**
+   * Ключи, удаление которых было ИМИТИРОВАНО (запрос на сервер не отправлен).
+   * Заполняется только пока действует SAFETY_SKIP_REFERENCE_DELETION.
+   */
+  simulatedReferenceDeletions: IDeletionEntry[];
 }
+
+/**
+ * АЛЬФА-ЗАЩИТА: не отправлять DELETE-запросы для ключей. Вместо этого возвращать
+ * их в simulatedReferenceDeletions, чтобы вызывающий код мог показать тост
+ * «столько-то ключей удалилось бы». Переключить в false после того как пользователь
+ * протестирует автоочистку и медленное удаление вживую и подтвердит корректность.
+ */
+const SAFETY_SKIP_REFERENCE_DELETION = true;
 
 interface IApiResponse {
   count?: { total?: number };
@@ -69,8 +82,20 @@ export async function deleteInventoryItems(
 
   const grouped = groupByType(deletions);
   let lastTotal = 0;
+  const simulatedReferenceDeletions: IDeletionEntry[] = [];
 
   for (const [type, selection] of grouped) {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- константа-переключатель SAFETY_SKIP_REFERENCE_DELETION будет снята после альфы, тогда условие перестанет быть always-true
+    if (type === ITEM_TYPE_REFERENCE && SAFETY_SKIP_REFERENCE_DELETION) {
+      // Имитация удаления ключей: запрос не отправляем, накапливаем список для тоста.
+      const refEntries = deletions.filter((entry) => entry.type === ITEM_TYPE_REFERENCE);
+      simulatedReferenceDeletions.push(...refEntries);
+      console.warn(
+        '[SVP inventoryCleanup] АЛЬФА: удаление ключей имитировано, запрос НЕ отправлен',
+        { selection, entries: refEntries },
+      );
+      continue;
+    }
     const response = await fetch('/api/inventory', {
       method: 'DELETE',
       headers: buildAuthHeaders(),
@@ -99,7 +124,7 @@ export async function deleteInventoryItems(
     lastTotal = parsed.count.total;
   }
 
-  return { total: lastTotal };
+  return { total: lastTotal, simulatedReferenceDeletions };
 }
 
 export function updateInventoryCache(deletions: readonly IDeletionEntry[]): void {

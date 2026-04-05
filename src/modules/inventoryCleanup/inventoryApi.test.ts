@@ -157,17 +157,29 @@ describe('deleteInventoryItems', () => {
     );
   });
 
-  test('разрешает удаление ключей (type 3) с pointGuid и без избранного', async () => {
-    mockFetchSuccess(90);
+  test('альфа: удаление ключей имитируется (fetch НЕ отправляется)', async () => {
     const deletions: IDeletionEntry[] = [
       { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
-    await deleteInventoryItems(deletions, noFavs);
-    expect(mockFetch).toHaveBeenCalledWith('/api/inventory', {
-      method: 'DELETE',
-      headers: expect.any(Object) as unknown,
-      body: JSON.stringify({ selection: { r1: 5 }, tab: 3 }),
-    });
+    const result = await deleteInventoryItems(deletions, noFavs);
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(result.simulatedReferenceDeletions).toEqual(deletions);
+  });
+
+  test('альфа: смешанный батч — cores реально удаляются, ключи имитируются', async () => {
+    mockFetchSuccess(90);
+    const deletions: IDeletionEntry[] = [
+      { guid: 'c1', type: 1, level: 5, amount: 3 },
+      { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
+    ];
+    const result = await deleteInventoryItems(deletions, noFavs);
+    // Один fetch — для cores (type=1). Ключи не отправляются.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const calls = mockFetch.mock.calls as [string, { body: string }][];
+    const body = JSON.parse(calls[0][1].body) as { tab: number };
+    expect(body.tab).toBe(1);
+    expect(result.simulatedReferenceDeletions).toHaveLength(1);
+    expect(result.simulatedReferenceDeletions[0].guid).toBe('r1');
   });
 
   test('guard: бросает если ключ без pointGuid', async () => {
