@@ -1,7 +1,7 @@
 import { injectStyles, removeStyles } from '../../core/dom';
 import { t } from '../../core/l10n';
 import type { ILocalizedString } from '../../core/l10n';
-import { getModuleById } from '../../core/moduleRegistry';
+import { isModuleActive } from '../../core/moduleRegistry';
 import type { ICleanupSettings, ReferencesMode } from './cleanupSettings';
 import { loadCleanupSettings, saveCleanupSettings } from './cleanupSettings';
 import styles from './styles.css?inline';
@@ -271,7 +271,7 @@ function buildPanel(
     draft.limits.catalysers[level] = value;
   });
 
-  const refsEnabled = getModuleById('favoritedPoints')?.status === 'ready';
+  const refsEnabled = isModuleActive('favoritedPoints');
   content.appendChild(createReferencesSection(draft, refsEnabled));
 
   element.appendChild(content);

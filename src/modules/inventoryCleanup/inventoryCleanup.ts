@@ -1,5 +1,5 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { getModuleById } from '../../core/moduleRegistry';
+import { isModuleActive } from '../../core/moduleRegistry';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 import { getFavoritedGuids } from '../../core/favoritesStore';
 import { parseInventoryCache } from './inventoryParser';
@@ -88,11 +88,10 @@ async function runCleanupImpl(): Promise<void> {
   const items = parseInventoryCache();
   if (items.length === 0) return;
 
-  // Ключи удаляются только если модуль favoritedPoints готов — иначе у нас нет
-  // гарантии, что избранные загружены в memory cache. Защита от потери ключей
-  // от избранных точек при любых сбоях инициализации favoritedPoints.
-  const favoritedPointsStatus = getModuleById('favoritedPoints')?.status ?? null;
-  const referencesEnabled = favoritedPointsStatus === 'ready';
+  // Ключи удаляются только если модуль favoritedPoints активен (включён + готов).
+  // Если модуль выключен — защита избранных не гарантирована, автоочистка ключи
+  // не трогает, даже если memory cache избранных загружен (init() всегда выполняется).
+  const referencesEnabled = isModuleActive('favoritedPoints');
   const favoritedGuids = referencesEnabled ? getFavoritedGuids() : new Set<string>();
   const deletions = calculateDeletions(items, settings.limits, {
     favoritedGuids,

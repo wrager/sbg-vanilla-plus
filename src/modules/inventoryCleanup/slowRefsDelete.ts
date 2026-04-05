@@ -1,7 +1,7 @@
 import { getFavoritedGuids } from '../../core/favoritesStore';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import { readInventoryReferences } from '../../core/inventoryCache';
-import { getModuleById } from '../../core/moduleRegistry';
+import { isModuleActive } from '../../core/moduleRegistry';
 import type { IDeletionEntry } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
 import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
@@ -307,7 +307,7 @@ function ensureButton(bar: Element): void {
   if (bar.querySelector(`.${BUTTON_CLASS}`)) return;
   const settings = loadCleanupSettings();
   if (settings.limits.referencesMode !== 'slow') return;
-  if (getModuleById('favoritedPoints')?.status !== 'ready') return;
+  if (!isModuleActive('favoritedPoints')) return;
 
   const button = document.createElement('button');
   button.type = 'button';
