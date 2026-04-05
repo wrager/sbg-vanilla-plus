@@ -1,5 +1,6 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { loadFavorites } from './favoritesStore';
+import { getFavoritesCount, loadFavorites } from './favoritesStore';
+import { installDebugHooks, uninstallDebugHooks } from './debugHooks';
 
 const MODULE_ID = 'favoritedPoints';
 
@@ -20,13 +21,16 @@ export const favoritedPoints: IFeatureModule = {
     // Загружаем избранные из IDB в memory cache. init() ждёт асинхронного завершения —
     // inventoryCleanup.enable() вызывается только ПОСЛЕ этого, и видит status='ready'.
     await loadFavorites();
+    console.log(`[SVP favoritedPoints] загружено избранных: ${getFavoritesCount()}`);
   },
 
   enable() {
     // UI-интеграции (звезда, фильтр, hideLastFavRef) будут подключены в следующих коммитах.
+    installDebugHooks();
+    console.log('[SVP favoritedPoints] отладочный API доступен в window.svpFavs');
   },
 
   disable() {
-    // Симметрично enable.
+    uninstallDebugHooks();
   },
 };
