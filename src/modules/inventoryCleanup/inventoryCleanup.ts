@@ -1,7 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { isModuleActive } from '../../core/moduleRegistry';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
-import { getFavoritedGuids } from '../../core/favoritesStore';
+import { getFavoritedGuids, isFavoritesSnapshotReady } from '../../core/favoritesStore';
 import { parseInventoryCache } from './inventoryParser';
 import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
@@ -100,6 +100,7 @@ async function runCleanupImpl(): Promise<void> {
   const deletions = calculateDeletions(items, settings.limits, {
     favoritedGuids,
     referencesEnabled,
+    favoritesSnapshotReady: isFavoritesSnapshotReady(),
   });
   if (deletions.length === 0) return;
 

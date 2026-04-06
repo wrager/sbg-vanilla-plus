@@ -189,6 +189,7 @@ describe('shouldRunCleanup', () => {
 const noFavs = {
   favoritedGuids: new Set<string>(),
   referencesEnabled: false,
+  favoritesSnapshotReady: false,
 };
 
 function unlimitedLimits(): ICleanupLimits {
@@ -493,6 +494,7 @@ describe('calculateDeletions', () => {
     const result = calculateDeletions(items, limits, {
       favoritedGuids: new Set<string>(),
       referencesEnabled: false,
+      favoritesSnapshotReady: false,
     });
     expect(result).toEqual([]);
   });
@@ -509,6 +511,7 @@ describe('calculateDeletions', () => {
     const result = calculateDeletions(items, limits, {
       favoritedGuids: new Set(['sentinel-not-in-items']),
       referencesEnabled: true,
+      favoritesSnapshotReady: true,
     });
     expect(result).toEqual([
       { guid: 'r1', type: 3, level: null, amount: 3, pointGuid: 'p1' },
@@ -527,6 +530,7 @@ describe('calculateDeletions', () => {
     const result = calculateDeletions(items, limits, {
       favoritedGuids: new Set(['sentinel-not-in-items']),
       referencesEnabled: true,
+      favoritesSnapshotReady: true,
     });
     expect(result).toEqual([
       { guid: 'r1', type: 3, level: null, amount: 3, pointGuid: 'p1' },
@@ -545,6 +549,7 @@ describe('calculateDeletions', () => {
     const result = calculateDeletions(items, limits, {
       favoritedGuids: new Set(['sentinel-not-in-items']),
       referencesEnabled: true,
+      favoritesSnapshotReady: true,
     });
     // FIFO: 3 из r1, потом 2 из r2.
     expect(result).toEqual([
@@ -564,6 +569,7 @@ describe('calculateDeletions', () => {
     const result = calculateDeletions(items, limits, {
       favoritedGuids: new Set(['p1']),
       referencesEnabled: true,
+      favoritesSnapshotReady: true,
     });
     // p1 избранная — не трогаем. p2 превышает лимит 0, удаляем всё.
     expect(result).toEqual([{ guid: 'r2', type: 3, level: null, amount: 3, pointGuid: 'p2' }]);
@@ -581,6 +587,7 @@ describe('calculateDeletions', () => {
     const result = calculateDeletions(items, limits, {
       favoritedGuids: new Set(['fav1']),
       referencesEnabled: true,
+      favoritesSnapshotReady: true,
     });
     // fav1 исключена. p2: 5-2=3 к удалению. p3: 1<2, ок.
     expect(result).toEqual([{ guid: 'r2', type: 3, level: null, amount: 3, pointGuid: 'p2' }]);
@@ -594,6 +601,7 @@ describe('calculateDeletions', () => {
     const result = calculateDeletions(items, limits, {
       favoritedGuids: new Set<string>(),
       referencesEnabled: true,
+      favoritesSnapshotReady: true,
     });
     expect(result).toEqual([]);
   });
@@ -607,6 +615,7 @@ describe('calculateDeletions', () => {
     const result = calculateDeletions(items, limits, {
       favoritedGuids: new Set<string>(),
       referencesEnabled: true,
+      favoritesSnapshotReady: true,
     });
     expect(result).toEqual([]);
   });
@@ -619,6 +628,7 @@ describe('calculateDeletions', () => {
     const result = calculateDeletions(items, limits, {
       favoritedGuids: new Set<string>(),
       referencesEnabled: true,
+      favoritesSnapshotReady: true,
     });
     expect(result).toEqual([]);
   });

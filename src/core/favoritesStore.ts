@@ -21,6 +21,11 @@ export interface IFavoriteRecord {
 let memoryGuids: Set<string> = new Set();
 let cooldownByGuid: Map<string, number | null> = new Map();
 let dbPromise: Promise<IDBDatabase> | null = null;
+// true после успешного loadFavorites() — означает, что memoryGuids содержит
+// достоверный снимок IDB (даже если Set пуст — пользователь просто не добавлял
+// избранных). false — IDB не читалась или чтение упало. Используется в
+// cleanupCalculator как guard вместо size > 0 (коммит 8a1c2b4).
+let snapshotLoaded = false;
 
 function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -97,6 +102,7 @@ export async function loadFavorites(): Promise<void> {
     memoryGuids.add(record.guid);
     cooldownByGuid.set(record.guid, record.cooldown);
   }
+  snapshotLoaded = true;
 }
 
 /** Синхронная проверка — используется из hot path автоочистки. */
@@ -106,6 +112,14 @@ export function isFavorited(pointGuid: string): boolean {
 
 export function getFavoritedGuids(): ReadonlySet<string> {
   return memoryGuids;
+}
+
+/**
+ * true — loadFavorites() завершился успешно (снимок IDB достоверен, даже если пуст).
+ * false — IDB ещё не читалась или чтение упало. Автоочистка НЕ должна удалять ключи.
+ */
+export function isFavoritesSnapshotReady(): boolean {
+  return snapshotLoaded;
 }
 
 export function getFavoritesCount(): number {
@@ -181,6 +195,7 @@ export async function importFromJson(json: string): Promise<number> {
 export function resetForTests(): void {
   memoryGuids = new Set();
   cooldownByGuid = new Map();
+  snapshotLoaded = false;
   if (dbPromise) {
     void dbPromise.then((db) => {
       db.close();

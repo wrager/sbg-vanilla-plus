@@ -28,6 +28,13 @@ export interface ICalculateDeletionsOptions {
    * false — автоочистка не трогает ключи независимо от referencesMode.
    */
   referencesEnabled: boolean;
+  /**
+   * true — снимок избранных из IDB достоверен (loadFavorites() прошёл успешно).
+   * false — IDB не читалась или чтение упало; удалять ключи нельзя, потому что
+   * неизвестно, какие точки избранные. Заменяет прежний gate `favoritedGuids.size > 0`,
+   * который ошибочно блокировал удаление при пустом (но валидном) наборе избранных.
+   */
+  favoritesSnapshotReady: boolean;
 }
 
 export function shouldRunCleanup(
@@ -55,13 +62,14 @@ export function calculateDeletions(
   // 1. referencesEnabled — модуль favoritedPoints включён И готов (isModuleActive)
   // 2. referencesMode === 'fast' — пользователь явно выбрал быстрый режим
   // 3. referencesFastLimit !== -1 — пользователь задал конкретный лимит
-  // 4. favoritedGuids.size > 0 — в memory cache есть избранные (защита от сбоя IDB)
+  // 4. favoritesSnapshotReady — loadFavorites() успешно завершился, снимок IDB достоверен
+  //    (пустой Set допустим — значит пользователь не добавлял избранных)
   // Если хоть одно условие не выполнено — ключи не трогаются.
   if (
     options.referencesEnabled &&
     limits.referencesMode === 'fast' &&
     limits.referencesFastLimit !== -1 &&
-    options.favoritedGuids.size > 0
+    options.favoritesSnapshotReady
   ) {
     addReferenceDeletions(items, limits.referencesFastLimit, options.favoritedGuids, deletions);
   }
