@@ -160,6 +160,8 @@ export function updateInventoryCache(deletions: readonly IDeletionEntry[]): void
     console.warn('[SVP inventoryCleanup] inventory-cache не является массивом');
     return;
   }
+  // as — после Array.isArray; TS сужает до unknown[], но не до конкретного типа
+  // элемента. Структура элементов (g, a) проверяется неявно: find по g, мутация a.
   let cache = parsed as { g: string; a: number; [key: string]: unknown }[];
 
   for (const entry of deletions) {

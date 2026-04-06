@@ -32,6 +32,8 @@ export async function fetchPointTeam(pointGuid: string): Promise<number | null> 
     if (!response.ok) return null;
     const json: unknown = await response.json();
     if (typeof json !== 'object' || json === null || !('data' in json)) return null;
+    // as Record — единственный способ обратиться к свойствам после typeof+null+in guard;
+    // TS сужает до `object & Record<'data', unknown>`, но не до Record<string, unknown>.
     const record = json as Record<string, unknown>;
     const data = record.data;
     if (typeof data !== 'object' || data === null) return null;

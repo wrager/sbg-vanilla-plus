@@ -249,7 +249,6 @@ describe('регрессия: calculateDeletions с empty favorites и snapshotR
 
 // jsdom не имеет нативного fetch — создаём мок вручную.
 let mockFetchFunction: jest.Mock;
-const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   mockFetchFunction = jest.fn();
@@ -257,16 +256,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  if (originalFetch) {
-    globalThis.fetch = originalFetch;
-  } else {
-    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-    delete (globalThis as Record<string, unknown>).fetch;
-  }
+  // Убираем мок: в jsdom fetch изначально не определён.
+  globalThis.fetch = undefined as unknown as typeof fetch;
 });
 
 describe('fetchPointTeam', () => {
-
   test('успешный ответ — возвращает team number', async () => {
     mockFetchFunction.mockResolvedValue(
       new Response(JSON.stringify({ data: { g: 'p1', te: 2 } }), { status: 200 }),
@@ -276,7 +270,9 @@ describe('fetchPointTeam', () => {
   });
 
   test('ответ без data — возвращает null', async () => {
-    mockFetchFunction.mockResolvedValue(new Response(JSON.stringify({ error: 'nope' }), { status: 200 }));
+    mockFetchFunction.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'nope' }), { status: 200 }),
+    );
     const result = await fetchPointTeam('p1');
     expect(result).toBeNull();
   });
