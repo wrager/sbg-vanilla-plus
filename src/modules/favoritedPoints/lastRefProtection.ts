@@ -73,11 +73,15 @@ async function filterDrawResponse(response: Response): Promise<Response> {
     showHideLastFavRefToast(hidden);
   }
 
-  return new Response(JSON.stringify(parsed), {
+  const modified = new Response(JSON.stringify(parsed), {
     status: response.status,
     statusText: response.statusText,
     headers: response.headers,
   });
+  // Response.url — read-only, не передаётся через init. Восстанавливаем через
+  // defineProperty, чтобы игровой код, проверяющий response.url, не сломался.
+  Object.defineProperty(modified, 'url', { value: response.url });
+  return modified;
 }
 
 export function installLastRefProtection(): void {
