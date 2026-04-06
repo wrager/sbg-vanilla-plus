@@ -15,8 +15,9 @@ const ACTION_SELECTORS = '#discover, .discover-mod';
 const TOAST_DURATION = 3000;
 const DEBUG_INV_KEY = 'svp_debug_inv';
 // Отладка: true = появляется кнопка «TEST CLEANUP» поверх игры, запускающая
-// автоочистку напрямую без discover. Переключить в false после отладки.
-const DEBUG_FORCE_CLEANUP = true;
+// автоочистку напрямую (runCleanup) в обход discover. Кнопка НЕ обходит
+// shouldRunCleanup — обычный авто-поток всегда проверяет порог.
+const DEBUG_SHOW_CLEANUP_BUTTON = true;
 
 let cleanupInProgress = false;
 let discoverPending = false;
@@ -84,14 +85,9 @@ async function runCleanupImpl(): Promise<void> {
     return;
   }
 
-  /* eslint-disable @typescript-eslint/no-unnecessary-condition -- DEBUG_FORCE_CLEANUP будет снят после отладки */
-  if (
-    !DEBUG_FORCE_CLEANUP &&
-    !shouldRunCleanup(currentCount, inventoryLimit, settings.minFreeSlots)
-  ) {
+  if (!shouldRunCleanup(currentCount, inventoryLimit, settings.minFreeSlots)) {
     return;
   }
-  /* eslint-enable @typescript-eslint/no-unnecessary-condition */
 
   const items = parseInventoryCache();
   if (items.length === 0) return;
@@ -166,8 +162,8 @@ function onClickCapture(event: Event): void {
 let debugButton: HTMLButtonElement | null = null;
 
 function installDebugButton(): void {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- DEBUG_FORCE_CLEANUP будет снят после отладки
-  if (!DEBUG_FORCE_CLEANUP) return;
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- DEBUG_SHOW_CLEANUP_BUTTON будет снят после отладки
+  if (!DEBUG_SHOW_CLEANUP_BUTTON) return;
   debugButton = document.createElement('button');
   debugButton.textContent = 'TEST CLEANUP';
   debugButton.style.cssText =
