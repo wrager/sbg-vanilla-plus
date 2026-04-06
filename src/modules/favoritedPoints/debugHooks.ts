@@ -1,5 +1,5 @@
-// Отладочные хуки в window.svpFavs — чтобы тестировать хранилище избранных
-// до появления UI. Удалить этот модуль, когда появится полноценный UI.
+// Отладочный API window.svpFavs — позволяет управлять хранилищем избранных
+// из DevTools консоли. Включается через #svp-dev=1 или localStorage['svp_debug'].
 
 import {
   getFavoritedGuids,
@@ -28,7 +28,13 @@ declare global {
   }
 }
 
+function isDevMode(): boolean {
+  if (/[#&]svp-dev=1/.test(location.hash)) return true;
+  return localStorage.getItem('svp_debug') === '1';
+}
+
 export function installDebugHooks(): void {
+  if (!isDevMode()) return;
   window.svpFavs = {
     list: () => Array.from(getFavoritedGuids()),
     count: () => getFavoritesCount(),
