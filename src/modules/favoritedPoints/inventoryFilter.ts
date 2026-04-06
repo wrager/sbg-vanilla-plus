@@ -1,4 +1,5 @@
 import { waitForElement } from '../../core/dom';
+import { t } from '../../core/l10n';
 import {
   isFavorited,
   getFavoritesCount,
@@ -176,7 +177,7 @@ function createFilterBar(content: Element): HTMLElement {
   });
 
   const text = document.createElement('span');
-  text.textContent = 'Только избранные';
+  text.textContent = t({ en: 'Favorites only', ru: 'Только избранные' });
 
   countSpan = document.createElement('span');
   countSpan.className = 'svp-fav-filter-count';

@@ -1,4 +1,5 @@
 import { exportToJson, importFromJson, getFavoritesCount } from '../../core/favoritesStore';
+import { t } from '../../core/l10n';
 import { loadFavoritedPointsSettings, saveFavoritedPointsSettings } from './settings';
 
 const MODULE_ID = 'favoritedPoints';
@@ -17,7 +18,7 @@ function buildPanel(): HTMLElement {
 
   const header = document.createElement('div');
   header.className = 'svp-fav-settings-header';
-  header.textContent = 'Настройки избранных точек';
+  header.textContent = t({ en: 'Favorited points settings', ru: 'Настройки избранных точек' });
   element.appendChild(header);
 
   const content = document.createElement('div');
@@ -36,14 +37,19 @@ function buildPanel(): HTMLElement {
   });
   hideLastRow.appendChild(hideLastCheckbox);
   const hideLastLabel = document.createElement('span');
-  hideLastLabel.textContent = ' Защищать последний ключ от избранной точки при рисовании';
+  hideLastLabel.textContent = t({
+    en: ' Protect last key of favorited point when drawing',
+    ru: ' Защищать последний ключ от избранной точки при рисовании',
+  });
   hideLastRow.appendChild(hideLastLabel);
   content.appendChild(hideLastRow);
 
   // Счётчик избранных
   const counter = document.createElement('div');
   counter.className = 'svp-fav-settings-counter';
-  counter.textContent = `Всего избранных точек: ${getFavoritesCount()}`;
+  counter.textContent =
+    t({ en: 'Favorited points total: ', ru: 'Всего избранных точек: ' }) +
+    String(getFavoritesCount());
   content.appendChild(counter);
 
   // Импорт из JSON (сверху, чтобы был ближе к счётчику — видно эффект замены).
@@ -51,7 +57,7 @@ function buildPanel(): HTMLElement {
   importWrapper.className = 'svp-fav-settings-import-wrapper';
   const importLabel = document.createElement('label');
   importLabel.className = 'svp-fav-settings-button';
-  importLabel.textContent = '⬆️ Импорт из JSON';
+  importLabel.textContent = t({ en: '⬆️ Import from JSON', ru: '⬆️ Импорт из JSON' });
   const importInput = document.createElement('input');
   importInput.type = 'file';
   importInput.accept = 'application/json,.json';
@@ -69,14 +75,17 @@ function buildPanel(): HTMLElement {
 
   const importWarning = document.createElement('div');
   importWarning.className = 'svp-fav-settings-warning';
-  importWarning.textContent = '⚠️ Текущий список избранного будет полностью перезаписан';
+  importWarning.textContent = t({
+    en: '⚠️ Current favorites list will be completely replaced',
+    ru: '⚠️ Текущий список избранного будет полностью перезаписан',
+  });
   content.appendChild(importWarning);
 
   // Экспорт (скачать JSON).
   const exportButton = document.createElement('button');
   exportButton.type = 'button';
   exportButton.className = 'svp-fav-settings-button';
-  exportButton.textContent = '⬇️ Скачать JSON';
+  exportButton.textContent = t({ en: '⬇️ Download JSON', ru: '⬇️ Скачать JSON' });
   exportButton.addEventListener('click', () => {
     void downloadExport();
   });
@@ -89,7 +98,7 @@ function buildPanel(): HTMLElement {
   const closeButton = document.createElement('button');
   closeButton.type = 'button';
   closeButton.className = 'svp-fav-settings-button';
-  closeButton.textContent = 'Закрыть';
+  closeButton.textContent = t({ en: 'Close', ru: 'Закрыть' });
   closeButton.addEventListener('click', () => {
     element.remove();
     panel = null;
@@ -115,7 +124,7 @@ async function downloadExport(): Promise<void> {
     URL.revokeObjectURL(url);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    alert(`Ошибка экспорта: ${message}`);
+    alert(t({ en: 'Export error: ', ru: 'Ошибка экспорта: ' }) + message);
   }
 }
 
@@ -123,11 +132,13 @@ async function doImport(file: File, counterElement: HTMLElement): Promise<void> 
   try {
     const text = await file.text();
     const added = await importFromJson(text);
-    counterElement.textContent = `Всего избранных точек: ${getFavoritesCount()}`;
-    alert(`Импортировано записей: ${added}`);
+    counterElement.textContent =
+      t({ en: 'Favorited points total: ', ru: 'Всего избранных точек: ' }) +
+      String(getFavoritesCount());
+    alert(t({ en: 'Records imported: ', ru: 'Импортировано записей: ' }) + String(added));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    alert(`Ошибка импорта: ${message}`);
+    alert(t({ en: 'Import error: ', ru: 'Ошибка импорта: ' }) + message);
   }
 }
 
@@ -149,7 +160,7 @@ function injectConfigureButton(): void {
 
     configureButton = document.createElement('button');
     configureButton.className = CONFIGURE_BUTTON_CLASS;
-    configureButton.textContent = 'Настроить';
+    configureButton.textContent = t({ en: 'Configure', ru: 'Настроить' });
     configureButton.addEventListener('click', (event) => {
       event.stopPropagation();
       openPanel();
