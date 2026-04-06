@@ -14,6 +14,9 @@ const MODULE_ID = 'inventoryCleanup';
 const ACTION_SELECTORS = '#discover, .discover-mod';
 const TOAST_DURATION = 3000;
 const DEBUG_INV_KEY = 'svp_debug_inv';
+// Отладка: true = появляется кнопка «TEST CLEANUP» поверх игры, запускающая
+// автоочистку напрямую без discover. Переключить в false после отладки.
+const DEBUG_FORCE_CLEANUP = true;
 
 let cleanupInProgress = false;
 let discoverPending = false;
@@ -81,7 +84,8 @@ async function runCleanupImpl(): Promise<void> {
     return;
   }
 
-  if (!shouldRunCleanup(currentCount, inventoryLimit, settings.minFreeSlots)) {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- DEBUG_FORCE_CLEANUP будет снят после отладки
+  if (!DEBUG_FORCE_CLEANUP && !shouldRunCleanup(currentCount, inventoryLimit, settings.minFreeSlots)) {
     return;
   }
 
@@ -155,6 +159,28 @@ function onClickCapture(event: Event): void {
   discoverPending = true;
 }
 
+let debugButton: HTMLButtonElement | null = null;
+
+function installDebugButton(): void {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- DEBUG_FORCE_CLEANUP будет снят после отладки
+  if (!DEBUG_FORCE_CLEANUP) return;
+  debugButton = document.createElement('button');
+  debugButton.textContent = 'TEST CLEANUP';
+  debugButton.style.cssText =
+    'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:99999;' +
+    'padding:6px 14px;background:#ffcc33;color:#000;font-weight:bold;font-size:11px;' +
+    'border:1px solid #000;border-radius:6px;cursor:pointer;opacity:0.8;';
+  debugButton.addEventListener('click', () => {
+    void runCleanup();
+  });
+  document.body.appendChild(debugButton);
+}
+
+function uninstallDebugButton(): void {
+  debugButton?.remove();
+  debugButton = null;
+}
+
 function onInventoryCacheUpdated(): void {
   discoverPending = false;
   void runCleanup();
@@ -226,6 +252,7 @@ export const inventoryCleanup: IFeatureModule = {
     installSetItemInterceptor();
     initCleanupSettingsUi();
     installSlowRefsDelete();
+    installDebugButton();
   },
 
   disable() {
@@ -234,5 +261,6 @@ export const inventoryCleanup: IFeatureModule = {
     discoverPending = false;
     destroyCleanupSettingsUi();
     uninstallSlowRefsDelete();
+    uninstallDebugButton();
   },
 };
