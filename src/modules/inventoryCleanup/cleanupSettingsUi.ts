@@ -350,10 +350,16 @@ export function initCleanupSettingsUi(): void {
 
   // Наблюдаем document.body, потому что enable() вызывается до initSettingsUI()
   // в bootstrap — панель #svp-settings-panel ещё не существует в DOM
+  let rafPending = false;
   moduleRowObserver = new MutationObserver(() => {
-    if (!document.querySelector('.svp-cleanup-configure-button')) {
-      injectConfigureButton();
-    }
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      if (!document.querySelector('.svp-cleanup-configure-button')) {
+        injectConfigureButton();
+      }
+    });
   });
   moduleRowObserver.observe(document.body, { childList: true, subtree: true });
 }

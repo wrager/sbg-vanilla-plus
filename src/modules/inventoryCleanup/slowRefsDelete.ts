@@ -363,11 +363,18 @@ function checkAndInject(): void {
   ensureButton(bar);
 }
 
+let rafPending = false;
+
 export function installSlowRefsDelete(): void {
   if (bodyObserver) return;
   checkAndInject();
   bodyObserver = new MutationObserver(() => {
-    checkAndInject();
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      checkAndInject();
+    });
   });
   bodyObserver.observe(document.body, { childList: true, subtree: true });
 }

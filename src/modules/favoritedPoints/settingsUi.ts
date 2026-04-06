@@ -170,12 +170,22 @@ function injectConfigureButton(): void {
   }
 }
 
+let rafPending = false;
+
 export function installSettingsUi(): void {
   injectConfigureButton();
   moduleRowObserver = new MutationObserver(() => {
-    if (!document.querySelector(`.${CONFIGURE_BUTTON_CLASS}`)) {
-      injectConfigureButton();
-    }
+    // Debounce через rAF: при массовых DOM-мутациях (атака, анимации)
+    // observer может триггериться сотни раз; querySelector в каждом колбэке
+    // вызывает layout thrashing и зависание. rAF группирует вызовы.
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      if (!document.querySelector(`.${CONFIGURE_BUTTON_CLASS}`)) {
+        injectConfigureButton();
+      }
+    });
   });
   moduleRowObserver.observe(document.body, { childList: true, subtree: true });
 }
