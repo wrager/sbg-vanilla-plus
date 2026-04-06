@@ -379,16 +379,15 @@ function checkAndInject(): void {
   ensureButton(bar);
 }
 
-let rafPending = false;
+let rafId: number | null = null;
 
 export function installSlowRefsDelete(): void {
   if (bodyObserver) return;
   checkAndInject();
   bodyObserver = new MutationObserver(() => {
-    if (rafPending) return;
-    rafPending = true;
-    requestAnimationFrame(() => {
-      rafPending = false;
+    if (rafId !== null) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
       checkAndInject();
     });
   });
@@ -396,6 +395,10 @@ export function installSlowRefsDelete(): void {
 }
 
 export function uninstallSlowRefsDelete(): void {
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
   bodyObserver?.disconnect();
   bodyObserver = null;
   removeButton();

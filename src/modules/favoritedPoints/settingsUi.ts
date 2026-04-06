@@ -170,7 +170,7 @@ function injectConfigureButton(): void {
   }
 }
 
-let rafPending = false;
+let rafId: number | null = null;
 
 export function installSettingsUi(): void {
   injectConfigureButton();
@@ -178,10 +178,9 @@ export function installSettingsUi(): void {
     // Debounce через rAF: при массовых DOM-мутациях (атака, анимации)
     // observer может триггериться сотни раз; querySelector в каждом колбэке
     // вызывает layout thrashing и зависание. rAF группирует вызовы.
-    if (rafPending) return;
-    rafPending = true;
-    requestAnimationFrame(() => {
-      rafPending = false;
+    if (rafId !== null) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
       if (!document.querySelector(`.${CONFIGURE_BUTTON_CLASS}`)) {
         injectConfigureButton();
       }
@@ -191,6 +190,10 @@ export function installSettingsUi(): void {
 }
 
 export function uninstallSettingsUi(): void {
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
   moduleRowObserver?.disconnect();
   moduleRowObserver = null;
   panel?.remove();

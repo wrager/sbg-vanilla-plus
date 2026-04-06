@@ -59,6 +59,7 @@ const REF_SLOW_HINT: ILocalizedString = {
 let panel: HTMLElement | null = null;
 let configureButton: HTMLElement | null = null;
 let moduleRowObserver: MutationObserver | null = null;
+let rafId: number | null = null;
 
 function createLevelInputs(
   container: HTMLElement,
@@ -350,12 +351,10 @@ export function initCleanupSettingsUi(): void {
 
   // Наблюдаем document.body, потому что enable() вызывается до initSettingsUI()
   // в bootstrap — панель #svp-settings-panel ещё не существует в DOM
-  let rafPending = false;
   moduleRowObserver = new MutationObserver(() => {
-    if (rafPending) return;
-    rafPending = true;
-    requestAnimationFrame(() => {
-      rafPending = false;
+    if (rafId !== null) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
       if (!document.querySelector('.svp-cleanup-configure-button')) {
         injectConfigureButton();
       }
@@ -365,6 +364,11 @@ export function initCleanupSettingsUi(): void {
 }
 
 export function destroyCleanupSettingsUi(): void {
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
   removeStyles(STYLES_ID);
 
   if (panel) {
