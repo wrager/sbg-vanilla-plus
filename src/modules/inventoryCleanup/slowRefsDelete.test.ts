@@ -1,6 +1,12 @@
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import type { IRefByGuid } from './slowRefsDelete';
-import { calculateSlowDeletions, collectOverLimit } from './slowRefsDelete';
+import {
+  calculateSlowDeletions,
+  collectOverLimit,
+  fetchPointTeam,
+  fetchTeamsForGuids,
+  FETCH_CONCURRENCY,
+} from './slowRefsDelete';
 import type { IDeletionEntry } from './cleanupCalculator';
 import { calculateDeletions } from './cleanupCalculator';
 
@@ -236,5 +242,126 @@ describe('регрессия: calculateDeletions с empty favorites и snapshotR
       favoritesSnapshotReady: false,
     });
     expect(result).toEqual([]);
+  });
+});
+
+// --- fetchPointTeam ---
+
+// jsdom не имеет нативного fetch — создаём мок вручную.
+let mockFetchFunction: jest.Mock;
+const originalFetch = globalThis.fetch;
+
+beforeEach(() => {
+  mockFetchFunction = jest.fn();
+  globalThis.fetch = mockFetchFunction;
+});
+
+afterEach(() => {
+  if (originalFetch) {
+    globalThis.fetch = originalFetch;
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete (globalThis as Record<string, unknown>).fetch;
+  }
+});
+
+describe('fetchPointTeam', () => {
+
+  test('успешный ответ — возвращает team number', async () => {
+    mockFetchFunction.mockResolvedValue(
+      new Response(JSON.stringify({ data: { g: 'p1', te: 2 } }), { status: 200 }),
+    );
+    const result = await fetchPointTeam('p1');
+    expect(result).toBe(2);
+  });
+
+  test('ответ без data — возвращает null', async () => {
+    mockFetchFunction.mockResolvedValue(new Response(JSON.stringify({ error: 'nope' }), { status: 200 }));
+    const result = await fetchPointTeam('p1');
+    expect(result).toBeNull();
+  });
+
+  test('HTTP ошибка — возвращает null', async () => {
+    mockFetchFunction.mockResolvedValue(new Response('', { status: 500 }));
+    const result = await fetchPointTeam('p1');
+    expect(result).toBeNull();
+  });
+
+  test('сетевая ошибка (fetch reject) — возвращает null', async () => {
+    mockFetchFunction.mockRejectedValue(new Error('network'));
+    const result = await fetchPointTeam('p1');
+    expect(result).toBeNull();
+  });
+
+  test('data.te не number — возвращает null', async () => {
+    mockFetchFunction.mockResolvedValue(
+      new Response(JSON.stringify({ data: { g: 'p1', te: 'string' } }), { status: 200 }),
+    );
+    const result = await fetchPointTeam('p1');
+    expect(result).toBeNull();
+  });
+});
+
+// --- fetchTeamsForGuids ---
+
+describe('fetchTeamsForGuids', () => {
+  test('успешно получает team для всех GUID', async () => {
+    mockFetchFunction.mockImplementation((url: string) => {
+      const guid = new URL(url, 'http://localhost').searchParams.get('guid');
+      const team = guid === 'p1' ? 1 : 2;
+      return Promise.resolve(new Response(JSON.stringify({ data: { g: guid, te: team } })));
+    });
+    const progress = jest.fn();
+    const result = await fetchTeamsForGuids(['p1', 'p2'], progress);
+    expect(result.get('p1')).toBe(1);
+    expect(result.get('p2')).toBe(2);
+    expect(result.size).toBe(2);
+  });
+
+  test('progress callback вызывается для каждого GUID', async () => {
+    mockFetchFunction.mockResolvedValue(new Response(JSON.stringify({ data: { te: 1 } })));
+    const progress = jest.fn();
+    await fetchTeamsForGuids(['a', 'b', 'c'], progress);
+    expect(progress).toHaveBeenCalledTimes(3);
+    expect(progress).toHaveBeenCalledWith(1, 3);
+    expect(progress).toHaveBeenCalledWith(2, 3);
+    expect(progress).toHaveBeenCalledWith(3, 3);
+  });
+
+  test('ошибка fetch для одного GUID — null для этого, остальные ок', async () => {
+    mockFetchFunction.mockImplementation((url: string) => {
+      const guid = new URL(url, 'http://localhost').searchParams.get('guid');
+      if (guid === 'p2') return Promise.reject(new Error('network'));
+      return Promise.resolve(new Response(JSON.stringify({ data: { g: guid, te: 1 } })));
+    });
+    const result = await fetchTeamsForGuids(['p1', 'p2', 'p3'], jest.fn());
+    expect(result.get('p1')).toBe(1);
+    expect(result.get('p2')).toBeNull();
+    expect(result.get('p3')).toBe(1);
+  });
+
+  test('concurrency: не более FETCH_CONCURRENCY параллельных запросов', async () => {
+    let concurrent = 0;
+    let maxConcurrent = 0;
+    mockFetchFunction.mockImplementation(() => {
+      concurrent++;
+      maxConcurrent = Math.max(maxConcurrent, concurrent);
+      return new Promise<Response>((resolve) => {
+        setTimeout(() => {
+          concurrent--;
+          resolve(new Response(JSON.stringify({ data: { te: 1 } })));
+        }, 10);
+      });
+    });
+    const guids = Array.from({ length: 10 }, (_, index) => `p${index}`);
+    await fetchTeamsForGuids(guids, jest.fn());
+    expect(maxConcurrent).toBeLessThanOrEqual(FETCH_CONCURRENCY);
+    expect(maxConcurrent).toBe(FETCH_CONCURRENCY);
+  });
+
+  test('пустой массив — пустой результат', async () => {
+    const result = await fetchTeamsForGuids([], jest.fn());
+    expect(result.size).toBe(0);
+    expect(mockFetchFunction).not.toHaveBeenCalled();
   });
 });

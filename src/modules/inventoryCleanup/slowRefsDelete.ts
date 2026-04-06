@@ -13,7 +13,7 @@ const MODAL_CLASS = 'svp-cleanup-slow-modal';
 // Не зависит от DOM модуля favoritedPoints (filter bar и т.д.).
 const INVENTORY_CONTENT_SELECTOR = '.inventory__content';
 const REFS_TAB = '3';
-const FETCH_CONCURRENCY = 3;
+export const FETCH_CONCURRENCY = 3;
 
 let bodyObserver: MutationObserver | null = null;
 
@@ -26,7 +26,7 @@ function getPlayerTeam(): number | null {
   return Number.isFinite(team) ? team : null;
 }
 
-async function fetchPointTeam(pointGuid: string): Promise<number | null> {
+export async function fetchPointTeam(pointGuid: string): Promise<number | null> {
   try {
     const response = await fetch(`/api/point?guid=${pointGuid}&status=1`);
     if (!response.ok) return null;
@@ -93,7 +93,7 @@ function openProgressModal(): IProgress {
 }
 
 /** Параллельно, но с ограничением concurrency. */
-async function fetchTeamsForGuids(
+export async function fetchTeamsForGuids(
   guids: string[],
   onProgress: (done: number, total: number) => void,
 ): Promise<Map<string, number | null>> {
