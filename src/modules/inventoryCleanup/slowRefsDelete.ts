@@ -122,14 +122,14 @@ async function fetchTeamsForGuids(
   return result;
 }
 
-interface IRefByGuid {
+export interface IRefByGuid {
   itemGuid: string;
   pointGuid: string;
   amount: number;
 }
 
 /** Применить лимиты allied/hostile с FIFO. */
-function calculateSlowDeletions(
+export function calculateSlowDeletions(
   refs: IRefByGuid[],
   teams: Map<string, number | null>,
   playerTeam: number,
@@ -158,7 +158,7 @@ function calculateSlowDeletions(
  * Лимит НА ТОЧКУ: для каждой уникальной точки оставляет не более limit ключей.
  * Аналогично fast-режиму и CUI (строка 1392: amount > itemMaxAmount).
  */
-function collectOverLimit(refs: IRefByGuid[], limit: number, deletions: IDeletionEntry[]): void {
+export function collectOverLimit(refs: IRefByGuid[], limit: number, deletions: IDeletionEntry[]): void {
   if (limit === -1) return;
 
   // Группировка по pointGuid.
