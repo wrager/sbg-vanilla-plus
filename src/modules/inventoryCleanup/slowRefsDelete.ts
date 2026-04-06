@@ -9,9 +9,10 @@ import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
 
 const BUTTON_CLASS = 'svp-cleanup-slow-refs-button';
 const MODAL_CLASS = 'svp-cleanup-slow-modal';
-// Кнопка монтируется после .inventory__content, внутри .inventory.popup.
-// Видимость управляется CSS (data-tab="3"). Не зависит от DOM favoritedPoints.
-const INVENTORY_CONTENT_SELECTOR = '.inventory__content';
+// Кнопка монтируется внутрь .svp-fav-filter-bar (создаётся модулем favoritedPoints),
+// чтобы чекбокс «Только избранные» и кнопка «Очистить ключи» были в одной строке.
+// Это DOM-зависимость от элемента другого модуля, но не TS-импорт.
+const FILTER_BAR_SELECTOR = '.svp-fav-filter-bar';
 export const FETCH_CONCURRENCY = 3;
 
 let bodyObserver: MutationObserver | null = null;
@@ -347,17 +348,12 @@ function shouldShowButton(): boolean {
   return settings.limits.referencesMode === 'slow' && isModuleActive('favoritedPoints');
 }
 
-function isRefsTab(content: Element): boolean {
-  return content instanceof HTMLElement && content.dataset.tab === '3';
-}
-
-function ensureButton(content: Element): void {
-  const existing = content.parentElement?.querySelector(`.${BUTTON_CLASS}`);
-  if (!shouldShowButton() || !isRefsTab(content)) {
-    existing?.remove();
+function ensureButton(bar: Element): void {
+  if (!shouldShowButton()) {
+    bar.querySelector(`.${BUTTON_CLASS}`)?.remove();
     return;
   }
-  if (existing) return;
+  if (bar.querySelector(`.${BUTTON_CLASS}`)) return;
 
   const button = document.createElement('button');
   button.type = 'button';
@@ -367,10 +363,7 @@ function ensureButton(content: Element): void {
     event.preventDefault();
     void runSlowDelete();
   });
-  // Вставляем ПЕРЕД .inventory__content — кнопка сверху списка.
-  // checkAndInject вызывается из body MutationObserver (childList+subtree),
-  // а переключение табов перерисовывает childList content — observer поймает.
-  content.parentElement?.insertBefore(button, content);
+  bar.appendChild(button);
 }
 
 function removeButton(): void {
@@ -378,12 +371,12 @@ function removeButton(): void {
 }
 
 function checkAndInject(): void {
-  const content = document.querySelector(INVENTORY_CONTENT_SELECTOR);
-  if (!content) {
+  const bar = document.querySelector(FILTER_BAR_SELECTOR);
+  if (!bar) {
     removeButton();
     return;
   }
-  ensureButton(content);
+  ensureButton(bar);
 }
 
 let rafId: number | null = null;
