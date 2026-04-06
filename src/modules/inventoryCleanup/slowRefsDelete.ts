@@ -1,4 +1,5 @@
 import { getFavoritedGuids } from '../../core/favoritesStore';
+import { t } from '../../core/l10n';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import { readInventoryReferences } from '../../core/inventoryCache';
 import { isModuleActive } from '../../core/moduleRegistry';
@@ -60,7 +61,7 @@ function openProgressModal(): IProgress {
 
   const status = document.createElement('div');
   status.className = 'svp-cleanup-slow-modal-status';
-  status.textContent = 'Подготовка…';
+  status.textContent = t({ en: 'Preparing…', ru: 'Подготовка…' });
   box.appendChild(status);
 
   const barWrap = document.createElement('div');
@@ -188,18 +189,22 @@ function showToast(message: string): void {
 async function runSlowDelete(): Promise<void> {
   const settings = loadCleanupSettings();
   if (settings.limits.referencesMode !== 'slow') {
-    showToast('Режим очистки ключей не «Медленно»');
+    showToast(
+      t({ en: 'Key cleanup mode is not "Slow"', ru: 'Режим очистки ключей не «Медленно»' }),
+    );
     return;
   }
   const { referencesAlliedLimit, referencesHostileLimit } = settings.limits;
   if (referencesAlliedLimit === -1 && referencesHostileLimit === -1) {
-    showToast('Лимиты свои/чужие не заданы');
+    showToast(t({ en: 'Allied/hostile limits not set', ru: 'Лимиты свои/чужие не заданы' }));
     return;
   }
 
   const playerTeam = getPlayerTeam();
   if (playerTeam === null) {
-    showToast('Не удалось определить команду игрока');
+    showToast(
+      t({ en: 'Could not determine player team', ru: 'Не удалось определить команду игрока' }),
+    );
     return;
   }
 
@@ -210,19 +215,24 @@ async function runSlowDelete(): Promise<void> {
     .map((ref) => ({ itemGuid: ref.g, pointGuid: ref.l, amount: ref.a }));
 
   if (nonFavRefs.length === 0) {
-    showToast('Нет не-избранных ключей для обработки');
+    showToast(
+      t({ en: 'No non-favorited keys to process', ru: 'Нет не-избранных ключей для обработки' }),
+    );
     return;
   }
 
   const uniquePointGuids = Array.from(new Set(nonFavRefs.map((ref) => ref.pointGuid)));
 
   const confirmed = confirm(
-    `Запросить данные по ${uniquePointGuids.length} точкам для определения фракции? Это может занять время.`,
+    t({
+      en: `Fetch data for ${uniquePointGuids.length} points to determine faction? This may take a while.`,
+      ru: `Запросить данные по ${uniquePointGuids.length} точкам для определения фракции? Это может занять время.`,
+    }),
   );
   if (!confirmed) return;
 
   const progress = openProgressModal();
-  progress.setStatus('Запрос данных точек…');
+  progress.setStatus(t({ en: 'Fetching point data…', ru: 'Запрос данных точек…' }));
   progress.update(0, uniquePointGuids.length);
 
   let teams: Map<string, number | null>;
@@ -233,13 +243,13 @@ async function runSlowDelete(): Promise<void> {
   } catch (error) {
     progress.close();
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    showToast(`Ошибка запроса: ${message}`);
+    showToast(t({ en: 'Request error: ', ru: 'Ошибка запроса: ' }) + message);
     return;
   }
 
   const unknownTeams = Array.from(teams.entries()).filter(([, team]) => team === null).length;
 
-  progress.setStatus('Расчёт удаления…');
+  progress.setStatus(t({ en: 'Calculating deletions…', ru: 'Расчёт удаления…' }));
 
   const deletions = calculateSlowDeletions(
     nonFavRefs,
@@ -251,8 +261,20 @@ async function runSlowDelete(): Promise<void> {
 
   if (deletions.length === 0) {
     progress.close();
-    const suffix = unknownTeams > 0 ? ` (пропущено ${unknownTeams} без данных)` : '';
-    showToast('Нет ключей для удаления по заданным лимитам' + suffix);
+    const suffix =
+      unknownTeams > 0
+        ? ' ' +
+          t({
+            en: `(${unknownTeams} skipped, no data)`,
+            ru: `(пропущено ${unknownTeams} без данных)`,
+          })
+        : '';
+    showToast(
+      t({
+        en: 'No keys to delete with current limits',
+        ru: 'Нет ключей для удаления по заданным лимитам',
+      }) + suffix,
+    );
     return;
   }
 
@@ -268,12 +290,18 @@ async function runSlowDelete(): Promise<void> {
   const alliedAmount = allied.reduce((sum, entry) => sum + entry.amount, 0);
   const hostileAmount = hostile.reduce((sum, entry) => sum + entry.amount, 0);
 
-  progress.setStatus(
-    `Удалить: ${totalAmount} ключей (свои ${alliedAmount} + чужие ${hostileAmount})?`,
-  );
+  const alliedLabel = t({ en: 'allied', ru: 'свои' });
+  const hostileLabel = t({ en: 'hostile', ru: 'чужие' });
+  const keysLabel = t({ en: 'keys', ru: 'ключей' });
+  const summaryText = `${totalAmount} ${keysLabel} (${alliedLabel} ${alliedAmount} + ${hostileLabel} ${hostileAmount})`;
+
+  progress.setStatus(t({ en: 'Delete: ', ru: 'Удалить: ' }) + summaryText + '?');
 
   const confirmDelete = confirm(
-    `Удалить ${totalAmount} ключей (свои ${alliedAmount} + чужие ${hostileAmount})? Избранные не затронуты.`,
+    t({ en: 'Delete ', ru: 'Удалить ' }) +
+      summaryText +
+      '? ' +
+      t({ en: 'Favorites are not affected.', ru: 'Избранные не затронуты.' }),
   );
   if (!confirmDelete) {
     progress.close();
@@ -292,15 +320,16 @@ async function runSlowDelete(): Promise<void> {
     progress.close();
     if (simulated) {
       showToast(
-        `Симуляция: удалилось бы ${totalAmount} ключей (свои ${alliedAmount} + чужие ${hostileAmount})`,
+        t({ en: 'Simulation: would delete ', ru: 'Симуляция: удалилось бы ' }) + summaryText,
       );
     } else {
-      showToast(`Удалено: ${totalAmount} (свои ${alliedAmount} + чужие ${hostileAmount})`);
+      showToast(t({ en: 'Deleted: ', ru: 'Удалено: ' }) + summaryText);
     }
   } catch (error) {
     progress.close();
-    const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    showToast(`Ошибка удаления: ${message}`);
+    const message =
+      error instanceof Error ? error.message : t({ en: 'Unknown error', ru: 'Неизвестная ошибка' });
+    showToast(t({ en: 'Deletion error: ', ru: 'Ошибка удаления: ' }) + message);
   }
 }
 
@@ -313,7 +342,7 @@ function ensureButton(bar: Element): void {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = BUTTON_CLASS;
-  button.textContent = 'Очистить ключи';
+  button.textContent = t({ en: 'Clean keys', ru: 'Очистить ключи' });
   button.addEventListener('click', (event) => {
     event.preventDefault();
     void runSlowDelete();
