@@ -350,10 +350,14 @@ async function runSlowDelete(): Promise<void> {
 }
 
 function ensureButton(bar: Element): void {
-  if (bar.querySelector(`.${BUTTON_CLASS}`)) return;
   const settings = loadCleanupSettings();
-  if (settings.limits.referencesMode !== 'slow') return;
-  if (!isModuleActive('favoritedPoints')) return;
+  const shouldShow = settings.limits.referencesMode === 'slow' && isModuleActive('favoritedPoints');
+  if (!shouldShow) {
+    // Режим сменился с slow на off/fast — убрать кнопку, если она осталась в DOM.
+    bar.querySelector(`.${BUTTON_CLASS}`)?.remove();
+    return;
+  }
+  if (bar.querySelector(`.${BUTTON_CLASS}`)) return;
 
   const button = document.createElement('button');
   button.type = 'button';
