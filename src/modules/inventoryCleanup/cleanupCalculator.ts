@@ -110,6 +110,11 @@ function addLevelDeletions(
   }
 }
 
+/**
+ * Лимит ключей — НА ТОЧКУ: для каждой уникальной точки оставляет не более limit
+ * ключей. Аналогично cores/catalysers, где лимит задаётся на уровень.
+ * Ключи избранных точек полностью исключены из расчёта.
+ */
 function addReferenceDeletions(
   items: readonly IInventoryItem[],
   limit: number,
@@ -118,29 +123,39 @@ function addReferenceDeletions(
 ): void {
   if (limit === -1) return;
 
-  // Отфильтровать ключи избранных точек ПЕРЕД расчётом лимита — их не должно быть
-  // в списке ни в каких подсчётах. Даже при лимите 0 эти ключи остаются в инвентаре.
+  // Отфильтровать ключи избранных точек ПЕРЕД расчётом лимита.
   const matching: IInventoryReference[] = items.filter(
     (item): item is IInventoryReference =>
       isInventoryReference(item) && item.a > 0 && !favoritedGuids.has(item.l),
   );
 
-  const total = matching.reduce((sum, item) => sum + item.a, 0);
-  let excess = total - limit;
-  if (excess <= 0) return;
-
+  // Группировка по pointGuid (item.l для ключей = GUID точки).
+  const byPoint = new Map<string, IItemEntry[]>();
   for (const item of matching) {
-    if (excess <= 0) break;
-    const toDelete = Math.min(item.a, excess);
     const pointGuid = item.l;
-    deletions.push({
-      guid: item.g,
-      type: ITEM_TYPE_REFERENCE,
-      level: null,
-      amount: toDelete,
-      pointGuid,
-    });
-    excess -= toDelete;
+    const entries = byPoint.get(pointGuid) ?? [];
+    entries.push({ guid: item.g, amount: item.a });
+    byPoint.set(pointGuid, entries);
+  }
+
+  // Для каждой точки — применяем лимит (FIFO внутри группы).
+  for (const [pointGuid, entries] of byPoint) {
+    const total = entries.reduce((sum, entry) => sum + entry.amount, 0);
+    let excess = total - limit;
+    if (excess <= 0) continue;
+
+    for (const entry of entries) {
+      if (excess <= 0) break;
+      const toDelete = Math.min(entry.amount, excess);
+      deletions.push({
+        guid: entry.guid,
+        type: ITEM_TYPE_REFERENCE,
+        level: null,
+        amount: toDelete,
+        pointGuid,
+      });
+      excess -= toDelete;
+    }
   }
 }
 

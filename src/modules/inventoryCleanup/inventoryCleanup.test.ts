@@ -497,23 +497,59 @@ describe('calculateDeletions', () => {
     expect(result).toEqual([]);
   });
 
-  test('fast mode: удаляет лишние ключи когда referencesEnabled=true', () => {
+  test('fast mode: лимит на точку — удаляет лишние ключи от каждой точки отдельно', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
-    limits.referencesFastLimit = 5;
+    limits.referencesFastLimit = 2;
     const items = [
-      { g: 'r1', t: 3 as const, l: 'p1', a: 4 },
-      { g: 'r2', t: 3 as const, l: 'p2', a: 6 },
+      { g: 'r1', t: 3 as const, l: 'p1', a: 5 }, // 5 ключей от p1, лимит 2 → удалить 3
+      { g: 'r2', t: 3 as const, l: 'p2', a: 1 }, // 1 ключ от p2, лимит 2 → не трогаем
+      { g: 'r3', t: 3 as const, l: 'p3', a: 3 }, // 3 ключа от p3, лимит 2 → удалить 1
     ];
     const result = calculateDeletions(items, limits, {
-      // sentinel-запись гарантирует favoritedGuids.size > 0 (guard от пустого кеша).
       favoritedGuids: new Set(['sentinel-not-in-items']),
       referencesEnabled: true,
     });
-    // total=10, лимит=5, excess=5, FIFO: 4 из r1, 1 из r2.
     expect(result).toEqual([
-      { guid: 'r1', type: 3, level: null, amount: 4, pointGuid: 'p1' },
-      { guid: 'r2', type: 3, level: null, amount: 1, pointGuid: 'p2' },
+      { guid: 'r1', type: 3, level: null, amount: 3, pointGuid: 'p1' },
+      { guid: 'r3', type: 3, level: null, amount: 1, pointGuid: 'p3' },
+    ]);
+  });
+
+  test('fast mode: лимит 0 удаляет все не-избранные ключи', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 0;
+    const items = [
+      { g: 'r1', t: 3 as const, l: 'p1', a: 3 },
+      { g: 'r2', t: 3 as const, l: 'p2', a: 2 },
+    ];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set(['sentinel-not-in-items']),
+      referencesEnabled: true,
+    });
+    expect(result).toEqual([
+      { guid: 'r1', type: 3, level: null, amount: 3, pointGuid: 'p1' },
+      { guid: 'r2', type: 3, level: null, amount: 2, pointGuid: 'p2' },
+    ]);
+  });
+
+  test('fast mode: несколько стеков от одной точки — FIFO внутри группы', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 2;
+    const items = [
+      { g: 'r1', t: 3 as const, l: 'p1', a: 3 }, // стек 1 от p1
+      { g: 'r2', t: 3 as const, l: 'p1', a: 4 }, // стек 2 от p1, всего 7, удалить 5
+    ];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set(['sentinel-not-in-items']),
+      referencesEnabled: true,
+    });
+    // FIFO: 3 из r1, потом 2 из r2.
+    expect(result).toEqual([
+      { guid: 'r1', type: 3, level: null, amount: 3, pointGuid: 'p1' },
+      { guid: 'r2', type: 3, level: null, amount: 2, pointGuid: 'p1' },
     ]);
   });
 
@@ -533,22 +569,21 @@ describe('calculateDeletions', () => {
     expect(result).toEqual([{ guid: 'r2', type: 3, level: null, amount: 3, pointGuid: 'p2' }]);
   });
 
-  test('fast mode: избранные ключи исключаются из расчёта лимита', () => {
+  test('fast mode: избранные точки полностью исключены, лимит на точку для остальных', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
-    limits.referencesFastLimit = 10;
+    limits.referencesFastLimit = 2;
     const items = [
-      { g: 'r1', t: 3 as const, l: 'fav1', a: 5 },
-      { g: 'r2', t: 3 as const, l: 'fav2', a: 5 },
-      { g: 'r3', t: 3 as const, l: 'p3', a: 15 },
+      { g: 'r1', t: 3 as const, l: 'fav1', a: 50 }, // избранная — не трогаем
+      { g: 'r2', t: 3 as const, l: 'p2', a: 5 }, // не избранная, лимит 2 → удалить 3
+      { g: 'r3', t: 3 as const, l: 'p3', a: 1 }, // не избранная, лимит 2 → не трогаем
     ];
     const result = calculateDeletions(items, limits, {
-      favoritedGuids: new Set(['fav1', 'fav2']),
+      favoritedGuids: new Set(['fav1']),
       referencesEnabled: true,
     });
-    // Избранные r1+r2 (10 штук) из расчёта исключены. Только r3 (15) считается.
-    // Лимит 10, excess=5.
-    expect(result).toEqual([{ guid: 'r3', type: 3, level: null, amount: 5, pointGuid: 'p3' }]);
+    // fav1 исключена. p2: 5-2=3 к удалению. p3: 1<2, ок.
+    expect(result).toEqual([{ guid: 'r2', type: 3, level: null, amount: 3, pointGuid: 'p2' }]);
   });
 
   test('off mode: не трогает ключи даже если referencesEnabled=true', () => {

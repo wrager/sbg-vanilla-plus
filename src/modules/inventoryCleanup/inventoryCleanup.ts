@@ -85,7 +85,10 @@ async function runCleanupImpl(): Promise<void> {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- DEBUG_FORCE_CLEANUP будет снят после отладки
-  if (!DEBUG_FORCE_CLEANUP && !shouldRunCleanup(currentCount, inventoryLimit, settings.minFreeSlots)) {
+  if (
+    !DEBUG_FORCE_CLEANUP &&
+    !shouldRunCleanup(currentCount, inventoryLimit, settings.minFreeSlots)
+  ) {
     return;
   }
 
