@@ -153,7 +153,11 @@ export function calculateSlowDeletions(
  * Лимит НА ТОЧКУ: для каждой уникальной точки оставляет не более limit ключей.
  * Аналогично fast-режиму и CUI (строка 1392: amount > itemMaxAmount).
  */
-export function collectOverLimit(refs: IRefByGuid[], limit: number, deletions: IDeletionEntry[]): void {
+export function collectOverLimit(
+  refs: IRefByGuid[],
+  limit: number,
+  deletions: IDeletionEntry[],
+): void {
   if (limit === -1) return;
 
   // Группировка по pointGuid.

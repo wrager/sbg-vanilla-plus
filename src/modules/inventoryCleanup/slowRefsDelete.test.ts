@@ -2,6 +2,7 @@ import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import type { IRefByGuid } from './slowRefsDelete';
 import { calculateSlowDeletions, collectOverLimit } from './slowRefsDelete';
 import type { IDeletionEntry } from './cleanupCalculator';
+import { calculateDeletions } from './cleanupCalculator';
 
 // --- collectOverLimit ---
 
@@ -195,8 +196,6 @@ describe('calculateSlowDeletions', () => {
 describe('регрессия: calculateDeletions с empty favorites и snapshotReady', () => {
   // Этот тест живёт здесь рядом с slowRefsDelete, но тестирует calculateDeletions —
   // регрессия на баг, когда favoritedGuids.size > 0 блокировал fast-mode при 0 избранных.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { calculateDeletions } = require('./cleanupCalculator');
 
   function unlimitedLimits() {
     const levelLimits: Record<number, number> = {};

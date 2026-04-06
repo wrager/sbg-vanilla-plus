@@ -35,7 +35,6 @@ function readDebugInvCount(): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-
 function readDomNumber(id: string): number | null {
   const element = document.getElementById(id);
   if (!element) return null;
