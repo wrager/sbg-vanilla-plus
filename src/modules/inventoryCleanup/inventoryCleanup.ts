@@ -42,12 +42,12 @@ function readDomNumber(id: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-async function runCleanup(): Promise<void> {
+async function runCleanup(force = false): Promise<void> {
   if (cleanupInProgress) return;
   cleanupInProgress = true;
 
   try {
-    await runCleanupImpl();
+    await runCleanupImpl(force);
   } finally {
     cleanupInProgress = false;
   }
@@ -60,7 +60,7 @@ function updateDomInventoryCount(total: number): void {
   }
 }
 
-async function runCleanupImpl(): Promise<void> {
+async function runCleanupImpl(force: boolean): Promise<void> {
   const settings = loadCleanupSettings();
 
   const currentCount = readDebugInvCount() ?? readDomNumber('self-info__inv');
@@ -71,7 +71,7 @@ async function runCleanupImpl(): Promise<void> {
     return;
   }
 
-  if (!shouldRunCleanup(currentCount, inventoryLimit, settings.minFreeSlots)) {
+  if (!force && !shouldRunCleanup(currentCount, inventoryLimit, settings.minFreeSlots)) {
     return;
   }
 
@@ -158,7 +158,9 @@ function installDebugButton(): void {
     'padding:6px 14px;background:#ffcc33;color:#000;font-weight:bold;font-size:11px;' +
     'border:1px solid #000;border-radius:6px;cursor:pointer;opacity:0.8;';
   debugButton.addEventListener('click', () => {
-    void runCleanup();
+    // force=true: кнопка запускает очистку без проверки shouldRunCleanup,
+    // чтобы можно было отладить удаление при непереполненном инвентаре.
+    void runCleanup(true);
   });
   document.body.appendChild(debugButton);
 }
