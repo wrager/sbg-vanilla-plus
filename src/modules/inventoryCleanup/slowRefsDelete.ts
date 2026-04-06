@@ -154,22 +154,38 @@ function calculateSlowDeletions(
   return deletions;
 }
 
+/**
+ * Лимит НА ТОЧКУ: для каждой уникальной точки оставляет не более limit ключей.
+ * Аналогично fast-режиму и CUI (строка 1392: amount > itemMaxAmount).
+ */
 function collectOverLimit(refs: IRefByGuid[], limit: number, deletions: IDeletionEntry[]): void {
   if (limit === -1) return;
-  const total = refs.reduce((sum, ref) => sum + ref.amount, 0);
-  let excess = total - limit;
-  if (excess <= 0) return;
+
+  // Группировка по pointGuid.
+  const byPoint = new Map<string, IRefByGuid[]>();
   for (const ref of refs) {
-    if (excess <= 0) break;
-    const toDelete = Math.min(ref.amount, excess);
-    deletions.push({
-      guid: ref.itemGuid,
-      type: ITEM_TYPE_REFERENCE,
-      level: null,
-      amount: toDelete,
-      pointGuid: ref.pointGuid,
-    });
-    excess -= toDelete;
+    const group = byPoint.get(ref.pointGuid) ?? [];
+    group.push(ref);
+    byPoint.set(ref.pointGuid, group);
+  }
+
+  for (const [pointGuid, group] of byPoint) {
+    const total = group.reduce((sum, ref) => sum + ref.amount, 0);
+    let excess = total - limit;
+    if (excess <= 0) continue;
+
+    for (const ref of group) {
+      if (excess <= 0) break;
+      const toDelete = Math.min(ref.amount, excess);
+      deletions.push({
+        guid: ref.itemGuid,
+        type: ITEM_TYPE_REFERENCE,
+        level: null,
+        amount: toDelete,
+        pointGuid,
+      });
+      excess -= toDelete;
+    }
   }
 }
 

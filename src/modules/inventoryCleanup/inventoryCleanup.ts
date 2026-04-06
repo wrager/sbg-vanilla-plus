@@ -84,13 +84,14 @@ async function runCleanupImpl(): Promise<void> {
     return;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- DEBUG_FORCE_CLEANUP будет снят после отладки
+  /* eslint-disable @typescript-eslint/no-unnecessary-condition -- DEBUG_FORCE_CLEANUP будет снят после отладки */
   if (
     !DEBUG_FORCE_CLEANUP &&
     !shouldRunCleanup(currentCount, inventoryLimit, settings.minFreeSlots)
   ) {
     return;
   }
+  /* eslint-enable @typescript-eslint/no-unnecessary-condition */
 
   const items = parseInventoryCache();
   if (items.length === 0) return;
