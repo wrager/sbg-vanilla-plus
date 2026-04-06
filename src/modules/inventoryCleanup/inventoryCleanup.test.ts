@@ -201,7 +201,7 @@ function unlimitedLimits(): ICleanupLimits {
     referencesMode: 'off',
     referencesFastLimit: -1,
     referencesAlliedLimit: -1,
-    referencesHostileLimit: -1,
+    referencesNotAlliedLimit: -1,
   };
 }
 
@@ -436,7 +436,7 @@ describe('calculateDeletions', () => {
       referencesMode: 'off',
       referencesFastLimit: -1,
       referencesAlliedLimit: -1,
-      referencesHostileLimit: -1,
+      referencesNotAlliedLimit: -1,
     };
     const items = [
       { g: 'c1', t: 1 as const, l: 5, a: 0 },
@@ -453,7 +453,7 @@ describe('calculateDeletions', () => {
       referencesMode: 'off',
       referencesFastLimit: -1,
       referencesAlliedLimit: -1,
-      referencesHostileLimit: -1,
+      referencesNotAlliedLimit: -1,
     };
     const items = [
       { g: 'c1', t: 1 as const, l: 5, a: -5 },
@@ -470,7 +470,7 @@ describe('calculateDeletions', () => {
       referencesMode: 'fast',
       referencesFastLimit: 0,
       referencesAlliedLimit: -1,
-      referencesHostileLimit: -1,
+      referencesNotAlliedLimit: -1,
     };
     const items = [
       { g: 'r1', t: 3 as const, l: 'p1', a: 0 },
@@ -610,7 +610,7 @@ describe('calculateDeletions', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'slow';
     limits.referencesAlliedLimit = 0;
-    limits.referencesHostileLimit = 0;
+    limits.referencesNotAlliedLimit = 0;
     const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 5 }];
     const result = calculateDeletions(items, limits, {
       favoritedGuids: new Set<string>(),

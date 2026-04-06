@@ -18,7 +18,7 @@ describe('cleanupSettings', () => {
     expect(settings.limits.referencesMode).toBe('off');
     expect(settings.limits.referencesFastLimit).toBe(-1);
     expect(settings.limits.referencesAlliedLimit).toBe(-1);
-    expect(settings.limits.referencesHostileLimit).toBe(-1);
+    expect(settings.limits.referencesNotAlliedLimit).toBe(-1);
     expect(settings.minFreeSlots).toBe(100);
   });
 
@@ -164,7 +164,7 @@ describe('cleanupSettings', () => {
         referencesMode: 'invalid',
         referencesFastLimit: -1,
         referencesAlliedLimit: -1,
-        referencesHostileLimit: -1,
+        referencesNotAlliedLimit: -1,
       },
       minFreeSlots: 100,
     };

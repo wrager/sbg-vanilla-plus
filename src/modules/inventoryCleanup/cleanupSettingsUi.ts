@@ -32,8 +32,8 @@ const REF_MODE_FAST_LABEL: ILocalizedString = {
   ru: 'Быстро (лимит на точку, очистка при изучении)',
 };
 const REF_MODE_SLOW_LABEL: ILocalizedString = {
-  en: 'Slow (split allied/hostile, manual only)',
-  ru: 'Медленно (с разделением на свои/чужие, только вручную)',
+  en: 'Slow (allied/not allied split, manual only)',
+  ru: 'Медленно (союзные/не союзные, только вручную)',
 };
 const REF_FAST_LIMIT_LABEL: ILocalizedString = {
   en: 'Keys per point limit',
@@ -41,11 +41,11 @@ const REF_FAST_LIMIT_LABEL: ILocalizedString = {
 };
 const REF_ALLIED_LIMIT_LABEL: ILocalizedString = {
   en: 'Allied keys limit',
-  ru: 'Лимит своих',
+  ru: 'Лимит союзных',
 };
-const REF_HOSTILE_LIMIT_LABEL: ILocalizedString = {
-  en: 'Hostile keys limit',
-  ru: 'Лимит чужих',
+const REF_NOT_ALLIED_LIMIT_LABEL: ILocalizedString = {
+  en: 'Not allied keys limit',
+  ru: 'Лимит не союзных',
 };
 const REF_DISABLED_HINT: ILocalizedString = {
   en: 'Enable "Favorited points" module to manage key deletion',
@@ -182,10 +182,10 @@ function createReferencesSection(draft: ICleanupSettings, refsEnabled: boolean):
       );
       inputsContainer.appendChild(
         createNumberInput(
-          t(REF_HOSTILE_LIMIT_LABEL),
-          draft.limits.referencesHostileLimit,
+          t(REF_NOT_ALLIED_LIMIT_LABEL),
+          draft.limits.referencesNotAlliedLimit,
           (value) => {
-            draft.limits.referencesHostileLimit = value;
+            draft.limits.referencesNotAlliedLimit = value;
           },
         ),
       );

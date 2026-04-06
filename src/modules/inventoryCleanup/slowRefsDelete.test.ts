@@ -87,47 +87,59 @@ describe('calculateSlowDeletions', () => {
   const PLAYER_TEAM = 1;
   const ENEMY_TEAM = 2;
 
-  test('allied и hostile лимиты применяются к разным фракциям', () => {
+  test('allied и notAllied лимиты применяются к разным фракциям', () => {
     const refs: IRefByGuid[] = [
       { itemGuid: 'a1', pointGuid: 'pa', amount: 10 }, // allied
-      { itemGuid: 'h1', pointGuid: 'ph', amount: 8 }, // hostile
+      { itemGuid: 'h1', pointGuid: 'ph', amount: 8 }, // not allied
     ];
     const teams = new Map<string, number | null>([
       ['pa', PLAYER_TEAM],
       ['ph', ENEMY_TEAM],
     ]);
     const result = calculateSlowDeletions(refs, teams, PLAYER_TEAM, 3, 2);
-    // allied pa: 10-3=7. hostile ph: 8-2=6.
+    // allied pa: 10-3=7. notAllied ph: 8-2=6.
     expect(result).toEqual([
       { guid: 'a1', type: ITEM_TYPE_REFERENCE, level: null, amount: 7, pointGuid: 'pa' },
       { guid: 'h1', type: ITEM_TYPE_REFERENCE, level: null, amount: 6, pointGuid: 'ph' },
     ]);
   });
 
-  test('unknown team (null) — ключ не трогается', () => {
+  test('unknown team (null) — считается не союзным, применяется notAlliedLimit', () => {
     const refs: IRefByGuid[] = [
-      { itemGuid: 'r1', pointGuid: 'p1', amount: 100 },
-      { itemGuid: 'r2', pointGuid: 'p2', amount: 50 },
+      { itemGuid: 'r1', pointGuid: 'p1', amount: 100 }, // team=null (нейтральная)
+      { itemGuid: 'r2', pointGuid: 'p2', amount: 50 }, // team=ENEMY
     ];
     const teams = new Map<string, number | null>([
       ['p1', null],
       ['p2', ENEMY_TEAM],
     ]);
     const result = calculateSlowDeletions(refs, teams, PLAYER_TEAM, 0, 0);
-    // p1: unknown → skip. p2: hostile, limit=0 → delete all.
+    // p1: null → notAllied, limit=0 → delete all. p2: enemy → notAllied, limit=0 → delete all.
     expect(result).toEqual([
+      { guid: 'r1', type: ITEM_TYPE_REFERENCE, level: null, amount: 100, pointGuid: 'p1' },
       { guid: 'r2', type: ITEM_TYPE_REFERENCE, level: null, amount: 50, pointGuid: 'p2' },
     ]);
   });
 
-  test('unknown team (undefined/missing) — ключ не трогается', () => {
+  test('unknown team (undefined/missing) — считается не союзным', () => {
     const refs: IRefByGuid[] = [{ itemGuid: 'r1', pointGuid: 'p1', amount: 10 }];
-    const teams = new Map<string, number | null>(); // p1 отсутствует
-    const result = calculateSlowDeletions(refs, teams, PLAYER_TEAM, 0, 0);
+    const teams = new Map<string, number | null>(); // p1 отсутствует в teams
+    const result = calculateSlowDeletions(refs, teams, PLAYER_TEAM, -1, 0);
+    // p1: undefined → notAllied, limit=0 → delete all.
+    expect(result).toEqual([
+      { guid: 'r1', type: ITEM_TYPE_REFERENCE, level: null, amount: 10, pointGuid: 'p1' },
+    ]);
+  });
+
+  test('unknown team (null) + notAlliedLimit=-1 — не удаляется', () => {
+    const refs: IRefByGuid[] = [{ itemGuid: 'r1', pointGuid: 'p1', amount: 10 }];
+    const teams = new Map<string, number | null>([['p1', null]]);
+    const result = calculateSlowDeletions(refs, teams, PLAYER_TEAM, 0, -1);
+    // p1: null → notAllied, limit=-1 → skip.
     expect(result).toEqual([]);
   });
 
-  test('allied=-1 не удаляет allied, hostile удаляется', () => {
+  test('allied=-1 не удаляет allied, notAllied удаляется', () => {
     const refs: IRefByGuid[] = [
       { itemGuid: 'a1', pointGuid: 'pa', amount: 50 },
       { itemGuid: 'h1', pointGuid: 'ph', amount: 10 },
@@ -137,7 +149,7 @@ describe('calculateSlowDeletions', () => {
       ['ph', ENEMY_TEAM],
     ]);
     const result = calculateSlowDeletions(refs, teams, PLAYER_TEAM, -1, 3);
-    // allied: -1 → skip. hostile: 10-3=7.
+    // allied: -1 → skip. notAllied: 10-3=7.
     expect(result).toEqual([
       { guid: 'h1', type: ITEM_TYPE_REFERENCE, level: null, amount: 7, pointGuid: 'ph' },
     ]);
@@ -156,11 +168,11 @@ describe('calculateSlowDeletions', () => {
     expect(result).toEqual([]);
   });
 
-  test('оба лимита 0 — удаляются все с известной фракцией', () => {
+  test('оба лимита 0 — удаляются все, включая нейтральные', () => {
     const refs: IRefByGuid[] = [
       { itemGuid: 'a1', pointGuid: 'pa', amount: 5 },
       { itemGuid: 'h1', pointGuid: 'ph', amount: 3 },
-      { itemGuid: 'u1', pointGuid: 'pu', amount: 7 }, // unknown
+      { itemGuid: 'u1', pointGuid: 'pu', amount: 7 }, // нейтральная (null)
     ];
     const teams = new Map<string, number | null>([
       ['pa', PLAYER_TEAM],
@@ -168,9 +180,11 @@ describe('calculateSlowDeletions', () => {
       ['pu', null],
     ]);
     const result = calculateSlowDeletions(refs, teams, PLAYER_TEAM, 0, 0);
+    // Все удаляются: allied limit=0, notAllied limit=0. Нейтральная pu → notAllied.
     expect(result).toEqual([
       { guid: 'a1', type: ITEM_TYPE_REFERENCE, level: null, amount: 5, pointGuid: 'pa' },
       { guid: 'h1', type: ITEM_TYPE_REFERENCE, level: null, amount: 3, pointGuid: 'ph' },
+      { guid: 'u1', type: ITEM_TYPE_REFERENCE, level: null, amount: 7, pointGuid: 'pu' },
     ]);
   });
 
@@ -214,7 +228,7 @@ describe('регрессия: calculateDeletions с empty favorites и snapshotR
       referencesMode: 'fast' as const,
       referencesFastLimit: 2,
       referencesAlliedLimit: -1,
-      referencesHostileLimit: -1,
+      referencesNotAlliedLimit: -1,
     };
   }
 

@@ -7,13 +7,13 @@ export interface ICleanupLimits {
    * Режим удаления ключей:
    * - 'off': автоочистка не трогает ключи.
    * - 'fast': лимит на точку referencesFastLimit; работает синхронно в автоочистке.
-   * - 'slow': раздельные лимиты allied/hostile; требует /api/point для каждого
+   * - 'slow': раздельные лимиты союзные/не союзные; требует /api/point для каждого
    *   уникального GUID точки, вызывается только вручную по кнопке.
    */
   referencesMode: ReferencesMode;
   referencesFastLimit: number;
   referencesAlliedLimit: number;
-  referencesHostileLimit: number;
+  referencesNotAlliedLimit: number;
 }
 
 export interface ICleanupSettings {
@@ -43,7 +43,7 @@ export function defaultCleanupSettings(): ICleanupSettings {
       referencesMode: 'off',
       referencesFastLimit: -1,
       referencesAlliedLimit: -1,
-      referencesHostileLimit: -1,
+      referencesNotAlliedLimit: -1,
     },
     minFreeSlots: 100,
   };
@@ -73,7 +73,7 @@ function isCleanupLimitsV2(value: unknown): value is ICleanupLimits {
     isReferencesMode(value.referencesMode) &&
     typeof value.referencesFastLimit === 'number' &&
     typeof value.referencesAlliedLimit === 'number' &&
-    typeof value.referencesHostileLimit === 'number'
+    typeof value.referencesNotAlliedLimit === 'number'
   );
 }
 
@@ -131,7 +131,7 @@ function migrateV1ToV2(v1: ICleanupSettingsV1): ICleanupSettings {
       referencesMode: mode,
       referencesFastLimit: references,
       referencesAlliedLimit: -1,
-      referencesHostileLimit: -1,
+      referencesNotAlliedLimit: -1,
     },
     minFreeSlots: v1.minFreeSlots,
   };
@@ -184,7 +184,7 @@ function sanitizeLimits(limits: ICleanupLimits): void {
   sanitizeLevelLimits(limits.catalysers);
   limits.referencesFastLimit = sanitizeRefLimit(limits.referencesFastLimit);
   limits.referencesAlliedLimit = sanitizeRefLimit(limits.referencesAlliedLimit);
-  limits.referencesHostileLimit = sanitizeRefLimit(limits.referencesHostileLimit);
+  limits.referencesNotAlliedLimit = sanitizeRefLimit(limits.referencesNotAlliedLimit);
 }
 
 export function saveCleanupSettings(settings: ICleanupSettings): void {

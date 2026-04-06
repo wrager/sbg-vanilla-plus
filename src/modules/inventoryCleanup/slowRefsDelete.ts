@@ -127,29 +127,31 @@ export interface IRefByGuid {
   amount: number;
 }
 
-/** Применить лимиты allied/hostile с FIFO. */
+/** Применить лимиты союзные/не союзные с FIFO. */
 export function calculateSlowDeletions(
   refs: IRefByGuid[],
   teams: Map<string, number | null>,
   playerTeam: number,
   alliedLimit: number,
-  hostileLimit: number,
+  notAlliedLimit: number,
 ): IDeletionEntry[] {
   const alliedRefs: IRefByGuid[] = [];
-  const hostileRefs: IRefByGuid[] = [];
+  const notAlliedRefs: IRefByGuid[] = [];
   for (const ref of refs) {
     const team = teams.get(ref.pointGuid);
-    if (team === null || team === undefined) continue; // нет данных — не трогаем
     if (team === playerTeam) {
       alliedRefs.push(ref);
     } else {
-      hostileRefs.push(ref);
+      // Не союзные: вражеские (team !== playerTeam) И нейтральные/неизвестные (null/undefined).
+      // Нейтральные точки (team=null: API вернул данные, но без te) не должны
+      // избегать лимита — иначе slow-режим удаляет меньше чем fast.
+      notAlliedRefs.push(ref);
     }
   }
 
   const deletions: IDeletionEntry[] = [];
   collectOverLimit(alliedRefs, alliedLimit, deletions);
-  collectOverLimit(hostileRefs, hostileLimit, deletions);
+  collectOverLimit(notAlliedRefs, notAlliedLimit, deletions);
   return deletions;
 }
 
@@ -211,9 +213,9 @@ async function runSlowDelete(): Promise<void> {
     );
     return;
   }
-  const { referencesAlliedLimit, referencesHostileLimit } = settings.limits;
-  if (referencesAlliedLimit === -1 && referencesHostileLimit === -1) {
-    showSlowToast(t({ en: 'Allied/hostile limits not set', ru: 'Лимиты свои/чужие не заданы' }));
+  const { referencesAlliedLimit, referencesNotAlliedLimit } = settings.limits;
+  if (referencesAlliedLimit === -1 && referencesNotAlliedLimit === -1) {
+    showSlowToast(t({ en: 'Limits not set', ru: 'Лимиты не заданы' }));
     return;
   }
 
@@ -264,8 +266,6 @@ async function runSlowDelete(): Promise<void> {
     return;
   }
 
-  const unknownTeams = Array.from(teams.entries()).filter(([, team]) => team === null).length;
-
   progress.setStatus(t({ en: 'Calculating deletions…', ru: 'Расчёт удаления…' }));
 
   const deletions = calculateSlowDeletions(
@@ -273,44 +273,36 @@ async function runSlowDelete(): Promise<void> {
     teams,
     playerTeam,
     referencesAlliedLimit,
-    referencesHostileLimit,
+    referencesNotAlliedLimit,
   );
 
   if (deletions.length === 0) {
     progress.close();
-    const suffix =
-      unknownTeams > 0
-        ? ' ' +
-          t({
-            en: `(${unknownTeams} skipped, no data)`,
-            ru: `(пропущено ${unknownTeams} без данных)`,
-          })
-        : '';
     showSlowToast(
       t({
         en: 'No keys to delete with current limits',
         ru: 'Нет ключей для удаления по заданным лимитам',
-      }) + suffix,
+      }),
     );
     return;
   }
 
   const totalAmount = deletions.reduce((sum, entry) => sum + entry.amount, 0);
-  const allied = deletions.filter((entry) => {
+  const alliedDeletions = deletions.filter((entry) => {
     const team = teams.get(entry.pointGuid ?? '');
     return team === playerTeam;
   });
-  const hostile = deletions.filter((entry) => {
+  const notAlliedDeletions = deletions.filter((entry) => {
     const team = teams.get(entry.pointGuid ?? '');
-    return team !== null && team !== undefined && team !== playerTeam;
+    return team !== playerTeam;
   });
-  const alliedAmount = allied.reduce((sum, entry) => sum + entry.amount, 0);
-  const hostileAmount = hostile.reduce((sum, entry) => sum + entry.amount, 0);
+  const alliedAmount = alliedDeletions.reduce((sum, entry) => sum + entry.amount, 0);
+  const notAlliedAmount = notAlliedDeletions.reduce((sum, entry) => sum + entry.amount, 0);
 
-  const alliedLabel = t({ en: 'allied', ru: 'свои' });
-  const hostileLabel = t({ en: 'hostile', ru: 'чужие' });
+  const alliedLabel = t({ en: 'allied', ru: 'союзные' });
+  const notAlliedLabel = t({ en: 'not allied', ru: 'не союзные' });
   const keysLabel = t({ en: 'keys', ru: 'ключей' });
-  const summaryText = `${totalAmount} ${keysLabel} (${alliedLabel} ${alliedAmount} + ${hostileLabel} ${hostileAmount})`;
+  const summaryText = `${totalAmount} ${keysLabel} (${alliedLabel} ${alliedAmount} + ${notAlliedLabel} ${notAlliedAmount})`;
 
   progress.setStatus(t({ en: 'Delete: ', ru: 'Удалить: ' }) + summaryText + '?');
 
