@@ -3,7 +3,7 @@ import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
 
 const AUTH_TOKEN = 'test-token-123';
 
-const noFavs = { favoritedGuids: new Set<string>() };
+const noFavs = { favoritedGuids: new Set<string>(), favoritedPointsActive: true };
 
 let originalFetch: typeof window.fetch;
 let mockFetch: jest.Mock;
@@ -195,7 +195,10 @@ describe('deleteInventoryItems', () => {
       { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'fav-point' },
     ];
     await expect(
-      deleteInventoryItems(deletions, { favoritedGuids: new Set(['fav-point']) }),
+      deleteInventoryItems(deletions, {
+        favoritedGuids: new Set(['fav-point']),
+        favoritedPointsActive: true,
+      }),
     ).rejects.toThrow('Ключ от избранной точки fav-point не может быть удалён');
     expect(mockFetch).not.toHaveBeenCalled();
   });
@@ -206,9 +209,35 @@ describe('deleteInventoryItems', () => {
       { guid: 'r1', type: 3, level: null, amount: 1, pointGuid: 'fav' },
     ];
     await expect(
-      deleteInventoryItems(deletions, { favoritedGuids: new Set(['fav']) }),
+      deleteInventoryItems(deletions, {
+        favoritedGuids: new Set(['fav']),
+        favoritedPointsActive: true,
+      }),
     ).rejects.toThrow('Ключ от избранной точки');
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('guard: бросает если есть ключи и favoritedPointsActive=false', async () => {
+    const deletions: IDeletionEntry[] = [
+      { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
+    ];
+    await expect(
+      deleteInventoryItems(deletions, {
+        favoritedGuids: new Set<string>(),
+        favoritedPointsActive: false,
+      }),
+    ).rejects.toThrow('модуль favoritedPoints не активен');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('cores удаляются даже при favoritedPointsActive=false', async () => {
+    mockFetchSuccess(90);
+    const deletions: IDeletionEntry[] = [{ guid: 'c1', type: 1, level: 5, amount: 3 }];
+    await deleteInventoryItems(deletions, {
+      favoritedGuids: new Set<string>(),
+      favoritedPointsActive: false,
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   test('rejects deletion of brooms (type 4)', async () => {

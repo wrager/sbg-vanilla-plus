@@ -112,6 +112,7 @@ async function runCleanupImpl(): Promise<void> {
     // DELETE-запроса, чтобы учесть изменения с момента calculateDeletions.
     const result = await deleteInventoryItems(deletions, {
       favoritedGuids: getFavoritedGuids(),
+      favoritedPointsActive: isModuleActive('favoritedPoints'),
     });
     // Симулированные записи (ключи в альфе) на сервере не удалились — не трогаем
     // ни inventory-cache, ни DOM-счётчик для этих записей.

@@ -58,12 +58,26 @@ export interface IDeleteInventoryOptions {
    * запроса мы ещё раз проверяем, что его pointGuid нет в этом наборе.
    */
   favoritedGuids: ReadonlySet<string>;
+  /**
+   * true, если модуль favoritedPoints включён И готов. Передаётся вызывающим кодом
+   * (inventoryCleanup, slowRefsDelete) через isModuleActive('favoritedPoints').
+   * Если false и в батче есть ключи — бросается ошибка, удаление не происходит.
+   */
+  favoritedPointsActive: boolean;
 }
 
 export async function deleteInventoryItems(
   deletions: readonly IDeletionEntry[],
   options: IDeleteInventoryOptions,
 ): Promise<IDeleteResult> {
+  // Финальный guard: ключи могут удаляться ТОЛЬКО если модуль favoritedPoints
+  // активен (включён + готов). Проверяем непосредственно перед DELETE, чтобы
+  // ни один баг в цепочке выше не мог обойти эту защиту.
+  const hasReferences = deletions.some((entry) => entry.type === ITEM_TYPE_REFERENCE);
+  if (hasReferences && !options.favoritedPointsActive) {
+    throw new Error('Удаление ключей запрещено: модуль favoritedPoints не активен (guard)');
+  }
+
   for (const entry of deletions) {
     if (!DELETABLE_TYPES.has(entry.type)) {
       throw new Error(`Удаление предметов типа ${entry.type} запрещено`);

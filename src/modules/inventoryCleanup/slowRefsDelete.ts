@@ -283,6 +283,7 @@ async function runSlowDelete(): Promise<void> {
   try {
     const result = await deleteInventoryItems(deletions, {
       favoritedGuids: getFavoritedGuids(),
+      favoritedPointsActive: isModuleActive('favoritedPoints'),
     });
     const simulated = result.simulatedReferenceDeletions.length > 0;
     if (!simulated) {

@@ -506,7 +506,8 @@ describe('calculateDeletions', () => {
       { g: 'r2', t: 3 as const, l: 'p2', a: 6 },
     ];
     const result = calculateDeletions(items, limits, {
-      favoritedGuids: new Set<string>(),
+      // sentinel-запись гарантирует favoritedGuids.size > 0 (guard от пустого кеша).
+      favoritedGuids: new Set(['sentinel-not-in-items']),
       referencesEnabled: true,
     });
     // total=10, лимит=5, excess=5, FIFO: 4 из r1, 1 из r2.

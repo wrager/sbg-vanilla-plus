@@ -51,10 +51,18 @@ export function calculateDeletions(
   const catalysersByLevel = groupByLevel(items, ITEM_TYPE_CATALYSER);
   addLevelDeletions(catalysersByLevel, limits.catalysers, ITEM_TYPE_CATALYSER, deletions);
 
-  // Ключи удаляются только в режиме 'fast' и только если модуль favoritedPoints готов.
-  // Режим 'slow' (раздельные лимиты по фракциям) срабатывает вручную через отдельную
-  // кнопку — там нужны /api/point запросы для определения фракции каждой точки.
-  if (options.referencesEnabled && limits.referencesMode === 'fast') {
+  // Ключи удаляются ТОЛЬКО при одновременном выполнении ВСЕХ условий:
+  // 1. referencesEnabled — модуль favoritedPoints включён И готов (isModuleActive)
+  // 2. referencesMode === 'fast' — пользователь явно выбрал быстрый режим
+  // 3. referencesFastLimit !== -1 — пользователь задал конкретный лимит
+  // 4. favoritedGuids.size > 0 — в memory cache есть избранные (защита от сбоя IDB)
+  // Если хоть одно условие не выполнено — ключи не трогаются.
+  if (
+    options.referencesEnabled &&
+    limits.referencesMode === 'fast' &&
+    limits.referencesFastLimit !== -1 &&
+    options.favoritedGuids.size > 0
+  ) {
     addReferenceDeletions(items, limits.referencesFastLimit, options.favoritedGuids, deletions);
   }
 
