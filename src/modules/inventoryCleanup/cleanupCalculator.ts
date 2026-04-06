@@ -87,10 +87,12 @@ function groupByLevel(items: readonly IInventoryItem[], type: number): Map<numbe
   for (const item of items) {
     if (item.t !== type) continue;
     if (item.a <= 0) continue;
-    const level = item.l as number;
-    const entries = grouped.get(level) ?? [];
+    // Для cores/catalysers item.l — number (уровень). TS не сужает union по item.t,
+    // поэтому проверяем runtime: string l означает reference, пропускаем.
+    if (typeof item.l !== 'number') continue;
+    const entries = grouped.get(item.l) ?? [];
     entries.push({ guid: item.g, amount: item.a });
-    grouped.set(level, entries);
+    grouped.set(item.l, entries);
   }
   return grouped;
 }

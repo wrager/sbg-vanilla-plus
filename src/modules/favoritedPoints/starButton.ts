@@ -31,7 +31,8 @@ function findStarButton(popup: Element): HTMLButtonElement | null {
 
 function getCurrentGuid(popup: Element): string | null {
   if (popup.classList.contains('hidden')) return null;
-  const guid = (popup as HTMLElement).dataset.guid;
+  if (!(popup instanceof HTMLElement)) return null;
+  const guid = popup.dataset.guid;
   return guid && guid.length > 0 ? guid : null;
 }
 

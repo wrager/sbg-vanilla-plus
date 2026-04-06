@@ -148,18 +148,19 @@ export function updateInventoryCache(deletions: readonly IDeletionEntry[]): void
     return;
   }
 
-  let cache: { g: string; a: number; [key: string]: unknown }[];
+  let parsed: unknown;
   try {
-    cache = JSON.parse(raw) as typeof cache;
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     console.warn('[SVP inventoryCleanup] inventory-cache содержит невалидный JSON');
     return;
   }
 
-  if (!Array.isArray(cache)) {
+  if (!Array.isArray(parsed)) {
     console.warn('[SVP inventoryCleanup] inventory-cache не является массивом');
     return;
   }
+  let cache = parsed as { g: string; a: number; [key: string]: unknown }[];
 
   for (const entry of deletions) {
     const cached = cache.find((item) => item.g === entry.guid);

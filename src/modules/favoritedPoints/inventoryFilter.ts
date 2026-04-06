@@ -46,7 +46,8 @@ let filterEnabled = false;
 let installGeneration = 0;
 
 function getCurrentTab(content: Element): string | null {
-  return (content as HTMLElement).dataset.tab ?? null;
+  if (!(content instanceof HTMLElement)) return null;
+  return content.dataset.tab ?? null;
 }
 
 function updateFilterBarVisibility(content: Element): void {
@@ -157,7 +158,9 @@ function setFilterEnabled(content: Element, enabled: boolean): void {
   // Сбрасываем скролл на начало списка — при смене фильтра пользователь
   // всегда видит топ релевантного набора ключей, а не зависает на позиции,
   // которая после фильтрации может оказаться в пустоте.
-  (content as HTMLElement).scrollTop = 0;
+  if (content instanceof HTMLElement) {
+    content.scrollTop = 0;
+  }
   // Игра подгружает данные ключей только на событии scroll (script.js:876).
   // После смены фильтра набор видимых ключей меняется — тригерим scroll,
   // чтобы игра запросила данные для ключей, попавших в viewport.

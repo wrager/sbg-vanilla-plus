@@ -29,12 +29,10 @@ function getMethod(input: RequestInfo | URL, init: RequestInit | undefined): str
 }
 
 function isDrawResponseShape(value: unknown): value is IDrawResponseShape {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'data' in value &&
-    Array.isArray((value as { data: unknown }).data)
-  );
+  if (typeof value !== 'object' || value === null) return false;
+  if (!('data' in value)) return false;
+  const record = value as Record<string, unknown>;
+  return Array.isArray(record.data);
 }
 
 function showHideLastFavRefToast(hidden: number): void {

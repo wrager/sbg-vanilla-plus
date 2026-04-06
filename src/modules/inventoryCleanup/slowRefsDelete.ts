@@ -12,10 +12,6 @@ const MODAL_CLASS = 'svp-cleanup-slow-modal';
 const FILTER_BAR_SELECTOR = '.svp-fav-filter-bar';
 const FETCH_CONCURRENCY = 3;
 
-interface IPointTeamResponse {
-  data?: { g?: string; te?: number };
-}
-
 let bodyObserver: MutationObserver | null = null;
 
 function getPlayerTeam(): number | null {
@@ -32,14 +28,13 @@ async function fetchPointTeam(pointGuid: string): Promise<number | null> {
     const response = await fetch(`/api/point?guid=${pointGuid}&status=1`);
     if (!response.ok) return null;
     const json: unknown = await response.json();
-    if (
-      typeof json === 'object' &&
-      json !== null &&
-      'data' in json &&
-      typeof (json as IPointTeamResponse).data?.te === 'number'
-    ) {
-      return (json as IPointTeamResponse).data?.te ?? null;
-    }
+    if (typeof json !== 'object' || json === null || !('data' in json)) return null;
+    const record = json as Record<string, unknown>;
+    const data = record.data;
+    if (typeof data !== 'object' || data === null) return null;
+    const dataRecord = data as Record<string, unknown>;
+    if (typeof dataRecord.te === 'number') return dataRecord.te;
+    return null;
   } catch {
     return null;
   }
