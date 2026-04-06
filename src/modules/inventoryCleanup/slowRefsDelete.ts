@@ -9,7 +9,10 @@ import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
 
 const BUTTON_CLASS = 'svp-cleanup-slow-refs-button';
 const MODAL_CLASS = 'svp-cleanup-slow-modal';
-const FILTER_BAR_SELECTOR = '.svp-fav-filter-bar';
+// Кнопка монтируется перед .inventory__content, внутри .inventory.popup.
+// Не зависит от DOM модуля favoritedPoints (filter bar и т.д.).
+const INVENTORY_CONTENT_SELECTOR = '.inventory__content';
+const REFS_TAB = '3';
 const FETCH_CONCURRENCY = 3;
 
 let bodyObserver: MutationObserver | null = null;
@@ -346,15 +349,22 @@ async function runSlowDelete(): Promise<void> {
   }
 }
 
-function ensureButton(bar: Element): void {
+function shouldShowButton(): boolean {
   const settings = loadCleanupSettings();
-  const shouldShow = settings.limits.referencesMode === 'slow' && isModuleActive('favoritedPoints');
-  if (!shouldShow) {
-    // Режим сменился с slow на off/fast — убрать кнопку, если она осталась в DOM.
-    bar.querySelector(`.${BUTTON_CLASS}`)?.remove();
+  return settings.limits.referencesMode === 'slow' && isModuleActive('favoritedPoints');
+}
+
+function isRefsTabActive(content: Element): boolean {
+  if (!(content instanceof HTMLElement)) return false;
+  return content.dataset.tab === REFS_TAB;
+}
+
+function ensureButton(content: Element): void {
+  if (!shouldShowButton() || !isRefsTabActive(content)) {
+    content.parentElement?.querySelector(`.${BUTTON_CLASS}`)?.remove();
     return;
   }
-  if (bar.querySelector(`.${BUTTON_CLASS}`)) return;
+  if (content.parentElement?.querySelector(`.${BUTTON_CLASS}`)) return;
 
   const button = document.createElement('button');
   button.type = 'button';
@@ -364,7 +374,8 @@ function ensureButton(bar: Element): void {
     event.preventDefault();
     void runSlowDelete();
   });
-  bar.appendChild(button);
+  // Вставляем перед .inventory__content, внутри .inventory popup.
+  content.parentElement?.insertBefore(button, content);
 }
 
 function removeButton(): void {
@@ -372,12 +383,12 @@ function removeButton(): void {
 }
 
 function checkAndInject(): void {
-  const bar = document.querySelector(FILTER_BAR_SELECTOR);
-  if (!bar) {
+  const content = document.querySelector(INVENTORY_CONTENT_SELECTOR);
+  if (!content) {
     removeButton();
     return;
   }
-  ensureButton(bar);
+  ensureButton(content);
 }
 
 let rafId: number | null = null;
