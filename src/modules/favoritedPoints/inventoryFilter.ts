@@ -41,6 +41,9 @@ let checkbox: HTMLInputElement | null = null;
 let countSpan: HTMLSpanElement | null = null;
 let changeHandler: (() => void) | null = null;
 let filterEnabled = false;
+// Инкрементируется при каждом install/uninstall. Если waitForElement.then()
+// срабатывает после uninstall (async race), generation уже другой — skip.
+let installGeneration = 0;
 
 function getCurrentTab(content: Element): string | null {
   return (content as HTMLElement).dataset.tab ?? null;
@@ -263,6 +266,8 @@ function startObserving(content: Element): void {
 
 export function installInventoryFilter(): void {
   if (contentObserver) return;
+  installGeneration++;
+  const generation = installGeneration;
   const existing = document.querySelector(INVENTORY_CONTENT_SELECTOR);
   if (existing) {
     startObserving(existing);
@@ -270,6 +275,7 @@ export function installInventoryFilter(): void {
   }
   waitForElement(INVENTORY_CONTENT_SELECTOR)
     .then((content) => {
+      if (generation !== installGeneration) return;
       startObserving(content);
     })
     .catch((error: unknown) => {
@@ -278,6 +284,7 @@ export function installInventoryFilter(): void {
 }
 
 export function uninstallInventoryFilter(): void {
+  installGeneration++;
   contentObserver?.disconnect();
   contentObserver = null;
   popupObserver?.disconnect();

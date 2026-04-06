@@ -21,6 +21,9 @@ const STAR_SVG = `
 let popupObserver: MutationObserver | null = null;
 let clickAbortController: AbortController | null = null;
 let changeHandler: (() => void) | null = null;
+// Инкрементируется при каждом install/uninstall. Если waitForElement.then()
+// срабатывает после uninstall (async race), generation уже другой — skip.
+let installGeneration = 0;
 
 function findStarButton(popup: Element): HTMLButtonElement | null {
   return popup.querySelector<HTMLButtonElement>(`.${STAR_CLASS}`);
@@ -118,6 +121,8 @@ function startObserving(popup: Element): void {
 export function installStarButton(): void {
   // Идемпотентность: если уже установлено — не дублировать observer.
   if (popupObserver) return;
+  installGeneration++;
+  const generation = installGeneration;
   const existing = document.querySelector(POPUP_SELECTOR);
   if (existing) {
     startObserving(existing);
@@ -126,6 +131,8 @@ export function installStarButton(): void {
   // Попап может ещё не появиться в DOM к моменту enable().
   waitForElement(POPUP_SELECTOR)
     .then((popup) => {
+      // Если uninstall() вызван до resolve — generation изменился, пропускаем.
+      if (generation !== installGeneration) return;
       startObserving(popup);
     })
     .catch((error: unknown) => {
@@ -134,6 +141,7 @@ export function installStarButton(): void {
 }
 
 export function uninstallStarButton(): void {
+  installGeneration++;
   popupObserver?.disconnect();
   popupObserver = null;
   clickAbortController?.abort();
