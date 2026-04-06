@@ -1,7 +1,9 @@
+/* Позиция: правый верхний угол, но левее #i-ref (ключи) — он тоже абсолютный
+   справа, но внизу. На маленьких image-box они могут перекрываться. */
 .svp-fav-star {
   position: absolute;
   top: 4px;
-  right: 4px;
+  right: 70px;
   width: 32px;
   height: 32px;
   padding: 0;
