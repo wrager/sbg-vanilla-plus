@@ -9,8 +9,11 @@ import {
   clearModuleError,
 } from './settings/storage';
 import { initSettingsUI } from './settings/ui';
+import { injectStyles } from './dom';
+import toastStyles from './toast.css?inline';
 
 export function bootstrap(modules: IFeatureModule[]): void {
+  injectStyles(toastStyles, 'svp-toast');
   registerModules(modules);
   let settings = loadSettings();
   settings = persistModuleDefaults(settings, modules);

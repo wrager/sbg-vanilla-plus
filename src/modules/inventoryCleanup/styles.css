@@ -224,26 +224,4 @@
   margin-left: 4px;
 }
 
-.svp-cleanup-toast {
-  position: fixed;
-  top: 50px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--background);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 6px 12px;
-  font-size: 12px;
-  z-index: 10002;
-  opacity: 1;
-  transition: opacity 0.3s ease;
-  pointer-events: none;
-  max-width: 90vw;
-  text-align: center;
-  box-sizing: border-box;
-}
-
-.svp-cleanup-toast-hide {
-  opacity: 0;
-}
+/* Toast-стили вынесены в core/toast.css (подключается в bootstrap). */

@@ -1,4 +1,5 @@
 import { getFavoritedGuids } from '../../core/favoritesStore';
+import { showToast } from '../../core/toast';
 import { loadFavoritedPointsSettings } from './settings';
 
 const DRAW_URL_PATTERN = /\/api\/draw(?:\?|$)/;
@@ -37,19 +38,11 @@ function isDrawResponseShape(value: unknown): value is IDrawResponseShape {
 }
 
 function showHideLastFavRefToast(hidden: number): void {
-  const toast = document.createElement('div');
-  toast.className = 'svp-cleanup-toast';
   const noun = hidden === 1 ? 'ключ' : hidden < 5 ? 'ключа' : 'ключей';
-  toast.textContent = `Скрыт${hidden === 1 ? '' : 'ы'} последн${
+  const message = `Скрыт${hidden === 1 ? '' : 'ы'} последн${
     hidden === 1 ? 'ий' : 'ие'
   } ${hidden} ${noun} от избранных точек`;
-  document.body.appendChild(toast);
-  setTimeout(() => {
-    toast.classList.add('svp-cleanup-toast-hide');
-    toast.addEventListener('transitionend', () => {
-      toast.remove();
-    });
-  }, 4000);
+  showToast(message, 4000);
 }
 
 async function filterDrawResponse(response: Response): Promise<Response> {

@@ -189,36 +189,34 @@ export function collectOverLimit(refs: IRefByGuid[], limit: number, deletions: I
   }
 }
 
-function showToast(message: string): void {
-  const toast = document.createElement('div');
-  toast.className = 'svp-cleanup-toast';
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  setTimeout(() => {
-    toast.classList.add('svp-cleanup-toast-hide');
-    toast.addEventListener('transitionend', () => {
-      toast.remove();
-    });
-  }, 5000);
+// slowRefsDelete использует длинный duration (5 сек) — пользователь должен
+// успеть прочитать результат удаления. Обёртка не переименовывает showToast,
+// чтобы вызовы остались читаемыми.
+import { showToast as showCoreToast } from '../../core/toast';
+
+const SLOW_TOAST_DURATION = 5000;
+
+function showSlowToast(message: string): void {
+  showCoreToast(message, SLOW_TOAST_DURATION);
 }
 
 async function runSlowDelete(): Promise<void> {
   const settings = loadCleanupSettings();
   if (settings.limits.referencesMode !== 'slow') {
-    showToast(
+    showSlowToast(
       t({ en: 'Key cleanup mode is not "Slow"', ru: 'Режим очистки ключей не «Медленно»' }),
     );
     return;
   }
   const { referencesAlliedLimit, referencesHostileLimit } = settings.limits;
   if (referencesAlliedLimit === -1 && referencesHostileLimit === -1) {
-    showToast(t({ en: 'Allied/hostile limits not set', ru: 'Лимиты свои/чужие не заданы' }));
+    showSlowToast(t({ en: 'Allied/hostile limits not set', ru: 'Лимиты свои/чужие не заданы' }));
     return;
   }
 
   const playerTeam = getPlayerTeam();
   if (playerTeam === null) {
-    showToast(
+    showSlowToast(
       t({ en: 'Could not determine player team', ru: 'Не удалось определить команду игрока' }),
     );
     return;
@@ -231,7 +229,7 @@ async function runSlowDelete(): Promise<void> {
     .map((ref) => ({ itemGuid: ref.g, pointGuid: ref.l, amount: ref.a }));
 
   if (nonFavRefs.length === 0) {
-    showToast(
+    showSlowToast(
       t({ en: 'No non-favorited keys to process', ru: 'Нет не-избранных ключей для обработки' }),
     );
     return;
@@ -259,7 +257,7 @@ async function runSlowDelete(): Promise<void> {
   } catch (error) {
     progress.close();
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    showToast(t({ en: 'Request error: ', ru: 'Ошибка запроса: ' }) + message);
+    showSlowToast(t({ en: 'Request error: ', ru: 'Ошибка запроса: ' }) + message);
     return;
   }
 
@@ -285,7 +283,7 @@ async function runSlowDelete(): Promise<void> {
             ru: `(пропущено ${unknownTeams} без данных)`,
           })
         : '';
-    showToast(
+    showSlowToast(
       t({
         en: 'No keys to delete with current limits',
         ru: 'Нет ключей для удаления по заданным лимитам',
@@ -335,17 +333,17 @@ async function runSlowDelete(): Promise<void> {
     }
     progress.close();
     if (simulated) {
-      showToast(
+      showSlowToast(
         t({ en: 'Simulation: would delete ', ru: 'Симуляция: удалилось бы ' }) + summaryText,
       );
     } else {
-      showToast(t({ en: 'Deleted: ', ru: 'Удалено: ' }) + summaryText);
+      showSlowToast(t({ en: 'Deleted: ', ru: 'Удалено: ' }) + summaryText);
     }
   } catch (error) {
     progress.close();
     const message =
       error instanceof Error ? error.message : t({ en: 'Unknown error', ru: 'Неизвестная ошибка' });
-    showToast(t({ en: 'Deletion error: ', ru: 'Ошибка удаления: ' }) + message);
+    showSlowToast(t({ en: 'Deletion error: ', ru: 'Ошибка удаления: ' }) + message);
   }
 }
 

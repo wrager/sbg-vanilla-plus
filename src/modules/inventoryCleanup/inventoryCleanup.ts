@@ -8,11 +8,11 @@ import { loadCleanupSettings } from './cleanupSettings';
 import { initCleanupSettingsUi, destroyCleanupSettingsUi } from './cleanupSettingsUi';
 import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
 import { installSlowRefsDelete, uninstallSlowRefsDelete } from './slowRefsDelete';
+import { showToast } from '../../core/toast';
 
 const MODULE_ID = 'inventoryCleanup';
 
 const ACTION_SELECTORS = '#discover, .discover-mod';
-const TOAST_DURATION = 3000;
 const DEBUG_INV_KEY = 'svp_debug_inv';
 // Отладка: true = появляется кнопка «TEST CLEANUP» поверх игры, запускающая
 // автоочистку напрямую (runCleanup) в обход discover. Кнопка НЕ обходит
@@ -35,19 +35,6 @@ function readDebugInvCount(): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-function showCleanupToast(message: string): void {
-  const toast = document.createElement('div');
-  toast.className = 'svp-cleanup-toast';
-  toast.textContent = message;
-  document.body.appendChild(toast);
-
-  setTimeout(() => {
-    toast.classList.add('svp-cleanup-toast-hide');
-    toast.addEventListener('transitionend', () => {
-      toast.remove();
-    });
-  }, TOAST_DURATION);
-}
 
 function readDomNumber(id: string): number | null {
   const element = document.getElementById(id);
@@ -133,18 +120,18 @@ async function runCleanupImpl(): Promise<void> {
       0,
     );
     if (simulatedAmount > 0 && realDeletions.length === 0) {
-      showCleanupToast(`Симуляция: удалилось бы ${simulatedAmount} ключей`);
+      showToast(`Симуляция: удалилось бы ${simulatedAmount} ключей`);
     } else if (simulatedAmount > 0) {
-      showCleanupToast(
+      showToast(
         `Очистка (${totalAmount - simulatedAmount}): ${summary}; симуляция ${simulatedAmount} ключей`,
       );
     } else {
-      showCleanupToast(`Очистка (${totalAmount}): ${summary}`);
+      showToast(`Очистка (${totalAmount}): ${summary}`);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error('[SVP inventoryCleanup] Ошибка удаления:', message);
-    showCleanupToast(`Ошибка очистки: ${message}`);
+    showToast(`Ошибка очистки: ${message}`);
   }
 }
 

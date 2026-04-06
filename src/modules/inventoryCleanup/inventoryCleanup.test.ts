@@ -803,7 +803,7 @@ describe('inventoryCleanup module', () => {
       expect.arrayContaining([expect.objectContaining({ guid: 'c1', amount: 8 })]),
     );
 
-    const toast = document.querySelector('.svp-cleanup-toast');
+    const toast = document.querySelector('.svp-toast');
     expect(toast).not.toBeNull();
     expect(toast?.textContent).toContain('Co5 ×8');
 
@@ -859,7 +859,7 @@ describe('inventoryCleanup module', () => {
     invElement.remove();
     limElement.remove();
     button.remove();
-    document.querySelector('.svp-cleanup-toast')?.remove();
+    document.querySelector('.svp-toast')?.remove();
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('svp_inventoryCleanup');
     consoleSpy.mockRestore();
@@ -1062,7 +1062,7 @@ describe('inventoryCleanup module', () => {
     invElement.remove();
     limElement.remove();
     button.remove();
-    document.querySelector('.svp-cleanup-toast')?.remove();
+    document.querySelector('.svp-toast')?.remove();
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('svp_inventoryCleanup');
     consoleSpy.mockRestore();
@@ -1107,7 +1107,7 @@ describe('inventoryCleanup module', () => {
     invElement.remove();
     limElement.remove();
     button.remove();
-    document.querySelector('.svp-cleanup-toast')?.remove();
+    document.querySelector('.svp-toast')?.remove();
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('svp_inventoryCleanup');
     consoleSpy.mockRestore();
