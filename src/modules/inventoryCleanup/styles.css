@@ -225,3 +225,5 @@
 }
 
 /* Toast-стили вынесены в core/toast.css (подключается в bootstrap). */
+
+/* Видимость кнопки «Очистить ключи» управляется JS (checkAndInject по data-tab). */

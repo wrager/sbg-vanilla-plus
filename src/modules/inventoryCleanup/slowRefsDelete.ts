@@ -9,10 +9,9 @@ import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
 
 const BUTTON_CLASS = 'svp-cleanup-slow-refs-button';
 const MODAL_CLASS = 'svp-cleanup-slow-modal';
-// Кнопка монтируется перед .inventory__content, внутри .inventory.popup.
-// Не зависит от DOM модуля favoritedPoints (filter bar и т.д.).
+// Кнопка монтируется после .inventory__content, внутри .inventory.popup.
+// Видимость управляется CSS (data-tab="3"). Не зависит от DOM favoritedPoints.
 const INVENTORY_CONTENT_SELECTOR = '.inventory__content';
-const REFS_TAB = '3';
 export const FETCH_CONCURRENCY = 3;
 
 let bodyObserver: MutationObserver | null = null;
@@ -356,17 +355,17 @@ function shouldShowButton(): boolean {
   return settings.limits.referencesMode === 'slow' && isModuleActive('favoritedPoints');
 }
 
-function isRefsTabActive(content: Element): boolean {
-  if (!(content instanceof HTMLElement)) return false;
-  return content.dataset.tab === REFS_TAB;
+function isRefsTab(content: Element): boolean {
+  return content instanceof HTMLElement && content.dataset.tab === '3';
 }
 
 function ensureButton(content: Element): void {
-  if (!shouldShowButton() || !isRefsTabActive(content)) {
-    content.parentElement?.querySelector(`.${BUTTON_CLASS}`)?.remove();
+  const existing = content.parentElement?.querySelector(`.${BUTTON_CLASS}`);
+  if (!shouldShowButton() || !isRefsTab(content)) {
+    existing?.remove();
     return;
   }
-  if (content.parentElement?.querySelector(`.${BUTTON_CLASS}`)) return;
+  if (existing) return;
 
   const button = document.createElement('button');
   button.type = 'button';
@@ -376,7 +375,9 @@ function ensureButton(content: Element): void {
     event.preventDefault();
     void runSlowDelete();
   });
-  // Вставляем перед .inventory__content, внутри .inventory popup.
+  // Вставляем ПЕРЕД .inventory__content — кнопка сверху списка.
+  // checkAndInject вызывается из body MutationObserver (childList+subtree),
+  // а переключение табов перерисовывает childList content — observer поймает.
   content.parentElement?.insertBefore(button, content);
 }
 
