@@ -44,7 +44,7 @@
 ## README
 
 - Таблица модулей должна быть **всегда актуальна**: при изменении `name`, `id`, `category`, `description` — обновить в том же коммите
-- **Порядок** = экран настроек: `CATEGORY_ORDER` (`ui` → `map` → `feature` → `utility` → `fix`), внутри категории — по порядку в `bootstrap()` в `entry.ts`
+- **Порядок** = экран настроек: `CATEGORY_ORDER` (`ui` → `feature` → `map` → `utility` → `fix`), внутри категории — по порядку в `bootstrap()` в `entry.ts`
 
 ## Стили
 
