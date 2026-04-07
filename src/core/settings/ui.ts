@@ -85,12 +85,14 @@ const PANEL_STYLES = `
   box-shadow: inset 0 -12px 8px -8px rgba(0, 0, 0, 0.2);
 }
 
-.svp-settings-panel .popup-close {
+.svp-settings-panel .svp-settings-close {
   position: fixed;
   bottom: 8px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1;
+  font-size: 1.5em;
+  padding: 0 .1em;
 }
 
 .svp-settings-section {
@@ -520,7 +522,7 @@ export function initSettingsUI(
   panel.appendChild(footer);
 
   const closeButton = document.createElement('button');
-  closeButton.className = 'popup-close';
+  closeButton.className = 'svp-settings-close';
   closeButton.textContent = '[x]';
   closeButton.addEventListener('click', (event) => {
     event.stopPropagation();

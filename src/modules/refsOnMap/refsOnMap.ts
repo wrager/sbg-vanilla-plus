@@ -597,7 +597,7 @@ export const refsOnMap: IFeatureModule = {
 
       updateButtonVisibility();
 
-      // Close button — используем игровой класс popup-close, как в settings panel
+      // Close button — собственный класс, не popup-close, чтобы не триггерить игровой closePopup
       closeButton = document.createElement('button');
       closeButton.className = 'svp-refs-on-map-close';
       closeButton.textContent = '[x]';
