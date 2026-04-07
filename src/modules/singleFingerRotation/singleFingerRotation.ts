@@ -11,6 +11,8 @@ let dragPanControl: IDragPanControl | null = null;
 let latestPoint: [number, number] | null = null;
 let inflateExtent = false;
 let enabled = false;
+let pendingDelta = 0;
+let frameRequestId: number | null = null;
 
 function isFollowActive(): boolean {
   // Игра считает follow активным по умолчанию (null != 'false'),
@@ -44,7 +46,34 @@ function applyRotation(delta: number): void {
   view.setRotation(view.getRotation() + delta);
 }
 
+function applyPendingRotation(): void {
+  frameRequestId = null;
+  const delta = pendingDelta;
+  pendingDelta = 0;
+  if (delta !== 0) {
+    applyRotation(delta);
+  }
+}
+
+function flushPendingRotation(): void {
+  if (frameRequestId !== null) {
+    cancelAnimationFrame(frameRequestId);
+    frameRequestId = null;
+  }
+  if (pendingDelta !== 0) {
+    applyRotation(pendingDelta);
+    pendingDelta = 0;
+  }
+}
+
+function scheduleRotationFrame(): void {
+  if (frameRequestId === null) {
+    frameRequestId = requestAnimationFrame(applyPendingRotation);
+  }
+}
+
 function resetGesture(): void {
+  flushPendingRotation();
   latestPoint = null;
   dragPanControl?.restore();
 }
@@ -72,7 +101,8 @@ function onTouchMove(event: TouchEvent): void {
   const previousAngle = angleFromCenter(latestPoint[0], latestPoint[1]);
   const delta = normalizeAngleDelta(currentAngle - previousAngle);
 
-  applyRotation(delta);
+  pendingDelta += delta;
+  scheduleRotationFrame();
   latestPoint = [touch.clientX, touch.clientY];
 }
 
