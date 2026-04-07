@@ -305,18 +305,7 @@ async function runSlowDelete(): Promise<void> {
   const keysLabel = t({ en: 'keys', ru: 'ключей' });
   const summaryText = `${totalAmount} ${keysLabel} (${alliedLabel} ${alliedAmount} + ${notAlliedLabel} ${notAlliedAmount})`;
 
-  progress.setStatus(t({ en: 'Delete: ', ru: 'Удалить: ' }) + summaryText + '?');
-
-  const confirmDelete = confirm(
-    t({ en: 'Delete ', ru: 'Удалить ' }) +
-      summaryText +
-      '? ' +
-      t({ en: 'Favorites are not affected.', ru: 'Избранные не затронуты.' }),
-  );
-  if (!confirmDelete) {
-    progress.close();
-    return;
-  }
+  progress.setStatus(t({ en: 'Deleting: ', ru: 'Удаление: ' }) + summaryText);
 
   try {
     const result = await deleteInventoryItems(deletions, {
