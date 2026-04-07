@@ -16,22 +16,9 @@ import {
 declare const __SVP_VERSION__: string;
 
 const PANEL_ID = 'svp-settings-panel';
-const BTN_ID = 'svp-settings-btn';
+const GAME_SETTINGS_ENTRY_ID = 'svp-game-settings-entry';
 
 const PANEL_STYLES = `
-.svp-settings-btn {
-  width: 36px;
-  height: 36px;
-  border: none;
-  background-color: buttonface;
-  border-radius: 4px;
-  font-size: 20px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .svp-settings-panel {
   position: fixed;
   inset: 0;
@@ -219,6 +206,11 @@ const SETTINGS_TITLE: ILocalizedString = {
 const RELOAD_LABEL: ILocalizedString = {
   en: 'Page will reload on toggle',
   ru: 'При переключении происходит перезагрузка',
+};
+
+const OPEN_LABEL: ILocalizedString = {
+  en: 'Open',
+  ru: 'Открыть',
 };
 
 const TOGGLE_ALL_LABEL: ILocalizedString = {
@@ -543,21 +535,42 @@ export function initSettingsUI(
 
   document.body.appendChild(panel);
 
-  const btn = document.createElement('button');
-  btn.className = 'svp-settings-btn';
-  btn.id = BTN_ID;
-  btn.textContent = '⚙';
-  btn.title = t(SETTINGS_TITLE);
-  btn.addEventListener('click', () => {
-    panel.classList.toggle('svp-open');
-    requestAnimationFrame(updateScrollIndicators);
-  });
+  // Инжектируем строку настроек SVP в игровой popup настроек
+  const gameSettingsContent = document.querySelector('.settings-content');
+  if (gameSettingsContent) {
+    const item = document.createElement('div');
+    item.className = 'settings-section__item';
+    item.id = GAME_SETTINGS_ENTRY_ID;
 
-  const container = document.querySelector('.bottom-container');
-  if (container) {
-    container.appendChild(btn);
-  } else {
-    document.body.appendChild(btn);
+    const label = document.createElement('span');
+    label.textContent = t(SETTINGS_TITLE);
+
+    const openButton = document.createElement('button');
+    openButton.className = 'settings-section__button';
+    openButton.textContent = t(OPEN_LABEL);
+    openButton.addEventListener('click', () => {
+      panel.classList.add('svp-open');
+      requestAnimationFrame(updateScrollIndicators);
+    });
+
+    item.appendChild(label);
+    item.appendChild(openButton);
+
+    // В SBG Scout добавляется строка с «SBG Scout» — вставляем после неё
+    const isSbgScout = navigator.userAgent.includes('SbgScout/');
+    let inserted = false;
+    if (isSbgScout) {
+      for (const child of gameSettingsContent.querySelectorAll('.settings-section__item')) {
+        if (child.textContent.includes('SBG Scout')) {
+          child.after(item);
+          inserted = true;
+          break;
+        }
+      }
+    }
+    if (!inserted) {
+      gameSettingsContent.prepend(item);
+    }
   }
 
   if (location.hash.includes('svp-settings')) {

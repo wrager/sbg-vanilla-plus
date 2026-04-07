@@ -58,12 +58,13 @@ describe('bootstrap', () => {
     expect(disabled.enable).not.toHaveBeenCalled();
   });
 
-  test('creates settings button in DOM', () => {
+  test('creates settings entry in game settings', () => {
+    document.body.innerHTML = '<div class="settings-content"></div>';
     jest.spyOn(storage, 'loadSettings').mockReturnValue({ version: 2, modules: {}, errors: {} });
 
     bootstrap([createMockModule()]);
 
-    expect(document.getElementById('svp-settings-btn')).not.toBeNull();
+    expect(document.getElementById('svp-game-settings-entry')).not.toBeNull();
   });
 
   test('persists error for failed module', () => {

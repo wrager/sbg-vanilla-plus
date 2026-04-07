@@ -1,58 +1,21 @@
-/* Свёрнутый лейаут */
-.topleft-container.svp-collapsed {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 37px 4px 6px;
+/* Позиционирование контейнера */
+.topleft-container.svp-compact {
+  top: 0.45em;
+  left: 0.45em;
+}
+
+/* Компактная панель информации: ник под game-menu */
+.topleft-container.svp-compact .self-info {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+  width: max-content !important;
   margin: 0;
-  cursor: pointer;
-  border: 1px var(--border) solid !important;
-  background: var(--background) !important;
-  color: var(--text);
-}
-
-.topleft-container.svp-collapsed .self-info {
-  display: flex;
-  align-items: center;
-  margin: 0;
-  padding: 0;
-}
-
-.topleft-container.svp-collapsed .game-menu {
-  display: inline-flex;
-  margin: 0;
-  padding: 0;
-}
-
-/* Сводка инвентаря */
-#svp-inv-summary {
-  font-size: 14px;
-  white-space: nowrap;
-}
-
-/* Кнопки сворачивания/разворачивания — fixed, вне DOM игры */
-#svp-top-toggle,
-#svp-top-expand {
-  position: fixed;
-  z-index: 1;
-  font-size: 10px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 4px 8px;
-  color: var(--text);
-  background: var(--background);
-  border: 1px var(--border) solid;
-  border-radius: 6px;
-  opacity: 0.8;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-#svp-top-toggle:active,
-#svp-top-expand:active {
-  opacity: 1;
+  padding: 0 !important;
+  border: none !important;
+  background: none !important;
+  font-size: 0.9em;
 }
 
 /* Центрирование кнопки «Атака» по горизонтали экрана */
