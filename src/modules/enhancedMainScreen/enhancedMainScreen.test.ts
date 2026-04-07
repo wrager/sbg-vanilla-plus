@@ -1,18 +1,12 @@
 import { enhancedMainScreen } from './enhancedMainScreen';
 
-class ResizeObserverStub {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
-}
-globalThis.ResizeObserver = ResizeObserverStub;
-
+// DOM-структура максимально приближена к реальной игре (refs/game/dom/body.html)
 const MAIN_SCREEN_HTML = `
 <div class="topleft-container">
   <div class="self-info">
-    <div class="self-info__entry">Name: <span id="self-info__name">wrager</span></div>
-    <div class="self-info__entry">EXP: <span id="self-info__exp">16,903,250</span></div>
-    <div class="self-info__entry">Inventory: <span id="self-info__inv">2812</span> / <span id="self-info__inv-lim">3000</span></div>
+    <div class="self-info__entry"><span data-i18n="self-info.name">Имя</span>: <span id="self-info__name" class="profile-link" style="color: var(--team-2);" data-name="wrager">wrager</span> <span id="self-info__explv" data-i18n="self-info.lv">(Ур-10)</span></div>
+    <div class="self-info__entry"><span data-i18n="self-info.xp">Опыт</span>: <span id="self-info__exp">16 914 849</span> <span data-i18n="units.pts-xp">очк.</span></div>
+    <div class="self-info__entry"><span data-i18n="self-info.inventory">Инвентарь</span>: <span id="self-info__inv">2812</span> / <span id="self-info__inv-lim">3000</span></div>
   </div>
   <div class="game-menu">
     <button id="ops">OPS</button>
@@ -34,13 +28,9 @@ function flushPromises(): Promise<void> {
   });
 }
 
-function mousedown(el: Element): void {
-  el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-}
-
 function getEntryFor(id: string): HTMLElement | null {
-  const el = document.getElementById(id)?.closest('.self-info__entry');
-  return el instanceof HTMLElement ? el : null;
+  const element = document.getElementById(id)?.closest('.self-info__entry');
+  return element instanceof HTMLElement ? element : null;
 }
 
 describe('enhancedMainScreen', () => {
@@ -68,113 +58,100 @@ describe('enhancedMainScreen', () => {
     expect(style?.tagName).toBe('STYLE');
   });
 
-  test('hides all entries and extra buttons by default', async () => {
+  test('adds svp-compact class to container', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
 
-    expect(getEntryFor('self-info__name')?.style.display).toBe('none');
+    const container = document.querySelector('.topleft-container');
+    expect(container?.classList.contains('svp-compact')).toBe(true);
+  });
+
+  test('hides all self-info entries but keeps effects visible', async () => {
+    await enhancedMainScreen.enable();
+    await flushPromises();
+
     expect(getEntryFor('self-info__exp')?.style.display).toBe('none');
     expect(getEntryFor('self-info__inv')?.style.display).toBe('none');
-    expect(document.getElementById('score')?.style.display).toBe('none');
-    expect(document.getElementById('ops')?.style.display).not.toBe('none');
+    const effects = document.querySelector('.effects');
+    expect(effects instanceof HTMLElement && effects.style.display).not.toBe('none');
   });
 
-  test('shows summary, expand button and hides toggle when collapsed', async () => {
+  test('reparents original name span into self-info', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
 
-    const summary = document.getElementById('svp-inv-summary');
-    expect(summary?.textContent).toBe('2812/3000');
-    expect(summary?.style.display).not.toBe('none');
-
-    const toggle = document.getElementById('svp-top-toggle');
-    expect(toggle?.style.display).toBe('none');
-
-    const expandBtn = document.getElementById('svp-top-expand');
-    expect(expandBtn?.style.display).not.toBe('none');
-    expect(expandBtn?.textContent).toBe('▼');
+    // Оригинальный span ника перенесён напрямую в self-info (сохраняет .profile-link)
+    const nameSpan = document.getElementById('self-info__name');
+    const selfInfo = document.querySelector('.self-info');
+    expect(nameSpan?.parentElement).toBe(selfInfo);
+    expect(nameSpan?.classList.contains('profile-link')).toBe(true);
+    expect(nameSpan?.dataset.name).toBe('wrager');
   });
 
-  test('expands on container mousedown (not OPS)', async () => {
+  test('replaces OPS button text with inventory status', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
 
-    const summary = document.getElementById('svp-inv-summary');
-    if (!summary) throw new Error('summary not found');
-    mousedown(summary);
-
-    const container = document.querySelector('.topleft-container');
-    expect(container?.classList.contains('svp-collapsed')).toBe(false);
-    expect(getEntryFor('self-info__name')?.style.display).toBe('');
-
-    // Toggle visible, expand button hidden when expanded
-    expect(document.getElementById('svp-top-toggle')?.style.display).toBe('');
-    expect(document.getElementById('svp-top-expand')?.style.display).toBe('none');
+    const opsButton = document.getElementById('ops');
+    expect(opsButton?.textContent).toBe('2812/3000');
   });
 
-  test('expands on expand button mousedown', async () => {
+  test('updates OPS text when inventory changes', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
 
-    const expandBtn = document.getElementById('svp-top-expand');
-    if (!expandBtn) throw new Error('expand button not found');
-    mousedown(expandBtn);
-
-    const container = document.querySelector('.topleft-container');
-    expect(container?.classList.contains('svp-collapsed')).toBe(false);
-    expect(expandBtn.style.display).toBe('none');
-  });
-
-  test('does not expand when clicking OPS', async () => {
-    await enhancedMainScreen.enable();
+    const invSpan = document.getElementById('self-info__inv');
+    if (!invSpan) throw new Error('inv span not found');
+    invSpan.textContent = '2999';
     await flushPromises();
 
-    const ops = document.getElementById('ops');
-    if (!ops) throw new Error('ops not found');
-    mousedown(ops);
-
-    const container = document.querySelector('.topleft-container');
-    expect(container?.classList.contains('svp-collapsed')).toBe(true);
+    expect(document.getElementById('ops')?.textContent).toBe('2999/3000');
   });
 
-  test('collapses on toggle mousedown', async () => {
-    await enhancedMainScreen.enable();
-    await flushPromises();
-
-    // Expand first
-    const summary = document.getElementById('svp-inv-summary');
-    if (!summary) throw new Error('summary not found');
-    mousedown(summary);
-
-    // Collapse via toggle
-    const toggle = document.getElementById('svp-top-toggle');
-    if (!toggle) throw new Error('toggle not found');
-    mousedown(toggle);
-
-    const container = document.querySelector('.topleft-container');
-    expect(container?.classList.contains('svp-collapsed')).toBe(true);
-    expect(toggle.style.display).toBe('none');
-  });
-
-  test('mirrors inventory overflow color to summary', async () => {
+  test('mirrors inventory overflow color to OPS button', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
 
     const invEntry = getEntryFor('self-info__inv');
-    if (!invEntry) throw new Error('inv entry not found');
-    const summary = document.getElementById('svp-inv-summary');
-    if (!summary) throw new Error('summary not found');
+    const opsButton = document.getElementById('ops');
+    if (!invEntry || !opsButton) throw new Error('elements not found');
 
-    // Игра ставит color на .self-info__entry при переполнении (jQuery .css())
-    // jsdom не поддерживает var() в CSSOM, поэтому тестируем с обычным цветом
     invEntry.style.color = 'red';
     await flushPromises();
-    expect(summary.style.color).toBe('red');
+    expect(opsButton.style.color).toBe('red');
 
-    // Игра сбрасывает color когда инвентарь не переполнен
     invEntry.style.color = '';
     await flushPromises();
-    expect(summary.style.color).toBe('');
+    expect(opsButton.style.color).toBe('');
+  });
+
+  test('moves game-menu before self-info, effects stays after', async () => {
+    await enhancedMainScreen.enable();
+    await flushPromises();
+
+    const container = document.querySelector('.topleft-container');
+    const children = container ? [...container.children] : [];
+    const gameMenuIndex = children.findIndex((child) => child.classList.contains('game-menu'));
+    const selfInfoIndex = children.findIndex((child) => child.classList.contains('self-info'));
+    const effectsIndex = children.findIndex((child) => child.classList.contains('effects'));
+    expect(gameMenuIndex).toBeLessThan(selfInfoIndex);
+    expect(selfInfoIndex).toBeLessThan(effectsIndex);
+  });
+
+  test('replaces Settings button text with gear symbol', async () => {
+    await enhancedMainScreen.enable();
+    await flushPromises();
+
+    const settingsButton = document.getElementById('settings');
+    expect(settingsButton?.textContent).toBe('\u2699\uFE0E');
+  });
+
+  test('does not hide game-menu buttons', async () => {
+    await enhancedMainScreen.enable();
+    await flushPromises();
+
+    expect(document.getElementById('ops')?.style.display).not.toBe('none');
+    expect(document.getElementById('score')?.style.display).not.toBe('none');
   });
 
   test('cleans up on disable', async () => {
@@ -184,11 +161,19 @@ describe('enhancedMainScreen', () => {
     await enhancedMainScreen.disable();
 
     const container = document.querySelector('.topleft-container');
-    expect(container?.classList.contains('svp-collapsed')).toBe(false);
-    expect(document.getElementById('svp-top-toggle')).toBeNull();
-    expect(document.getElementById('svp-top-expand')).toBeNull();
-    expect(document.getElementById('svp-inv-summary')).toBeNull();
+    expect(container?.classList.contains('svp-compact')).toBe(false);
+    expect(getEntryFor('self-info__exp')?.style.display).toBe('');
     expect(document.getElementById('svp-enhancedMainScreen')).toBeNull();
-    expect(getEntryFor('self-info__name')?.style.display).toBe('');
+
+    // Span ника возвращён в оригинальную запись
+    const nameSpan = document.getElementById('self-info__name');
+    expect(nameSpan?.closest('.self-info__entry')).not.toBeNull();
+
+    // OPS button text восстановлен
+    expect(document.getElementById('ops')?.textContent).toBe('OPS');
+    expect(document.getElementById('ops')?.style.color).toBe('');
+
+    // Settings button text восстановлен
+    expect(document.getElementById('settings')?.textContent).toBe('Settings');
   });
 });

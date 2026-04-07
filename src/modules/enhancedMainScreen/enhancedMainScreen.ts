@@ -3,26 +3,28 @@ import { $, $$, injectStyles, removeStyles, waitForElement } from '../../core/do
 import css from './styles.css?inline';
 
 const MODULE_ID = 'enhancedMainScreen';
-const SUMMARY_ID = 'svp-inv-summary';
-const TOGGLE_ID = 'svp-top-toggle';
-const EXPAND_ID = 'svp-top-expand';
 
 let cleanup: (() => void) | null = null;
 
-function createSummary(container: Element): HTMLSpanElement {
+function isHTMLElement(element: unknown): element is HTMLElement {
+  return element instanceof HTMLElement;
+}
+
+/** Заменяет текст кнопки OPS на статус инвентаря «inv/lim» с реактивным обновлением */
+function setupOpsInventory(container: Element, opsButton: HTMLElement): { destroy: () => void } {
   const invSpan = $('#self-info__inv', container);
   const limSpan = $('#self-info__inv-lim', container);
   const invEntry = invSpan?.closest('.self-info__entry');
-
-  const summary = document.createElement('span');
-  summary.id = SUMMARY_ID;
+  const originalText = opsButton.textContent;
 
   const update = () => {
     const inv = invSpan?.textContent ?? '?';
     const lim = limSpan?.textContent ?? '?';
-    summary.textContent = `${inv}/${lim}`;
-    if (invEntry instanceof HTMLElement) {
-      summary.style.color = invEntry.style.color;
+    opsButton.textContent = `${inv}/${lim}`;
+
+    // Цвет переполнения инвентаря (игра ставит color на .self-info__entry)
+    if (isHTMLElement(invEntry)) {
+      opsButton.style.color = invEntry.style.color;
     }
   };
 
@@ -31,13 +33,17 @@ function createSummary(container: Element): HTMLSpanElement {
   const observer = new MutationObserver(update);
   if (invSpan) observer.observe(invSpan, { childList: true, characterData: true, subtree: true });
   if (limSpan) observer.observe(limSpan, { childList: true, characterData: true, subtree: true });
-  if (invEntry) observer.observe(invEntry, { attributes: true, attributeFilter: ['style'] });
+  if (isHTMLElement(invEntry)) {
+    observer.observe(invEntry, { attributes: true, attributeFilter: ['style'] });
+  }
 
-  return summary;
-}
-
-function isHTMLElement(el: unknown): el is HTMLElement {
-  return el instanceof HTMLElement;
+  return {
+    destroy: () => {
+      observer.disconnect();
+      opsButton.textContent = originalText;
+      opsButton.style.color = '';
+    },
+  };
 }
 
 async function setup(): Promise<() => void> {
@@ -45,110 +51,75 @@ async function setup(): Promise<() => void> {
   if (!isHTMLElement(container)) return () => {};
   const selfInfo = $('.self-info', container);
   if (!isHTMLElement(selfInfo)) return () => {};
-  const opsBtn = $('#ops', container);
-  if (!isHTMLElement(opsBtn)) return () => {};
+  const opsButton = $('#ops', container);
+  if (!isHTMLElement(opsButton)) return () => {};
 
+  // Reparent оригинального span ника в self-info (сохраняет .profile-link и обработчики)
+  const nameSpan = $('#self-info__name', container);
+  const nameSpanParent = nameSpan?.parentElement;
+  const nameSpanNextSibling = nameSpan?.nextSibling ?? null;
+
+  // Скрываем все записи self-info (ник, опыт, инвентарь, координаты), effects остаётся
   const allEntries = $$('.self-info__entry', container).filter(isHTMLElement);
-  const extraButtons = $$('.game-menu button:not(#ops)', container).filter(isHTMLElement);
-  const effects = $('.effects', container);
-  const hiddenEls = [...allEntries, ...extraButtons, ...(isHTMLElement(effects) ? [effects] : [])];
+  const hiddenElements = [...allEntries];
 
-  // Кнопка сворачивания — в body, чтобы игра не перехватывала клики
-  const toggle = document.createElement('div');
-  toggle.id = TOGGLE_ID;
-  toggle.textContent = '▲';
-  document.body.appendChild(toggle);
+  for (const element of hiddenElements) {
+    element.style.display = 'none';
+  }
 
-  // Кнопка разворачивания — в body, чтобы игра не перехватывала клики
-  const expandBtn = document.createElement('div');
-  expandBtn.id = EXPAND_ID;
-  expandBtn.textContent = '▼';
-  document.body.appendChild(expandBtn);
+  // Ник — reparent оригинального span прямо в self-info
+  if (nameSpan) {
+    selfInfo.appendChild(nameSpan);
+  }
 
-  const summary = createSummary(container);
-  selfInfo.appendChild(summary);
+  // Статус инвентаря → текст кнопки OPS
+  const opsInventory = setupOpsInventory(container, opsButton);
 
-  let collapsed = false;
+  // Переместить game-menu над self-info (меню сверху, ник снизу)
+  const gameMenu = $('.game-menu', container);
+  if (isHTMLElement(gameMenu)) {
+    container.insertBefore(gameMenu, selfInfo);
+  }
 
-  const positionToggle = () => {
-    const rect = container.getBoundingClientRect();
-    toggle.style.top = `${rect.top + 4}px`;
-    toggle.style.left = `${rect.right - toggle.offsetWidth - 4}px`;
-  };
+  // Заменить текст кнопки Settings на символ шестерёнки (text presentation)
+  // Убираем data-i18n чтобы система i18n игры не перезаписывала текст
+  const settingsButton = $('#settings', container);
+  const originalSettingsText = settingsButton?.textContent ?? null;
+  const originalSettingsI18n = settingsButton?.getAttribute('data-i18n') ?? null;
+  if (isHTMLElement(settingsButton)) {
+    settingsButton.textContent = '\u2699\uFE0E';
+    settingsButton.removeAttribute('data-i18n');
+  }
 
-  const positionExpand = () => {
-    const opsRect = opsBtn.getBoundingClientRect();
-    expandBtn.style.top = `${opsRect.top + (opsRect.height - expandBtn.offsetHeight) / 2}px`;
-    expandBtn.style.left = `${opsRect.right + 4}px`;
-  };
-
-  // Перепозиционировать кнопку ▼ при изменении размера контейнера
-  const resizeObserver = new ResizeObserver(() => {
-    if (collapsed) positionExpand();
-  });
-  resizeObserver.observe(container);
-
-  const setCollapsed = (value: boolean) => {
-    collapsed = value;
-    for (const el of hiddenEls) {
-      el.style.display = collapsed ? 'none' : '';
-    }
-    summary.style.display = collapsed ? '' : 'none';
-    toggle.style.display = collapsed ? 'none' : '';
-    expandBtn.style.display = collapsed ? '' : 'none';
-    selfInfo.style.border = collapsed ? 'none' : '';
-    container.classList.toggle('svp-collapsed', collapsed);
-    if (!collapsed) {
-      requestAnimationFrame(positionToggle);
-    }
-  };
-
-  setCollapsed(true);
-
-  // Раскрытие: клик по свёрнутому контейнеру (кроме ОРПЦ)
-  const onExpand = (e: Event) => {
-    if (!collapsed) return;
-    const target = e.target;
-    if (!(target instanceof Element)) return;
-    if (target.closest('#ops')) return;
-    e.stopPropagation();
-    e.preventDefault();
-    setCollapsed(false);
-  };
-
-  // Раскрытие: клик по кнопке ▼
-  const onExpandBtn = (e: Event) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setCollapsed(false);
-  };
-
-  // Сворачивание: клик по кнопке ▲
-  const onCollapse = (e: Event) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setCollapsed(true);
-  };
-
-  container.addEventListener('touchstart', onExpand, { passive: false });
-  container.addEventListener('mousedown', onExpand);
-  expandBtn.addEventListener('touchstart', onExpandBtn, { passive: false });
-  expandBtn.addEventListener('mousedown', onExpandBtn);
-  toggle.addEventListener('touchstart', onCollapse, { passive: false });
-  toggle.addEventListener('mousedown', onCollapse);
+  container.classList.add('svp-compact');
 
   return () => {
-    resizeObserver.disconnect();
-    container.removeEventListener('touchstart', onExpand);
-    container.removeEventListener('mousedown', onExpand);
-    expandBtn.removeEventListener('touchstart', onExpandBtn);
-    expandBtn.removeEventListener('mousedown', onExpandBtn);
-    toggle.removeEventListener('touchstart', onCollapse);
-    toggle.removeEventListener('mousedown', onCollapse);
-    setCollapsed(false);
-    toggle.remove();
-    expandBtn.remove();
-    summary.remove();
+    opsInventory.destroy();
+    // Вернуть текст и data-i18n кнопки Settings
+    if (isHTMLElement(settingsButton)) {
+      if (originalSettingsText !== null) {
+        settingsButton.textContent = originalSettingsText;
+      }
+      if (originalSettingsI18n !== null) {
+        settingsButton.setAttribute('data-i18n', originalSettingsI18n);
+      }
+    }
+    // Вернуть span ника на прежнее место в оригинальной записи
+    if (nameSpan && nameSpanParent) {
+      if (nameSpanNextSibling) {
+        nameSpanParent.insertBefore(nameSpan, nameSpanNextSibling);
+      } else {
+        nameSpanParent.appendChild(nameSpan);
+      }
+    }
+    // Вернуть game-menu после self-info
+    if (isHTMLElement(gameMenu)) {
+      selfInfo.after(gameMenu);
+    }
+    for (const element of hiddenElements) {
+      element.style.display = '';
+    }
+    container.classList.remove('svp-compact');
   };
 }
 
@@ -156,17 +127,15 @@ export const enhancedMainScreen: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Enhanced Main Screen', ru: 'Улучшенный главный экран' },
   description: {
-    en: 'Collapses the top-left panel and centers the attack button on the map screen',
-    ru: 'Сворачивает верхнюю панель и центрирует кнопку атаки на экране с картой',
+    en: 'Compacts the player info bar and centers the attack button on the map screen',
+    ru: 'Уменьшает панель информации игрока и центрирует кнопку атаки на экране с картой',
   },
   defaultEnabled: true,
   category: 'ui',
   init() {},
-  enable() {
+  async enable() {
     injectStyles(css, MODULE_ID);
-    return setup().then((fn) => {
-      cleanup = fn;
-    });
+    cleanup = await setup();
   },
   disable() {
     removeStyles(MODULE_ID);
