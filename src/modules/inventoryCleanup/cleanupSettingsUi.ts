@@ -52,8 +52,8 @@ const REF_DISABLED_HINT: ILocalizedString = {
   ru: 'Включите модуль «Избранные точки», чтобы настроить удаление ключей',
 };
 const REF_SLOW_HINT: ILocalizedString = {
-  en: 'Slow mode runs manually from the keys inventory tab',
-  ru: 'Медленный режим запускается вручную через кнопку в табе ключей инвентаря',
+  en: 'Slow cleanup runs manually from the references OPS tab',
+  ru: 'Медленная очистка запускается вручную через кнопку во вкладке ключей в ОРПЦ',
 };
 
 let panel: HTMLElement | null = null;
