@@ -10,12 +10,24 @@ function isHTMLElement(element: unknown): element is HTMLElement {
   return element instanceof HTMLElement;
 }
 
+/** Переводит текст через глобальный i18next (jQuery-плагин jqueryI18next) */
+function retranslateI18n(element: HTMLElement): void {
+  // jqueryI18next добавляет .localize() на jQuery-объекты
+  const jq = (window as unknown as Record<string, unknown>).$ as
+    | ((selector: HTMLElement) => { localize: () => void })
+    | undefined;
+  jq?.(element).localize();
+}
+
 /** Заменяет текст кнопки OPS на статус инвентаря «inv/lim» с реактивным обновлением */
 function setupOpsInventory(container: Element, opsButton: HTMLElement): { destroy: () => void } {
   const invSpan = $('#self-info__inv', container);
   const limSpan = $('#self-info__inv-lim', container);
   const invEntry = invSpan?.closest('.self-info__entry');
-  const originalText = opsButton.textContent;
+
+  // Убираем data-i18n чтобы i18n не перезаписывала наш текст
+  const opsI18nKey = opsButton.getAttribute('data-i18n');
+  opsButton.removeAttribute('data-i18n');
 
   const update = () => {
     const inv = invSpan?.textContent ?? '?';
@@ -40,8 +52,12 @@ function setupOpsInventory(container: Element, opsButton: HTMLElement): { destro
   return {
     destroy: () => {
       observer.disconnect();
-      opsButton.textContent = originalText;
       opsButton.style.color = '';
+      // Восстанавливаем data-i18n и запускаем перевод через jqueryI18next
+      if (opsI18nKey) {
+        opsButton.setAttribute('data-i18n', opsI18nKey);
+      }
+      retranslateI18n(opsButton);
     },
   };
 }
@@ -84,8 +100,7 @@ async function setup(): Promise<() => void> {
   // Заменить текст кнопки Settings на символ шестерёнки (text presentation)
   // Убираем data-i18n чтобы система i18n игры не перезаписывала текст
   const settingsButton = $('#settings', container);
-  const originalSettingsText = settingsButton?.textContent ?? null;
-  const originalSettingsI18n = settingsButton?.getAttribute('data-i18n') ?? null;
+  const settingsI18nKey = settingsButton?.getAttribute('data-i18n') ?? null;
   if (isHTMLElement(settingsButton)) {
     settingsButton.textContent = '\u2699\uFE0E';
     settingsButton.removeAttribute('data-i18n');
@@ -95,14 +110,12 @@ async function setup(): Promise<() => void> {
 
   return () => {
     opsInventory.destroy();
-    // Вернуть текст и data-i18n кнопки Settings
+    // Восстанавливаем data-i18n и запускаем перевод через jqueryI18next
     if (isHTMLElement(settingsButton)) {
-      if (originalSettingsText !== null) {
-        settingsButton.textContent = originalSettingsText;
+      if (settingsI18nKey !== null) {
+        settingsButton.setAttribute('data-i18n', settingsI18nKey);
       }
-      if (originalSettingsI18n !== null) {
-        settingsButton.setAttribute('data-i18n', originalSettingsI18n);
-      }
+      retranslateI18n(settingsButton);
     }
     // Вернуть span ника на прежнее место в оригинальной записи
     if (nameSpan && nameSpanParent) {

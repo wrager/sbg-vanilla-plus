@@ -9,10 +9,10 @@ const MAIN_SCREEN_HTML = `
     <div class="self-info__entry"><span data-i18n="self-info.inventory">Инвентарь</span>: <span id="self-info__inv">2812</span> / <span id="self-info__inv-lim">3000</span></div>
   </div>
   <div class="game-menu">
-    <button id="ops">OPS</button>
-    <button id="score">Score</button>
-    <button id="leaderboard">Leaderboard</button>
-    <button id="settings">Settings</button>
+    <button id="ops" data-i18n="menu.ops">OPS</button>
+    <button id="score" data-i18n="menu.score">Score</button>
+    <button id="leaderboard" data-i18n="menu.leaderboard">Leaderboard</button>
+    <button id="settings" data-i18n="menu.settings">Settings</button>
   </div>
   <div class="effects"></div>
 </div>
@@ -88,12 +88,13 @@ describe('enhancedMainScreen', () => {
     expect(nameSpan?.dataset.name).toBe('wrager');
   });
 
-  test('replaces OPS button text with inventory status', async () => {
+  test('replaces OPS button text with inventory status and removes data-i18n', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
 
     const opsButton = document.getElementById('ops');
     expect(opsButton?.textContent).toBe('2812/3000');
+    expect(opsButton?.hasAttribute('data-i18n')).toBe(false);
   });
 
   test('updates OPS text when inventory changes', async () => {
@@ -138,12 +139,13 @@ describe('enhancedMainScreen', () => {
     expect(selfInfoIndex).toBeLessThan(effectsIndex);
   });
 
-  test('replaces Settings button text with gear symbol', async () => {
+  test('replaces Settings button text with gear symbol and removes data-i18n', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
 
     const settingsButton = document.getElementById('settings');
     expect(settingsButton?.textContent).toBe('\u2699\uFE0E');
+    expect(settingsButton?.hasAttribute('data-i18n')).toBe(false);
   });
 
   test('does not hide game-menu buttons', async () => {
@@ -152,6 +154,33 @@ describe('enhancedMainScreen', () => {
 
     expect(document.getElementById('ops')?.style.display).not.toBe('none');
     expect(document.getElementById('score')?.style.display).not.toBe('none');
+  });
+
+  test('calls jqueryI18next localize on disable to retranslate buttons', async () => {
+    await enhancedMainScreen.enable();
+    await flushPromises();
+
+    // Мокаем глобальный jQuery с localize() (jqueryI18next)
+    const localizeMock = jest.fn();
+    const jqueryMock = jest.fn(() => ({ localize: localizeMock }));
+    (window as unknown as Record<string, unknown>).$ = jqueryMock;
+
+    await enhancedMainScreen.disable();
+
+    // localize() вызывается для OPS и Settings
+    const localizedElements = jqueryMock.mock.calls.map(
+      (call: unknown[]) => call[0] as HTMLElement,
+    );
+    const opsButton = document.getElementById('ops');
+    const settingsButton = document.getElementById('settings');
+    expect(localizedElements).toContain(opsButton);
+    expect(localizedElements).toContain(settingsButton);
+    expect(localizeMock).toHaveBeenCalledTimes(2);
+
+    delete (window as unknown as Record<string, unknown>).$;
+
+    // Переинициализируем для afterEach
+    document.body.innerHTML = MAIN_SCREEN_HTML;
   });
 
   test('cleans up on disable', async () => {
@@ -169,11 +198,12 @@ describe('enhancedMainScreen', () => {
     const nameSpan = document.getElementById('self-info__name');
     expect(nameSpan?.closest('.self-info__entry')).not.toBeNull();
 
-    // OPS button text восстановлен
-    expect(document.getElementById('ops')?.textContent).toBe('OPS');
-    expect(document.getElementById('ops')?.style.color).toBe('');
+    // OPS: data-i18n восстановлен, цвет сброшен
+    const opsButton = document.getElementById('ops');
+    expect(opsButton?.getAttribute('data-i18n')).toBe('menu.ops');
+    expect(opsButton?.style.color).toBe('');
 
-    // Settings button text восстановлен
-    expect(document.getElementById('settings')?.textContent).toBe('Settings');
+    // Settings: data-i18n восстановлен
+    expect(document.getElementById('settings')?.getAttribute('data-i18n')).toBe('menu.settings');
   });
 });
