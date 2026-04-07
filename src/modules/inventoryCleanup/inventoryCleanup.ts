@@ -14,10 +14,6 @@ const MODULE_ID = 'inventoryCleanup';
 
 const ACTION_SELECTORS = '#discover, .discover-mod';
 const DEBUG_INV_KEY = 'svp_debug_inv';
-// Отладка: true = появляется кнопка «TEST CLEANUP» поверх игры, запускающая
-// автоочистку напрямую (runCleanup) в обход discover. Кнопка НЕ обходит
-// shouldRunCleanup — обычный авто-поток всегда проверяет порог.
-const DEBUG_SHOW_CLEANUP_BUTTON = true;
 
 let cleanupInProgress = false;
 let discoverPending = false;
@@ -42,12 +38,12 @@ function readDomNumber(id: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-async function runCleanup(force = false): Promise<void> {
+async function runCleanup(): Promise<void> {
   if (cleanupInProgress) return;
   cleanupInProgress = true;
 
   try {
-    await runCleanupImpl(force);
+    await runCleanupImpl();
   } finally {
     cleanupInProgress = false;
   }
@@ -60,7 +56,7 @@ function updateDomInventoryCount(total: number): void {
   }
 }
 
-async function runCleanupImpl(force: boolean): Promise<void> {
+async function runCleanupImpl(): Promise<void> {
   const settings = loadCleanupSettings();
 
   const currentCount = readDebugInvCount() ?? readDomNumber('self-info__inv');
@@ -71,7 +67,7 @@ async function runCleanupImpl(force: boolean): Promise<void> {
     return;
   }
 
-  if (!force && !shouldRunCleanup(currentCount, inventoryLimit, settings.minFreeSlots)) {
+  if (!shouldRunCleanup(currentCount, inventoryLimit, settings.minFreeSlots)) {
     return;
   }
 
@@ -105,28 +101,11 @@ async function runCleanupImpl(force: boolean): Promise<void> {
       favoritedGuids: getFavoritedGuids(),
       favoritedPointsActive: isModuleActive('favoritedPoints'),
     });
-    // Симулированные записи (ключи в альфе) на сервере не удалились — не трогаем
-    // ни inventory-cache, ни DOM-счётчик для этих записей.
-    const simulatedGuids = new Set(result.simulatedReferenceDeletions.map((entry) => entry.guid));
-    const realDeletions = deletions.filter((entry) => !simulatedGuids.has(entry.guid));
-    updateInventoryCache(realDeletions);
+    updateInventoryCache(deletions);
     if (result.total > 0) {
       updateDomInventoryCount(result.total);
     }
-
-    const simulatedAmount = result.simulatedReferenceDeletions.reduce(
-      (sum, entry) => sum + entry.amount,
-      0,
-    );
-    if (simulatedAmount > 0 && realDeletions.length === 0) {
-      showToast(`Симуляция: удалилось бы ${simulatedAmount} ключей`);
-    } else if (simulatedAmount > 0) {
-      showToast(
-        `Очистка (${totalAmount - simulatedAmount}): ${summary}; симуляция ${simulatedAmount} ключей`,
-      );
-    } else {
-      showToast(`Очистка (${totalAmount}): ${summary}`);
-    }
+    showToast(`Очистка (${totalAmount}): ${summary}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error('[SVP inventoryCleanup] Ошибка удаления:', message);
@@ -144,30 +123,6 @@ function isDiscoverButton(target: EventTarget | null): boolean {
 function onClickCapture(event: Event): void {
   if (!isDiscoverButton(event.target)) return;
   discoverPending = true;
-}
-
-let debugButton: HTMLButtonElement | null = null;
-
-function installDebugButton(): void {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- DEBUG_SHOW_CLEANUP_BUTTON будет снят после отладки
-  if (!DEBUG_SHOW_CLEANUP_BUTTON) return;
-  debugButton = document.createElement('button');
-  debugButton.textContent = 'TEST CLEANUP';
-  debugButton.style.cssText =
-    'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:99999;' +
-    'padding:6px 14px;background:#ffcc33;color:#000;font-weight:bold;font-size:11px;' +
-    'border:1px solid #000;border-radius:6px;cursor:pointer;opacity:0.8;';
-  debugButton.addEventListener('click', () => {
-    // force=true: кнопка запускает очистку без проверки shouldRunCleanup,
-    // чтобы можно было отладить удаление при непереполненном инвентаре.
-    void runCleanup(true);
-  });
-  document.body.appendChild(debugButton);
-}
-
-function uninstallDebugButton(): void {
-  debugButton?.remove();
-  debugButton = null;
 }
 
 function onInventoryCacheUpdated(): void {
@@ -241,7 +196,6 @@ export const inventoryCleanup: IFeatureModule = {
     installSetItemInterceptor();
     initCleanupSettingsUi();
     installSlowRefsDelete();
-    installDebugButton();
   },
 
   disable() {
@@ -250,6 +204,5 @@ export const inventoryCleanup: IFeatureModule = {
     discoverPending = false;
     destroyCleanupSettingsUi();
     uninstallSlowRefsDelete();
-    uninstallDebugButton();
   },
 };

@@ -308,22 +308,13 @@ async function runSlowDelete(): Promise<void> {
   progress.setStatus(t({ en: 'Deleting: ', ru: 'Удаление: ' }) + summaryText);
 
   try {
-    const result = await deleteInventoryItems(deletions, {
+    await deleteInventoryItems(deletions, {
       favoritedGuids: getFavoritedGuids(),
       favoritedPointsActive: isModuleActive('favoritedPoints'),
     });
-    const simulated = result.simulatedReferenceDeletions.length > 0;
-    if (!simulated) {
-      updateInventoryCache(deletions);
-    }
+    updateInventoryCache(deletions);
     progress.close();
-    if (simulated) {
-      showSlowToast(
-        t({ en: 'Simulation: would delete ', ru: 'Симуляция: удалилось бы ' }) + summaryText,
-      );
-    } else {
-      showSlowToast(t({ en: 'Deleted: ', ru: 'Удалено: ' }) + summaryText);
-    }
+    showSlowToast(t({ en: 'Deleted: ', ru: 'Удалено: ' }) + summaryText);
   } catch (error) {
     progress.close();
     const message =
