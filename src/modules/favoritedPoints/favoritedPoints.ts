@@ -17,8 +17,8 @@ export const favoritedPoints: IFeatureModule = {
     ru: 'Избранные точки',
   },
   description: {
-    en: 'Mark points with a star — their keys will never be deleted by auto-cleanup. List is shared with CUI.',
-    ru: 'Пометить точки звездой — ключи от них не удалит автоочистка. Список шарится с CUI.',
+    en: 'Mark points with a star — their keys will never be deleted by auto-cleanup. List is shared with CUI. Import/export via JSON in settings.',
+    ru: 'Пометить точки звездой — ключи от них не удалит автоочистка. Список шарится с CUI. Импорт/экспорт через JSON в настройках.',
   },
   defaultEnabled: true,
   category: 'feature',
