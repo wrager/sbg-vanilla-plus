@@ -62,14 +62,17 @@ export function calculateDeletions(
   // 1. referencesEnabled — модуль favoritedPoints включён И готов (isModuleActive)
   // 2. referencesMode === 'fast' — пользователь явно выбрал быстрый режим
   // 3. referencesFastLimit !== -1 — пользователь задал конкретный лимит
-  // 4. favoritesSnapshotReady — loadFavorites() успешно завершился, снимок IDB достоверен
-  //    (пустой Set допустим — значит пользователь не добавлял избранных)
+  // 4. favoritesSnapshotReady — loadFavorites() успешно завершился
+  // 5. favoritedGuids.size > 0 — есть хотя бы одна избранная точка. Если избранное
+  //    пусто, ключи не удаляются: невозможно отличить «пользователь не добавлял
+  //    избранных» от «IDB очистилась Android-оптимизацией» — в обоих случаях Set пуст.
   // Если хоть одно условие не выполнено — ключи не трогаются.
   if (
     options.referencesEnabled &&
     limits.referencesMode === 'fast' &&
     limits.referencesFastLimit !== -1 &&
-    options.favoritesSnapshotReady
+    options.favoritesSnapshotReady &&
+    options.favoritedGuids.size > 0
   ) {
     addReferenceDeletions(items, limits.referencesFastLimit, options.favoritedGuids, deletions);
   }

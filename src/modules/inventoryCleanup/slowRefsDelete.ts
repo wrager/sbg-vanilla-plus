@@ -229,6 +229,15 @@ async function runSlowDelete(): Promise<void> {
   }
 
   const favoritedGuids = getFavoritedGuids();
+  if (favoritedGuids.size === 0) {
+    showSlowToast(
+      t({
+        en: 'Add at least one favorited point before cleaning keys',
+        ru: 'Добавьте хотя бы одну избранную точку перед очисткой ключей',
+      }),
+    );
+    return;
+  }
   const invRefs = readInventoryReferences();
   const nonFavRefs: IRefByGuid[] = invRefs
     .filter((ref) => ref.a > 0 && !favoritedGuids.has(ref.l))

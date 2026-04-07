@@ -232,7 +232,7 @@ describe('регрессия: calculateDeletions с empty favorites и snapshotR
     };
   }
 
-  test('referencesEnabled=true + empty favoritedGuids + snapshotReady=true: ключи удаляются', () => {
+  test('referencesEnabled=true + empty favoritedGuids + snapshotReady=true: ключи НЕ удаляются (защита от потери IDB)', () => {
     const items = [
       { g: 'r1', t: 3 as const, l: 'p1', a: 5 },
       { g: 'r2', t: 3 as const, l: 'p2', a: 1 },
@@ -242,10 +242,7 @@ describe('регрессия: calculateDeletions с empty favorites и snapshotR
       referencesEnabled: true,
       favoritesSnapshotReady: true,
     });
-    // p1: 5-2=3 к удалению. p2: 1<=2, ок.
-    expect(result).toEqual([
-      { guid: 'r1', type: ITEM_TYPE_REFERENCE, level: null, amount: 3, pointGuid: 'p1' },
-    ]);
+    expect(result).toEqual([]);
   });
 
   test('referencesEnabled=true + empty favoritedGuids + snapshotReady=false: ключи НЕ удаляются', () => {
