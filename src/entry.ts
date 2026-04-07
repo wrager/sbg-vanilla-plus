@@ -38,25 +38,30 @@ if (!isDisabled()) {
     initErrorLog();
     installSbgFlavor();
     bootstrap([
+      // ui
       enhancedMainScreen,
       enhancedPointPopupUi,
       swipeToClosePopup,
       groupErrorToasts,
       removeAttackCloseButton,
+      // feature (favoritedPoints ПЕРЕД inventoryCleanup — зависимость init)
+      favoritedPoints,
+      inventoryCleanup,
+      keepScreenOn,
+      repairAtFullCharge,
+      // map
       shiftMapCenterDown,
       largerPointTapArea,
       disableDoubleTapZoom,
       ngrsZoom,
-      drawButtonFix,
-      keepScreenOn,
-      favoritedPoints,
-      inventoryCleanup,
       keyCountOnPoints,
-      nextPointNavigation,
-      refsOnMap,
-      repairAtFullCharge,
       singleFingerRotation,
       mapTileLayers,
+      // feature (map-зависимые)
+      nextPointNavigation,
+      refsOnMap,
+      // fix
+      drawButtonFix,
     ]);
   }
 

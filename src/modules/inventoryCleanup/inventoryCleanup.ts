@@ -228,11 +228,11 @@ export const inventoryCleanup: IFeatureModule = {
     ru: 'Автоочистка инвентаря',
   },
   description: {
-    en: 'Automatically removes excess items when discovering points',
-    ru: 'Автоматически удаляет лишние предметы при изучении точек',
+    en: 'Automatically removes excess items when discovering points. Slow cleanup runs manually from the references OPS tab',
+    ru: 'Автоматически удаляет лишние предметы при изучении точек. Медленная очистка запускается вручную через кнопку во вкладке ключей в ОРПЦ',
   },
   defaultEnabled: true,
-  category: 'utility',
+  category: 'feature',
 
   init() {},
 

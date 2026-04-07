@@ -21,7 +21,7 @@ export const favoritedPoints: IFeatureModule = {
     ru: 'Пометить точки звездой — ключи от них не удалит автоочистка. Список шарится с CUI.',
   },
   defaultEnabled: true,
-  category: 'utility',
+  category: 'feature',
 
   async init() {
     // Загружаем избранные из IDB в memory cache. init() ждёт асинхронного завершения —
