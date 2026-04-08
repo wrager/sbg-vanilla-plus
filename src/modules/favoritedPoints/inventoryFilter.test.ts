@@ -90,9 +90,17 @@ function findItemStar(item: HTMLElement): HTMLButtonElement {
   return star;
 }
 
+let alertSpy: jest.SpyInstance;
+
+beforeEach(() => {
+  // Мокаем alert чтобы seal-детекция в loadFavorites не вызывала ошибку jsdom.
+  alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+});
+
 afterEach(() => {
   uninstallInventoryFilter();
   document.body.innerHTML = '';
+  alertSpy.mockRestore();
 });
 
 describe('inventoryFilter', () => {
@@ -368,6 +376,27 @@ describe('inventoryFilter', () => {
     await flush();
     expect(star.classList.contains('is-filled')).toBe(true);
     expect(item1.classList.contains('svp-is-fav')).toBe(true);
+  });
+
+  test('фильтр «Только избранные» без избранных: все ключи скрыты, снятие показывает все', () => {
+    const { content } = createInventoryDom('3');
+    const item1 = addKeyItem(content, 'point-1');
+    const item2 = addKeyItem(content, 'point-2');
+    installInventoryFilter();
+
+    const checkbox = findCheckbox();
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+
+    // Без избранных все ключи скрыты.
+    expect(item1.classList.contains('hidden')).toBe(true);
+    expect(item2.classList.contains('hidden')).toBe(true);
+
+    // Снятие фильтра показывает все.
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event('change'));
+    expect(item1.classList.contains('hidden')).toBe(false);
+    expect(item2.classList.contains('hidden')).toBe(false);
   });
 
   test('uninstall удаляет панель, звёзды, классы и снимает hidden только со своих', async () => {
