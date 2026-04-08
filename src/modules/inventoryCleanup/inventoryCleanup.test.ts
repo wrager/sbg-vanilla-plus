@@ -499,7 +499,7 @@ describe('calculateDeletions', () => {
     expect(result).toEqual([]);
   });
 
-  test('fast mode: лимит на точку — удаляет лишние ключи от каждой точки отдельно', () => {
+  test('fast mode: удаляет лишние ключи от каждой точки отдельно', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = 2;
@@ -575,7 +575,7 @@ describe('calculateDeletions', () => {
     expect(result).toEqual([{ guid: 'r2', type: 3, level: null, amount: 3, pointGuid: 'p2' }]);
   });
 
-  test('fast mode: избранные точки полностью исключены, лимит на точку для остальных', () => {
+  test('fast mode: избранные точки полностью исключены из расчёта лимита', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = 2;

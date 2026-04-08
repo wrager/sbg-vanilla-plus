@@ -28,16 +28,16 @@ const UNLIMITED_HINT: ILocalizedString = { en: '-1 = unlimited', ru: '-1 = бе�
 const REFERENCES_LABEL: ILocalizedString = { en: 'Keys', ru: 'Ключи' };
 const REF_MODE_OFF_LABEL: ILocalizedString = { en: 'Off', ru: 'Не удалять' };
 const REF_MODE_FAST_LABEL: ILocalizedString = {
-  en: 'Fast (per-point limit, on discover)',
-  ru: 'Быстро (лимит на точку, очистка при изучении)',
+  en: 'Fast (on discover)',
+  ru: 'Быстро (при изучении)',
 };
 const REF_MODE_SLOW_LABEL: ILocalizedString = {
   en: 'Slow (allied/not allied split, manual only)',
   ru: 'Медленно (союзные/несоюзные, только вручную)',
 };
 const REF_FAST_LIMIT_LABEL: ILocalizedString = {
-  en: 'Keys per point limit',
-  ru: 'Лимит ключей на точку',
+  en: 'Keys limit',
+  ru: 'Лимит ключей',
 };
 const REF_ALLIED_LIMIT_LABEL: ILocalizedString = {
   en: 'Allied keys limit',
