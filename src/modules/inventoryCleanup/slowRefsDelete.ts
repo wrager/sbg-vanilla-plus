@@ -347,10 +347,15 @@ function updateButtonLabel(button: HTMLButtonElement): void {
   const settings = loadCleanupSettings();
   const allied = formatLimit(settings.limits.referencesAlliedLimit);
   const notAllied = formatLimit(settings.limits.referencesNotAlliedLimit);
-  button.textContent = t({
+  const label = t({
     en: `Clean (limits: ${allied}/${notAllied})`,
     ru: `Очистить (лимиты: ${allied}/${notAllied})`,
   });
+  // Не записывать textContent если текст не изменился — иначе DOM-мутация
+  // тригерит body MutationObserver → checkAndInject → updateButtonLabel → цикл.
+  if (button.textContent !== label) {
+    button.textContent = label;
+  }
 }
 
 function shouldShowButton(): boolean {
