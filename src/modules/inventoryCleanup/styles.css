@@ -120,7 +120,7 @@
 
 /* Кнопка медленного удаления по фракциям (в filter bar избранных) */
 .svp-cleanup-slow-refs-button {
-  margin-left: 16px;
+  margin-left: auto;
   padding: 4px 10px;
   border: 1px solid var(--border, rgba(255, 255, 255, 0.2));
   border-radius: 4px;

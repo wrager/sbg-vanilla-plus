@@ -128,7 +128,7 @@ export interface IRefByGuid {
   amount: number;
 }
 
-/** Применить лимиты союзные/не союзные с FIFO. */
+/** Применить лимиты союзные/несоюзные с FIFO. */
 export function calculateSlowDeletions(
   refs: IRefByGuid[],
   teams: Map<string, number | null>,
@@ -143,7 +143,7 @@ export function calculateSlowDeletions(
     if (team === playerTeam) {
       alliedRefs.push(ref);
     } else {
-      // Не союзные: вражеские (team !== playerTeam) И нейтральные/неизвестные (null/undefined).
+      // Несоюзные: вражеские (team !== playerTeam) И нейтральные/неизвестные (null/undefined).
       // Нейтральные точки (team=null: API вернул данные, но без te) не должны
       // избегать лимита — иначе slow-режим удаляет меньше чем fast.
       notAlliedRefs.push(ref);
@@ -335,6 +335,20 @@ async function runSlowDelete(): Promise<void> {
   }
 }
 
+function formatLimit(value: number): string {
+  return value === -1 ? '∞' : String(value);
+}
+
+function updateButtonLabel(button: HTMLButtonElement): void {
+  const settings = loadCleanupSettings();
+  const allied = formatLimit(settings.limits.referencesAlliedLimit);
+  const notAllied = formatLimit(settings.limits.referencesNotAlliedLimit);
+  button.textContent = t({
+    en: `Clean (limits: ${allied}/${notAllied})`,
+    ru: `Очистить (лимиты: ${allied}/${notAllied})`,
+  });
+}
+
 function shouldShowButton(): boolean {
   const settings = loadCleanupSettings();
   return settings.limits.referencesMode === 'slow' && isModuleActive('favoritedPoints');
@@ -345,12 +359,16 @@ function ensureButton(bar: Element): void {
     bar.querySelector(`.${BUTTON_CLASS}`)?.remove();
     return;
   }
-  if (bar.querySelector(`.${BUTTON_CLASS}`)) return;
+  const existing = bar.querySelector<HTMLButtonElement>(`.${BUTTON_CLASS}`);
+  if (existing) {
+    updateButtonLabel(existing);
+    return;
+  }
 
   const button = document.createElement('button');
   button.type = 'button';
   button.className = BUTTON_CLASS;
-  button.textContent = t({ en: 'Clean keys', ru: 'Очистить ключи' });
+  updateButtonLabel(button);
   button.addEventListener('click', (event) => {
     event.preventDefault();
     void runSlowDelete();
