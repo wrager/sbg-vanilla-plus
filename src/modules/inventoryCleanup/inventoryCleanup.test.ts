@@ -676,6 +676,36 @@ describe('calculateDeletions', () => {
     expect(result).toEqual([{ guid: 'c1', type: 1, level: 1, amount: 7 }]);
   });
 
+  test('snapshotReady=false + empty favoritedGuids: ключи не удаляются', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 0;
+    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 20 }];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set<string>(),
+      referencesEnabled: true,
+      favoritesSnapshotReady: false,
+    });
+    expect(result).toEqual([]);
+  });
+
+  test('snapshotReady=false + non-empty favoritedGuids: ключи не удаляются', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 0;
+    const items = [
+      { g: 'r1', t: 3 as const, l: 'p1', a: 20 },
+      { g: 'r2', t: 3 as const, l: 'p2', a: 5 },
+    ];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set(['p1']),
+      referencesEnabled: true,
+      favoritesSnapshotReady: false,
+    });
+    // snapshotReady=false блокирует ВСЕ удаления ключей, даже нефаворитных.
+    expect(result).toEqual([]);
+  });
+
   test('off mode: cores/catalysers удаляются, ключи нет', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'off';
