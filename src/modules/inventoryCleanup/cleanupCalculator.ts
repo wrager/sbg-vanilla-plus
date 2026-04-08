@@ -29,10 +29,10 @@ export interface ICalculateDeletionsOptions {
    */
   referencesEnabled: boolean;
   /**
-   * true — снимок избранных из IDB достоверен (loadFavorites() прошёл успешно).
-   * false — IDB не читалась или чтение упало; удалять ключи нельзя, потому что
-   * неизвестно, какие точки избранные. Заменяет прежний gate `favoritedGuids.size > 0`,
-   * который ошибочно блокировал удаление при пустом (но валидном) наборе избранных.
+   * true — снимок избранных из IDB достоверен (loadFavorites() прошёл успешно
+   * И count seal не обнаружил потерю данных). false — IDB не читалась, чтение
+   * упало, или обнаружено расхождение с seal (возможный Android IDB wipe).
+   * Работает в паре с size > 0 как двойная защита.
    */
   favoritesSnapshotReady: boolean;
 }
@@ -62,10 +62,10 @@ export function calculateDeletions(
   // 1. referencesEnabled — модуль favoritedPoints включён И готов (isModuleActive)
   // 2. referencesMode === 'fast' — пользователь явно выбрал быстрый режим
   // 3. referencesFastLimit !== -1 — пользователь задал конкретный лимит
-  // 4. favoritesSnapshotReady — loadFavorites() успешно завершился
-  // 5. favoritedGuids.size > 0 — есть хотя бы одна избранная точка. Если избранное
-  //    пусто, ключи не удаляются: невозможно отличить «пользователь не добавлял
-  //    избранных» от «IDB очистилась Android-оптимизацией» — в обоих случаях Set пуст.
+  // 4. favoritesSnapshotReady — loadFavorites() прошёл успешно И count seal
+  //    не обнаружил потерю данных IDB (Android wipe)
+  // 5. favoritedGuids.size > 0 — есть хотя бы одна избранная точка (defence-in-depth:
+  //    дополнительная защита на случай если seal не записался)
   // Если хоть одно условие не выполнено — ключи не трогаются.
   if (
     options.referencesEnabled &&
