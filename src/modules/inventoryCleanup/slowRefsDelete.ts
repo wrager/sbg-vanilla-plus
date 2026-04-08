@@ -348,7 +348,7 @@ function updateButtonLabel(button: HTMLButtonElement): void {
   const allied = formatLimit(settings.limits.referencesAlliedLimit);
   const notAllied = formatLimit(settings.limits.referencesNotAlliedLimit);
   const label = t({
-    en: `Clean (limits: ${allied}/${notAllied})`,
+    en: `Cleanup (limits: ${allied}/${notAllied})`,
     ru: `Очистить (лимиты: ${allied}/${notAllied})`,
   });
   // Не записывать textContent если текст не изменился — иначе DOM-мутация
