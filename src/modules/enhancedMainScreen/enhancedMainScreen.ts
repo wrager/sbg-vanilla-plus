@@ -140,8 +140,8 @@ export const enhancedMainScreen: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Enhanced Main Screen', ru: 'Улучшенный главный экран' },
   description: {
-    en: 'Compacts the player info bar and centers the attack button on the map screen',
-    ru: 'Уменьшает панель информации игрока и центрирует кнопку атаки на экране с картой',
+    en: 'Compacts the top panel: nick below buttons, inventory in OPS, gear icon for Settings, attack button centered',
+    ru: 'Компактная верхняя панель: ник под кнопками, инвентарь в OPS, шестерёнка вместо «Настройки», кнопка атаки по центру',
   },
   defaultEnabled: true,
   category: 'ui',
