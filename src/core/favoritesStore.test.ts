@@ -40,6 +40,25 @@ describe('favoritesStore', () => {
     expect(getFavoritedGuids().size).toBe(0);
   });
 
+  test('openDb создаёт все CUI stores для совместимости', async () => {
+    // loadFavorites() вызывает openDb() внутри — после этого БД должна содержать
+    // все stores, которые CUI ожидает (config, logs, state, stats, tiles, favorites).
+    await loadFavorites();
+
+    const request = indexedDB.open('CUI');
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = (): void => {
+        resolve(request.result);
+      };
+      request.onerror = (): void => {
+        reject(request.error instanceof Error ? request.error : new Error('open failed'));
+      };
+    });
+    const storeNames = Array.from(db.objectStoreNames).sort();
+    db.close();
+    expect(storeNames).toEqual(['config', 'favorites', 'logs', 'state', 'stats', 'tiles']);
+  });
+
   test('addFavorite сохраняет GUID и обновляет кеш', async () => {
     await loadFavorites();
     await addFavorite('guid-1');

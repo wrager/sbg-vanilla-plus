@@ -85,6 +85,27 @@ function waitForTransaction(tx: IDBTransaction): Promise<void> {
   });
 }
 
+// Stores, которые CUI создаёт в initializeDB (версия 9). Если мы создаём БД
+// первыми, нужно создать ВСЕ stores — иначе CUI при upgrade увидит oldVersion > 0,
+// вызовет updateDB() вместо initializeDB(), и попытается обратиться к
+// несуществующим stores (config, state, tiles), что приведёт к crash.
+const CUI_STORES: { name: string; options?: IDBObjectStoreParameters }[] = [
+  { name: 'config' },
+  { name: 'logs', options: { keyPath: 'timestamp' } },
+  { name: 'state' },
+  { name: 'stats', options: { keyPath: 'name' } },
+  { name: 'tiles' },
+  { name: STORE_NAME, options: { keyPath: 'guid' } },
+];
+
+function createAllStores(database: IDBDatabase): void {
+  for (const store of CUI_STORES) {
+    if (!database.objectStoreNames.contains(store.name)) {
+      database.createObjectStore(store.name, store.options);
+    }
+  }
+}
+
 function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
@@ -97,15 +118,12 @@ function openDb(): Promise<IDBDatabase> {
         resolve(db);
         return;
       }
-      // Store отсутствует — нужно повысить версию и создать.
+      // Store отсутствует — нужно повысить версию и создать ВСЕ CUI stores.
       const targetVersion = Math.max(db.version + 1, CUI_DB_VERSION);
       db.close();
       const upgrade = indexedDB.open(DB_NAME, targetVersion);
       upgrade.onupgradeneeded = (): void => {
-        const upgradedDb = upgrade.result;
-        if (!upgradedDb.objectStoreNames.contains(STORE_NAME)) {
-          upgradedDb.createObjectStore(STORE_NAME, { keyPath: 'guid' });
-        }
+        createAllStores(upgrade.result);
       };
       upgrade.onsuccess = (): void => {
         resolve(upgrade.result);
@@ -116,11 +134,8 @@ function openDb(): Promise<IDBDatabase> {
       };
     };
     probe.onupgradeneeded = (): void => {
-      // База только что создана — создаём store.
-      const db = probe.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'guid' });
-      }
+      // База только что создана — создаём ВСЕ CUI stores для совместимости.
+      createAllStores(probe.result);
     };
     probe.onerror = (): void => {
       dbPromise = null;
