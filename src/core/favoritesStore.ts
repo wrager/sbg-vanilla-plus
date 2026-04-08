@@ -111,7 +111,7 @@ export function isFavorited(pointGuid: string): boolean {
 }
 
 export function getFavoritedGuids(): ReadonlySet<string> {
-  return memoryGuids;
+  return new Set(memoryGuids);
 }
 
 /**

@@ -170,6 +170,19 @@ describe('favoritesStore', () => {
     expect(getFavoritesCount()).toBe(0);
   });
 
+  test('getFavoritedGuids возвращает defensive copy — мутация не влияет на store', async () => {
+    await loadFavorites();
+    await addFavorite('guid-1');
+
+    const guids = getFavoritedGuids() as Set<string>;
+    guids.delete('guid-1');
+    guids.add('injected');
+
+    expect(isFavorited('guid-1')).toBe(true);
+    expect(isFavorited('injected')).toBe(false);
+    expect(getFavoritesCount()).toBe(1);
+  });
+
   test('importFromJson новые записи имеют cooldown=null', async () => {
     await loadFavorites();
     await importFromJson(JSON.stringify(['new-1']));
