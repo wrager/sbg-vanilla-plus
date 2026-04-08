@@ -111,6 +111,7 @@ function openDb(): Promise<IDBDatabase> {
         resolve(upgrade.result);
       };
       upgrade.onerror = (): void => {
+        dbPromise = null;
         reject(upgrade.error ?? new Error('IDB upgrade failed'));
       };
     };
@@ -122,6 +123,7 @@ function openDb(): Promise<IDBDatabase> {
       }
     };
     probe.onerror = (): void => {
+      dbPromise = null;
       reject(probe.error ?? new Error('IDB open failed'));
     };
   });
