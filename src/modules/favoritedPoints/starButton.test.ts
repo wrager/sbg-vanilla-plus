@@ -93,6 +93,22 @@ describe('starButton', () => {
     expect(star?.classList.contains('is-filled')).toBe(true);
   });
 
+  test('title звезды локализован при добавлении и удалении', async () => {
+    const popup = createPopupDom('guid-1');
+    installStarButton();
+    const star = getStar(popup);
+    // До клика — не избранная, title «Add to favorites» (en по умолчанию в тестах).
+    expect(star?.title).toContain('Add to favorites');
+
+    star?.click();
+    await flushIdb();
+    expect(star?.title).toContain('Remove from favorites');
+
+    star?.click();
+    await flushIdb();
+    expect(star?.title).toContain('Add to favorites');
+  });
+
   test('повторный клик убирает точку из избранных', async () => {
     await addFavorite('guid-1');
     const popup = createPopupDom('guid-1');
