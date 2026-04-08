@@ -632,6 +632,61 @@ describe('calculateDeletions', () => {
     });
     expect(result).toEqual([]);
   });
+
+  test('slow mode: автоочистка удаляет cores/catalysers, но не ключи', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'slow';
+    limits.referencesAlliedLimit = 0;
+    limits.referencesNotAlliedLimit = 0;
+    limits.cores[5] = 2;
+    limits.catalysers[3] = 1;
+    const items = [
+      { g: 'c1', t: 1 as const, l: 5, a: 10 },
+      { g: 'k1', t: 2 as const, l: 3, a: 5 },
+      { g: 'r1', t: 3 as const, l: 'p1', a: 50 },
+    ];
+    const favs = {
+      favoritedGuids: new Set(['fav']),
+      referencesEnabled: true,
+      favoritesSnapshotReady: true,
+    };
+    const result = calculateDeletions(items, limits, favs);
+    expect(result).toEqual([
+      { guid: 'c1', type: 1, level: 5, amount: 8 },
+      { guid: 'k1', type: 2, level: 3, amount: 4 },
+    ]);
+  });
+
+  test('fast mode + empty favoritedGuids: cores/catalysers удаляются, ключи нет', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 0;
+    limits.cores[1] = 3;
+    const items = [
+      { g: 'c1', t: 1 as const, l: 1, a: 10 },
+      { g: 'r1', t: 3 as const, l: 'p1', a: 20 },
+    ];
+    const favs = {
+      favoritedGuids: new Set<string>(),
+      referencesEnabled: true,
+      favoritesSnapshotReady: true,
+    };
+    const result = calculateDeletions(items, limits, favs);
+    // Ключи не удаляются (favoritedGuids пуст), cores удаляются.
+    expect(result).toEqual([{ guid: 'c1', type: 1, level: 1, amount: 7 }]);
+  });
+
+  test('off mode: cores/catalysers удаляются, ключи нет', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'off';
+    limits.cores[5] = 0;
+    const items = [
+      { g: 'c1', t: 1 as const, l: 5, a: 3 },
+      { g: 'r1', t: 3 as const, l: 'p1', a: 10 },
+    ];
+    const result = calculateDeletions(items, limits, noFavs);
+    expect(result).toEqual([{ guid: 'c1', type: 1, level: 5, amount: 3 }]);
+  });
 });
 
 // --- formatDeletionSummary ---

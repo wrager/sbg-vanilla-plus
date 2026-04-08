@@ -5,7 +5,11 @@ import { readInventoryReferences } from '../../core/inventoryCache';
 import { isModuleActive } from '../../core/moduleRegistry';
 import type { IDeletionEntry } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
-import { deleteInventoryItems, updateInventoryCache, updateDomInventoryCount } from './inventoryApi';
+import {
+  deleteInventoryItems,
+  updateInventoryCache,
+  updateDomInventoryCount,
+} from './inventoryApi';
 
 const BUTTON_CLASS = 'svp-cleanup-slow-refs-button';
 const MODAL_CLASS = 'svp-cleanup-slow-modal';

@@ -6,7 +6,11 @@ import { parseInventoryCache } from './inventoryParser';
 import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
 import { initCleanupSettingsUi, destroyCleanupSettingsUi } from './cleanupSettingsUi';
-import { deleteInventoryItems, updateInventoryCache, updateDomInventoryCount } from './inventoryApi';
+import {
+  deleteInventoryItems,
+  updateInventoryCache,
+  updateDomInventoryCount,
+} from './inventoryApi';
 import { installSlowRefsDelete, uninstallSlowRefsDelete } from './slowRefsDelete';
 import { showToast } from '../../core/toast';
 
@@ -48,8 +52,6 @@ async function runCleanup(): Promise<void> {
     cleanupInProgress = false;
   }
 }
-
-
 
 async function runCleanupImpl(): Promise<void> {
   const settings = loadCleanupSettings();
