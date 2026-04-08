@@ -9,6 +9,7 @@ import {
   exportToJson,
   importFromJson,
   resetForTests,
+  SEAL_KEY,
 } from './favoritesStore';
 
 // Сбрасываем и кеш, и саму БД между тестами.
@@ -269,5 +270,51 @@ describe('favoritesStore', () => {
     });
     db.close();
     expect(stored).toEqual({ guid: 'new-1', cooldown: null });
+  });
+
+  describe('count seal (детекция IDB wipe)', () => {
+    test('addFavorite обновляет seal в localStorage', async () => {
+      await loadFavorites();
+      await addFavorite('guid-1');
+      expect(localStorage.getItem(SEAL_KEY)).toBe('1');
+      await addFavorite('guid-2');
+      expect(localStorage.getItem(SEAL_KEY)).toBe('2');
+    });
+
+    test('removeFavorite обновляет seal', async () => {
+      await loadFavorites();
+      await addFavorite('guid-1');
+      await removeFavorite('guid-1');
+      expect(localStorage.getItem(SEAL_KEY)).toBe('0');
+    });
+
+    test('loadFavorites при пустой IDB и seal > 0 → snapshotReady=false', async () => {
+      // Имитируем IDB wipe: seal записан, но IDB пуста.
+      localStorage.setItem(SEAL_KEY, '5');
+      const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+      await loadFavorites();
+      expect(isFavoritesSnapshotReady()).toBe(false);
+      expect(getFavoritesCount()).toBe(0);
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      alertSpy.mockRestore();
+    });
+
+    test('loadFavorites при пустой IDB и seal=0 → snapshotReady=true', async () => {
+      localStorage.setItem(SEAL_KEY, '0');
+      await loadFavorites();
+      expect(isFavoritesSnapshotReady()).toBe(true);
+    });
+
+    test('loadFavorites при пустой IDB и отсутствующем seal → snapshotReady=true', async () => {
+      localStorage.removeItem(SEAL_KEY);
+      await loadFavorites();
+      expect(isFavoritesSnapshotReady()).toBe(true);
+    });
+
+    test('importFromJson обновляет seal', async () => {
+      await loadFavorites();
+      await importFromJson(JSON.stringify(['a', 'b', 'c']));
+      expect(localStorage.getItem(SEAL_KEY)).toBe('3');
+    });
   });
 });

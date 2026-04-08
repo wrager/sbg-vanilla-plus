@@ -3,6 +3,8 @@
 // только CUI (таймер остывания точки); наш модуль его не использует, но обязан
 // сохранять существующие значения при upsert, чтобы не затереть данные CUI.
 
+import { t } from './l10n';
+
 export const FAVORITES_CHANGED_EVENT = 'svp:favorites-changed';
 
 function emitChange(): void {
@@ -12,6 +14,31 @@ function emitChange(): void {
 const DB_NAME = 'CUI';
 const STORE_NAME = 'favorites';
 const CUI_DB_VERSION = 9;
+
+// Count seal: количество избранных записывается в localStorage при каждом
+// изменении. При loadFavorites() если IDB пуста, а seal > 0 — значит данные
+// потеряны (Android IDB wipe). В этом случае snapshotLoaded = false, удаление
+// ключей заблокировано, пользователь получает alert.
+export const SEAL_KEY = 'svp_favorites_seal';
+
+function updateSeal(): void {
+  try {
+    localStorage.setItem(SEAL_KEY, String(memoryGuids.size));
+  } catch {
+    // localStorage может быть недоступен (private mode, quota). Не критично.
+  }
+}
+
+function readSeal(): number {
+  try {
+    const value = localStorage.getItem(SEAL_KEY);
+    if (value === null) return 0;
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0;
+  }
+}
 
 export interface IFavoriteRecord {
   guid: string;
@@ -122,7 +149,23 @@ export async function loadFavorites(): Promise<void> {
     memoryGuids.add(record.guid);
     cooldownByGuid.set(record.guid, record.cooldown);
   }
+
+  // Count seal: если IDB пуста, а seal говорит что были избранные —
+  // данные потеряны (Android IDB wipe). Блокируем удаление ключей.
+  const seal = readSeal();
+  if (memoryGuids.size === 0 && seal > 0) {
+    snapshotLoaded = false;
+    alert(
+      t({
+        en: 'Favorited points data may have been lost (storage cleared). Key auto-cleanup is blocked. Re-import favorites via module settings.',
+        ru: 'Данные избранных точек могли быть потеряны (хранилище очищено). Автоочистка ключей заблокирована. Импортируйте избранные через настройки модуля.',
+      }),
+    );
+    return;
+  }
+
   snapshotLoaded = true;
+  updateSeal();
 }
 
 /** Синхронная проверка — используется из hot path автоочистки. */
@@ -164,6 +207,7 @@ export async function addFavorite(pointGuid: string): Promise<void> {
   await committed;
   memoryGuids.add(pointGuid);
   cooldownByGuid.set(pointGuid, cooldown);
+  updateSeal();
   emitChange();
 }
 
@@ -176,6 +220,7 @@ export async function removeFavorite(pointGuid: string): Promise<void> {
   await committed;
   memoryGuids.delete(pointGuid);
   cooldownByGuid.delete(pointGuid);
+  updateSeal();
   emitChange();
 }
 
@@ -218,6 +263,7 @@ export async function importFromJson(json: string): Promise<number> {
   await committed;
   memoryGuids = new Set(parsed);
   cooldownByGuid = new Map(parsed.map((guid) => [guid, null]));
+  updateSeal();
   emitChange();
   return parsed.length;
 }
@@ -227,6 +273,7 @@ export function resetForTests(): void {
   memoryGuids = new Set();
   cooldownByGuid = new Map();
   snapshotLoaded = false;
+  localStorage.removeItem(SEAL_KEY);
   if (dbPromise) {
     void dbPromise.then((db) => {
       db.close();
