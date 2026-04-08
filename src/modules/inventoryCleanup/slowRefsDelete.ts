@@ -47,7 +47,6 @@ export async function fetchPointTeam(pointGuid: string): Promise<number | null> 
   } catch {
     return null;
   }
-  return null;
 }
 
 interface IProgress {
