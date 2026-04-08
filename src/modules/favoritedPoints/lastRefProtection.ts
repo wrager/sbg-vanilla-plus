@@ -1,4 +1,5 @@
 import { getFavoritedGuids } from '../../core/favoritesStore';
+import { t } from '../../core/l10n';
 import { showToast } from '../../core/toast';
 import { loadFavoritedPointsSettings } from './settings';
 
@@ -37,10 +38,17 @@ function isDrawResponseShape(value: unknown): value is IDrawResponseShape {
 }
 
 function showHideLastFavRefToast(hidden: number): void {
-  const noun = hidden === 1 ? 'ключ' : hidden < 5 ? 'ключа' : 'ключей';
-  const message = `Скрыт${hidden === 1 ? '' : 'ы'} последн${
-    hidden === 1 ? 'ий' : 'ие'
-  } ${hidden} ${noun} от избранных точек`;
+  const message = t(
+    hidden === 1
+      ? {
+          en: `Hidden last key from a favorited point`,
+          ru: `Скрыт последний ключ от избранной точки`,
+        }
+      : {
+          en: `Hidden last ${hidden} keys from favorited points`,
+          ru: `Скрыты последние ${hidden} ${hidden < 5 ? 'ключа' : 'ключей'} от избранных точек`,
+        },
+  );
   showToast(message, 4000);
 }
 

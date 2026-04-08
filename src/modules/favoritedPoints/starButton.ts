@@ -1,4 +1,5 @@
 import { waitForElement } from '../../core/dom';
+import { t } from '../../core/l10n';
 import {
   addFavorite,
   isFavorited,
@@ -46,7 +47,9 @@ function updateButtonState(button: HTMLButtonElement, guid: string | null): void
   button.disabled = false;
   const favorited = isFavorited(guid);
   button.classList.toggle('is-filled', favorited);
-  button.title = favorited ? 'Убрать из избранного' : 'Добавить в избранное';
+  button.title = favorited
+    ? t({ en: 'Remove from favorites', ru: 'Убрать из избранного' })
+    : t({ en: 'Add to favorites', ru: 'Добавить в избранное' });
   button.setAttribute('aria-pressed', favorited ? 'true' : 'false');
 }
 

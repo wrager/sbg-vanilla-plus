@@ -109,7 +109,9 @@ function updateItemStarState(item: HTMLElement): void {
   const favorited = pointGuid !== undefined && isFavorited(pointGuid);
   star.classList.toggle('is-filled', favorited);
   star.setAttribute('aria-pressed', favorited ? 'true' : 'false');
-  star.title = favorited ? 'Убрать из избранного' : 'Добавить в избранное';
+  star.title = favorited
+    ? t({ en: 'Remove from favorites', ru: 'Убрать из избранного' })
+    : t({ en: 'Add to favorites', ru: 'Добавить в избранное' });
 }
 
 /**
