@@ -38,6 +38,26 @@ function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
+/**
+ * Ждёт фактического коммита транзакции IDB. request.onsuccess не гарантирует,
+ * что транзакция закоммичена — она может быть отменена (abort) после успеха
+ * отдельного запроса (квота, системное давление, crash). Обновлять in-memory
+ * состояние безопасно только после oncomplete.
+ */
+function waitForTransaction(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = (): void => {
+      resolve();
+    };
+    tx.onabort = (): void => {
+      reject(tx.error ?? new Error('IDB transaction aborted'));
+    };
+    tx.onerror = (): void => {
+      reject(tx.error ?? new Error('IDB transaction error'));
+    };
+  });
+}
+
 function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
@@ -131,10 +151,17 @@ export async function addFavorite(pointGuid: string): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(STORE_NAME, 'readwrite');
   const store = tx.objectStore(STORE_NAME);
+  // Регистрируем ожидание коммита ДО выполнения запросов — tx.oncomplete
+  // может сработать сразу после последнего request.onsuccess.
+  const committed = waitForTransaction(tx);
   const existing: unknown = await promisifyRequest(store.get(pointGuid));
   const cooldown = isFavoriteRecord(existing) ? existing.cooldown : null;
   const record: IFavoriteRecord = { guid: pointGuid, cooldown };
   await promisifyRequest(store.put(record));
+  // Обновляем память только после фактического коммита транзакции.
+  // promisifyRequest резолвится на request.onsuccess, но транзакция может
+  // быть отменена после этого (квота, системное давление).
+  await committed;
   memoryGuids.add(pointGuid);
   cooldownByGuid.set(pointGuid, cooldown);
   emitChange();
@@ -144,7 +171,9 @@ export async function removeFavorite(pointGuid: string): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(STORE_NAME, 'readwrite');
   const store = tx.objectStore(STORE_NAME);
+  const committed = waitForTransaction(tx);
   await promisifyRequest(store.delete(pointGuid));
+  await committed;
   memoryGuids.delete(pointGuid);
   cooldownByGuid.delete(pointGuid);
   emitChange();
@@ -180,11 +209,13 @@ export async function importFromJson(json: string): Promise<number> {
   const db = await openDb();
   const tx = db.transaction(STORE_NAME, 'readwrite');
   const store = tx.objectStore(STORE_NAME);
+  const committed = waitForTransaction(tx);
   await promisifyRequest(store.clear());
   for (const guid of parsed) {
     const record: IFavoriteRecord = { guid, cooldown: null };
     await promisifyRequest(store.put(record));
   }
+  await committed;
   memoryGuids = new Set(parsed);
   cooldownByGuid = new Map(parsed.map((guid) => [guid, null]));
   emitChange();

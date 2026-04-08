@@ -1,6 +1,7 @@
 import {
   loadFavorites,
   isFavorited,
+  isFavoritesSnapshotReady,
   getFavoritedGuids,
   getFavoritesCount,
   addFavorite,
@@ -168,6 +169,66 @@ describe('favoritesStore', () => {
     resetForTests();
     await loadFavorites();
     expect(getFavoritesCount()).toBe(0);
+  });
+
+  test('addFavorite идемпотентен — повторное добавление не увеличивает count', async () => {
+    await loadFavorites();
+    await addFavorite('guid-1');
+    await addFavorite('guid-1');
+    expect(getFavoritesCount()).toBe(1);
+
+    // Проверяем персистентность через перезагрузку.
+    resetForTests();
+    await loadFavorites();
+    expect(getFavoritesCount()).toBe(1);
+  });
+
+  test('removeFavorite несуществующего GUID не бросает ошибку', async () => {
+    await loadFavorites();
+    await removeFavorite('never-added');
+    expect(getFavoritesCount()).toBe(0);
+  });
+
+  test('getFavoritedGuids возвращает корректный Set после нескольких добавлений', async () => {
+    await loadFavorites();
+    await addFavorite('guid-a');
+    await addFavorite('guid-b');
+    await addFavorite('guid-c');
+
+    const guids = getFavoritedGuids();
+    expect(guids.size).toBe(3);
+    expect(guids.has('guid-a')).toBe(true);
+    expect(guids.has('guid-b')).toBe(true);
+    expect(guids.has('guid-c')).toBe(true);
+    expect(guids.has('guid-d')).toBe(false);
+  });
+
+  test('isFavoritesSnapshotReady: false до loadFavorites, true после, false после reset', async () => {
+    expect(isFavoritesSnapshotReady()).toBe(false);
+    await loadFavorites();
+    expect(isFavoritesSnapshotReady()).toBe(true);
+    resetForTests();
+    expect(isFavoritesSnapshotReady()).toBe(false);
+  });
+
+  test('export → import с другим набором: round-trip сохраняет данные', async () => {
+    await loadFavorites();
+    await addFavorite('guid-x');
+    await addFavorite('guid-y');
+    await addFavorite('guid-z');
+
+    const json = await exportToJson();
+
+    // Заменяем избранные на другой набор, затем восстанавливаем из экспорта.
+    await importFromJson(JSON.stringify(['other-1']));
+    expect(getFavoritesCount()).toBe(1);
+
+    await importFromJson(json);
+    const guids = getFavoritedGuids();
+    expect(guids.size).toBe(3);
+    expect(guids.has('guid-x')).toBe(true);
+    expect(guids.has('guid-y')).toBe(true);
+    expect(guids.has('guid-z')).toBe(true);
   });
 
   test('getFavoritedGuids возвращает defensive copy — мутация не влияет на store', async () => {
