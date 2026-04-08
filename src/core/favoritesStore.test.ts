@@ -55,7 +55,46 @@ describe('favoritesStore', () => {
       };
     });
     const storeNames = Array.from(db.objectStoreNames).sort();
+    // Версия должна быть >= 9 (CUI_DB_VERSION), иначе CUI при open('CUI', 9)
+    // запустит onupgradeneeded и попытается createObjectStore на существующих stores.
+    expect(db.version).toBeGreaterThanOrEqual(9);
     db.close();
+    expect(storeNames).toEqual(['config', 'favorites', 'logs', 'state', 'stats', 'tiles']);
+  });
+
+  test('openDb достраивает недостающие CUI stores (миграция со старой версии SVP)', async () => {
+    // Имитируем ситуацию: старый SVP создал БД только с favorites (без остальных).
+    const createRequest = indexedDB.open('CUI', 9);
+    const setupDb = await new Promise<IDBDatabase>((resolve, reject) => {
+      createRequest.onupgradeneeded = (): void => {
+        const database = createRequest.result;
+        database.createObjectStore('favorites', { keyPath: 'guid' });
+      };
+      createRequest.onsuccess = (): void => {
+        resolve(createRequest.result);
+      };
+      createRequest.onerror = (): void => {
+        reject(createRequest.error instanceof Error ? createRequest.error : new Error('setup'));
+      };
+    });
+    // Проверяем что только favorites есть.
+    expect(Array.from(setupDb.objectStoreNames)).toEqual(['favorites']);
+    setupDb.close();
+
+    // openDb (через loadFavorites) должен обнаружить отсутствие остальных stores и досоздать.
+    await loadFavorites();
+
+    const checkRequest = indexedDB.open('CUI');
+    const checkDb = await new Promise<IDBDatabase>((resolve, reject) => {
+      checkRequest.onsuccess = (): void => {
+        resolve(checkRequest.result);
+      };
+      checkRequest.onerror = (): void => {
+        reject(checkRequest.error instanceof Error ? checkRequest.error : new Error('check'));
+      };
+    });
+    const storeNames = Array.from(checkDb.objectStoreNames).sort();
+    checkDb.close();
     expect(storeNames).toEqual(['config', 'favorites', 'logs', 'state', 'stats', 'tiles']);
   });
 

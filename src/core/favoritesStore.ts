@@ -85,24 +85,116 @@ function waitForTransaction(tx: IDBTransaction): Promise<void> {
   });
 }
 
-// Stores, которые CUI создаёт в initializeDB (версия 9). Если мы создаём БД
-// первыми, нужно создать ВСЕ stores — иначе CUI при upgrade увидит oldVersion > 0,
-// вызовет updateDB() вместо initializeDB(), и попытается обратиться к
-// несуществующим stores (config, state, tiles), что приведёт к crash.
-const CUI_STORES: { name: string; options?: IDBObjectStoreParameters }[] = [
-  { name: 'config' },
-  { name: 'logs', options: { keyPath: 'timestamp' } },
-  { name: 'state' },
-  { name: 'stats', options: { keyPath: 'name' } },
-  { name: 'tiles' },
-  { name: STORE_NAME, options: { keyPath: 'guid' } },
-];
+/**
+ * Полная инициализация БД CUI v26.4.1: stores + дефолтные данные.
+ * Портировано из refs/cui/index.js initializeDB() (строки 147-179).
+ *
+ * CUI при open('CUI', 9) проверяет oldVersion:
+ * - oldVersion == 0 → initializeDB() (stores + данные)
+ * - oldVersion > 0  → updateDB() (миграции, ожидает stores и данные)
+ * Если мы создадим stores без данных — CUI пропустит onupgradeneeded
+ * (версия уже >= 9), получит пустой config и сломается.
+ */
+function initializeCuiDb(database: IDBDatabase, transaction: IDBTransaction): void {
+  // Трекаем какие stores были созданы нами, чтобы заполнять данными только новые.
+  // Если store уже существует (CUI создал раньше) — не трогаем его данные.
+  const created = new Set<string>();
 
-function createAllStores(database: IDBDatabase): void {
-  for (const store of CUI_STORES) {
-    if (!database.objectStoreNames.contains(store.name)) {
-      database.createObjectStore(store.name, store.options);
+  function ensureStore(name: string, options?: IDBObjectStoreParameters): void {
+    if (!database.objectStoreNames.contains(name)) {
+      database.createObjectStore(name, options);
+      created.add(name);
     }
+  }
+
+  ensureStore('config');
+  ensureStore('logs', { keyPath: 'timestamp' });
+  ensureStore('state');
+  ensureStore('stats', { keyPath: 'name' });
+  ensureStore('tiles');
+  ensureStore(STORE_NAME, { keyPath: 'guid' });
+
+  let isDarkMode = false;
+  try {
+    const settings: unknown = JSON.parse(localStorage.getItem('settings') ?? '{}');
+    isDarkMode =
+      typeof settings === 'object' &&
+      settings !== null &&
+      (settings as Record<string, unknown>).theme === 'dark';
+  } catch {
+    // Невалидный JSON — используем светлую тему по умолчанию.
+  }
+
+  // Дефолтная конфигурация CUI v26.4.1 (refs/cui/index.js defaultConfig).
+  const defaultConfig: Record<string, unknown> = {
+    maxAmountInBag: {
+      cores: { 1: -1, 2: -1, 3: -1, 4: -1, 5: -1, 6: -1, 7: -1, 8: -1, 9: -1, 10: -1 },
+      catalysers: { 1: -1, 2: -1, 3: -1, 4: -1, 5: -1, 6: -1, 7: -1, 8: -1, 9: -1, 10: -1 },
+      references: { allied: -1, hostile: -1 },
+    },
+    autoSelect: { deploy: 'max', upgrade: 'min', attack: 'latest' },
+    mapFilters: {
+      invert: isDarkMode ? 1 : 0,
+      hueRotate: 0,
+      brightness: isDarkMode ? 0.75 : 1,
+      grayscale: isDarkMode ? 1 : 0,
+      sepia: 0,
+      blur: 0,
+      branding: 'default',
+      brandingColor: '#CCCCCC',
+    },
+    tinting: { map: 1, point: 'team', profile: 1 },
+    vibration: { buttons: 1, notifications: 1 },
+    ui: {
+      chamomile: 1,
+      doubleClickZoom: 0,
+      restoreRotation: 1,
+      pointBgImage: 0,
+      pointBtnsRtl: 0,
+      pointBgImageBlur: 1,
+      pointDischargeTimeout: 1,
+    },
+    pointHighlighting: {
+      inner: 'uniqc',
+      outer: 'off',
+      outerTop: 'cores',
+      outerBottom: 'highlevel',
+      text: 'refsAmount',
+      innerColor: '#E87100',
+      outerColor: '#E87100',
+      outerTopColor: '#EB4DBF',
+      outerBottomColor: '#28C4F4',
+    },
+    drawing: {
+      returnToPointInfo: 'discoverable',
+      minDistance: -1,
+      maxDistance: -1,
+      hideLastFavRef: 0,
+    },
+    notifications: { status: 'all', onClick: 'jumpto', interval: 30000, duration: -1 },
+  };
+
+  if (created.has('config')) {
+    const configStore = transaction.objectStore('config');
+    for (const key of Object.keys(defaultConfig)) {
+      configStore.add(defaultConfig[key], key);
+    }
+  }
+
+  if (created.has('logs')) {
+    transaction.objectStore('logs').createIndex('action_type', 'type');
+  }
+
+  if (created.has('state')) {
+    const stateStore = transaction.objectStore('state');
+    stateStore.add(new Set<string>(), 'excludedCores');
+    stateStore.add(true, 'isMainToolbarOpened');
+    stateStore.add(false, 'isRotationLocked');
+    stateStore.add(false, 'isStarMode');
+    stateStore.add(null, 'lastUsedCatalyser');
+    stateStore.add(null, 'starModeTarget');
+    stateStore.add(0, 'versionWarns');
+    stateStore.add(false, 'isAutoShowPoints');
   }
 }
 
@@ -114,16 +206,23 @@ function openDb(): Promise<IDBDatabase> {
     const probe = indexedDB.open(DB_NAME);
     probe.onsuccess = (): void => {
       const db = probe.result;
-      if (db.objectStoreNames.contains(STORE_NAME)) {
+      const allCuiStores = ['config', 'logs', 'state', 'stats', 'tiles', STORE_NAME];
+      if (allCuiStores.every((name) => db.objectStoreNames.contains(name))) {
         resolve(db);
         return;
       }
-      // Store отсутствует — нужно повысить версию и создать ВСЕ CUI stores.
+      // Не все CUI stores на месте — полная инициализация.
+      // Версия = CUI_DB_VERSION чтобы CUI не запускал onupgradeneeded.
       const targetVersion = Math.max(db.version + 1, CUI_DB_VERSION);
       db.close();
       const upgrade = indexedDB.open(DB_NAME, targetVersion);
-      upgrade.onupgradeneeded = (): void => {
-        createAllStores(upgrade.result);
+      upgrade.onupgradeneeded = (event): void => {
+        const upgradeTransaction = (event.target as IDBOpenDBRequest).transaction;
+        if (!upgradeTransaction) {
+          reject(new Error('IDB upgrade transaction is null'));
+          return;
+        }
+        initializeCuiDb(upgrade.result, upgradeTransaction);
       };
       upgrade.onsuccess = (): void => {
         resolve(upgrade.result);
@@ -133,10 +232,9 @@ function openDb(): Promise<IDBDatabase> {
         reject(upgrade.error ?? new Error('IDB upgrade failed'));
       };
     };
-    probe.onupgradeneeded = (): void => {
-      // База только что создана — создаём ВСЕ CUI stores для совместимости.
-      createAllStores(probe.result);
-    };
+    // probe.onupgradeneeded: БД не существовала — создаётся пустой на версии 1.
+    // Не создаём stores здесь: probe.onsuccess увидит отсутствие favorites и
+    // запустит upgrade до CUI_DB_VERSION с полной инициализацией.
     probe.onerror = (): void => {
       dbPromise = null;
       reject(probe.error ?? new Error('IDB open failed'));
