@@ -196,12 +196,15 @@ function createFilterBar(content: Element): HTMLElement {
   countSpan.className = 'svp-fav-filter-count';
   updateCountLabel();
 
+  const countWrapper = document.createElement('span');
+  countWrapper.appendChild(document.createTextNode('('));
+  countWrapper.appendChild(countSpan);
+  countWrapper.appendChild(document.createTextNode(')'));
+
   label.appendChild(checkbox);
   label.appendChild(text);
   label.appendChild(starIcon);
-  label.appendChild(document.createTextNode(' ('));
-  label.appendChild(countSpan);
-  label.appendChild(document.createTextNode(')'));
+  label.appendChild(countWrapper);
 
   bar.appendChild(label);
   return bar;
