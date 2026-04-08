@@ -40,9 +40,9 @@ const DELETABLE_TYPES = new Set([ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_
 
 export interface IDeleteInventoryOptions {
   /**
-   * Снимок GUID всех ЗАЩИЩЁННЫХ точек (актуальные избранные + safety-backup)
-   * на момент вызова — финальный guard перед DELETE. Даже если ключ прошёл
-   * фильтрацию выше, перед отправкой запроса мы ещё раз проверяем pointGuid.
+   * Снимок GUID избранных точек на момент вызова — финальный guard перед DELETE.
+   * Даже если ключ прошёл фильтрацию в calculateDeletions, перед отправкой
+   * запроса мы ещё раз проверяем, что его pointGuid нет в этом наборе.
    */
   favoritedGuids: ReadonlySet<string>;
   /**
@@ -51,11 +51,6 @@ export interface IDeleteInventoryOptions {
    * Если false и в батче есть ключи — бросается ошибка, удаление не происходит.
    */
   favoritedPointsActive: boolean;
-  /**
-   * false, если guard-хранилище избранных повреждено/недоступно. В таком
-   * состоянии удаление ключей запрещено (fail-closed).
-   */
-  favoritesGuardHealthy: boolean;
 }
 
 export async function deleteInventoryItems(
@@ -66,9 +61,6 @@ export async function deleteInventoryItems(
   // активен (включён + готов). Проверяем непосредственно перед DELETE, чтобы
   // ни один баг в цепочке выше не мог обойти эту защиту.
   const hasReferences = deletions.some((entry) => entry.type === ITEM_TYPE_REFERENCE);
-  if (hasReferences && !options.favoritesGuardHealthy) {
-    throw new Error('Удаление ключей запрещено: guard избранных недоступен');
-  }
   if (hasReferences && !options.favoritedPointsActive) {
     throw new Error('Удаление ключей запрещено: модуль favoritedPoints не активен (guard)');
   }

@@ -1,8 +1,4 @@
 import { getFavoritedGuids } from '../../core/favoritesStore';
-import {
-  getFavoritesProtectionSnapshot,
-  syncFavoritesProtection,
-} from '../../core/favoritesProtection';
 import { t } from '../../core/l10n';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import { readInventoryReferences } from '../../core/inventoryCache';
@@ -236,18 +232,7 @@ async function runSlowDelete(): Promise<void> {
     return;
   }
 
-  const guardSnapshot = syncFavoritesProtection(getFavoritedGuids());
-  if (!guardSnapshot.storageHealthy) {
-    showSlowToast(
-      t({
-        en: 'Key deletion is blocked: favorites guard storage is not healthy',
-        ru: 'Удаление ключей заблокировано: guard-хранилище избранных повреждено',
-      }),
-    );
-    return;
-  }
-
-  const favoritedGuids = guardSnapshot.protectedGuids;
+  const favoritedGuids = getFavoritedGuids();
   if (favoritedGuids.size === 0) {
     showSlowToast(
       t({
@@ -336,11 +321,9 @@ async function runSlowDelete(): Promise<void> {
   progress.setStatus(t({ en: 'Deleting: ', ru: 'Удаление: ' }) + summaryText);
 
   try {
-    const finalGuardSnapshot = getFavoritesProtectionSnapshot(getFavoritedGuids());
     const result = await deleteInventoryItems(deletions, {
-      favoritedGuids: finalGuardSnapshot.protectedGuids,
+      favoritedGuids: getFavoritedGuids(),
       favoritedPointsActive: isModuleActive('favoritedPoints'),
-      favoritesGuardHealthy: finalGuardSnapshot.storageHealthy,
     });
     updateInventoryCache(deletions);
     if (result.total > 0) {

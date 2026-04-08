@@ -2,10 +2,6 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 import { isModuleActive } from '../../core/moduleRegistry';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 import { getFavoritedGuids, isFavoritesSnapshotReady } from '../../core/favoritesStore';
-import {
-  getFavoritesProtectionSnapshot,
-  syncFavoritesProtection,
-} from '../../core/favoritesProtection';
 import { parseInventoryCache } from './inventoryParser';
 import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
@@ -78,16 +74,10 @@ async function runCleanupImpl(): Promise<void> {
   // Ключи удаляются только если модуль favoritedPoints активен (включён + готов).
   // Если модуль выключен — защита избранных не гарантирована, автоочистка ключи
   // не трогает, даже если memory cache избранных загружен (init() всегда выполняется).
-  const referencesModuleActive = isModuleActive('favoritedPoints');
-  const favoritedGuids = referencesModuleActive ? getFavoritedGuids() : new Set<string>();
-  // Синхронизируем защитный журнал перед расчётом. Он sticky и переживает
-  // частичную/полную потерю списка избранного в IDB между сессиями.
-  const guardSnapshot = referencesModuleActive
-    ? syncFavoritesProtection(favoritedGuids)
-    : getFavoritesProtectionSnapshot(favoritedGuids);
-  const referencesEnabled = referencesModuleActive && guardSnapshot.storageHealthy;
+  const referencesEnabled = isModuleActive('favoritedPoints');
+  const favoritedGuids = referencesEnabled ? getFavoritedGuids() : new Set<string>();
   const deletions = calculateDeletions(items, settings.limits, {
-    favoritedGuids: guardSnapshot.protectedGuids,
+    favoritedGuids,
     referencesEnabled,
     favoritesSnapshotReady: isFavoritesSnapshotReady(),
   });
@@ -102,13 +92,11 @@ async function runCleanupImpl(): Promise<void> {
   );
 
   try {
-    // Финальный guard: перечитываем защищённый набор точек (избранные + backup)
-    // перед отправкой DELETE, чтобы учесть изменения после calculateDeletions.
-    const finalGuardSnapshot = getFavoritesProtectionSnapshot(getFavoritedGuids());
+    // Финальный guard: перечитываем избранные из memory cache ПЕРЕД отправкой
+    // DELETE-запроса, чтобы учесть изменения с момента calculateDeletions.
     const result = await deleteInventoryItems(deletions, {
-      favoritedGuids: finalGuardSnapshot.protectedGuids,
+      favoritedGuids: getFavoritedGuids(),
       favoritedPointsActive: isModuleActive('favoritedPoints'),
-      favoritesGuardHealthy: finalGuardSnapshot.storageHealthy,
     });
     updateInventoryCache(deletions);
     if (result.total > 0) {

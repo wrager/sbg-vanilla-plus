@@ -3,11 +3,7 @@ import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
 
 const AUTH_TOKEN = 'test-token-123';
 
-const noFavs = {
-  favoritedGuids: new Set<string>(),
-  favoritedPointsActive: true,
-  favoritesGuardHealthy: true,
-};
+const noFavs = { favoritedGuids: new Set<string>(), favoritedPointsActive: true };
 
 let originalFetch: typeof window.fetch;
 let mockFetch: jest.Mock;
@@ -198,7 +194,6 @@ describe('deleteInventoryItems', () => {
       deleteInventoryItems(deletions, {
         favoritedGuids: new Set(['fav-point']),
         favoritedPointsActive: true,
-        favoritesGuardHealthy: true,
       }),
     ).rejects.toThrow('Ключ от избранной точки fav-point не может быть удалён');
     expect(mockFetch).not.toHaveBeenCalled();
@@ -213,7 +208,6 @@ describe('deleteInventoryItems', () => {
       deleteInventoryItems(deletions, {
         favoritedGuids: new Set(['fav']),
         favoritedPointsActive: true,
-        favoritesGuardHealthy: true,
       }),
     ).rejects.toThrow('Ключ от избранной точки');
     expect(mockFetch).not.toHaveBeenCalled();
@@ -227,7 +221,6 @@ describe('deleteInventoryItems', () => {
       deleteInventoryItems(deletions, {
         favoritedGuids: new Set<string>(),
         favoritedPointsActive: false,
-        favoritesGuardHealthy: true,
       }),
     ).rejects.toThrow('модуль favoritedPoints не активен');
     expect(mockFetch).not.toHaveBeenCalled();
@@ -239,24 +232,8 @@ describe('deleteInventoryItems', () => {
     await deleteInventoryItems(deletions, {
       favoritedGuids: new Set<string>(),
       favoritedPointsActive: false,
-      favoritesGuardHealthy: false,
     });
     expect(mockFetch).toHaveBeenCalledTimes(1);
-  });
-
-  test('guard: бросает если guard избранных недоступен', async () => {
-    const deletions: IDeletionEntry[] = [
-      { guid: 'r1', type: 3, level: null, amount: 1, pointGuid: 'p1' },
-    ];
-
-    await expect(
-      deleteInventoryItems(deletions, {
-        favoritedGuids: new Set<string>(),
-        favoritedPointsActive: true,
-        favoritesGuardHealthy: false,
-      }),
-    ).rejects.toThrow('guard избранных недоступен');
-    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   test('rejects deletion of brooms (type 4)', async () => {
