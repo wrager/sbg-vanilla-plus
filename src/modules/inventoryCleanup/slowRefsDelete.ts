@@ -310,7 +310,7 @@ async function runSlowDelete(): Promise<void> {
   const notAlliedAmount = notAlliedDeletions.reduce((sum, entry) => sum + entry.amount, 0);
 
   const alliedLabel = t({ en: 'allied', ru: 'союзные' });
-  const notAlliedLabel = t({ en: 'not allied', ru: 'не союзные' });
+  const notAlliedLabel = t({ en: 'not allied', ru: 'несоюзные' });
   const keysLabel = t({ en: 'keys', ru: 'ключей' });
   const summaryText = `${totalAmount} ${keysLabel} (${alliedLabel} ${alliedAmount} + ${notAlliedLabel} ${notAlliedAmount})`;
 

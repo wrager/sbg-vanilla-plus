@@ -33,7 +33,7 @@ const REF_MODE_FAST_LABEL: ILocalizedString = {
 };
 const REF_MODE_SLOW_LABEL: ILocalizedString = {
   en: 'Slow (allied/not allied split, manual only)',
-  ru: 'Медленно (союзные/не союзные, только вручную)',
+  ru: 'Медленно (союзные/несоюзные, только вручную)',
 };
 const REF_FAST_LIMIT_LABEL: ILocalizedString = {
   en: 'Keys per point limit',
@@ -45,7 +45,7 @@ const REF_ALLIED_LIMIT_LABEL: ILocalizedString = {
 };
 const REF_NOT_ALLIED_LIMIT_LABEL: ILocalizedString = {
   en: 'Not allied keys limit',
-  ru: 'Лимит не союзных',
+  ru: 'Лимит несоюзных',
 };
 const REF_DISABLED_HINT: ILocalizedString = {
   en: 'Enable "Favorited points" module to manage key deletion',

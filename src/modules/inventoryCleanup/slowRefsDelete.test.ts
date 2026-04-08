@@ -104,7 +104,7 @@ describe('calculateSlowDeletions', () => {
     ]);
   });
 
-  test('unknown team (null) — считается не союзным, применяется notAlliedLimit', () => {
+  test('unknown team (null) — считается несоюзным, применяется notAlliedLimit', () => {
     const refs: IRefByGuid[] = [
       { itemGuid: 'r1', pointGuid: 'p1', amount: 100 }, // team=null (нейтральная)
       { itemGuid: 'r2', pointGuid: 'p2', amount: 50 }, // team=ENEMY
@@ -121,7 +121,7 @@ describe('calculateSlowDeletions', () => {
     ]);
   });
 
-  test('unknown team (undefined/missing) — считается не союзным', () => {
+  test('unknown team (undefined/missing) — считается несоюзным', () => {
     const refs: IRefByGuid[] = [{ itemGuid: 'r1', pointGuid: 'p1', amount: 10 }];
     const teams = new Map<string, number | null>(); // p1 отсутствует в teams
     const result = calculateSlowDeletions(refs, teams, PLAYER_TEAM, -1, 0);
