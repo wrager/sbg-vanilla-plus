@@ -77,7 +77,14 @@ function injectStarButton(popup: Element): void {
     { signal: clickAbortController.signal },
   );
 
-  imageBox.appendChild(button);
+  // Вставляем сразу после #i-ref (количество ключей), чтобы звезда
+  // была справа от текста. CSS сдвигает #i-ref левее на размер звезды.
+  const refSpan = imageBox.querySelector('#i-ref');
+  if (refSpan) {
+    refSpan.after(button);
+  } else {
+    imageBox.appendChild(button);
+  }
   updateButtonState(button, getCurrentGuid(popup));
 }
 

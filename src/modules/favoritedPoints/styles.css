@@ -1,11 +1,11 @@
-/* Позиция: правый верхний угол, но левее #i-ref (ключи) — он тоже абсолютный
-   справа, но внизу. На маленьких image-box они могут перекрываться. */
+/* Звезда вставляется после #i-ref (количество ключей) внутри .i-image-box.
+   Оба элемента абсолютные, внизу справа. #i-ref сдвигается левее на размер звезды. */
 .svp-fav-star {
   position: absolute;
-  top: 4px;
-  right: 70px;
-  width: 32px;
-  height: 32px;
+  bottom: 0;
+  right: 0;
+  width: 28px;
+  height: 28px;
   padding: 0;
   margin: 0;
   border: none;
@@ -20,6 +20,11 @@
   transition:
     color 0.15s ease,
     transform 0.15s ease;
+}
+
+/* Сдвинуть #i-ref левее чтобы не перекрывался звездой */
+.i-image-box #i-ref {
+  margin-right: 32px;
 }
 
 .svp-fav-star svg {
