@@ -12,7 +12,11 @@ let latestPoint: [number, number] | null = null;
 let inflateExtent = false;
 let enabled = false;
 let pendingDelta = 0;
-let frameRequestId: number | null = null;
+let lastApplyTime = 0;
+
+/** Минимальный интервал между применениями rotation (мс).
+ *  ~30fps — достаточно плавно для жеста, но вдвое легче для рендерера. */
+const ROTATION_THROTTLE_MS = 33;
 
 function isFollowActive(): boolean {
   // Игра считает follow активным по умолчанию (null != 'false'),
@@ -47,28 +51,25 @@ function applyRotation(delta: number): void {
 }
 
 function applyPendingRotation(): void {
-  frameRequestId = null;
   const delta = pendingDelta;
   pendingDelta = 0;
   if (delta !== 0) {
     applyRotation(delta);
+    lastApplyTime = performance.now();
   }
 }
 
 function flushPendingRotation(): void {
-  if (frameRequestId !== null) {
-    cancelAnimationFrame(frameRequestId);
-    frameRequestId = null;
-  }
   if (pendingDelta !== 0) {
     applyRotation(pendingDelta);
     pendingDelta = 0;
+    lastApplyTime = performance.now();
   }
 }
 
-function scheduleRotationFrame(): void {
-  if (frameRequestId === null) {
-    frameRequestId = requestAnimationFrame(applyPendingRotation);
+function scheduleRotationApply(): void {
+  if (performance.now() - lastApplyTime >= ROTATION_THROTTLE_MS) {
+    applyPendingRotation();
   }
 }
 
@@ -102,7 +103,7 @@ function onTouchMove(event: TouchEvent): void {
   const delta = normalizeAngleDelta(currentAngle - previousAngle);
 
   pendingDelta += delta;
-  scheduleRotationFrame();
+  scheduleRotationApply();
   latestPoint = [touch.clientX, touch.clientY];
 }
 
@@ -174,6 +175,8 @@ export const singleFingerRotation: IFeatureModule = {
   enable() {
     enabled = true;
     inflateExtent = true;
+    pendingDelta = 0;
+    lastApplyTime = 0;
     addListeners();
   },
   disable() {
