@@ -66,7 +66,9 @@
 }
 
 .svp-fav-filter-bar {
-  padding: 4px 12px;
+  display: flex;
+  align-items: center;
+  padding: 4px;
   border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
   font-size: 0.9em;
 }
@@ -78,15 +80,21 @@
 .svp-fav-filter-label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  vertical-align: text-bottom;
+  gap: 4px;
   cursor: pointer;
   user-select: none;
 }
 
-.svp-fav-filter-count {
+.svp-fav-filter-star-icon {
+  display: inline-flex;
   color: #ffcc33;
-  font-weight: bold;
+}
+
+.svp-fav-filter-star-icon svg {
+  fill: currentColor;
+}
+
+.svp-fav-filter-count {
 }
 
 /* Звезда внутри элемента инвентаря — слева от заголовка */

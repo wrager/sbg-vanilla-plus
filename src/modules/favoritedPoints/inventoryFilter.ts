@@ -183,7 +183,14 @@ function createFilterBar(content: Element): HTMLElement {
   });
 
   const text = document.createElement('span');
-  text.textContent = t({ en: 'Favorites only', ru: 'Только избранные' });
+  text.textContent = t({ en: 'Only ', ru: 'Только ' });
+
+  const starIcon = document.createElement('span');
+  starIcon.className = 'svp-fav-filter-star-icon';
+  starIcon.innerHTML =
+    '<svg viewBox="0 0 576 512" width="12" height="12" aria-hidden="true">' +
+    '<path d="M287.9 0c9.2 0 17.6 5.2 21.6 13.5l68.6 141.3 153.2 22.6c9 1.3 16.5 7.6 19.3 16.3s.5 18.1-6 24.5L433.6 328.4l26.2 155.6c1.5 9-2.2 18.1-9.7 23.5s-17.3 6-25.3 1.7l-137-73.2L151 509.1c-8.1 4.3-17.9 3.7-25.3-1.7s-11.2-14.5-9.7-23.5l26.2-155.6L31.1 218.2c-6.5-6.4-8.7-15.9-6-24.5s10.3-15 19.3-16.3l153.2-22.6L266.3 13.5C270.4 5.2 278.7 0 287.9 0z"/>' +
+    '</svg>';
 
   countSpan = document.createElement('span');
   countSpan.className = 'svp-fav-filter-count';
@@ -191,6 +198,7 @@ function createFilterBar(content: Element): HTMLElement {
 
   label.appendChild(checkbox);
   label.appendChild(text);
+  label.appendChild(starIcon);
   label.appendChild(document.createTextNode(' ('));
   label.appendChild(countSpan);
   label.appendChild(document.createTextNode(')'));
