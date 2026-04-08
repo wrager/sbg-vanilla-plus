@@ -266,6 +266,37 @@ describe('deleteInventoryItems', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  test('каскадный сбой: cores удалены, refs HTTP 500 — ошибка, но cores уже отправлены', async () => {
+    let callCount = 0;
+    mockFetch.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        // Первый запрос (cores) успешен.
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ count: { total: 95 } }),
+        });
+      }
+      // Второй запрос (refs) падает.
+      return Promise.resolve({ ok: false, status: 500 });
+    });
+
+    const deletions: IDeletionEntry[] = [
+      { guid: 'c1', type: 1, level: 5, amount: 3 },
+      { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
+    ];
+
+    await expect(
+      deleteInventoryItems(deletions, {
+        favoritedGuids: new Set<string>(),
+        favoritedPointsActive: true,
+      }),
+    ).rejects.toThrow('HTTP 500');
+    // Cores DELETE уже отправлен (первый вызов fetch), refs — нет (второй упал).
+    // Документирует поведение: при каскадном сбое первый батч удалён безвозвратно.
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
   test('aggregates amounts for same guid', async () => {
     mockFetchSuccess(90);
 
