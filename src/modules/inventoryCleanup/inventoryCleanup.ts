@@ -6,7 +6,7 @@ import { parseInventoryCache } from './inventoryParser';
 import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
 import { initCleanupSettingsUi, destroyCleanupSettingsUi } from './cleanupSettingsUi';
-import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
+import { deleteInventoryItems, updateInventoryCache, updateDomInventoryCount } from './inventoryApi';
 import { installSlowRefsDelete, uninstallSlowRefsDelete } from './slowRefsDelete';
 import { showToast } from '../../core/toast';
 
@@ -49,12 +49,7 @@ async function runCleanup(): Promise<void> {
   }
 }
 
-function updateDomInventoryCount(total: number): void {
-  const element = document.getElementById('self-info__inv');
-  if (element) {
-    element.textContent = String(total);
-  }
-}
+
 
 async function runCleanupImpl(): Promise<void> {
   const settings = loadCleanupSettings();

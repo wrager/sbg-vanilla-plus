@@ -116,6 +116,13 @@ export async function deleteInventoryItems(
   return { total: lastTotal };
 }
 
+export function updateDomInventoryCount(total: number): void {
+  const element = document.getElementById('self-info__inv');
+  if (element) {
+    element.textContent = String(total);
+  }
+}
+
 export function updateInventoryCache(deletions: readonly IDeletionEntry[]): void {
   const raw = localStorage.getItem(INVENTORY_CACHE_KEY);
   if (!raw) {

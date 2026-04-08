@@ -5,7 +5,7 @@ import { readInventoryReferences } from '../../core/inventoryCache';
 import { isModuleActive } from '../../core/moduleRegistry';
 import type { IDeletionEntry } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
-import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
+import { deleteInventoryItems, updateInventoryCache, updateDomInventoryCount } from './inventoryApi';
 
 const BUTTON_CLASS = 'svp-cleanup-slow-refs-button';
 const MODAL_CLASS = 'svp-cleanup-slow-modal';
@@ -317,11 +317,14 @@ async function runSlowDelete(): Promise<void> {
   progress.setStatus(t({ en: 'Deleting: ', ru: 'Удаление: ' }) + summaryText);
 
   try {
-    await deleteInventoryItems(deletions, {
+    const result = await deleteInventoryItems(deletions, {
       favoritedGuids: getFavoritedGuids(),
       favoritedPointsActive: isModuleActive('favoritedPoints'),
     });
     updateInventoryCache(deletions);
+    if (result.total > 0) {
+      updateDomInventoryCount(result.total);
+    }
     progress.close();
     showSlowToast(t({ en: 'Deleted: ', ru: 'Удалено: ' }) + summaryText);
   } catch (error) {
