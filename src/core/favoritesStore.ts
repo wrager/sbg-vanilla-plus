@@ -2,6 +2,10 @@
 // `favorites` (keyPath='guid'). Запись — { guid, cooldown }. Поле cooldown нужно
 // только CUI (таймер остывания точки); наш модуль его не использует, но обязан
 // сохранять существующие значения при upsert, чтобы не затереть данные CUI.
+import {
+  resetFavoritesProtectionForTests,
+  syncFavoritesProtection,
+} from './favoritesProtection';
 
 export const FAVORITES_CHANGED_EVENT = 'svp:favorites-changed';
 
@@ -103,6 +107,12 @@ export async function loadFavorites(): Promise<void> {
     cooldownByGuid.set(record.guid, record.cooldown);
   }
   snapshotLoaded = true;
+  const protection = syncFavoritesProtection(memoryGuids);
+  if (!protection.storageHealthy) {
+    console.warn(
+      '[SVP favoritesStore] guard-хранилище избранных повреждено: удаление ключей будет заблокировано',
+    );
+  }
 }
 
 /** Синхронная проверка — используется из hot path автоочистки. */
@@ -137,6 +147,7 @@ export async function addFavorite(pointGuid: string): Promise<void> {
   await promisifyRequest(store.put(record));
   memoryGuids.add(pointGuid);
   cooldownByGuid.set(pointGuid, cooldown);
+  syncFavoritesProtection(memoryGuids);
   emitChange();
 }
 
@@ -147,6 +158,7 @@ export async function removeFavorite(pointGuid: string): Promise<void> {
   await promisifyRequest(store.delete(pointGuid));
   memoryGuids.delete(pointGuid);
   cooldownByGuid.delete(pointGuid);
+  syncFavoritesProtection(memoryGuids);
   emitChange();
 }
 
@@ -187,6 +199,7 @@ export async function importFromJson(json: string): Promise<number> {
   }
   memoryGuids = new Set(parsed);
   cooldownByGuid = new Map(parsed.map((guid) => [guid, null]));
+  syncFavoritesProtection(memoryGuids);
   emitChange();
   return parsed.length;
 }
@@ -196,6 +209,7 @@ export function resetForTests(): void {
   memoryGuids = new Set();
   cooldownByGuid = new Map();
   snapshotLoaded = false;
+  resetFavoritesProtectionForTests();
   if (dbPromise) {
     void dbPromise.then((db) => {
       db.close();

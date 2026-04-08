@@ -21,7 +21,10 @@ export interface IDeletionEntry {
 }
 
 export interface ICalculateDeletionsOptions {
-  /** GUID избранных точек — ключи от них никогда не попадают в deletions. */
+  /**
+   * GUID точек, защищённых от удаления ключей (избранные + safety-backup).
+   * Ключи от этих точек никогда не попадают в deletions.
+   */
   favoritedGuids: ReadonlySet<string>;
   /**
    * true, если модуль favoritedPoints загружен и готов (status=ready).
@@ -63,9 +66,8 @@ export function calculateDeletions(
   // 2. referencesMode === 'fast' — пользователь явно выбрал быстрый режим
   // 3. referencesFastLimit !== -1 — пользователь задал конкретный лимит
   // 4. favoritesSnapshotReady — loadFavorites() успешно завершился
-  // 5. favoritedGuids.size > 0 — есть хотя бы одна избранная точка. Если избранное
-  //    пусто, ключи не удаляются: невозможно отличить «пользователь не добавлял
-  //    избранных» от «IDB очистилась Android-оптимизацией» — в обоих случаях Set пуст.
+  // 5. favoritedGuids.size > 0 — есть хотя бы одна защищённая точка.
+  //    Пустой набор = fail-safe: ключи не удаляются.
   // Если хоть одно условие не выполнено — ключи не трогаются.
   if (
     options.referencesEnabled &&
