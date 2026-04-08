@@ -209,6 +209,32 @@ describe('calculateSlowDeletions', () => {
     const result = calculateSlowDeletions([], teams, PLAYER_TEAM, 0, 0);
     expect(result).toEqual([]);
   });
+
+  // Дизайн-контракт: calculateSlowDeletions — чистая функция, не фильтрует
+  // избранные. Фильтрация происходит в caller'е (runSlowDelete, строка 247),
+  // который передаёт уже отфильтрованный массив nonFavRefs.
+  test('НЕ фильтрует избранные — это ответственность caller (runSlowDelete)', () => {
+    const refs: IRefByGuid[] = [
+      { itemGuid: 'fav1', pointGuid: 'fav-point', amount: 10 },
+      { itemGuid: 'enemy1', pointGuid: 'enemy-point', amount: 5 },
+    ];
+    const teams = new Map<string, number | null>([
+      ['fav-point', PLAYER_TEAM],
+      ['enemy-point', ENEMY_TEAM],
+    ]);
+    const result = calculateSlowDeletions(refs, teams, PLAYER_TEAM, 2, 2);
+    // fav-point ВКЛЮЧЁН в результат — функция не знает про избранные.
+    expect(result).toEqual([
+      { guid: 'fav1', type: ITEM_TYPE_REFERENCE, level: null, amount: 8, pointGuid: 'fav-point' },
+      {
+        guid: 'enemy1',
+        type: ITEM_TYPE_REFERENCE,
+        level: null,
+        amount: 3,
+        pointGuid: 'enemy-point',
+      },
+    ]);
+  });
 });
 
 // --- Регрессия: empty favorites + fast mode (P0-4) ---
