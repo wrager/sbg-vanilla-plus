@@ -203,6 +203,11 @@ const SETTINGS_TITLE: ILocalizedString = {
   ru: 'Настройки SBG Vanilla+',
 };
 
+const SETTINGS_GAME_ENTRY_LABEL: ILocalizedString = {
+  en: 'SBG Vanilla+ settings',
+  ru: 'Настройки SBG Vanilla+',
+};
+
 const RELOAD_LABEL: ILocalizedString = {
   en: 'Page will reload on toggle',
   ru: 'При переключении происходит перезагрузка',
@@ -543,7 +548,7 @@ export function initSettingsUI(
     item.id = GAME_SETTINGS_ENTRY_ID;
 
     const label = document.createElement('span');
-    label.textContent = t(SETTINGS_TITLE);
+    label.textContent = t(SETTINGS_GAME_ENTRY_LABEL);
 
     const openButton = document.createElement('button');
     openButton.className = 'settings-section__button';
