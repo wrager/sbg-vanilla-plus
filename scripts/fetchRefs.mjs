@@ -21,7 +21,8 @@ const TEMP = join(REFS, '.tmp');
 // GitHub API zipball URLs handle branch resolution automatically
 const URLS = {
   euiZipball: 'https://api.github.com/repos/egorantonov/sbg-enhanced/zipball',
-  cuiZipball: 'https://api.github.com/repos/nicko-v/sbg-cui/zipball',
+  cuiSource:
+    'https://raw.githubusercontent.com/egorantonov/sbg-enhanced/master/scripts/cui.user.js',
   euiRelease: 'https://github.com/egorantonov/sbg-enhanced/releases/latest/download/eui.user.js',
   cuiRelease: 'https://github.com/egorantonov/sbg-enhanced/releases/latest/download/cui.user.js',
   olBundle: 'https://sbg-game.ru/packages/js/ol@10.6.0.js',
@@ -204,9 +205,10 @@ async function fetchEuiSources() {
 }
 
 async function fetchCuiSources() {
-  const dest = join(REFS, 'cui');
-  await downloadAndExtractZip(URLS.cuiZipball, dest, null, ['index.js', 'styles.css']);
-  ok('CUI sources', 'cui/', URLS.cuiZipball);
+  const dest = join(REFS, 'cui', 'index.js');
+  await downloadFile(URLS.cuiSource, dest);
+  prettify(dest);
+  ok('CUI source', 'cui/index.js', URLS.cuiSource);
 }
 
 async function fetchEuiRelease() {
