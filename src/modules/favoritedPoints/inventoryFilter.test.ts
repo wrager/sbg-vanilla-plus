@@ -229,6 +229,18 @@ describe('inventoryFilter', () => {
     expect(star.classList.contains('is-filled')).toBe(true);
   });
 
+  test('title звезды в инвентаре локализован', async () => {
+    const { content } = createInventoryDom('3');
+    const item = addKeyItem(content, 'point-1');
+    installInventoryFilter();
+    const star = findItemStar(item);
+    expect(star.title).toContain('Add to favorites');
+
+    star.click();
+    await flush();
+    expect(star.title).toContain('Remove from favorites');
+  });
+
   test('клик по звезде в item повторно убирает из избранных', async () => {
     await addFavorite('point-1');
     const { content } = createInventoryDom('3');
