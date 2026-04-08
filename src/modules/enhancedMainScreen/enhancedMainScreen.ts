@@ -141,7 +141,7 @@ export const enhancedMainScreen: IFeatureModule = {
   name: { en: 'Enhanced Main Screen', ru: 'Улучшенный главный экран' },
   description: {
     en: 'Compacts the top panel: nick below buttons, inventory in OPS, gear icon for Settings, attack button centered',
-    ru: 'Компактная верхняя панель: ник под кнопками, инвентарь в OPS, шестерёнка вместо «Настройки», кнопка атаки по центру',
+    ru: 'Компактная верхняя панель: ник под кнопками, инвентарь в ОРПЦ, шестерёнка вместо «Настройки», кнопка атаки по центру',
   },
   defaultEnabled: true,
   category: 'ui',
