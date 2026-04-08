@@ -1,5 +1,5 @@
 import type { IDeletionEntry } from './cleanupCalculator';
-import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER } from '../../core/gameConstants';
+import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 
 export interface IDeleteResult {
@@ -35,15 +35,49 @@ function groupByType(deletions: readonly IDeletionEntry[]): Map<number, Record<s
   return grouped;
 }
 
-/** Типы предметов, удаление которых разрешено. Ключи и спецпредметы защищены. */
-const DELETABLE_TYPES = new Set([ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER]);
+/** Типы предметов, удаление которых разрешено. Спецпредметы (вёники) защищены. */
+const DELETABLE_TYPES = new Set([ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE]);
+
+export interface IDeleteInventoryOptions {
+  /**
+   * Снимок GUID избранных точек на момент вызова — финальный guard перед DELETE.
+   * Даже если ключ прошёл фильтрацию в calculateDeletions, перед отправкой
+   * запроса мы ещё раз проверяем, что его pointGuid нет в этом наборе.
+   */
+  favoritedGuids: ReadonlySet<string>;
+  /**
+   * true, если модуль favoritedPoints включён И готов. Передаётся вызывающим кодом
+   * (inventoryCleanup, slowRefsDelete) через isModuleActive('favoritedPoints').
+   * Если false и в батче есть ключи — бросается ошибка, удаление не происходит.
+   */
+  favoritedPointsActive: boolean;
+}
 
 export async function deleteInventoryItems(
   deletions: readonly IDeletionEntry[],
+  options: IDeleteInventoryOptions,
 ): Promise<IDeleteResult> {
+  // Финальный guard: ключи могут удаляться ТОЛЬКО если модуль favoritedPoints
+  // активен (включён + готов). Проверяем непосредственно перед DELETE, чтобы
+  // ни один баг в цепочке выше не мог обойти эту защиту.
+  const hasReferences = deletions.some((entry) => entry.type === ITEM_TYPE_REFERENCE);
+  if (hasReferences && !options.favoritedPointsActive) {
+    throw new Error('Удаление ключей запрещено: модуль favoritedPoints не активен (guard)');
+  }
+
   for (const entry of deletions) {
     if (!DELETABLE_TYPES.has(entry.type)) {
       throw new Error(`Удаление предметов типа ${entry.type} запрещено`);
+    }
+    if (entry.type === ITEM_TYPE_REFERENCE) {
+      if (entry.pointGuid === undefined) {
+        throw new Error(`Ключ ${entry.guid} без pointGuid не может быть удалён (guard избранных)`);
+      }
+      if (options.favoritedGuids.has(entry.pointGuid)) {
+        throw new Error(
+          `Ключ от избранной точки ${entry.pointGuid} не может быть удалён (guard избранных)`,
+        );
+      }
     }
   }
 
@@ -82,6 +116,13 @@ export async function deleteInventoryItems(
   return { total: lastTotal };
 }
 
+export function updateDomInventoryCount(total: number): void {
+  const element = document.getElementById('self-info__inv');
+  if (element) {
+    element.textContent = String(total);
+  }
+}
+
 export function updateInventoryCache(deletions: readonly IDeletionEntry[]): void {
   const raw = localStorage.getItem(INVENTORY_CACHE_KEY);
   if (!raw) {
@@ -89,18 +130,21 @@ export function updateInventoryCache(deletions: readonly IDeletionEntry[]): void
     return;
   }
 
-  let cache: { g: string; a: number; [key: string]: unknown }[];
+  let parsed: unknown;
   try {
-    cache = JSON.parse(raw) as typeof cache;
+    parsed = JSON.parse(raw) as unknown;
   } catch {
     console.warn('[SVP inventoryCleanup] inventory-cache содержит невалидный JSON');
     return;
   }
 
-  if (!Array.isArray(cache)) {
+  if (!Array.isArray(parsed)) {
     console.warn('[SVP inventoryCleanup] inventory-cache не является массивом');
     return;
   }
+  // as — после Array.isArray; TS сужает до unknown[], но не до конкретного типа
+  // элемента. Структура элементов (g, a) проверяется неявно: find по g, мутация a.
+  let cache = parsed as { g: string; a: number; [key: string]: unknown }[];
 
   for (const entry of deletions) {
     const cached = cache.find((item) => item.g === entry.guid);

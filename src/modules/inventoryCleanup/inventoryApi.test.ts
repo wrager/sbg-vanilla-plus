@@ -3,6 +3,8 @@ import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
 
 const AUTH_TOKEN = 'test-token-123';
 
+const noFavs = { favoritedGuids: new Set<string>(), favoritedPointsActive: true };
+
 let originalFetch: typeof window.fetch;
 let mockFetch: jest.Mock;
 
@@ -41,7 +43,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'bbb', type: 1, level: 5, amount: 2 },
     ];
 
-    await deleteInventoryItems(deletions);
+    await deleteInventoryItems(deletions, noFavs);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(mockFetch).toHaveBeenCalledWith('/api/inventory', {
@@ -63,7 +65,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'core2', type: 1, level: 5, amount: 2 },
     ];
 
-    await deleteInventoryItems(deletions);
+    await deleteInventoryItems(deletions, noFavs);
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
 
@@ -97,7 +99,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'b', type: 2, level: 1, amount: 1 },
     ];
 
-    const result = await deleteInventoryItems(deletions);
+    const result = await deleteInventoryItems(deletions, noFavs);
     expect(result.total).toBe(85);
   });
 
@@ -106,7 +108,7 @@ describe('deleteInventoryItems', () => {
 
     const deletions: IDeletionEntry[] = [{ guid: 'a', type: 1, level: 1, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions)).rejects.toThrow('Inventory locked');
+    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow('Inventory locked');
   });
 
   test('throws when auth token is missing', async () => {
@@ -114,7 +116,7 @@ describe('deleteInventoryItems', () => {
 
     const deletions: IDeletionEntry[] = [{ guid: 'a', type: 1, level: 1, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions)).rejects.toThrow('Auth token not found');
+    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow('Auth token not found');
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -126,7 +128,7 @@ describe('deleteInventoryItems', () => {
 
     const deletions: IDeletionEntry[] = [{ guid: 'a', type: 1, level: 1, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions)).rejects.toThrow('HTTP 500');
+    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow('HTTP 500');
   });
 
   test('throws on non-JSON response', async () => {
@@ -137,7 +139,9 @@ describe('deleteInventoryItems', () => {
 
     const deletions: IDeletionEntry[] = [{ guid: 'a', type: 1, level: 1, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions)).rejects.toThrow('Invalid response from server');
+    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow(
+      'Invalid response from server',
+    );
   });
 
   test('throws when response missing count field', async () => {
@@ -148,24 +152,94 @@ describe('deleteInventoryItems', () => {
 
     const deletions: IDeletionEntry[] = [{ guid: 'a', type: 1, level: 1, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow(
       'Response missing inventory count',
     );
   });
 
-  test('rejects deletion of references (type 3)', async () => {
-    const deletions: IDeletionEntry[] = [{ guid: 'r1', type: 3, level: null, amount: 5 }];
+  test('ключи (type 3) реально удаляются через fetch', async () => {
+    mockFetchSuccess(90);
+    const deletions: IDeletionEntry[] = [
+      { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
+    ];
+    const result = await deleteInventoryItems(deletions, noFavs);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(result.total).toBe(90);
+  });
 
-    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
-      'Удаление предметов типа 3 запрещено',
+  test('смешанный батч — cores и ключи отправляются отдельными запросами', async () => {
+    mockFetchSuccess(85);
+    const deletions: IDeletionEntry[] = [
+      { guid: 'c1', type: 1, level: 5, amount: 3 },
+      { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
+    ];
+    const result = await deleteInventoryItems(deletions, noFavs);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(result.total).toBe(85);
+  });
+
+  test('guard: бросает если ключ без pointGuid', async () => {
+    const deletions: IDeletionEntry[] = [{ guid: 'r1', type: 3, level: null, amount: 5 }];
+    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow(
+      'без pointGuid не может быть удалён',
     );
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('guard: бросает если pointGuid в избранных', async () => {
+    const deletions: IDeletionEntry[] = [
+      { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'fav-point' },
+    ];
+    await expect(
+      deleteInventoryItems(deletions, {
+        favoritedGuids: new Set(['fav-point']),
+        favoritedPointsActive: true,
+      }),
+    ).rejects.toThrow('Ключ от избранной точки fav-point не может быть удалён');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('guard: смешанный батч с избранным ключом блокирует весь запрос', async () => {
+    const deletions: IDeletionEntry[] = [
+      { guid: 'c1', type: 1, level: 5, amount: 3 },
+      { guid: 'r1', type: 3, level: null, amount: 1, pointGuid: 'fav' },
+    ];
+    await expect(
+      deleteInventoryItems(deletions, {
+        favoritedGuids: new Set(['fav']),
+        favoritedPointsActive: true,
+      }),
+    ).rejects.toThrow('Ключ от избранной точки');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('guard: бросает если есть ключи и favoritedPointsActive=false', async () => {
+    const deletions: IDeletionEntry[] = [
+      { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
+    ];
+    await expect(
+      deleteInventoryItems(deletions, {
+        favoritedGuids: new Set<string>(),
+        favoritedPointsActive: false,
+      }),
+    ).rejects.toThrow('модуль favoritedPoints не активен');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('cores удаляются даже при favoritedPointsActive=false', async () => {
+    mockFetchSuccess(90);
+    const deletions: IDeletionEntry[] = [{ guid: 'c1', type: 1, level: 5, amount: 3 }];
+    await deleteInventoryItems(deletions, {
+      favoritedGuids: new Set<string>(),
+      favoritedPointsActive: false,
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   test('rejects deletion of brooms (type 4)', async () => {
     const deletions: IDeletionEntry[] = [{ guid: 'b1', type: 4, level: 0, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow(
       'Удаление предметов типа 4 запрещено',
     );
     expect(mockFetch).not.toHaveBeenCalled();
@@ -174,7 +248,7 @@ describe('deleteInventoryItems', () => {
   test('rejects deletion of erasers (type 5)', async () => {
     const deletions: IDeletionEntry[] = [{ guid: 'e1', type: 5, level: 1, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow(
       'Удаление предметов типа 5 запрещено',
     );
     expect(mockFetch).not.toHaveBeenCalled();
@@ -183,13 +257,44 @@ describe('deleteInventoryItems', () => {
   test('rejects mixed batch with forbidden type', async () => {
     const deletions: IDeletionEntry[] = [
       { guid: 'c1', type: 1, level: 5, amount: 3 },
-      { guid: 'r1', type: 3, level: null, amount: 1 },
+      { guid: 'e1', type: 5, level: 1, amount: 1 },
     ];
 
-    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
-      'Удаление предметов типа 3 запрещено',
+    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow(
+      'Удаление предметов типа 5 запрещено',
     );
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('каскадный сбой: cores удалены, refs HTTP 500 — ошибка, но cores уже отправлены', async () => {
+    let callCount = 0;
+    mockFetch.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        // Первый запрос (cores) успешен.
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ count: { total: 95 } }),
+        });
+      }
+      // Второй запрос (refs) падает.
+      return Promise.resolve({ ok: false, status: 500 });
+    });
+
+    const deletions: IDeletionEntry[] = [
+      { guid: 'c1', type: 1, level: 5, amount: 3 },
+      { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
+    ];
+
+    await expect(
+      deleteInventoryItems(deletions, {
+        favoritedGuids: new Set<string>(),
+        favoritedPointsActive: true,
+      }),
+    ).rejects.toThrow('HTTP 500');
+    // Cores DELETE уже отправлен (первый вызов fetch), refs — нет (второй упал).
+    // Документирует поведение: при каскадном сбое первый батч удалён безвозвратно.
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   test('aggregates amounts for same guid', async () => {
@@ -200,7 +305,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'aaa', type: 1, level: 5, amount: 2 },
     ];
 
-    await deleteInventoryItems(deletions);
+    await deleteInventoryItems(deletions, noFavs);
 
     const calls = mockFetch.mock.calls as [string, { body: string }][];
     const body = JSON.parse(calls[0][1].body) as {

@@ -1,0 +1,250 @@
+/* Звезда вставляется после #i-ref (количество ключей) внутри .i-image-box.
+   Оба элемента абсолютные, внизу справа. #i-ref сдвигается левее на размер звезды. */
+.svp-fav-star {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 50%;
+  color: #ccc;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition:
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+/* Сдвинуть #i-ref левее чтобы не перекрывался звездой */
+.i-image-box #i-ref {
+  margin-right: 32px;
+}
+
+.svp-fav-star svg {
+  fill: currentColor;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 24;
+  paint-order: stroke fill;
+}
+
+.svp-fav-star:hover {
+  transform: scale(1.1);
+}
+
+.svp-fav-star.is-filled {
+  color: #ffcc33;
+}
+
+.svp-fav-star[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.i-image-box {
+  position: relative;
+}
+
+/* Фильтр «Только избранные» в табе ключей инвентаря */
+
+/*
+ * .inventory__content в игре без position — offsetParent items уходит на
+ * .inventory. Из-за нашего filter bar выше content в .inventory появляется
+ * вертикальный сдвиг (~высота бара), и игровой getRefsData мимо: items
+ * имеют offsetTop от .inventory, а scrollTop/clientHeight читаются у content.
+ * Делаем content позиционированным — items становятся относительными к
+ * content, система координат игры снова консистентна.
+ */
+.inventory__content {
+  position: relative;
+}
+
+.svp-fav-filter-bar {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  font-size: 0.9em;
+}
+
+.svp-fav-filter-bar.svp-hidden {
+  display: none;
+}
+
+.svp-fav-filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.svp-fav-filter-star-icon {
+  display: inline-flex;
+  color: #ffcc33;
+}
+
+.svp-fav-filter-star-icon svg {
+  fill: currentColor;
+}
+
+.svp-fav-filter-count {
+}
+
+/* Звезда внутри элемента инвентаря — слева от заголовка */
+.inventory__item[data-ref] .inventory__item-left {
+  position: relative;
+}
+
+.inventory__item[data-ref] .inventory__item-title {
+  padding-left: 26px;
+  display: inline-block;
+}
+
+.svp-inv-item-star {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 50%;
+  color: #999;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition: color 0.15s ease;
+}
+
+.svp-inv-item-star svg {
+  fill: currentColor;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 24;
+  paint-order: stroke fill;
+}
+
+.svp-inv-item-star.is-filled {
+  color: #ffcc33;
+}
+
+.svp-inv-item-star[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Кнопка «Настроить» у модуля favoritedPoints в панели настроек SVP */
+.svp-fav-configure-button {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.2));
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text, #ddd);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.svp-fav-configure-button:hover {
+  background: var(--accent, #ffcc33);
+  color: var(--background, #000);
+}
+
+/* Модалка настроек избранных */
+.svp-fav-settings-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 10011;
+  display: flex;
+  flex-direction: column;
+  background: var(--background, #1a1a1a);
+  color: var(--text, #ddd);
+  padding: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.svp-fav-settings-header {
+  font-size: 14px;
+  font-weight: bold;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border, #444);
+}
+
+.svp-fav-settings-content {
+  flex: 1;
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.svp-fav-settings-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.svp-fav-settings-warning {
+  font-size: 11px;
+  color: var(--accent, #ffcc33);
+  /* Прижимаем предупреждение к кнопке импорта выше, а ниже — большой отступ до
+     кнопки экспорта, чтобы визуально не было путаницы, к чему относится текст. */
+  margin-top: -6px;
+  margin-bottom: 14px;
+}
+
+.svp-fav-settings-counter {
+  color: var(--text-disabled, #888);
+  font-size: 12px;
+}
+
+.svp-fav-settings-import-wrapper {
+  display: block;
+}
+
+/* Кнопки внутри content — на всю ширину. В footer остаются inline. */
+.svp-fav-settings-content .svp-fav-settings-button {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.svp-fav-settings-button {
+  display: inline-block;
+  padding: 6px 12px;
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text, #ddd);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.svp-fav-settings-button:hover {
+  background: var(--accent, #ffcc33);
+  color: var(--background, #000);
+  border-color: var(--accent, #ffcc33);
+}
+
+.svp-fav-settings-footer {
+  padding-top: 8px;
+  border-top: 1px solid var(--border, #444);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

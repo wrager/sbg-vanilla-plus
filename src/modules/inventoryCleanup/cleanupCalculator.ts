@@ -1,4 +1,5 @@
-import type { IInventoryItem } from '../../core/inventoryTypes';
+import type { IInventoryItem, IInventoryReference } from '../../core/inventoryTypes';
+import { isInventoryReference } from '../../core/inventoryTypes';
 import type { ICleanupLimits } from './cleanupSettings';
 import type { ILocalizedString } from '../../core/l10n';
 import { t } from '../../core/l10n';
@@ -15,6 +16,25 @@ export interface IDeletionEntry {
   type: number;
   level: number | null;
   amount: number;
+  /** GUID точки — только для ключей (references). Используется для финального guard. */
+  pointGuid?: string;
+}
+
+export interface ICalculateDeletionsOptions {
+  /** GUID избранных точек — ключи от них никогда не попадают в deletions. */
+  favoritedGuids: ReadonlySet<string>;
+  /**
+   * true, если модуль favoritedPoints загружен и готов (status=ready).
+   * false — автоочистка не трогает ключи независимо от referencesMode.
+   */
+  referencesEnabled: boolean;
+  /**
+   * true — снимок избранных из IDB достоверен (loadFavorites() прошёл успешно
+   * И count seal не обнаружил потерю данных). false — IDB не читалась, чтение
+   * упало, или обнаружено расхождение с seal (возможный Android IDB wipe).
+   * Работает в паре с size > 0 как двойная защита.
+   */
+  favoritesSnapshotReady: boolean;
 }
 
 export function shouldRunCleanup(
@@ -28,6 +48,7 @@ export function shouldRunCleanup(
 export function calculateDeletions(
   items: readonly IInventoryItem[],
   limits: ICleanupLimits,
+  options: ICalculateDeletionsOptions,
 ): IDeletionEntry[] {
   const deletions: IDeletionEntry[] = [];
 
@@ -37,9 +58,24 @@ export function calculateDeletions(
   const catalysersByLevel = groupByLevel(items, ITEM_TYPE_CATALYSER);
   addLevelDeletions(catalysersByLevel, limits.catalysers, ITEM_TYPE_CATALYSER, deletions);
 
-  // Удаление ключей временно отключено до реализации модуля «Избранные точки».
-  // Когда модуль будет готов — заменить -1 на limits.references.
-  addFlatDeletions(items, ITEM_TYPE_REFERENCE, -1, deletions);
+  // Ключи удаляются ТОЛЬКО при одновременном выполнении ВСЕХ условий:
+  // 1. referencesEnabled — модуль favoritedPoints включён И готов (isModuleActive)
+  // 2. referencesMode === 'fast' — пользователь явно выбрал быстрый режим
+  // 3. referencesFastLimit !== -1 — пользователь задал конкретный лимит
+  // 4. favoritesSnapshotReady — loadFavorites() прошёл успешно И count seal
+  //    не обнаружил потерю данных IDB (Android wipe)
+  // 5. favoritedGuids.size > 0 — есть хотя бы одна избранная точка (defence-in-depth:
+  //    дополнительная защита на случай если seal не записался)
+  // Если хоть одно условие не выполнено — ключи не трогаются.
+  if (
+    options.referencesEnabled &&
+    limits.referencesMode === 'fast' &&
+    limits.referencesFastLimit !== -1 &&
+    options.favoritesSnapshotReady &&
+    options.favoritedGuids.size > 0
+  ) {
+    addReferenceDeletions(items, limits.referencesFastLimit, options.favoritedGuids, deletions);
+  }
 
   return deletions;
 }
@@ -54,10 +90,12 @@ function groupByLevel(items: readonly IInventoryItem[], type: number): Map<numbe
   for (const item of items) {
     if (item.t !== type) continue;
     if (item.a <= 0) continue;
-    const level = item.l as number;
-    const entries = grouped.get(level) ?? [];
+    // Для cores/catalysers item.l — number (уровень). TS не сужает union по item.t,
+    // поэтому проверяем runtime: string l означает reference, пропускаем.
+    if (typeof item.l !== 'number') continue;
+    const entries = grouped.get(item.l) ?? [];
     entries.push({ guid: item.g, amount: item.a });
-    grouped.set(level, entries);
+    grouped.set(item.l, entries);
   }
   return grouped;
 }
@@ -85,24 +123,52 @@ function addLevelDeletions(
   }
 }
 
-function addFlatDeletions(
+/**
+ * Лимит ключей — НА ТОЧКУ: для каждой уникальной точки оставляет не более limit
+ * ключей. Аналогично cores/catalysers, где лимит задаётся на уровень.
+ * Ключи избранных точек полностью исключены из расчёта.
+ */
+function addReferenceDeletions(
   items: readonly IInventoryItem[],
-  type: number,
   limit: number,
+  favoritedGuids: ReadonlySet<string>,
   deletions: IDeletionEntry[],
 ): void {
   if (limit === -1) return;
 
-  const matching = items.filter((item) => item.t === type && item.a > 0);
-  const total = matching.reduce((sum, item) => sum + item.a, 0);
-  let excess = total - limit;
-  if (excess <= 0) return;
+  // Отфильтровать ключи избранных точек ПЕРЕД расчётом лимита.
+  const matching: IInventoryReference[] = items.filter(
+    (item): item is IInventoryReference =>
+      isInventoryReference(item) && item.a > 0 && !favoritedGuids.has(item.l),
+  );
 
+  // Группировка по pointGuid (item.l для ключей = GUID точки).
+  const byPoint = new Map<string, IItemEntry[]>();
   for (const item of matching) {
-    if (excess <= 0) break;
-    const toDelete = Math.min(item.a, excess);
-    deletions.push({ guid: item.g, type, level: null, amount: toDelete });
-    excess -= toDelete;
+    const pointGuid = item.l;
+    const entries = byPoint.get(pointGuid) ?? [];
+    entries.push({ guid: item.g, amount: item.a });
+    byPoint.set(pointGuid, entries);
+  }
+
+  // Для каждой точки — применяем лимит (FIFO внутри группы).
+  for (const [pointGuid, entries] of byPoint) {
+    const total = entries.reduce((sum, entry) => sum + entry.amount, 0);
+    let excess = total - limit;
+    if (excess <= 0) continue;
+
+    for (const entry of entries) {
+      if (excess <= 0) break;
+      const toDelete = Math.min(entry.amount, excess);
+      deletions.push({
+        guid: entry.guid,
+        type: ITEM_TYPE_REFERENCE,
+        level: null,
+        amount: toDelete,
+        pointGuid,
+      });
+      excess -= toDelete;
+    }
   }
 }
 

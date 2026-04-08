@@ -1,15 +1,22 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
+import { isModuleActive } from '../../core/moduleRegistry';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
+import { getFavoritedGuids, isFavoritesSnapshotReady } from '../../core/favoritesStore';
 import { parseInventoryCache } from './inventoryParser';
 import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
 import { initCleanupSettingsUi, destroyCleanupSettingsUi } from './cleanupSettingsUi';
-import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
+import {
+  deleteInventoryItems,
+  updateInventoryCache,
+  updateDomInventoryCount,
+} from './inventoryApi';
+import { installSlowRefsDelete, uninstallSlowRefsDelete } from './slowRefsDelete';
+import { showToast } from '../../core/toast';
 
 const MODULE_ID = 'inventoryCleanup';
 
 const ACTION_SELECTORS = '#discover, .discover-mod';
-const TOAST_DURATION = 3000;
 const DEBUG_INV_KEY = 'svp_debug_inv';
 
 let cleanupInProgress = false;
@@ -28,20 +35,6 @@ function readDebugInvCount(): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-function showCleanupToast(message: string): void {
-  const toast = document.createElement('div');
-  toast.className = 'svp-cleanup-toast';
-  toast.textContent = message;
-  document.body.appendChild(toast);
-
-  setTimeout(() => {
-    toast.classList.add('svp-cleanup-toast-hide');
-    toast.addEventListener('transitionend', () => {
-      toast.remove();
-    });
-  }, TOAST_DURATION);
-}
-
 function readDomNumber(id: string): number | null {
   const element = document.getElementById(id);
   if (!element) return null;
@@ -57,13 +50,6 @@ async function runCleanup(): Promise<void> {
     await runCleanupImpl();
   } finally {
     cleanupInProgress = false;
-  }
-}
-
-function updateDomInventoryCount(total: number): void {
-  const element = document.getElementById('self-info__inv');
-  if (element) {
-    element.textContent = String(total);
   }
 }
 
@@ -85,7 +71,16 @@ async function runCleanupImpl(): Promise<void> {
   const items = parseInventoryCache();
   if (items.length === 0) return;
 
-  const deletions = calculateDeletions(items, settings.limits);
+  // Ключи удаляются только если модуль favoritedPoints активен (включён + готов).
+  // Если модуль выключен — защита избранных не гарантирована, автоочистка ключи
+  // не трогает, даже если memory cache избранных загружен (init() всегда выполняется).
+  const referencesEnabled = isModuleActive('favoritedPoints');
+  const favoritedGuids = referencesEnabled ? getFavoritedGuids() : new Set<string>();
+  const deletions = calculateDeletions(items, settings.limits, {
+    favoritedGuids,
+    referencesEnabled,
+    favoritesSnapshotReady: isFavoritesSnapshotReady(),
+  });
   if (deletions.length === 0) return;
 
   const totalAmount = deletions.reduce((sum, entry) => sum + entry.amount, 0);
@@ -97,14 +92,21 @@ async function runCleanupImpl(): Promise<void> {
   );
 
   try {
-    const result = await deleteInventoryItems(deletions);
+    // Финальный guard: перечитываем избранные из memory cache ПЕРЕД отправкой
+    // DELETE-запроса, чтобы учесть изменения с момента calculateDeletions.
+    const result = await deleteInventoryItems(deletions, {
+      favoritedGuids: getFavoritedGuids(),
+      favoritedPointsActive: isModuleActive('favoritedPoints'),
+    });
     updateInventoryCache(deletions);
-    updateDomInventoryCount(result.total);
-    showCleanupToast(`Очистка (${totalAmount}): ${summary}`);
+    if (result.total > 0) {
+      updateDomInventoryCount(result.total);
+    }
+    showToast(`Очистка (${totalAmount}): ${summary}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error('[SVP inventoryCleanup] Ошибка удаления:', message);
-    showCleanupToast(`Ошибка очистки: ${message}`);
+    showToast(`Ошибка очистки: ${message}`);
   }
 }
 
@@ -126,6 +128,12 @@ function onInventoryCacheUpdated(): void {
 }
 
 function installSetItemInterceptor(): void {
+  // Идемпотентность: если wrapper уже установлен (originalSetItem заполнен),
+  // повторный enable() без disable() обернул бы wrapper в новый wrapper,
+  // искажая цепочку восстановления в disable(). Это бы повредило localStorage
+  // при последующем disable — восстанавливался бы предыдущий wrapper, а не нативная функция.
+  if (originalSetItem !== null) return;
+
   // eslint-disable-next-line @typescript-eslint/unbound-method
   const nativeSetItem = localStorage.setItem;
   originalSetItem = nativeSetItem;
@@ -172,11 +180,11 @@ export const inventoryCleanup: IFeatureModule = {
     ru: 'Автоочистка инвентаря',
   },
   description: {
-    en: 'Automatically removes excess items when discovering points',
-    ru: 'Автоматически удаляет лишние предметы при изучении точек',
+    en: 'Automatically removes excess items when discovering points. Slow cleanup runs manually from the references OPS tab',
+    ru: 'Автоматически удаляет лишние предметы при изучении точек. Медленная очистка запускается вручную через кнопку во вкладке ключей в ОРПЦ',
   },
   defaultEnabled: true,
-  category: 'utility',
+  category: 'feature',
 
   init() {},
 
@@ -184,6 +192,7 @@ export const inventoryCleanup: IFeatureModule = {
     document.addEventListener('click', onClickCapture, true);
     installSetItemInterceptor();
     initCleanupSettingsUi();
+    installSlowRefsDelete();
   },
 
   disable() {
@@ -191,5 +200,6 @@ export const inventoryCleanup: IFeatureModule = {
     uninstallSetItemInterceptor();
     discoverPending = false;
     destroyCleanupSettingsUi();
+    uninstallSlowRefsDelete();
   },
 };

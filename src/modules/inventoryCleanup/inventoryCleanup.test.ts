@@ -8,11 +8,7 @@ import {
 import { parseInventoryCache } from './inventoryParser';
 import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
 import type { ICleanupLimits } from './cleanupSettings';
-import {
-  loadCleanupSettings,
-  saveCleanupSettings,
-  defaultCleanupSettings,
-} from './cleanupSettings';
+import { saveCleanupSettings, defaultCleanupSettings } from './cleanupSettings';
 import { inventoryCleanup } from './inventoryCleanup';
 import { initCleanupSettingsUi, destroyCleanupSettingsUi } from './cleanupSettingsUi';
 
@@ -188,19 +184,30 @@ describe('shouldRunCleanup', () => {
 
 // --- calculateDeletions ---
 
+// Дефолтные опции для calculateDeletions: без избранных, режим ссылок выключен.
+// Включить можно локально в тестах через { ...noFavs, referencesEnabled: true }.
+const noFavs = {
+  favoritedGuids: new Set<string>(),
+  referencesEnabled: false,
+  favoritesSnapshotReady: false,
+};
+
 function unlimitedLimits(): ICleanupLimits {
   const levelLimits: Record<number, number> = {};
   for (let i = 1; i <= 10; i++) levelLimits[i] = -1;
   return {
     cores: { ...levelLimits },
     catalysers: { ...levelLimits },
-    references: -1,
+    referencesMode: 'off',
+    referencesFastLimit: -1,
+    referencesAlliedLimit: -1,
+    referencesNotAlliedLimit: -1,
   };
 }
 
 describe('calculateDeletions', () => {
   test('returns empty for empty items array', () => {
-    expect(calculateDeletions([], unlimitedLimits())).toEqual([]);
+    expect(calculateDeletions([], unlimitedLimits(), noFavs)).toEqual([]);
   });
 
   test('returns empty when all limits unlimited', () => {
@@ -210,21 +217,21 @@ describe('calculateDeletions', () => {
       { g: 'r1', t: 3 as const, l: 'point', a: 200 },
       { g: 'b1', t: 4 as const, l: 0, a: 10 },
     ];
-    expect(calculateDeletions(items, unlimitedLimits())).toEqual([]);
+    expect(calculateDeletions(items, unlimitedLimits(), noFavs)).toEqual([]);
   });
 
   test('returns empty when within limits', () => {
     const limits = unlimitedLimits();
     limits.cores[5] = 100;
     const items = [{ g: 'c1', t: 1 as const, l: 5, a: 50 }];
-    expect(calculateDeletions(items, limits)).toEqual([]);
+    expect(calculateDeletions(items, limits, noFavs)).toEqual([]);
   });
 
   test('returns empty when count exactly equals limit', () => {
     const limits = unlimitedLimits();
     limits.cores[5] = 10;
     const items = [{ g: 'c1', t: 1 as const, l: 5, a: 10 }];
-    expect(calculateDeletions(items, limits)).toEqual([]);
+    expect(calculateDeletions(items, limits, noFavs)).toEqual([]);
   });
 
   // --- cores ---
@@ -233,7 +240,7 @@ describe('calculateDeletions', () => {
     const limits = unlimitedLimits();
     limits.cores[5] = 10;
     const items = [{ g: 'c1', t: 1 as const, l: 5, a: 25 }];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([{ guid: 'c1', type: 1, level: 5, amount: 15 }]);
   });
 
@@ -244,7 +251,7 @@ describe('calculateDeletions', () => {
       { g: 'c1', t: 1 as const, l: 3, a: 4 },
       { g: 'c2', t: 1 as const, l: 3, a: 6 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([
       { guid: 'c1', type: 1, level: 3, amount: 4 },
       { guid: 'c2', type: 1, level: 3, amount: 1 },
@@ -258,7 +265,7 @@ describe('calculateDeletions', () => {
       { g: 'c1', t: 1 as const, l: 3, a: 10 },
       { g: 'c2', t: 1 as const, l: 5, a: 10 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([{ guid: 'c1', type: 1, level: 3, amount: 10 }]);
   });
 
@@ -266,7 +273,7 @@ describe('calculateDeletions', () => {
     const limits = unlimitedLimits();
     limits.cores[1] = 0;
     const items = [{ g: 'c1', t: 1 as const, l: 1, a: 20 }];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([{ guid: 'c1', type: 1, level: 1, amount: 20 }]);
   });
 
@@ -280,7 +287,7 @@ describe('calculateDeletions', () => {
       { g: 'c5', t: 1 as const, l: 5, a: 7 },
       { g: 'c10', t: 1 as const, l: 10, a: 2 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([
       { guid: 'c1', type: 1, level: 1, amount: 5 },
       { guid: 'c5', type: 1, level: 5, amount: 4 },
@@ -296,7 +303,7 @@ describe('calculateDeletions', () => {
       { g: 'c2', t: 1 as const, l: 2, a: 5 },
       { g: 'c3', t: 1 as const, l: 2, a: 5 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([
       { guid: 'c1', type: 1, level: 2, amount: 5 },
       { guid: 'c2', type: 1, level: 2, amount: 5 },
@@ -310,7 +317,7 @@ describe('calculateDeletions', () => {
     const limits = unlimitedLimits();
     limits.catalysers[7] = 3;
     const items = [{ g: 'k1', t: 2 as const, l: 7, a: 8 }];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([{ guid: 'k1', type: 2, level: 7, amount: 5 }]);
   });
 
@@ -321,7 +328,7 @@ describe('calculateDeletions', () => {
       { g: 'c1', t: 1 as const, l: 5, a: 10 },
       { g: 'k1', t: 2 as const, l: 5, a: 10 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([{ guid: 'k1', type: 2, level: 5, amount: 10 }]);
   });
 
@@ -332,7 +339,7 @@ describe('calculateDeletions', () => {
       { g: 'k1', t: 2 as const, l: 3, a: 3 },
       { g: 'k2', t: 2 as const, l: 3, a: 4 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([
       { guid: 'k1', type: 2, level: 3, amount: 3 },
       { guid: 'k2', type: 2, level: 3, amount: 2 },
@@ -343,25 +350,25 @@ describe('calculateDeletions', () => {
 
   test('never deletes references regardless of limit', () => {
     const limits = unlimitedLimits();
-    limits.references = 0;
+    limits.referencesFastLimit = 0;
     const items = [
       { g: 'r1', t: 3 as const, l: 'p1', a: 30 },
       { g: 'r2', t: 3 as const, l: 'p2', a: 40 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     const refDeletions = result.filter((entry) => entry.type === 3);
     expect(refDeletions).toEqual([]);
   });
 
   test('never deletes references even with limit 0 and many stacks', () => {
     const limits = unlimitedLimits();
-    limits.references = 0;
+    limits.referencesFastLimit = 0;
     const items = [
       { g: 'r1', t: 3 as const, l: 'p1', a: 10 },
       { g: 'r2', t: 3 as const, l: 'p2', a: 10 },
       { g: 'r3', t: 3 as const, l: 'p3', a: 10 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     const refDeletions = result.filter((entry) => entry.type === 3);
     expect(refDeletions).toEqual([]);
   });
@@ -371,14 +378,14 @@ describe('calculateDeletions', () => {
   test('handles mixed types with some exceeding (refs untouched)', () => {
     const limits = unlimitedLimits();
     limits.cores[1] = 5;
-    limits.references = 2;
+    limits.referencesFastLimit = 2;
     const items = [
       { g: 'c1', t: 1 as const, l: 1, a: 10 },
       { g: 'c2', t: 1 as const, l: 2, a: 10 },
       { g: 'k1', t: 2 as const, l: 5, a: 10 },
       { g: 'r1', t: 3 as const, l: 'p1', a: 3 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([{ guid: 'c1', type: 1, level: 1, amount: 5 }]);
   });
 
@@ -386,13 +393,13 @@ describe('calculateDeletions', () => {
     const limits = unlimitedLimits();
     limits.cores[1] = 2;
     limits.catalysers[1] = 3;
-    limits.references = 1;
+    limits.referencesFastLimit = 1;
     const items = [
       { g: 'c1', t: 1 as const, l: 1, a: 5 },
       { g: 'k1', t: 2 as const, l: 1, a: 6 },
       { g: 'r1', t: 3 as const, l: 'p1', a: 4 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([
       { guid: 'c1', type: 1, level: 1, amount: 3 },
       { guid: 'k1', type: 2, level: 1, amount: 3 },
@@ -407,7 +414,7 @@ describe('calculateDeletions', () => {
       { g: 'c3', t: 1 as const, l: 3, a: 5 },
       { g: 'c7', t: 1 as const, l: 7, a: 5 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([
       { guid: 'c3', type: 1, level: 3, amount: 4 },
       { guid: 'c7', type: 1, level: 7, amount: 3 },
@@ -416,9 +423,9 @@ describe('calculateDeletions', () => {
 
   test('references are never included in deletions', () => {
     const limits = unlimitedLimits();
-    limits.references = 0;
+    limits.referencesFastLimit = 0;
     const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 1 }];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([]);
   });
 
@@ -426,13 +433,16 @@ describe('calculateDeletions', () => {
     const limits: ICleanupLimits = {
       cores: { 5: 0 },
       catalysers: {},
-      references: -1,
+      referencesMode: 'off',
+      referencesFastLimit: -1,
+      referencesAlliedLimit: -1,
+      referencesNotAlliedLimit: -1,
     };
     const items = [
       { g: 'c1', t: 1 as const, l: 5, a: 0 },
       { g: 'c2', t: 1 as const, l: 5, a: 3 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([{ guid: 'c2', type: 1, level: 5, amount: 3 }]);
   });
 
@@ -440,13 +450,16 @@ describe('calculateDeletions', () => {
     const limits: ICleanupLimits = {
       cores: { 5: 0 },
       catalysers: {},
-      references: -1,
+      referencesMode: 'off',
+      referencesFastLimit: -1,
+      referencesAlliedLimit: -1,
+      referencesNotAlliedLimit: -1,
     };
     const items = [
       { g: 'c1', t: 1 as const, l: 5, a: -5 },
       { g: 'c2', t: 1 as const, l: 5, a: 3 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([{ guid: 'c2', type: 1, level: 5, amount: 3 }]);
   });
 
@@ -454,15 +467,255 @@ describe('calculateDeletions', () => {
     const limits: ICleanupLimits = {
       cores: {},
       catalysers: {},
-      references: 0,
+      referencesMode: 'fast',
+      referencesFastLimit: 0,
+      referencesAlliedLimit: -1,
+      referencesNotAlliedLimit: -1,
     };
     const items = [
       { g: 'r1', t: 3 as const, l: 'p1', a: 0 },
       { g: 'r2', t: 3 as const, l: 'p2', a: -1 },
       { g: 'r3', t: 3 as const, l: 'p3', a: 5 },
     ];
-    const result = calculateDeletions(items, limits);
+    const result = calculateDeletions(items, limits, noFavs);
     expect(result).toEqual([]);
+  });
+
+  // --- references fast mode ---
+
+  test('fast mode: не трогает ключи если referencesEnabled=false', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 2;
+    const items = [
+      { g: 'r1', t: 3 as const, l: 'p1', a: 5 },
+      { g: 'r2', t: 3 as const, l: 'p2', a: 3 },
+    ];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set<string>(),
+      referencesEnabled: false,
+      favoritesSnapshotReady: false,
+    });
+    expect(result).toEqual([]);
+  });
+
+  test('fast mode: удаляет лишние ключи от каждой точки отдельно', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 2;
+    const items = [
+      { g: 'r1', t: 3 as const, l: 'p1', a: 5 }, // 5 ключей от p1, лимит 2 → удалить 3
+      { g: 'r2', t: 3 as const, l: 'p2', a: 1 }, // 1 ключ от p2, лимит 2 → не трогаем
+      { g: 'r3', t: 3 as const, l: 'p3', a: 3 }, // 3 ключа от p3, лимит 2 → удалить 1
+    ];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set(['sentinel-not-in-items']),
+      referencesEnabled: true,
+      favoritesSnapshotReady: true,
+    });
+    expect(result).toEqual([
+      { guid: 'r1', type: 3, level: null, amount: 3, pointGuid: 'p1' },
+      { guid: 'r3', type: 3, level: null, amount: 1, pointGuid: 'p3' },
+    ]);
+  });
+
+  test('fast mode: лимит 0 удаляет все не-избранные ключи', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 0;
+    const items = [
+      { g: 'r1', t: 3 as const, l: 'p1', a: 3 },
+      { g: 'r2', t: 3 as const, l: 'p2', a: 2 },
+    ];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set(['sentinel-not-in-items']),
+      referencesEnabled: true,
+      favoritesSnapshotReady: true,
+    });
+    expect(result).toEqual([
+      { guid: 'r1', type: 3, level: null, amount: 3, pointGuid: 'p1' },
+      { guid: 'r2', type: 3, level: null, amount: 2, pointGuid: 'p2' },
+    ]);
+  });
+
+  test('fast mode: несколько стеков от одной точки — FIFO внутри группы', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 2;
+    const items = [
+      { g: 'r1', t: 3 as const, l: 'p1', a: 3 }, // стек 1 от p1
+      { g: 'r2', t: 3 as const, l: 'p1', a: 4 }, // стек 2 от p1, всего 7, удалить 5
+    ];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set(['sentinel-not-in-items']),
+      referencesEnabled: true,
+      favoritesSnapshotReady: true,
+    });
+    // FIFO: 3 из r1, потом 2 из r2.
+    expect(result).toEqual([
+      { guid: 'r1', type: 3, level: null, amount: 3, pointGuid: 'p1' },
+      { guid: 'r2', type: 3, level: null, amount: 2, pointGuid: 'p1' },
+    ]);
+  });
+
+  test('fast mode: НИКОГДА не удаляет ключи избранных точек', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 0;
+    const items = [
+      { g: 'r1', t: 3 as const, l: 'p1', a: 5 },
+      { g: 'r2', t: 3 as const, l: 'p2', a: 3 },
+    ];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set(['p1']),
+      referencesEnabled: true,
+      favoritesSnapshotReady: true,
+    });
+    // p1 избранная — не трогаем. p2 превышает лимит 0, удаляем всё.
+    expect(result).toEqual([{ guid: 'r2', type: 3, level: null, amount: 3, pointGuid: 'p2' }]);
+  });
+
+  test('fast mode: избранные точки полностью исключены из расчёта лимита', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 2;
+    const items = [
+      { g: 'r1', t: 3 as const, l: 'fav1', a: 50 }, // избранная — не трогаем
+      { g: 'r2', t: 3 as const, l: 'p2', a: 5 }, // не избранная, лимит 2 → удалить 3
+      { g: 'r3', t: 3 as const, l: 'p3', a: 1 }, // не избранная, лимит 2 → не трогаем
+    ];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set(['fav1']),
+      referencesEnabled: true,
+      favoritesSnapshotReady: true,
+    });
+    // fav1 исключена. p2: 5-2=3 к удалению. p3: 1<2, ок.
+    expect(result).toEqual([{ guid: 'r2', type: 3, level: null, amount: 3, pointGuid: 'p2' }]);
+  });
+
+  test('off mode: не трогает ключи даже если referencesEnabled=true', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'off';
+    limits.referencesFastLimit = 0;
+    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 5 }];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set<string>(),
+      referencesEnabled: true,
+      favoritesSnapshotReady: true,
+    });
+    expect(result).toEqual([]);
+  });
+
+  test('slow mode: не трогает ключи автоочисткой (только через кнопку)', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'slow';
+    limits.referencesAlliedLimit = 0;
+    limits.referencesNotAlliedLimit = 0;
+    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 5 }];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set<string>(),
+      referencesEnabled: true,
+      favoritesSnapshotReady: true,
+    });
+    expect(result).toEqual([]);
+  });
+
+  test('fast mode limit=-1 не удаляет ничего', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = -1;
+    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 100 }];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set<string>(),
+      referencesEnabled: true,
+      favoritesSnapshotReady: true,
+    });
+    expect(result).toEqual([]);
+  });
+
+  test('slow mode: автоочистка удаляет cores/catalysers, но не ключи', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'slow';
+    limits.referencesAlliedLimit = 0;
+    limits.referencesNotAlliedLimit = 0;
+    limits.cores[5] = 2;
+    limits.catalysers[3] = 1;
+    const items = [
+      { g: 'c1', t: 1 as const, l: 5, a: 10 },
+      { g: 'k1', t: 2 as const, l: 3, a: 5 },
+      { g: 'r1', t: 3 as const, l: 'p1', a: 50 },
+    ];
+    const favs = {
+      favoritedGuids: new Set(['fav']),
+      referencesEnabled: true,
+      favoritesSnapshotReady: true,
+    };
+    const result = calculateDeletions(items, limits, favs);
+    expect(result).toEqual([
+      { guid: 'c1', type: 1, level: 5, amount: 8 },
+      { guid: 'k1', type: 2, level: 3, amount: 4 },
+    ]);
+  });
+
+  test('fast mode + empty favoritedGuids: cores/catalysers удаляются, ключи нет', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 0;
+    limits.cores[1] = 3;
+    const items = [
+      { g: 'c1', t: 1 as const, l: 1, a: 10 },
+      { g: 'r1', t: 3 as const, l: 'p1', a: 20 },
+    ];
+    const favs = {
+      favoritedGuids: new Set<string>(),
+      referencesEnabled: true,
+      favoritesSnapshotReady: true,
+    };
+    const result = calculateDeletions(items, limits, favs);
+    // Ключи не удаляются (favoritedGuids пуст), cores удаляются.
+    expect(result).toEqual([{ guid: 'c1', type: 1, level: 1, amount: 7 }]);
+  });
+
+  test('snapshotReady=false + empty favoritedGuids: ключи не удаляются', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 0;
+    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 20 }];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set<string>(),
+      referencesEnabled: true,
+      favoritesSnapshotReady: false,
+    });
+    expect(result).toEqual([]);
+  });
+
+  test('snapshotReady=false + non-empty favoritedGuids: ключи не удаляются', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 0;
+    const items = [
+      { g: 'r1', t: 3 as const, l: 'p1', a: 20 },
+      { g: 'r2', t: 3 as const, l: 'p2', a: 5 },
+    ];
+    const result = calculateDeletions(items, limits, {
+      favoritedGuids: new Set(['p1']),
+      referencesEnabled: true,
+      favoritesSnapshotReady: false,
+    });
+    // snapshotReady=false блокирует ВСЕ удаления ключей, даже нефаворитных.
+    expect(result).toEqual([]);
+  });
+
+  test('off mode: cores/catalysers удаляются, ключи нет', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'off';
+    limits.cores[5] = 0;
+    const items = [
+      { g: 'c1', t: 1 as const, l: 5, a: 3 },
+      { g: 'r1', t: 3 as const, l: 'p1', a: 10 },
+    ];
+    const result = calculateDeletions(items, limits, noFavs);
+    expect(result).toEqual([{ guid: 'c1', type: 1, level: 5, amount: 3 }]);
   });
 });
 
@@ -525,100 +778,12 @@ describe('formatDeletionSummary', () => {
   });
 });
 
-// --- cleanupSettings ---
-
-describe('cleanupSettings', () => {
-  afterEach(() => {
-    localStorage.removeItem('svp_inventoryCleanup');
-  });
-
-  test('loadCleanupSettings returns defaults when no stored settings', () => {
-    const settings = loadCleanupSettings();
-    const defaults = defaultCleanupSettings();
-    expect(settings).toEqual(defaults);
-  });
-
-  test('loadCleanupSettings returns defaults on invalid JSON', () => {
-    localStorage.setItem('svp_inventoryCleanup', 'not-json');
-    expect(loadCleanupSettings()).toEqual(defaultCleanupSettings());
-  });
-
-  test('loadCleanupSettings returns defaults on invalid structure', () => {
-    localStorage.setItem('svp_inventoryCleanup', JSON.stringify({ version: 1 }));
-    expect(loadCleanupSettings()).toEqual(defaultCleanupSettings());
-  });
-
-  test('saveCleanupSettings and loadCleanupSettings round-trip', () => {
-    const settings = defaultCleanupSettings();
-    settings.limits.cores[5] = 20;
-    settings.limits.references = 100;
-    settings.minFreeSlots = 50;
-
-    saveCleanupSettings(settings);
-    const loaded = loadCleanupSettings();
-    expect(loaded).toEqual(settings);
-  });
-
-  test('defaultCleanupSettings has all levels set to unlimited', () => {
-    const settings = defaultCleanupSettings();
-    for (let level = 1; level <= 10; level++) {
-      expect(settings.limits.cores[level]).toBe(-1);
-      expect(settings.limits.catalysers[level]).toBe(-1);
-    }
-    expect(settings.limits.references).toBe(-1);
-  });
-
-  test('defaultCleanupSettings has minFreeSlots 100', () => {
-    expect(defaultCleanupSettings().minFreeSlots).toBe(100);
-  });
-
-  test('loadCleanupSettings clamps minFreeSlots below 20 to 20', () => {
-    const settings = defaultCleanupSettings();
-    settings.minFreeSlots = 5;
-    saveCleanupSettings(settings);
-
-    const loaded = loadCleanupSettings();
-    expect(loaded.minFreeSlots).toBe(20);
-  });
-
-  test('loadCleanupSettings keeps minFreeSlots at 20 or above', () => {
-    const settings = defaultCleanupSettings();
-    settings.minFreeSlots = 25;
-    saveCleanupSettings(settings);
-
-    const loaded = loadCleanupSettings();
-    expect(loaded.minFreeSlots).toBe(25);
-  });
-
-  test('loadCleanupSettings clamps negative limits (not -1) to 0', () => {
-    const settings = defaultCleanupSettings();
-    settings.limits.cores[5] = -99;
-    settings.limits.catalysers[3] = -2;
-    settings.limits.references = -50;
-    saveCleanupSettings(settings);
-
-    const loaded = loadCleanupSettings();
-    expect(loaded.limits.cores[5]).toBe(0);
-    expect(loaded.limits.catalysers[3]).toBe(0);
-    expect(loaded.limits.references).toBe(0);
-  });
-
-  test('loadCleanupSettings preserves -1 (unlimited) limits', () => {
-    const settings = defaultCleanupSettings();
-    settings.limits.cores[5] = -1;
-    saveCleanupSettings(settings);
-
-    const loaded = loadCleanupSettings();
-    expect(loaded.limits.cores[5]).toBe(-1);
-  });
-});
-
 // --- inventoryCleanup module ---
 
 describe('inventoryCleanup module', () => {
   test('has correct metadata', () => {
     expect(inventoryCleanup.id).toBe('inventoryCleanup');
-    expect(inventoryCleanup.category).toBe('utility');
+    expect(inventoryCleanup.category).toBe('feature');
     expect(inventoryCleanup.defaultEnabled).toBe(true);
     expect(inventoryCleanup.name.ru).toBe('Автоочистка инвентаря');
     expect(inventoryCleanup.name.en).toBe('Inventory auto-cleanup');
@@ -723,7 +888,7 @@ describe('inventoryCleanup module', () => {
       expect.arrayContaining([expect.objectContaining({ guid: 'c1', amount: 8 })]),
     );
 
-    const toast = document.querySelector('.svp-cleanup-toast');
+    const toast = document.querySelector('.svp-toast');
     expect(toast).not.toBeNull();
     expect(toast?.textContent).toContain('Co5 ×8');
 
@@ -779,7 +944,7 @@ describe('inventoryCleanup module', () => {
     invElement.remove();
     limElement.remove();
     button.remove();
-    document.querySelector('.svp-cleanup-toast')?.remove();
+    document.querySelector('.svp-toast')?.remove();
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('svp_inventoryCleanup');
     consoleSpy.mockRestore();
@@ -982,7 +1147,7 @@ describe('inventoryCleanup module', () => {
     invElement.remove();
     limElement.remove();
     button.remove();
-    document.querySelector('.svp-cleanup-toast')?.remove();
+    document.querySelector('.svp-toast')?.remove();
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('svp_inventoryCleanup');
     consoleSpy.mockRestore();
@@ -1027,7 +1192,7 @@ describe('inventoryCleanup module', () => {
     invElement.remove();
     limElement.remove();
     button.remove();
-    document.querySelector('.svp-cleanup-toast')?.remove();
+    document.querySelector('.svp-toast')?.remove();
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('svp_inventoryCleanup');
     consoleSpy.mockRestore();

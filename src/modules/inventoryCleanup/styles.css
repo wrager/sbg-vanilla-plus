@@ -89,6 +89,99 @@
   text-align: center;
 }
 
+.svp-cleanup-references-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-transp);
+}
+
+.svp-cleanup-radio-label {
+  display: block;
+  font-size: 12px;
+  margin: 4px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.svp-cleanup-ref-inputs {
+  margin-top: 4px;
+  padding-left: 20px;
+}
+
+.svp-cleanup-hint {
+  font-size: 10px;
+  color: var(--text-disabled);
+  padding: 4px 0;
+}
+
+.svp-cleanup-hint-warning {
+  color: var(--accent);
+}
+
+/* Кнопка медленного удаления по фракциям (в filter bar избранных) */
+.svp-cleanup-slow-refs-button {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.2));
+  border-radius: 4px;
+  background: var(--background, rgba(0, 0, 0, 0.3));
+  color: var(--text, #ddd);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.svp-cleanup-slow-refs-button:hover {
+  background: var(--accent, #ffcc33);
+  color: var(--background, #000);
+}
+
+/* Модалка прогресса медленного удаления */
+.svp-cleanup-slow-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10010;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.svp-cleanup-slow-modal-box {
+  background: var(--background, #1a1a1a);
+  color: var(--text, #ddd);
+  border: 1px solid var(--border, #444);
+  border-radius: 6px;
+  padding: 16px 20px;
+  min-width: 260px;
+  max-width: 400px;
+}
+
+.svp-cleanup-slow-modal-status {
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.svp-cleanup-slow-progress {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.svp-cleanup-slow-progress-bar {
+  height: 100%;
+  width: 0;
+  background: #ffcc33;
+  transition: width 0.15s ease;
+}
+
+.svp-cleanup-slow-counter {
+  font-size: 11px;
+  color: var(--text-disabled, #888);
+  text-align: right;
+  margin-top: 4px;
+}
+
 .svp-cleanup-footer {
   flex-shrink: 0;
   padding: 6px 8px 40px;
@@ -131,26 +224,7 @@
   margin-left: 4px;
 }
 
-.svp-cleanup-toast {
-  position: fixed;
-  top: 50px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--background);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 6px 12px;
-  font-size: 12px;
-  z-index: 10002;
-  opacity: 1;
-  transition: opacity 0.3s ease;
-  pointer-events: none;
-  max-width: 90vw;
-  text-align: center;
-  box-sizing: border-box;
-}
+/* Toast-стили вынесены в core/toast.css (подключается в bootstrap). */
 
-.svp-cleanup-toast-hide {
-  opacity: 0;
-}
+/* Кнопка «Очистить ключи» монтируется внутрь .svp-fav-filter-bar —
+   видимость filter bar уже управляется модулем favoritedPoints по табу. */

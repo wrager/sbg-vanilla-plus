@@ -1,5 +1,6 @@
 import type { ILocalizedString } from './l10n';
 import { t } from './l10n';
+import { loadSettings, isModuleEnabled } from './settings/storage';
 
 export interface IFeatureModule {
   id: string;
@@ -48,6 +49,19 @@ export function registerModules(modules: readonly IFeatureModule[]): void {
 /** Возвращает модуль по id или undefined, если не найден. */
 export function getModuleById(id: string): IFeatureModule | undefined {
   return registeredModules.find((mod) => mod.id === id);
+}
+
+/**
+ * Модуль и включён пользователем в настройках, И успешно прошёл init/enable
+ * (status='ready'). Используется для межмодульных проверок: стоит ли считать,
+ * что функции модуля работают и на их результаты можно полагаться.
+ */
+export function isModuleActive(id: string): boolean {
+  const mod = getModuleById(id);
+  if (!mod) return false;
+  if (mod.status !== 'ready') return false;
+  const settings = loadSettings();
+  return isModuleEnabled(settings, id, mod.defaultEnabled);
 }
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────

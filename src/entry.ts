@@ -22,6 +22,7 @@ import { repairAtFullCharge } from './modules/repairAtFullCharge/repairAtFullCha
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
 import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
+import { favoritedPoints } from './modules/favoritedPoints/favoritedPoints';
 
 if (!isDisabled()) {
   // Перехваты, которые должны быть установлены ДО парсинга DOM:
@@ -37,24 +38,30 @@ if (!isDisabled()) {
     initErrorLog();
     installSbgFlavor();
     bootstrap([
+      // ui
       enhancedMainScreen,
       enhancedPointPopupUi,
       swipeToClosePopup,
       groupErrorToasts,
       removeAttackCloseButton,
+      // feature (favoritedPoints ПЕРЕД inventoryCleanup — зависимость init)
+      favoritedPoints,
+      inventoryCleanup,
+      keepScreenOn,
+      repairAtFullCharge,
+      // map
       shiftMapCenterDown,
       largerPointTapArea,
       disableDoubleTapZoom,
       ngrsZoom,
-      drawButtonFix,
-      keepScreenOn,
-      inventoryCleanup,
       keyCountOnPoints,
-      nextPointNavigation,
-      refsOnMap,
-      repairAtFullCharge,
       singleFingerRotation,
       mapTileLayers,
+      // feature (map-зависимые)
+      nextPointNavigation,
+      refsOnMap,
+      // fix
+      drawButtonFix,
     ]);
   }
 

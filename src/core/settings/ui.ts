@@ -196,7 +196,7 @@ const PANEL_STYLES = `
 
 type Category = IFeatureModule['category'];
 
-const CATEGORY_ORDER: readonly Category[] = ['ui', 'map', 'feature', 'utility', 'fix'];
+const CATEGORY_ORDER: readonly Category[] = ['ui', 'feature', 'map', 'utility', 'fix'];
 
 const SETTINGS_TITLE: ILocalizedString = {
   en: 'SBG Vanilla+ Settings',
