@@ -143,6 +143,17 @@
   cursor: default;
 }
 
+/* Placeholder для избранных точек без ключей.
+   Без .inventory__item-controls grid «auto 1fr» (CUI) сжимает .inventory__item-left
+   в auto-колонку. Переопределяем на одну колонку. */
+.svp-fav-placeholder {
+  grid-template-columns: 1fr !important;
+}
+
+.svp-fav-placeholder .inventory__item-descr {
+  opacity: 0.6;
+}
+
 /* Кнопка «Настроить» у модуля favoritedPoints в панели настроек SVP */
 .svp-fav-configure-button {
   margin-left: 8px;

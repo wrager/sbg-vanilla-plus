@@ -91,16 +91,31 @@ function findItemStar(item: HTMLElement): HTMLButtonElement {
 }
 
 let alertSpy: jest.SpyInstance;
+const originalFetch = global.fetch;
+
+function mockFetchPointData(data: Record<string, unknown> | null): void {
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: data !== null,
+    json: () => Promise.resolve(data !== null ? { data } : {}),
+  });
+}
 
 beforeEach(() => {
   // Мокаем alert чтобы seal-детекция в loadFavorites не вызывала ошибку jsdom.
   alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+  // Мокаем fetch для placeholder'ов (по умолчанию — успешный ответ).
+  global.fetch = jest.fn().mockResolvedValue({
+    ok: true,
+    json: () =>
+      Promise.resolve({ data: { t: 'Test Point', te: 1, l: 5, o: 'Owner', e: 80, co: 3 } }),
+  });
 });
 
 afterEach(() => {
   uninstallInventoryFilter();
   document.body.innerHTML = '';
   alertSpy.mockRestore();
+  global.fetch = originalFetch;
 });
 
 describe('inventoryFilter', () => {
@@ -428,5 +443,155 @@ describe('inventoryFilter', () => {
     expect(item1.classList.contains('svp-is-fav')).toBe(false);
     expect(item2.classList.contains('hidden')).toBe(false);
     expect(item2.classList.contains('svp-fav-filtered')).toBe(false);
+  });
+});
+
+describe('placeholder для избранных без ключей', () => {
+  beforeEach(async () => {
+    await resetIdb();
+    await loadFavorites();
+  });
+
+  test('при включении фильтра создаёт placeholder для избранного без ключей', async () => {
+    await addFavorite('point-no-keys');
+    const { content } = createInventoryDom('3');
+    addKeyItem(content, 'point-with-keys');
+    installInventoryFilter();
+    const checkbox = findCheckbox();
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+
+    const placeholder = content.querySelector('.svp-fav-placeholder');
+    expect(placeholder).not.toBeNull();
+    expect((placeholder as HTMLElement).dataset.ref).toBe('point-no-keys');
+  });
+
+  test('placeholder имеет класс loaded (защита от getRefsData)', async () => {
+    await addFavorite('point-no-keys');
+    const { content } = createInventoryDom('3');
+    installInventoryFilter();
+    findCheckbox().checked = true;
+    findCheckbox().dispatchEvent(new Event('change'));
+
+    const placeholder = content.querySelector('.svp-fav-placeholder');
+    expect(placeholder?.classList.contains('loaded')).toBe(true);
+  });
+
+  test('placeholder получает звезду', async () => {
+    await addFavorite('point-no-keys');
+    const { content } = createInventoryDom('3');
+    installInventoryFilter();
+    findCheckbox().checked = true;
+    findCheckbox().dispatchEvent(new Event('change'));
+
+    const placeholder = content.querySelector<HTMLElement>('.svp-fav-placeholder');
+    expect(placeholder).toBeTruthy();
+    if (placeholder === null) return;
+    expect(findItemStar(placeholder).classList.contains('is-filled')).toBe(true);
+  });
+
+  test('не создаёт placeholder для избранного, у которого есть ключи в DOM', async () => {
+    await addFavorite('point-1');
+    const { content } = createInventoryDom('3');
+    addKeyItem(content, 'point-1');
+    installInventoryFilter();
+    findCheckbox().checked = true;
+    findCheckbox().dispatchEvent(new Event('change'));
+
+    expect(content.querySelectorAll('.svp-fav-placeholder')).toHaveLength(0);
+  });
+
+  test('при выключении фильтра placeholder удаляется', async () => {
+    await addFavorite('point-no-keys');
+    const { content } = createInventoryDom('3');
+    installInventoryFilter();
+    const checkbox = findCheckbox();
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+    expect(content.querySelector('.svp-fav-placeholder')).not.toBeNull();
+
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event('change'));
+    expect(content.querySelector('.svp-fav-placeholder')).toBeNull();
+  });
+
+  test('fetch заполняет placeholder данными точки', async () => {
+    mockFetchPointData({ t: 'Тестовая точка', te: 2, l: 7, o: 'Игрок', e: 50, co: 4 });
+    await addFavorite('point-no-keys');
+    const { content } = createInventoryDom('3');
+    installInventoryFilter();
+    findCheckbox().checked = true;
+    findCheckbox().dispatchEvent(new Event('change'));
+    await flush();
+
+    const placeholder = content.querySelector<HTMLElement>('.svp-fav-placeholder');
+    const title = placeholder?.querySelector('.inventory__item-title');
+    expect(title?.textContent).toBe('Тестовая точка');
+  });
+
+  test('при ошибке fetch placeholder показывает текст ошибки', async () => {
+    mockFetchPointData(null);
+    await addFavorite('point-no-keys');
+    const { content } = createInventoryDom('3');
+    installInventoryFilter();
+    findCheckbox().checked = true;
+    findCheckbox().dispatchEvent(new Event('change'));
+    await flush();
+
+    const placeholder = content.querySelector<HTMLElement>('.svp-fav-placeholder');
+    const title = placeholder?.querySelector('.inventory__item-title');
+    expect(title?.textContent).toContain('Failed to load');
+  });
+
+  test('uninstall удаляет placeholder', async () => {
+    await addFavorite('point-no-keys');
+    const { content } = createInventoryDom('3');
+    installInventoryFilter();
+    findCheckbox().checked = true;
+    findCheckbox().dispatchEvent(new Event('change'));
+    expect(content.querySelector('.svp-fav-placeholder')).not.toBeNull();
+
+    uninstallInventoryFilter();
+    expect(content.querySelector('.svp-fav-placeholder')).toBeNull();
+  });
+
+  test('placeholder не дублируется при перерисовке с активным фильтром', async () => {
+    await addFavorite('point-no-keys');
+    const { content } = createInventoryDom('3');
+    installInventoryFilter();
+    findCheckbox().checked = true;
+    findCheckbox().dispatchEvent(new Event('change'));
+    expect(content.querySelectorAll('.svp-fav-placeholder')).toHaveLength(1);
+
+    // Имитируем перерисовку: игра очищает content и добавляет items заново.
+    // Наши placeholder'ы тоже удаляются, onContentMutation пересоздаёт их.
+    const placeholderBefore = content.querySelector('.svp-fav-placeholder');
+    // Удаляем только игровые items, оставляя placeholder для проверки дедупликации.
+    for (const element of content.querySelectorAll('.inventory__item:not(.svp-fav-placeholder)')) {
+      element.remove();
+    }
+    await flush();
+
+    expect(content.querySelectorAll('.svp-fav-placeholder')).toHaveLength(1);
+    // Тот же placeholder — не пересоздан.
+    expect(content.querySelector('.svp-fav-placeholder')).toBe(placeholderBefore);
+  });
+
+  test('клик по звезде placeholder убирает из избранных', async () => {
+    await addFavorite('point-no-keys');
+    const { content } = createInventoryDom('3');
+    installInventoryFilter();
+    findCheckbox().checked = true;
+    findCheckbox().dispatchEvent(new Event('change'));
+
+    const placeholder = content.querySelector<HTMLElement>('.svp-fav-placeholder');
+    expect(placeholder).toBeTruthy();
+    if (placeholder === null) return;
+    const star = findItemStar(placeholder);
+    star.click();
+    await flush();
+
+    expect(isFavorited('point-no-keys')).toBe(false);
+    expect(star.classList.contains('is-filled')).toBe(false);
   });
 });

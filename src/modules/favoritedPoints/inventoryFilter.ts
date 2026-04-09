@@ -3,6 +3,7 @@ import { t } from '../../core/l10n';
 import {
   isFavorited,
   getFavoritesCount,
+  getFavoritedGuids,
   addFavorite,
   removeFavorite,
   FAVORITES_CHANGED_EVENT,
@@ -26,6 +27,12 @@ const FILTER_MARK_CLASS = 'svp-fav-filtered';
 const INVENTORY_CONTENT_SELECTOR = '.inventory__content';
 const INVENTORY_POPUP_SELECTOR = '.inventory.popup';
 const REFS_TAB = '3';
+
+// Placeholder для избранных точек без ключей: видны только при активном фильтре.
+const PLACEHOLDER_CLASS = 'svp-fav-placeholder';
+// Класс loaded предотвращает обработку игровой функцией getRefsData (script.js:2212),
+// которая упала бы с TypeError: inventory-cache не содержит записи для этой точки.
+const PLACEHOLDER_LOADED_CLASS = 'loaded';
 
 // Звезда в элементе инвентаря (SVG).
 const STAR_SVG = `
@@ -147,6 +154,152 @@ function applyFilter(content: Element): void {
   }
 }
 
+// --- Placeholder'ы для избранных без ключей ---
+
+/** Возвращает Set GUID'ов точек, для которых есть ключи в текущем DOM. */
+function getKeyedGuids(content: Element): Set<string> {
+  const guids = new Set<string>();
+  const items = content.querySelectorAll<HTMLElement>('.inventory__item[data-ref]');
+  for (const item of items) {
+    if (item.classList.contains(PLACEHOLDER_CLASS)) continue;
+    const guid = item.dataset.ref;
+    if (guid) guids.add(guid);
+  }
+  return guids;
+}
+
+function createPlaceholderItem(pointGuid: string): HTMLElement {
+  const item = document.createElement('div');
+  item.className = `inventory__item ${PLACEHOLDER_CLASS} ${PLACEHOLDER_LOADED_CLASS}`;
+  item.dataset.ref = pointGuid;
+
+  const left = document.createElement('div');
+  left.className = 'inventory__item-left';
+
+  const title = document.createElement('span');
+  title.className = 'inventory__item-title';
+  title.textContent = t({ en: 'Loading…', ru: 'Загрузка…' });
+
+  const description = document.createElement('span');
+  description.className = 'inventory__item-descr';
+  description.style.fontStyle = 'italic';
+  description.textContent = t({ en: 'No keys', ru: 'Нет ключей' });
+
+  left.appendChild(title);
+  left.appendChild(description);
+  item.appendChild(left);
+
+  return item;
+}
+
+interface IPointData {
+  title: string;
+  level: number;
+  team: number;
+  owner: string;
+  energy: number;
+  coresCount: number;
+}
+
+async function fetchPointData(pointGuid: string): Promise<IPointData | null> {
+  try {
+    const url = `/api/point?guid=${encodeURIComponent(pointGuid)}&status=1`;
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    // Формат ответа: { data: { t, te, l, o, e, co, c, gu, ... } }
+    // (refs/game/script.js:2233 — getRefsData → response.data)
+    const json = (await response.json()) as Record<string, unknown>;
+    if (json.error) return null;
+    const pointData = json.data as Record<string, unknown> | undefined;
+    if (!pointData) return null;
+    return {
+      title: typeof pointData.t === 'string' ? pointData.t : '',
+      level: Number(pointData.l ?? 0),
+      team: Number(pointData.te ?? 0),
+      owner: typeof pointData.o === 'string' ? pointData.o : '',
+      energy: Number(pointData.e ?? 0),
+      coresCount: Number(pointData.co ?? 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function populatePlaceholder(item: HTMLElement, data: IPointData): void {
+  const title = item.querySelector<HTMLElement>('.inventory__item-title');
+  if (title) {
+    title.textContent = data.title;
+    title.style.color = `var(--team-${data.team})`;
+  }
+  const description = item.querySelector<HTMLElement>('.inventory__item-descr');
+  if (description) {
+    const levelSpan = document.createElement('span');
+    levelSpan.style.color = `var(--level-${data.level})`;
+    levelSpan.textContent = `Level ${data.level}`;
+
+    const ownerSpan = document.createElement('span');
+    ownerSpan.style.color = `var(--team-${data.team})`;
+    ownerSpan.className = 'profile-link';
+    ownerSpan.dataset.name = data.owner;
+    ownerSpan.textContent = data.owner || '—';
+
+    description.textContent = '';
+    description.style.fontStyle = '';
+    description.appendChild(levelSpan);
+    description.appendChild(document.createTextNode('; '));
+    description.appendChild(ownerSpan);
+  }
+}
+
+function populatePlaceholderError(item: HTMLElement): void {
+  const title = item.querySelector<HTMLElement>('.inventory__item-title');
+  if (title) {
+    title.textContent = t({ en: 'Failed to load', ru: 'Не удалось загрузить' });
+  }
+}
+
+/** Создаёт placeholder'ы для избранных точек без ключей и запускает подгрузку данных. */
+function injectPlaceholders(content: Element): void {
+  const keyedGuids = getKeyedGuids(content);
+  const allFavoriteGuids = getFavoritedGuids();
+
+  for (const guid of allFavoriteGuids) {
+    if (keyedGuids.has(guid)) continue;
+    // Placeholder для этого GUID уже есть (перерисовка при активном фильтре).
+    const existingPlaceholders = content.querySelectorAll<HTMLElement>(`.${PLACEHOLDER_CLASS}`);
+    let alreadyExists = false;
+    for (const existing of existingPlaceholders) {
+      if (existing.dataset.ref === guid) {
+        alreadyExists = true;
+        break;
+      }
+    }
+    if (alreadyExists) continue;
+
+    const placeholder = createPlaceholderItem(guid);
+    content.appendChild(placeholder);
+    // Звезда инжектируется в processItems → updateItemMarks.
+    // Подгрузка данных — fire-and-forget, результат заполняет DOM.
+    void fetchPointData(guid).then((data) => {
+      // Placeholder мог быть удалён (фильтр выключен, инвентарь закрыт).
+      if (!placeholder.isConnected) return;
+      if (data) {
+        populatePlaceholder(placeholder, data);
+      } else {
+        populatePlaceholderError(placeholder);
+      }
+    });
+  }
+}
+
+/** Удаляет все placeholder'ы из контейнера. */
+function removePlaceholders(content: Element): void {
+  const placeholders = content.querySelectorAll(`.${PLACEHOLDER_CLASS}`);
+  for (const placeholder of placeholders) {
+    placeholder.remove();
+  }
+}
+
 /** Полный пересчёт: метки + фильтр. Вызывается при смене фильтра/табa/перерисовке. */
 function processItems(content: Element): void {
   updateItemMarks(content);
@@ -156,6 +309,11 @@ function processItems(content: Element): void {
 function setFilterEnabled(content: Element, enabled: boolean): void {
   filterEnabled = enabled;
   if (checkbox) checkbox.checked = enabled;
+  if (enabled) {
+    injectPlaceholders(content);
+  } else {
+    removePlaceholders(content);
+  }
   processItems(content);
   // Сбрасываем скролл на начало списка — при смене фильтра пользователь
   // всегда видит топ релевантного набора ключей, а не зависает на позиции,
@@ -224,6 +382,11 @@ function ensureFilterBarInjected(content: Element): void {
 function onContentMutation(content: Element): void {
   updateFilterBarVisibility(content);
   if (getCurrentTab(content) === REFS_TAB) {
+    // При перерисовке игрой (childList) наши placeholder'ы удаляются —
+    // если фильтр активен, нужно пересоздать их.
+    if (filterEnabled) {
+      injectPlaceholders(content);
+    }
     processItems(content);
     updateCountLabel();
   }
@@ -317,6 +480,7 @@ export function uninstallInventoryFilter(): void {
 
   const content = document.querySelector(INVENTORY_CONTENT_SELECTOR);
   if (content) {
+    removePlaceholders(content);
     const items = content.querySelectorAll<HTMLElement>('.inventory__item[data-ref]');
     for (const item of items) {
       item.classList.remove(FAV_ITEM_CLASS);
