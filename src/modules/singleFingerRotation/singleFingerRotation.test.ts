@@ -116,20 +116,20 @@ beforeEach(async () => {
 
   localStorage.clear();
 
-  mockNow = 100;
-  jest.spyOn(performance, 'now').mockImplementation(() => mockNow);
+  jest.useFakeTimers();
+  jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+    return setTimeout(callback, 0) as unknown as number;
+  });
+  jest.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
+    clearTimeout(id);
+  });
 
   await singleFingerRotation.init();
   await singleFingerRotation.enable();
 });
 
-/** Интервал троттлинга из singleFingerRotation.ts */
-const ROTATION_THROTTLE_MS = 33;
-
-let mockNow = 0;
-
-function advanceTime(ms: number): void {
-  mockNow += ms;
+function flushAnimationFrame(): void {
+  jest.advanceTimersByTime(0);
 }
 
 afterEach(async () => {
@@ -137,6 +137,7 @@ afterEach(async () => {
   viewport.remove();
   delete window.ol;
   jest.restoreAllMocks();
+  jest.useRealTimers();
 });
 
 test('rotates when follow is not explicitly set (default state)', () => {
@@ -144,6 +145,7 @@ test('rotates when follow is not explicitly set (default state)', () => {
   // Игра считает follow активным по умолчанию (null != 'false').
   dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
   dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+  flushAnimationFrame();
 
   expect(realSetRotation).toHaveBeenCalled();
 });
@@ -178,6 +180,7 @@ test('rotates map with circular gesture when FW is active', () => {
 
   dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
   dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+  flushAnimationFrame();
 
   expect(realSetRotation).toHaveBeenCalled();
 });
@@ -187,6 +190,7 @@ test('resets gesture when second finger touches', () => {
 
   dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
   dispatchTouch('touchmove', { clientX: 500, clientY: 200 });
+  flushAnimationFrame();
 
   realSetRotation.mockClear();
 
@@ -253,6 +257,7 @@ test('accounts for view padding when calculating rotation center', () => {
 
   dispatchTouch('touchstart', { clientX: 400, clientY: 205 });
   dispatchTouch('touchmove', { clientX: 600, clientY: 405 });
+  flushAnimationFrame();
 
   expect(realSetRotation).toHaveBeenCalled();
   const firstCall = realSetRotation.mock.calls[0] as [number];
@@ -318,41 +323,20 @@ test('preventDefault is called on touchmove during gesture', () => {
   expect(spy).toHaveBeenCalled();
 });
 
-test('applies rotation immediately on first touchmove of gesture', () => {
+test('does not apply rotation synchronously on touchmove', () => {
   dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
-  dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
-
-  expect(realSetRotation).toHaveBeenCalledTimes(1);
-});
-
-test('throttles rotation within time window', () => {
-  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
-  dispatchTouch('touchmove', { clientX: 500, clientY: 150 });
-
-  // Первый touchmove применился сразу
-  expect(realSetRotation).toHaveBeenCalledTimes(1);
-  realSetRotation.mockClear();
-
-  // Последующие touchmove внутри окна троттлинга — только накапливают дельту
-  dispatchTouch('touchmove', { clientX: 600, clientY: 200 });
   dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
 
   expect(realSetRotation).not.toHaveBeenCalled();
 });
 
-test('applies accumulated rotation after throttle interval', () => {
+test('applies rotation after animation frame fires', () => {
   dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
-  dispatchTouch('touchmove', { clientX: 500, clientY: 150 });
-  realSetRotation.mockClear();
+  dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
 
-  // Накапливаем дельты внутри окна троттлинга
-  dispatchTouch('touchmove', { clientX: 600, clientY: 200 });
-  dispatchTouch('touchmove', { clientX: 650, clientY: 250 });
   expect(realSetRotation).not.toHaveBeenCalled();
 
-  // После интервала следующий touchmove применяет накопленное
-  advanceTime(ROTATION_THROTTLE_MS);
-  dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+  flushAnimationFrame();
 
   expect(realSetRotation).toHaveBeenCalledTimes(1);
 });
@@ -360,26 +344,20 @@ test('applies accumulated rotation after throttle interval', () => {
 test('batches multiple touchmove events into single rotation update', () => {
   dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
   dispatchTouch('touchmove', { clientX: 500, clientY: 150 });
-  realSetRotation.mockClear();
-
-  // Три touchmove внутри окна → все накапливаются
-  dispatchTouch('touchmove', { clientX: 550, clientY: 175 });
   dispatchTouch('touchmove', { clientX: 600, clientY: 200 });
   dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+
   expect(realSetRotation).not.toHaveBeenCalled();
 
-  // Один apply после интервала
-  advanceTime(ROTATION_THROTTLE_MS);
-  dispatchTouch('touchmove', { clientX: 750, clientY: 350 });
+  flushAnimationFrame();
+
   expect(realSetRotation).toHaveBeenCalledTimes(1);
 });
 
-test('flushes pending rotation on touchend without waiting for throttle', () => {
+test('flushes pending rotation on touchend without waiting for RAF', () => {
   dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
-  dispatchTouch('touchmove', { clientX: 500, clientY: 150 });
-  realSetRotation.mockClear();
-
   dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+
   expect(realSetRotation).not.toHaveBeenCalled();
 
   dispatchTouch('touchend');
@@ -389,13 +367,11 @@ test('flushes pending rotation on touchend without waiting for throttle', () => 
 
 test('flushes pending rotation on multi-touch interrupt', () => {
   dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
-  dispatchTouch('touchmove', { clientX: 500, clientY: 150 });
-  realSetRotation.mockClear();
-
   dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+
   expect(realSetRotation).not.toHaveBeenCalled();
 
-  // Второй палец прерывает жест — pending дельта применяется мгновенно
+  // Второй палец прерывает жест — pending дельта должна быть применена
   dispatchTouch('touchstart', { clientX: 200, clientY: 200, targetTouches: 2 });
 
   expect(realSetRotation).toHaveBeenCalledTimes(1);
@@ -403,10 +379,8 @@ test('flushes pending rotation on multi-touch interrupt', () => {
 
 test('flushes pending rotation on disable', async () => {
   dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
-  dispatchTouch('touchmove', { clientX: 500, clientY: 150 });
-  realSetRotation.mockClear();
-
   dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+
   expect(realSetRotation).not.toHaveBeenCalled();
 
   await singleFingerRotation.disable();
