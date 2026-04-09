@@ -123,6 +123,53 @@ export function updateDomInventoryCount(total: number): void {
   }
 }
 
+/**
+ * Обновляет счётчик ключей #i-ref в открытом попапе точки.
+ * Игра обновляет #i-ref при discover'е ДО нашей автоочистки.
+ * После удаления ключей нужно пересчитать #i-ref по актуальному inventory-cache.
+ */
+export function updatePointRefCount(): void {
+  const infoPopup = document.querySelector<HTMLElement>('.info.popup');
+  if (!infoPopup || infoPopup.classList.contains('hidden')) return;
+
+  const pointGuid = infoPopup.dataset.guid;
+  if (!pointGuid) return;
+
+  const refElement = document.getElementById('i-ref');
+  if (!refElement) return;
+
+  const raw = localStorage.getItem(INVENTORY_CACHE_KEY);
+  if (!raw) return;
+
+  let cache: unknown[];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return;
+    cache = parsed;
+  } catch {
+    return;
+  }
+
+  const ref = cache.find(
+    (item) =>
+      typeof item === 'object' &&
+      item !== null &&
+      (item as Record<string, unknown>).t === ITEM_TYPE_REFERENCE &&
+      (item as Record<string, unknown>).l === pointGuid,
+  ) as { a: number } | undefined;
+
+  const count = ref?.a ?? 0;
+
+  // Формат #i-ref: "КЛЮЧ N/100" (ru) или "REF N/100" (en) — число перед "/" всегда
+  // совпадает с количеством. Заменяем через regex, чтобы не зависеть от i18next.
+  const currentText = refElement.textContent;
+  const updatedText = currentText.replace(/\d+(?=\/)/, String(count));
+  if (updatedText !== currentText) {
+    refElement.textContent = updatedText;
+  }
+  refElement.setAttribute('data-has', count > 0 ? '1' : '0');
+}
+
 export function updateInventoryCache(deletions: readonly IDeletionEntry[]): void {
   const raw = localStorage.getItem(INVENTORY_CACHE_KEY);
   if (!raw) {

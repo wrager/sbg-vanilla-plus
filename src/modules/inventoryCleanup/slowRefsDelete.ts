@@ -9,6 +9,7 @@ import {
   deleteInventoryItems,
   updateInventoryCache,
   updateDomInventoryCount,
+  updatePointRefCount,
 } from './inventoryApi';
 
 const BUTTON_CLASS = 'svp-cleanup-slow-refs-button';
@@ -325,6 +326,7 @@ async function runSlowDelete(): Promise<void> {
       favoritedPointsActive: isModuleActive('favoritedPoints'),
     });
     updateInventoryCache(deletions);
+    updatePointRefCount();
     if (result.total > 0) {
       updateDomInventoryCount(result.total);
     }

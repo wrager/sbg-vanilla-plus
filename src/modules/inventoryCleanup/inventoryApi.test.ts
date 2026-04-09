@@ -1,5 +1,5 @@
 import type { IDeletionEntry } from './cleanupCalculator';
-import { deleteInventoryItems, updateInventoryCache } from './inventoryApi';
+import { deleteInventoryItems, updateInventoryCache, updatePointRefCount } from './inventoryApi';
 
 const AUTH_TOKEN = 'test-token-123';
 
@@ -406,5 +406,67 @@ describe('updateInventoryCache', () => {
       { g: 'c1', t: 1, l: 5, a: 6 },
       { g: 'r1', t: 3, l: 'point-abc', a: 15 },
     ]);
+  });
+});
+
+describe('updatePointRefCount', () => {
+  function createInfoPopup(pointGuid: string): void {
+    const popup = document.createElement('div');
+    popup.className = 'info popup';
+    popup.dataset.guid = pointGuid;
+    const refSpan = document.createElement('span');
+    refSpan.id = 'i-ref';
+    refSpan.textContent = 'КЛЮЧ 4/100';
+    refSpan.setAttribute('data-has', '1');
+    popup.appendChild(refSpan);
+    document.body.appendChild(popup);
+  }
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  test('обновляет счётчик ключей в открытом попапе точки', () => {
+    createInfoPopup('point-abc');
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ g: 'r1', t: 3, l: 'point-abc', a: 2 }]),
+    );
+
+    updatePointRefCount();
+
+    const refElement = document.getElementById('i-ref');
+    expect(refElement?.textContent).toBe('КЛЮЧ 2/100');
+    expect(refElement?.getAttribute('data-has')).toBe('1');
+  });
+
+  test('ставит 0 и data-has=0, если ключей не осталось', () => {
+    createInfoPopup('point-abc');
+    localStorage.setItem('inventory-cache', JSON.stringify([]));
+
+    updatePointRefCount();
+
+    const refElement = document.getElementById('i-ref');
+    expect(refElement?.textContent).toBe('КЛЮЧ 0/100');
+    expect(refElement?.getAttribute('data-has')).toBe('0');
+  });
+
+  test('не трогает #i-ref, если попап скрыт', () => {
+    createInfoPopup('point-abc');
+    const popup = document.querySelector<HTMLElement>('.info.popup');
+    popup?.classList.add('hidden');
+    localStorage.setItem('inventory-cache', JSON.stringify([]));
+
+    updatePointRefCount();
+
+    const refElement = document.getElementById('i-ref');
+    expect(refElement?.textContent).toBe('КЛЮЧ 4/100');
+  });
+
+  test('не падает, если попапа нет в DOM', () => {
+    localStorage.setItem('inventory-cache', JSON.stringify([]));
+    expect(() => {
+      updatePointRefCount();
+    }).not.toThrow();
   });
 });

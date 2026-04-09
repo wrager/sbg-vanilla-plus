@@ -10,6 +10,7 @@ import {
   deleteInventoryItems,
   updateInventoryCache,
   updateDomInventoryCount,
+  updatePointRefCount,
 } from './inventoryApi';
 import { installSlowRefsDelete, uninstallSlowRefsDelete } from './slowRefsDelete';
 import { showToast } from '../../core/toast';
@@ -99,6 +100,7 @@ async function runCleanupImpl(): Promise<void> {
       favoritedPointsActive: isModuleActive('favoritedPoints'),
     });
     updateInventoryCache(deletions);
+    updatePointRefCount();
     if (result.total > 0) {
       updateDomInventoryCount(result.total);
     }
