@@ -1,5 +1,12 @@
 # SBG Vanilla+
 
+[![Latest release][release-badge]][releases]
+[![Release date][release-date-badge]][releases]
+[![Build status][ci-badge]][ci]
+[![Downloads@latest][downloads-badge]][releases]
+[![License MIT][license-badge]][license]
+[![SBG][sbg-badge]][sbg]
+
 Юзерскрипт для улучшения стандартного интерфейса [SBG](https://sbg-game.ru). Минимальная инвазия — не перекраивает UI, а дополняет ванильную игру тем, чего в ней не хватает.
 
 Модульная архитектура: каждая фича изолирована и переключается независимо. Не нужна фича или не нравится — просто выключите. Если после обновления игры что-то сломалось — отключите один модуль, остальные продолжат работать.
@@ -103,3 +110,14 @@ Dev-скрипт имеет пометку `[DEV]` в названии. Прод
 ## Лицензия
 
 MIT
+
+[releases]: https://github.com/wrager/sbg-vanilla-plus/releases
+[ci]: https://github.com/wrager/sbg-vanilla-plus/actions/workflows/ci.yml
+[license]: LICENSE
+[sbg]: https://sbg-game.ru/app
+[release-badge]: https://img.shields.io/github/v/release/wrager/sbg-vanilla-plus?style=flat-square
+[release-date-badge]: https://img.shields.io/github/release-date/wrager/sbg-vanilla-plus?style=flat-square
+[ci-badge]: https://img.shields.io/github/actions/workflow/status/wrager/sbg-vanilla-plus/ci.yml?branch=main&style=flat-square
+[downloads-badge]: https://img.shields.io/github/downloads/wrager/sbg-vanilla-plus/latest/total?style=flat-square&cacheSeconds=3600
+[license-badge]: https://img.shields.io/github/license/wrager/sbg-vanilla-plus?style=flat-square
+[sbg-badge]: https://img.shields.io/website?label=sbg-game.ru/app&style=flat-square&url=https%3A%2F%2Fsbg-game.ru/app
