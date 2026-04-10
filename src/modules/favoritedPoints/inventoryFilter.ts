@@ -33,6 +33,10 @@ const PLACEHOLDER_CLASS = 'svp-fav-placeholder';
 // Класс loaded предотвращает обработку игровой функцией getRefsData (script.js:2212),
 // которая упала бы с TypeError: inventory-cache не содержит записи для этой точки.
 const PLACEHOLDER_LOADED_CLASS = 'loaded';
+// Заголовок-разделитель над блоком placeholder'ов. Визуально отделяет избранные
+// без ключей от списка обычных ключей, чтобы пользователь понимал: на эти точки
+// игровой фильтр по фракции не распространяется.
+const PLACEHOLDER_HEADER_CLASS = 'svp-fav-placeholder-header';
 
 // Звезда в элементе инвентаря (SVG).
 const STAR_SVG = `
@@ -168,6 +172,39 @@ function getKeyedGuids(content: Element): Set<string> {
   return guids;
 }
 
+function createPlaceholderHeader(): HTMLElement {
+  const header = document.createElement('div');
+  header.className = PLACEHOLDER_HEADER_CLASS;
+  header.textContent = t({
+    en: 'Favorited points without keys',
+    ru: 'Избранные точки без ключей',
+  });
+  return header;
+}
+
+/**
+ * Добавляет заголовок перед первым placeholder'ом, если есть хотя бы один
+ * и заголовка ещё нет. Удаляет заголовок, если placeholder'ов не осталось.
+ */
+function syncPlaceholderHeader(content: Element): void {
+  const firstPlaceholder = content.querySelector<HTMLElement>(`.${PLACEHOLDER_CLASS}`);
+  const existingHeader = content.querySelector<HTMLElement>(`.${PLACEHOLDER_HEADER_CLASS}`);
+  if (!firstPlaceholder) {
+    existingHeader?.remove();
+    return;
+  }
+  if (existingHeader) {
+    // Заголовок должен стоять непосредственно перед первым placeholder'ом —
+    // иначе перерисовка игры могла переместить элементы.
+    if (existingHeader.nextSibling !== firstPlaceholder) {
+      firstPlaceholder.parentElement?.insertBefore(existingHeader, firstPlaceholder);
+    }
+    return;
+  }
+  const header = createPlaceholderHeader();
+  firstPlaceholder.parentElement?.insertBefore(header, firstPlaceholder);
+}
+
 function createPlaceholderItem(pointGuid: string): HTMLElement {
   const item = document.createElement('div');
   item.className = `inventory__item ${PLACEHOLDER_CLASS} ${PLACEHOLDER_LOADED_CLASS}`;
@@ -290,14 +327,17 @@ function injectPlaceholders(content: Element): void {
       }
     });
   }
+
+  syncPlaceholderHeader(content);
 }
 
-/** Удаляет все placeholder'ы из контейнера. */
+/** Удаляет все placeholder'ы и заголовок из контейнера. */
 function removePlaceholders(content: Element): void {
   const placeholders = content.querySelectorAll(`.${PLACEHOLDER_CLASS}`);
   for (const placeholder of placeholders) {
     placeholder.remove();
   }
+  content.querySelector(`.${PLACEHOLDER_HEADER_CLASS}`)?.remove();
 }
 
 /** Полный пересчёт: метки + фильтр. Вызывается при смене фильтра/табa/перерисовке. */

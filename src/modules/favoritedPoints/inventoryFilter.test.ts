@@ -577,6 +577,76 @@ describe('placeholder для избранных без ключей', () => {
     expect(content.querySelector('.svp-fav-placeholder')).toBe(placeholderBefore);
   });
 
+  test('заголовок-разделитель появляется перед placeholder\u2019ами', async () => {
+    await addFavorite('point-no-keys');
+    const { content } = createInventoryDom('3');
+    addKeyItem(content, 'point-with-keys');
+    installInventoryFilter();
+    findCheckbox().checked = true;
+    findCheckbox().dispatchEvent(new Event('change'));
+
+    const header = content.querySelector<HTMLElement>('.svp-fav-placeholder-header');
+    expect(header).not.toBeNull();
+    expect(header?.textContent).toContain('Favorited points without keys');
+    // Заголовок стоит непосредственно перед первым placeholder'ом.
+    const firstPlaceholder = content.querySelector('.svp-fav-placeholder');
+    expect(header?.nextSibling).toBe(firstPlaceholder);
+  });
+
+  test('заголовок не создаётся, если все избранные имеют ключи', async () => {
+    await addFavorite('point-1');
+    const { content } = createInventoryDom('3');
+    addKeyItem(content, 'point-1');
+    installInventoryFilter();
+    findCheckbox().checked = true;
+    findCheckbox().dispatchEvent(new Event('change'));
+
+    expect(content.querySelector('.svp-fav-placeholder-header')).toBeNull();
+  });
+
+  test('заголовок удаляется вместе с placeholder\u2019ами при выключении фильтра', async () => {
+    await addFavorite('point-no-keys');
+    const { content } = createInventoryDom('3');
+    installInventoryFilter();
+    const checkbox = findCheckbox();
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+    expect(content.querySelector('.svp-fav-placeholder-header')).not.toBeNull();
+
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event('change'));
+    expect(content.querySelector('.svp-fav-placeholder-header')).toBeNull();
+  });
+
+  test('заголовок не дублируется при перерисовке с активным фильтром', async () => {
+    await addFavorite('point-no-keys');
+    const { content } = createInventoryDom('3');
+    installInventoryFilter();
+    findCheckbox().checked = true;
+    findCheckbox().dispatchEvent(new Event('change'));
+    expect(content.querySelectorAll('.svp-fav-placeholder-header')).toHaveLength(1);
+
+    // Имитация перерисовки: удаляем только игровые items, оставляя placeholder.
+    for (const element of content.querySelectorAll('.inventory__item:not(.svp-fav-placeholder)')) {
+      element.remove();
+    }
+    await flush();
+
+    expect(content.querySelectorAll('.svp-fav-placeholder-header')).toHaveLength(1);
+  });
+
+  test('uninstall удаляет заголовок-разделитель', async () => {
+    await addFavorite('point-no-keys');
+    const { content } = createInventoryDom('3');
+    installInventoryFilter();
+    findCheckbox().checked = true;
+    findCheckbox().dispatchEvent(new Event('change'));
+    expect(content.querySelector('.svp-fav-placeholder-header')).not.toBeNull();
+
+    uninstallInventoryFilter();
+    expect(content.querySelector('.svp-fav-placeholder-header')).toBeNull();
+  });
+
   test('клик по звезде placeholder убирает из избранных', async () => {
     await addFavorite('point-no-keys');
     const { content } = createInventoryDom('3');

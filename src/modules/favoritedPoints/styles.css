@@ -154,6 +154,20 @@
   opacity: 0.6;
 }
 
+/* Заголовок-разделитель перед блоком placeholder'ов. Визуально отделяет
+   избранные без ключей от обычного списка ключей — чтобы пользователь понимал,
+   что эта секция не подчиняется игровому фильтру по фракции. */
+.svp-fav-placeholder-header {
+  padding: 6px 8px;
+  margin-top: 8px;
+  font-size: 0.85em;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.15));
+}
+
 /* Кнопка «Настроить» у модуля favoritedPoints в панели настроек SVP */
 .svp-fav-configure-button {
   margin-left: 8px;
