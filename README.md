@@ -17,7 +17,7 @@
 
 Доступны два способа:
 
-- **[SBG Scout](https://github.com/wrager/sbg-scout)** — Android-приложение: игра в WebView + встроенный менеджер юзерскриптов, Vanilla+ ставится и обновляется автоматически.
+- **[SBG Scout](https://github.com/wrager/sbg-scout/releases/latest)** — Android-приложение: игра в WebView + встроенный менеджер юзерскриптов, Vanilla+ ставится и обновляется автоматически.
 - **Менеджер юзерскриптов в браузере** — см. ниже.
 
 <details>
