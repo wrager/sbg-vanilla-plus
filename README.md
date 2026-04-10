@@ -18,23 +18,9 @@
 Доступны два способа:
 
 - **[SBG Scout](https://github.com/wrager/sbg-scout/releases/latest)** — Android-приложение: игра в WebView + встроенный менеджер юзерскриптов, Vanilla+ ставится и обновляется автоматически.
-- **Менеджер юзерскриптов в браузере** — см. ниже.
-
-<details>
-<summary>Установка в браузер</summary>
-
-1. Поставить менеджер юзерскриптов (расширение браузера):
-   - [Tampermonkey](https://www.tampermonkey.net/) — Chrome, Firefox, Edge, Safari, Opera, Яндекс.Браузер
-   - [Violentmonkey](https://violentmonkey.github.io/) — Chrome, Firefox, Edge, Яндекс.Браузер
-   - [Userscripts](https://apps.apple.com/app/id1463298887) — Safari на iOS
-
-   На Android — через браузер с поддержкой расширений: Firefox, Kiwi, Яндекс.Браузер.
-
-2. Открыть [последний релиз](https://github.com/wrager/sbg-vanilla-plus/releases/latest) и установить `.user.js`
-
-Обновления прилетают штатными средствами менеджера юзерскриптов.
-
-</details>
+- **Менеджер юзерскриптов в браузере:**
+  1. Поставить менеджер юзерскриптов: [Tampermonkey](https://www.tampermonkey.net/), [Violentmonkey](https://violentmonkey.github.io/), [Userscripts](https://apps.apple.com/app/id1463298887)
+  2. Открыть [последний релиз](https://github.com/wrager/sbg-vanilla-plus/releases/latest) и установить `.user.js`
 
 ## Модули
 
