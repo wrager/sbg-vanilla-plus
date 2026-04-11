@@ -61,7 +61,7 @@ class MockDragPan implements IOlInteraction {
   }
 }
 
-let mockSetZoom: jest.Mock;
+let mockSetZoom: jest.MockedFunction<(zoom: number) => void>;
 let currentZoom: number;
 let mockView: IOlView;
 let mockMap: IOlMap;
@@ -69,6 +69,21 @@ let doubleClickZoom: MockDoubleClickZoom;
 let dragPan: MockDragPan;
 let viewport: HTMLDivElement;
 let canvas: HTMLCanvasElement;
+
+// Controlled rAF queue: every `requestAnimationFrame` pushes the callback into
+// `rafCallbacks`; `flushRaf` runs whatever is queued. This lets tests assert
+// coalescing (three touchmoves → one flush → one setZoom call).
+let rafCallbacks: Array<FrameRequestCallback | null>;
+let originalRaf: typeof requestAnimationFrame;
+let originalCancelRaf: typeof cancelAnimationFrame;
+
+function flushRaf(): void {
+  const queued = rafCallbacks;
+  rafCallbacks = [];
+  for (const cb of queued) {
+    if (cb) cb(performance.now());
+  }
+}
 
 function dispatchTouch(
   type: 'touchstart' | 'touchmove' | 'touchend',
@@ -102,6 +117,19 @@ function doubleTapAndDrag(dragToY: number, tapX = 200, tapY = 300): void {
 
 beforeEach(async () => {
   jest.useFakeTimers();
+
+  rafCallbacks = [];
+  originalRaf = globalThis.requestAnimationFrame;
+  originalCancelRaf = globalThis.cancelAnimationFrame;
+  globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+    rafCallbacks.push(cb);
+    return rafCallbacks.length;
+  }) as typeof requestAnimationFrame;
+  globalThis.cancelAnimationFrame = ((id: number) => {
+    if (id >= 1 && id <= rafCallbacks.length) {
+      rafCallbacks[id - 1] = null;
+    }
+  }) as typeof cancelAnimationFrame;
 
   currentZoom = 15;
   mockSetZoom = jest.fn((zoom: number) => {
@@ -154,6 +182,8 @@ afterEach(async () => {
   await ngrsZoom.disable();
   viewport.remove();
   delete window.ol;
+  globalThis.requestAnimationFrame = originalRaf;
+  globalThis.cancelAnimationFrame = originalCancelRaf;
   jest.restoreAllMocks();
   jest.useRealTimers();
 });
@@ -165,52 +195,58 @@ describe('ngrsZoom', () => {
     expect(ngrsZoom.defaultEnabled).toBe(true);
   });
 
+  function lastZoom(): number {
+    const calls = mockSetZoom.mock.calls;
+    return calls[calls.length - 1][0];
+  }
+
   test('double-tap + drag up zooms in', () => {
     // Drag up: currentY < initialY → positive zoom delta
     doubleTapAndDrag(200, 200, 300);
+    flushRaf();
 
     expect(mockSetZoom).toHaveBeenCalled();
-    const lastCall = mockSetZoom.mock.calls[mockSetZoom.mock.calls.length - 1] as [number];
-    expect(lastCall[0]).toBeGreaterThan(15);
+    expect(lastZoom()).toBeGreaterThan(15);
   });
 
   test('double-tap + drag down zooms out', () => {
     // Drag down: currentY > initialY → negative zoom delta
     doubleTapAndDrag(400, 200, 300);
+    flushRaf();
 
     expect(mockSetZoom).toHaveBeenCalled();
-    const lastCall = mockSetZoom.mock.calls[mockSetZoom.mock.calls.length - 1] as [number];
-    expect(lastCall[0]).toBeLessThan(15);
+    expect(lastZoom()).toBeLessThan(15);
   });
 
   test('drag 100px up adds exactly 1.5 zoom levels (sensitivity 0.015)', () => {
     // initial tap at y=300, drag up to y=200 → deltaY = 100px
     doubleTapAndDrag(200, 200, 300);
+    flushRaf();
 
-    const lastCall = mockSetZoom.mock.calls[mockSetZoom.mock.calls.length - 1] as [number];
-    expect(lastCall[0]).toBeCloseTo(16.5, 5); // 15 + 100 * 0.015
+    expect(mockSetZoom).toHaveBeenCalledWith(16.5);
   });
 
   test('drag 100px down subtracts exactly 1.5 zoom levels', () => {
     // initial tap at y=300, drag down to y=400 → deltaY = -100px
     doubleTapAndDrag(400, 200, 300);
+    flushRaf();
 
-    const lastCall = mockSetZoom.mock.calls[mockSetZoom.mock.calls.length - 1] as [number];
-    expect(lastCall[0]).toBeCloseTo(13.5, 5); // 15 - 100 * 0.015
+    expect(mockSetZoom).toHaveBeenCalledWith(13.5);
   });
 
   test('drag ~66.67px up matches the old 100px up effect (1.5× more sensitive)', () => {
     // 100/1.5 ≈ 66.67 → zoom delta ≈ 1.0 (what the previous 0.01 sensitivity gave at 100px)
     doubleTapAndDrag(300 - 200 / 3, 200, 300);
+    flushRaf();
 
-    const lastCall = mockSetZoom.mock.calls[mockSetZoom.mock.calls.length - 1] as [number];
-    expect(lastCall[0]).toBeCloseTo(16, 5); // 15 + (200/3) * 0.015 = 15 + 1.0
+    expect(lastZoom()).toBeCloseTo(16, 5); // 15 + (200/3) * 0.015 = 15 + 1.0
   });
 
   test('zoom is proportional to drag distance', () => {
     // Small drag
     doubleTapAndDrag(290, 200, 300);
-    const smallDragCalls = Array.from(mockSetZoom.mock.calls) as [number][];
+    flushRaf();
+    const smallZoom = lastZoom();
 
     // Reset
     dispatchTouch('touchend');
@@ -219,10 +255,9 @@ describe('ngrsZoom', () => {
 
     // Large drag
     doubleTapAndDrag(200, 200, 300);
-    const largeDragCalls = Array.from(mockSetZoom.mock.calls) as [number][];
+    flushRaf();
+    const largeZoom = lastZoom();
 
-    const smallZoom = smallDragCalls[smallDragCalls.length - 1][0];
-    const largeZoom = largeDragCalls[largeDragCalls.length - 1][0];
     expect(largeZoom).toBeGreaterThan(smallZoom);
   });
 
@@ -231,6 +266,7 @@ describe('ngrsZoom', () => {
     dispatchTouch('touchend');
     dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
 
+    flushRaf();
     expect(mockSetZoom).not.toHaveBeenCalled();
   });
 
@@ -246,6 +282,7 @@ describe('ngrsZoom', () => {
     dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
     dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
 
+    flushRaf();
     expect(mockSetZoom).not.toHaveBeenCalled();
   });
 
@@ -258,6 +295,7 @@ describe('ngrsZoom', () => {
     dispatchTouch('touchstart', { clientX: 300, clientY: 400 });
     dispatchTouch('touchmove', { clientX: 300, clientY: 300 });
 
+    flushRaf();
     expect(mockSetZoom).not.toHaveBeenCalled();
   });
 
@@ -270,6 +308,7 @@ describe('ngrsZoom', () => {
     dispatchTouch('touchstart', { clientX: 200, clientY: 300, targetTouches: 2 });
     dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
 
+    flushRaf();
     expect(mockSetZoom).not.toHaveBeenCalled();
   });
 
@@ -286,6 +325,7 @@ describe('ngrsZoom', () => {
     dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
     dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
 
+    flushRaf();
     expect(mockSetZoom).not.toHaveBeenCalled();
   });
 
@@ -296,6 +336,7 @@ describe('ngrsZoom', () => {
     // Touchend without any touchmove
     dispatchTouch('touchend');
 
+    flushRaf();
     expect(mockSetZoom).not.toHaveBeenCalled();
   });
 
@@ -347,6 +388,7 @@ describe('ngrsZoom', () => {
 
     doubleTapAndDrag(200, 200, 300);
 
+    flushRaf();
     expect(mockSetZoom).not.toHaveBeenCalled();
   });
 
@@ -381,6 +423,7 @@ describe('ngrsZoom', () => {
     dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
     dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
 
+    flushRaf();
     expect(mockSetZoom).not.toHaveBeenCalled();
   });
 
@@ -395,6 +438,7 @@ describe('ngrsZoom', () => {
     dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
     dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
 
+    flushRaf();
     expect(mockSetZoom).not.toHaveBeenCalled();
   });
 
@@ -422,6 +466,136 @@ describe('ngrsZoom', () => {
     expect(viewportListener).toHaveBeenCalled();
 
     viewport.removeEventListener('touchstart', viewportListener);
+  });
+
+  test('multiple touchmoves in one frame coalesce into a single setZoom call', () => {
+    // First tap
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    dispatchTouch('touchend');
+    // Second tap down
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+
+    // Three touchmoves in a single frame (before any flushRaf)
+    dispatchTouch('touchmove', { clientX: 200, clientY: 260 });
+    dispatchTouch('touchmove', { clientX: 200, clientY: 240 });
+    dispatchTouch('touchmove', { clientX: 200, clientY: 220 });
+
+    // Nothing has been applied yet: setZoom is not called until the frame flushes
+    expect(mockSetZoom).not.toHaveBeenCalled();
+    // Exactly one rAF was scheduled, not three
+    expect(rafCallbacks.filter((cb) => cb !== null)).toHaveLength(1);
+
+    flushRaf();
+
+    // Single setZoom call using the LAST pendingY (220 → deltaY 80 → zoom 16.2)
+    expect(mockSetZoom).toHaveBeenCalledTimes(1);
+    expect(mockSetZoom).toHaveBeenCalledWith(16.2);
+  });
+
+  test('touchmove after flush schedules a fresh rAF', () => {
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    dispatchTouch('touchend');
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+
+    dispatchTouch('touchmove', { clientX: 200, clientY: 260 });
+    flushRaf();
+    expect(mockSetZoom).toHaveBeenCalledTimes(1);
+
+    dispatchTouch('touchmove', { clientX: 200, clientY: 240 });
+    flushRaf();
+    expect(mockSetZoom).toHaveBeenCalledTimes(2);
+
+    const firstZoom = mockSetZoom.mock.calls[0][0];
+    const secondZoom = mockSetZoom.mock.calls[1][0];
+    expect(secondZoom).toBeGreaterThan(firstZoom);
+  });
+
+  test('disable during active zoom cancels pending rAF', async () => {
+    // Enter zooming state with a pending rAF (no flush yet)
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    dispatchTouch('touchend');
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    dispatchTouch('touchmove', { clientX: 200, clientY: 220 });
+
+    // One rAF should be pending
+    expect(rafCallbacks.filter((cb) => cb !== null)).toHaveLength(1);
+    expect(mockSetZoom).not.toHaveBeenCalled();
+
+    await ngrsZoom.disable();
+
+    // disable() must cancel the pending rAF (slot becomes null)
+    expect(rafCallbacks.filter((cb) => cb !== null)).toHaveLength(0);
+
+    // Even if something tries to flush, setZoom must not be invoked — listeners are gone
+    flushRaf();
+    expect(mockSetZoom).not.toHaveBeenCalled();
+  });
+
+  test('multi-finger touch during zooming cancels pending rAF', () => {
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    dispatchTouch('touchend');
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    dispatchTouch('touchmove', { clientX: 200, clientY: 260 });
+
+    expect(rafCallbacks.filter((cb) => cb !== null)).toHaveLength(1);
+
+    // Second finger appears — gesture must reset
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300, targetTouches: 2 });
+
+    // Pending rAF is cancelled; a subsequent flush must not apply stale zoom
+    expect(rafCallbacks.filter((cb) => cb !== null)).toHaveLength(0);
+    flushRaf();
+    expect(mockSetZoom).not.toHaveBeenCalled();
+  });
+
+  test('two sequential gestures have isolated rAF state', () => {
+    // First gesture
+    doubleTapAndDrag(260, 200, 300);
+    flushRaf();
+    expect(mockSetZoom).toHaveBeenCalledTimes(1);
+
+    // End first gesture cleanly
+    dispatchTouch('touchend');
+    mockSetZoom.mockClear();
+    currentZoom = 15;
+
+    // Second gesture — should start fresh, not carry over pendingY
+    doubleTapAndDrag(260, 200, 300);
+    flushRaf();
+    expect(mockSetZoom).toHaveBeenCalledTimes(1);
+    expect(mockSetZoom).toHaveBeenCalledWith(15.6);
+  });
+
+  test('view without setZoom method does not crash and skips zoom', () => {
+    // Remove setZoom from mock view
+    mockView = { ...mockView, setZoom: undefined };
+    (mockMap as { getView: () => IOlView }).getView = () => mockView;
+
+    expect(() => {
+      doubleTapAndDrag(200, 200, 300);
+      flushRaf();
+    }).not.toThrow();
+  });
+
+  test('view.getZoom returning undefined resets gesture without throwing', () => {
+    mockView = { ...mockView, getZoom: () => undefined };
+    (mockMap as { getView: () => IOlView }).getView = () => mockView;
+
+    expect(() => {
+      dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+      dispatchTouch('touchend');
+      dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+      dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
+    }).not.toThrow();
+
+    expect(mockSetZoom).not.toHaveBeenCalled();
+  });
+
+  test('module description and name match expected user-facing text', () => {
+    expect(ngrsZoom.name.ru).toBe('Нгрс-зум');
+    expect(ngrsZoom.description.ru).toBe(
+      'Двойной тап и перетаскивание вверх/вниз для плавного зума',
+    );
   });
 
   test('disable before map ready does not deactivate interaction', async () => {

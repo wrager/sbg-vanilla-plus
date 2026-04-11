@@ -31,9 +31,20 @@ let secondTapTimer: ReturnType<typeof setTimeout> | null = null;
 let initialY = 0;
 let initialZoom = 0;
 
+// rAF-throttled zoom application state
+let pendingY = 0;
+let rafId: number | null = null;
+
 function isDoubleClickZoom(interaction: IOlInteraction): boolean {
   const DoubleClickZoom = window.ol?.interaction?.DoubleClickZoom;
   return DoubleClickZoom !== undefined && interaction instanceof DoubleClickZoom;
+}
+
+function cancelPendingZoom(): void {
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
 }
 
 function resetGesture(): void {
@@ -43,18 +54,32 @@ function resetGesture(): void {
     clearTimeout(secondTapTimer);
     secondTapTimer = null;
   }
+  cancelPendingZoom();
 }
 
 function distanceBetweenTaps(x: number, y: number): number {
   return Math.sqrt((x - firstTapX) ** 2 + (y - firstTapY) ** 2);
 }
 
-function applyZoom(currentY: number): void {
+/**
+ * Применяем зум строго один раз за кадр рендера. Если touchmove приходит чаще
+ * кадра (обычно так и есть), несколько вызовов схлопываются в один setZoom
+ * с последним pendingY. Прямой setZoom без animate — иначе прерывание
+ * незавершённых анимаций на каждом кадре даёт видимые рывки.
+ */
+function flushZoom(): void {
+  rafId = null;
   if (!map) return;
   const view = map.getView();
   if (!view.setZoom) return;
-  const deltaY = initialY - currentY;
+  const deltaY = initialY - pendingY;
   view.setZoom(initialZoom + deltaY * ZOOM_SENSITIVITY);
+}
+
+function scheduleZoom(currentY: number): void {
+  pendingY = currentY;
+  if (rafId !== null) return;
+  rafId = requestAnimationFrame(flushZoom);
 }
 
 function onTouchStart(event: TouchEvent): void {
@@ -124,7 +149,7 @@ function onTouchMove(event: TouchEvent): void {
     if (Math.abs(touch.clientY - initialY) > DRAG_THRESHOLD) {
       state = 'zooming';
       event.preventDefault();
-      applyZoom(touch.clientY);
+      scheduleZoom(touch.clientY);
     }
     return;
   }
@@ -132,7 +157,7 @@ function onTouchMove(event: TouchEvent): void {
   if (state === 'zooming') {
     event.preventDefault();
     const touch = event.targetTouches[0];
-    applyZoom(touch.clientY);
+    scheduleZoom(touch.clientY);
   }
 }
 
