@@ -30,6 +30,17 @@ let firstTapY = 0;
 let secondTapTimer: ReturnType<typeof setTimeout> | null = null;
 let initialY = 0;
 let initialResolution = 0;
+/**
+ * Helper'ы beginInteraction/endInteraction переводят view в «interacting»
+ * состояние, где resolution-constraint пропускает непрерывные значения вместо
+ * снепа к целым zoom-уровням. По окончании жеста endInteraction(200) плавно
+ * анимирует переход к ближайшему целому уровню — аналогично тому, как ведут
+ * себя встроенные DragPan/PinchZoom. Флаг нужен чтобы симметрично закрывать
+ * интеракцию в любом пути выхода из жеста.
+ */
+let interacting = false;
+
+const END_INTERACTION_DURATION = 200;
 
 function isDoubleClickZoom(interaction: IOlInteraction): boolean {
   const DoubleClickZoom = window.ol?.interaction?.DoubleClickZoom;
@@ -42,6 +53,10 @@ function resetGesture(): void {
   if (secondTapTimer !== null) {
     clearTimeout(secondTapTimer);
     secondTapTimer = null;
+  }
+  if (interacting) {
+    interacting = false;
+    map?.getView().endInteraction?.(END_INTERACTION_DURATION);
   }
 }
 
@@ -106,6 +121,8 @@ function onTouchStart(event: TouchEvent): void {
     initialY = touch.clientY;
     initialResolution = resolution;
     dragPanControl?.disable();
+    view?.beginInteraction?.();
+    interacting = true;
     event.preventDefault();
     return;
   }

@@ -62,6 +62,8 @@ class MockDragPan implements IOlInteraction {
 }
 
 let mockSetResolution: jest.MockedFunction<(resolution: number) => void>;
+let mockBeginInteraction: jest.MockedFunction<() => void>;
+let mockEndInteraction: jest.MockedFunction<(duration?: number) => void>;
 let currentResolution: number;
 let mockView: IOlView;
 let mockMap: IOlMap;
@@ -109,6 +111,8 @@ beforeEach(async () => {
   mockSetResolution = jest.fn((resolution: number) => {
     currentResolution = resolution;
   });
+  mockBeginInteraction = jest.fn();
+  mockEndInteraction = jest.fn();
   mockView = {
     padding: [0, 0, 0, 0],
     getCenter: () => [0, 0],
@@ -119,6 +123,8 @@ beforeEach(async () => {
     setRotation: jest.fn(),
     getResolution: () => currentResolution,
     setResolution: mockSetResolution,
+    beginInteraction: mockBeginInteraction,
+    endInteraction: mockEndInteraction,
   };
 
   doubleClickZoom = new MockDoubleClickZoom();
@@ -476,6 +482,84 @@ describe('ngrsZoom', () => {
     }).not.toThrow();
 
     expect(mockSetResolution).not.toHaveBeenCalled();
+  });
+
+  // constrainResolution: true в игре заставляет resolution constraint снепить
+  // непрерывные значения к целым zoom-уровням — НО только когда view не в
+  // состоянии interacting. beginInteraction ставит hint INTERACTING, и во время
+  // жеста constraint пропускает дробный resolution. endInteraction(duration)
+  // плавно докручивает к ближайшему целому после touchend. Без этой пары
+  // даже setResolution даёт ступенчатый зум.
+  test('beginInteraction is called when entering secondTapDown', () => {
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    dispatchTouch('touchend');
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+
+    expect(mockBeginInteraction).toHaveBeenCalledTimes(1);
+  });
+
+  test('endInteraction is called with non-zero duration when gesture resets', () => {
+    doubleTapAndDrag(200, 200, 300);
+    dispatchTouch('touchend');
+
+    expect(mockEndInteraction).toHaveBeenCalledTimes(1);
+    const duration = mockEndInteraction.mock.calls[0][0];
+    expect(duration).toBeGreaterThan(0);
+  });
+
+  test('endInteraction is NOT called when interaction was never started', () => {
+    // Single tap — never enters secondTapDown, so beginInteraction is not called
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    dispatchTouch('touchend');
+
+    expect(mockBeginInteraction).not.toHaveBeenCalled();
+    expect(mockEndInteraction).not.toHaveBeenCalled();
+  });
+
+  test('endInteraction is called exactly once per completed gesture', () => {
+    doubleTapAndDrag(200, 200, 300);
+    dispatchTouch('touchend');
+    expect(mockEndInteraction).toHaveBeenCalledTimes(1);
+
+    // Second gesture
+    doubleTapAndDrag(220, 200, 300);
+    dispatchTouch('touchend');
+    expect(mockEndInteraction).toHaveBeenCalledTimes(2);
+  });
+
+  test('disable during active zoom calls endInteraction to release the hint', async () => {
+    // Enter zooming state
+    doubleTapAndDrag(200, 200, 300);
+    expect(mockBeginInteraction).toHaveBeenCalled();
+
+    await ngrsZoom.disable();
+
+    // disable() must release the interaction hint, otherwise view stays stuck in
+    // interacting state even though our listeners are already gone
+    expect(mockEndInteraction).toHaveBeenCalled();
+  });
+
+  test('multi-finger touch during zoom releases interaction hint', () => {
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    dispatchTouch('touchend');
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300 });
+    expect(mockBeginInteraction).toHaveBeenCalled();
+    expect(mockEndInteraction).not.toHaveBeenCalled();
+
+    // Second finger appears — gesture must reset AND release the hint
+    dispatchTouch('touchstart', { clientX: 200, clientY: 300, targetTouches: 2 });
+
+    expect(mockEndInteraction).toHaveBeenCalled();
+  });
+
+  test('view without beginInteraction method does not crash', () => {
+    mockView = { ...mockView, beginInteraction: undefined, endInteraction: undefined };
+    (mockMap as { getView: () => IOlView }).getView = () => mockView;
+
+    expect(() => {
+      doubleTapAndDrag(200, 200, 300);
+      dispatchTouch('touchend');
+    }).not.toThrow();
   });
 
   test('module description and name match expected user-facing text', () => {

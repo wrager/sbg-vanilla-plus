@@ -24,6 +24,8 @@ export interface IOlView {
   setZoom?(zoom: number): void;
   getResolution?(): number | undefined;
   setResolution?(resolution: number): void;
+  beginInteraction?(): void;
+  endInteraction?(duration?: number): void;
   on?(type: string, listener: () => void): void;
   un?(type: string, listener: () => void): void;
 }
