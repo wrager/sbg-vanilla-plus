@@ -67,7 +67,7 @@ describe('settings/storage', () => {
   test('migration from v1 adds errors field', () => {
     localStorage.setItem('svp_settings', JSON.stringify({ version: 1, modules: { test: true } }));
     const settings = loadSettings();
-    expect(settings.version).toBe(3);
+    expect(settings.version).toBe(4);
     expect(settings.errors).toEqual({});
     expect(settings.modules.test).toBe(true);
   });
@@ -82,11 +82,110 @@ describe('settings/storage', () => {
       }),
     );
     const settings = loadSettings();
-    expect(settings.version).toBe(3);
+    expect(settings.version).toBe(4);
     expect(settings.modules['enhancedMainScreen']).toBe(false);
     expect(settings.modules['collapsibleTopPanel']).toBeUndefined();
     expect(settings.errors['enhancedMainScreen']).toBe('some error');
     expect(settings.errors['collapsibleTopPanel']).toBeUndefined();
+  });
+
+  describe('migration from v3 merges disableDoubleTapZoom into ngrsZoom', () => {
+    function loadV3(modules: Record<string, boolean>, errors: Record<string, string> = {}) {
+      localStorage.setItem('svp_settings', JSON.stringify({ version: 3, modules, errors }));
+      return loadSettings();
+    }
+
+    test('both flags true → ngrsZoom stays true, legacy key removed', () => {
+      const s = loadV3({ ngrsZoom: true, disableDoubleTapZoom: true });
+      expect(s.version).toBe(4);
+      expect(s.modules['ngrsZoom']).toBe(true);
+      expect(s.modules).not.toHaveProperty('disableDoubleTapZoom');
+    });
+
+    test('ngrsZoom true + disableDoubleTapZoom false → ngrsZoom true', () => {
+      const s = loadV3({ ngrsZoom: true, disableDoubleTapZoom: false });
+      expect(s.modules['ngrsZoom']).toBe(true);
+      expect(s.modules).not.toHaveProperty('disableDoubleTapZoom');
+    });
+
+    test('ngrsZoom false + disableDoubleTapZoom true → ngrsZoom true (OR)', () => {
+      const s = loadV3({ ngrsZoom: false, disableDoubleTapZoom: true });
+      expect(s.modules['ngrsZoom']).toBe(true);
+      expect(s.modules).not.toHaveProperty('disableDoubleTapZoom');
+    });
+
+    test('both flags false → ngrsZoom false, legacy key removed', () => {
+      const s = loadV3({ ngrsZoom: false, disableDoubleTapZoom: false });
+      expect(s.modules['ngrsZoom']).toBe(false);
+      expect(s.modules).not.toHaveProperty('disableDoubleTapZoom');
+    });
+
+    test('only ngrsZoom present (true) → preserved', () => {
+      const s = loadV3({ ngrsZoom: true });
+      expect(s.modules['ngrsZoom']).toBe(true);
+      expect(s.modules).not.toHaveProperty('disableDoubleTapZoom');
+    });
+
+    test('only ngrsZoom present (false) → preserved', () => {
+      const s = loadV3({ ngrsZoom: false });
+      expect(s.modules['ngrsZoom']).toBe(false);
+      expect(s.modules).not.toHaveProperty('disableDoubleTapZoom');
+    });
+
+    test('only disableDoubleTapZoom present (true) → ngrsZoom true, legacy removed', () => {
+      const s = loadV3({ disableDoubleTapZoom: true });
+      expect(s.modules['ngrsZoom']).toBe(true);
+      expect(s.modules).not.toHaveProperty('disableDoubleTapZoom');
+    });
+
+    test('only disableDoubleTapZoom present (false) → ngrsZoom false, legacy removed', () => {
+      const s = loadV3({ disableDoubleTapZoom: false });
+      expect(s.modules['ngrsZoom']).toBe(false);
+      expect(s.modules).not.toHaveProperty('disableDoubleTapZoom');
+    });
+
+    test('neither flag present → ngrsZoom key not created (defaultEnabled applies later)', () => {
+      const s = loadV3({ someOther: true });
+      expect(s.modules).not.toHaveProperty('ngrsZoom');
+      expect(s.modules).not.toHaveProperty('disableDoubleTapZoom');
+      expect(s.modules['someOther']).toBe(true);
+    });
+
+    test('errors.disableDoubleTapZoom is removed', () => {
+      const s = loadV3(
+        { disableDoubleTapZoom: true },
+        { disableDoubleTapZoom: 'legacy error', other: 'keep' },
+      );
+      expect(s.errors).not.toHaveProperty('disableDoubleTapZoom');
+      expect(s.errors['other']).toBe('keep');
+    });
+
+    test('errors.ngrsZoom is preserved', () => {
+      const s = loadV3(
+        { ngrsZoom: true, disableDoubleTapZoom: true },
+        { ngrsZoom: 'pre-existing error' },
+      );
+      expect(s.errors['ngrsZoom']).toBe('pre-existing error');
+    });
+
+    test('full chain v1 → v4 with disableDoubleTapZoom=true ends with ngrsZoom=true', () => {
+      localStorage.setItem(
+        'svp_settings',
+        JSON.stringify({ version: 1, modules: { disableDoubleTapZoom: true } }),
+      );
+      const s = loadSettings();
+      expect(s.version).toBe(4);
+      expect(s.modules['ngrsZoom']).toBe(true);
+      expect(s.modules).not.toHaveProperty('disableDoubleTapZoom');
+    });
+
+    test('loadSettings creates svp_settings_backup_v3 when migrating from v3', () => {
+      const v3 = { version: 3, modules: { ngrsZoom: true }, errors: {} };
+      localStorage.setItem('svp_settings', JSON.stringify(v3));
+      loadSettings();
+      expect(hasBackup(3)).toBe(true);
+      expect(localStorage.getItem('svp_settings_backup_v3')).toBe(JSON.stringify(v3));
+    });
   });
 
   test('migration creates versioned backup', () => {

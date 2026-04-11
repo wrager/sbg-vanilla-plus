@@ -594,7 +594,7 @@ describe('ngrsZoom', () => {
   test('module description and name match expected user-facing text', () => {
     expect(ngrsZoom.name.ru).toBe('Нгрс-зум');
     expect(ngrsZoom.description.ru).toBe(
-      'Двойной тап и перетаскивание вверх/вниз для плавного зума',
+      'Двойной тап и перетаскивание вверх/вниз для зума. Заодно отключает стандартный зум по двойному тапу.',
     );
   });
 

@@ -241,8 +241,8 @@ export const ngrsZoom: IFeatureModule = {
     ru: 'Нгрс-зум',
   },
   description: {
-    en: 'Double-tap and drag up/down to zoom in/out smoothly',
-    ru: 'Двойной тап и перетаскивание вверх/вниз для плавного зума',
+    en: 'Double-tap and drag up/down to zoom. Also disables the built-in double-tap zoom.',
+    ru: 'Двойной тап и перетаскивание вверх/вниз для зума. Заодно отключает стандартный зум по двойному тапу.',
   },
   defaultEnabled: true,
   category: 'map',

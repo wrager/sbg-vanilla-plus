@@ -8,7 +8,6 @@ import { enhancedMainScreen } from './modules/enhancedMainScreen/enhancedMainScr
 import { enhancedPointPopupUi } from './modules/enhancedPointPopupUi/enhancedPointPopupUi';
 import { swipeToClosePopup } from './modules/swipeToClosePopup/swipeToClosePopup';
 import { shiftMapCenterDown } from './modules/shiftMapCenterDown/shiftMapCenterDown';
-import { disableDoubleTapZoom } from './modules/disableDoubleTapZoom/disableDoubleTapZoom';
 import { ngrsZoom } from './modules/ngrsZoom/ngrsZoom';
 import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
 import { groupErrorToasts } from './modules/groupErrorToasts/groupErrorToasts';
@@ -52,7 +51,6 @@ if (!isDisabled()) {
       // map
       shiftMapCenterDown,
       largerPointTapArea,
-      disableDoubleTapZoom,
       ngrsZoom,
       keyCountOnPoints,
       singleFingerRotation,

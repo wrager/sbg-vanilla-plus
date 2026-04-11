@@ -23,6 +23,25 @@ const migrations: Migration[] = [
     }
     return { ...s, modules, errors };
   },
+  // v3 → v4: слияние disableDoubleTapZoom в ngrsZoom.
+  // Если у пользователя был включён хотя бы один из двух — новый ngrsZoom включён.
+  // Если оба были явно выключены — выключен. Если пользователь не трогал ни один из
+  // них — не создаём запись, defaultEnabled сработает при следующей загрузке.
+  (s) => {
+    const modules = { ...s.modules };
+    const hasLegacy = 'disableDoubleTapZoom' in modules || 'ngrsZoom' in modules;
+    if (hasLegacy) {
+      const legacyOn = modules['disableDoubleTapZoom'] ?? false;
+      const ngrsOn = modules['ngrsZoom'] ?? false;
+      modules['ngrsZoom'] = legacyOn || ngrsOn;
+    }
+    delete modules['disableDoubleTapZoom'];
+
+    const errors = { ...s.errors };
+    delete errors['disableDoubleTapZoom'];
+
+    return { ...s, modules, errors };
+  },
 ];
 
 function isSvpSettings(val: unknown): val is ISvpSettings {
