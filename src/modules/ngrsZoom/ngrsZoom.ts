@@ -13,7 +13,7 @@ const MAX_TAP_DISTANCE = 30;
 /** Минимальное вертикальное смещение для начала зума (px) */
 const DRAG_THRESHOLD = 5;
 /** Чувствительность: zoom levels на пиксель вертикального смещения */
-const ZOOM_SENSITIVITY = 0.01;
+const ZOOM_SENSITIVITY = 0.015;
 
 type GestureState = 'idle' | 'firstTapDown' | 'waitingSecondTap' | 'secondTapDown' | 'zooming';
 

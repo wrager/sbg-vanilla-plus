@@ -183,6 +183,30 @@ describe('ngrsZoom', () => {
     expect(lastCall[0]).toBeLessThan(15);
   });
 
+  test('drag 100px up adds exactly 1.5 zoom levels (sensitivity 0.015)', () => {
+    // initial tap at y=300, drag up to y=200 → deltaY = 100px
+    doubleTapAndDrag(200, 200, 300);
+
+    const lastCall = mockSetZoom.mock.calls[mockSetZoom.mock.calls.length - 1] as [number];
+    expect(lastCall[0]).toBeCloseTo(16.5, 5); // 15 + 100 * 0.015
+  });
+
+  test('drag 100px down subtracts exactly 1.5 zoom levels', () => {
+    // initial tap at y=300, drag down to y=400 → deltaY = -100px
+    doubleTapAndDrag(400, 200, 300);
+
+    const lastCall = mockSetZoom.mock.calls[mockSetZoom.mock.calls.length - 1] as [number];
+    expect(lastCall[0]).toBeCloseTo(13.5, 5); // 15 - 100 * 0.015
+  });
+
+  test('drag ~66.67px up matches the old 100px up effect (1.5× more sensitive)', () => {
+    // 100/1.5 ≈ 66.67 → zoom delta ≈ 1.0 (what the previous 0.01 sensitivity gave at 100px)
+    doubleTapAndDrag(300 - 200 / 3, 200, 300);
+
+    const lastCall = mockSetZoom.mock.calls[mockSetZoom.mock.calls.length - 1] as [number];
+    expect(lastCall[0]).toBeCloseTo(16, 5); // 15 + (200/3) * 0.015 = 15 + 1.0
+  });
+
   test('zoom is proportional to drag distance', () => {
     // Small drag
     doubleTapAndDrag(290, 200, 300);
