@@ -22,6 +22,8 @@ export interface IOlView {
   adjustRotation?(delta: number, anchor?: number[]): void;
   getZoom?(): number | undefined;
   setZoom?(zoom: number): void;
+  getResolution?(): number | undefined;
+  setResolution?(resolution: number): void;
   on?(type: string, listener: () => void): void;
   un?(type: string, listener: () => void): void;
 }
