@@ -156,7 +156,7 @@ describe('enhancedMainScreen', () => {
     expect(document.getElementById('score')?.style.display).not.toBe('none');
   });
 
-  test('calls jqueryI18next localize on disable to retranslate buttons', async () => {
+  test('calls jqueryI18next localize on disable as a safety net', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
 
@@ -167,20 +167,79 @@ describe('enhancedMainScreen', () => {
 
     await enhancedMainScreen.disable();
 
-    // localize() вызывается для OPS и Settings
-    const localizedElements = jqueryMock.mock.calls.map(
-      (call: unknown[]) => call[0] as HTMLElement,
-    );
+    // localize() вызывается для OPS и Settings как страховка
     const opsButton = document.getElementById('ops');
     const settingsButton = document.getElementById('settings');
-    expect(localizedElements).toContain(opsButton);
-    expect(localizedElements).toContain(settingsButton);
+    expect(jqueryMock).toHaveBeenCalledWith(opsButton);
+    expect(jqueryMock).toHaveBeenCalledWith(settingsButton);
     expect(localizeMock).toHaveBeenCalledTimes(2);
+
+    // При этом textContent восстановлен через сохранённый fallback,
+    // независимо от того, сделал ли мок jQuery что-либо
+    expect(opsButton?.textContent).toBe('OPS');
+    expect(settingsButton?.textContent).toBe('Settings');
 
     delete (window as unknown as Record<string, unknown>).$;
 
     // Переинициализируем для afterEach
     document.body.innerHTML = MAIN_SCREEN_HTML;
+  });
+
+  test('restores text via window.i18next.t when available on disable', async () => {
+    const translateMock = jest.fn((key: string) => `TR:${key}`);
+    (window as unknown as Record<string, unknown>).i18next = { t: translateMock };
+
+    await enhancedMainScreen.enable();
+    await flushPromises();
+    await enhancedMainScreen.disable();
+
+    const opsButton = document.getElementById('ops');
+    const settingsButton = document.getElementById('settings');
+    expect(opsButton?.textContent).toBe('TR:menu.ops');
+    expect(settingsButton?.textContent).toBe('TR:menu.settings');
+    expect(translateMock).toHaveBeenCalledWith('menu.ops');
+    expect(translateMock).toHaveBeenCalledWith('menu.settings');
+
+    // Атрибут data-i18n тоже восстановлен для будущих localize() игры
+    expect(opsButton?.getAttribute('data-i18n')).toBe('menu.ops');
+    expect(settingsButton?.getAttribute('data-i18n')).toBe('menu.settings');
+
+    delete (window as unknown as Record<string, unknown>).i18next;
+  });
+
+  test('falls back to original textContent on disable when i18next unavailable', async () => {
+    // Убеждаемся что ни i18next, ни jQuery не определены
+    delete (window as unknown as Record<string, unknown>).i18next;
+    delete (window as unknown as Record<string, unknown>).$;
+
+    await enhancedMainScreen.enable();
+    await flushPromises();
+    await enhancedMainScreen.disable();
+
+    const opsButton = document.getElementById('ops');
+    const settingsButton = document.getElementById('settings');
+    expect(opsButton?.textContent).toBe('OPS');
+    expect(settingsButton?.textContent).toBe('Settings');
+    expect(opsButton?.getAttribute('data-i18n')).toBe('menu.ops');
+    expect(settingsButton?.getAttribute('data-i18n')).toBe('menu.settings');
+  });
+
+  test('restores text even if jQuery.localize is a no-op', async () => {
+    // jQuery есть, но localize ничего не делает — fallback должен сработать
+    const localizeMock = jest.fn();
+    const jqueryMock = jest.fn(() => ({ localize: localizeMock }));
+    (window as unknown as Record<string, unknown>).$ = jqueryMock;
+    delete (window as unknown as Record<string, unknown>).i18next;
+
+    await enhancedMainScreen.enable();
+    await flushPromises();
+    await enhancedMainScreen.disable();
+
+    expect(document.getElementById('ops')?.textContent).toBe('OPS');
+    expect(document.getElementById('settings')?.textContent).toBe('Settings');
+    expect(localizeMock).toHaveBeenCalledTimes(2);
+
+    delete (window as unknown as Record<string, unknown>).$;
   });
 
   test('cleans up on disable', async () => {
@@ -198,12 +257,15 @@ describe('enhancedMainScreen', () => {
     const nameSpan = document.getElementById('self-info__name');
     expect(nameSpan?.closest('.self-info__entry')).not.toBeNull();
 
-    // OPS: data-i18n восстановлен, цвет сброшен
+    // OPS: текст и data-i18n восстановлены, цвет сброшен
     const opsButton = document.getElementById('ops');
+    expect(opsButton?.textContent).toBe('OPS');
     expect(opsButton?.getAttribute('data-i18n')).toBe('menu.ops');
     expect(opsButton?.style.color).toBe('');
 
-    // Settings: data-i18n восстановлен
-    expect(document.getElementById('settings')?.getAttribute('data-i18n')).toBe('menu.settings');
+    // Settings: текст и data-i18n восстановлены
+    const settingsButton = document.getElementById('settings');
+    expect(settingsButton?.textContent).toBe('Settings');
+    expect(settingsButton?.getAttribute('data-i18n')).toBe('menu.settings');
   });
 });

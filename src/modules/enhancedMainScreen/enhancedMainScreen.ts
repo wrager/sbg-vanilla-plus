@@ -13,10 +13,48 @@ function isHTMLElement(element: unknown): element is HTMLElement {
 /** Переводит текст через глобальный i18next (jQuery-плагин jqueryI18next) */
 function retranslateI18n(element: HTMLElement): void {
   // jqueryI18next добавляет .localize() на jQuery-объекты
-  const jq = (window as unknown as Record<string, unknown>).$ as
-    | ((selector: HTMLElement) => { localize: () => void })
-    | undefined;
-  jq?.(element).localize();
+  const globals = window as unknown as Record<string, unknown>;
+  const jq = globals.$;
+  if (typeof jq !== 'function') return;
+  const wrapped = (jq as (selector: HTMLElement) => unknown)(element);
+  if (typeof wrapped !== 'object' || wrapped === null) return;
+  const localize = (wrapped as Record<string, unknown>).localize;
+  if (typeof localize === 'function') {
+    (localize as () => void).call(wrapped);
+  }
+}
+
+/** Прямой перевод через глобальный i18next.t(), если доступен */
+function i18nextTranslate(key: string | null): string | null {
+  if (key === null) return null;
+  const globals = window as unknown as Record<string, unknown>;
+  const i18next = globals.i18next;
+  if (typeof i18next !== 'object' || i18next === null) return null;
+  const translate = (i18next as Record<string, unknown>).t;
+  if (typeof translate !== 'function') return null;
+  const result = (translate as (k: string) => unknown).call(i18next, key);
+  return typeof result === 'string' ? result : null;
+}
+
+/**
+ * Восстанавливает исходный текст кнопки и её data-i18n атрибут.
+ * Приоритет: свежий перевод через i18next.t() → сохранённый originalText (фолбэк).
+ * Дополнительно вызывает jqueryI18next.localize() как страховку, но не полагается на него.
+ */
+function restoreI18nText(
+  element: HTMLElement,
+  originalText: string | null,
+  i18nKey: string | null,
+): void {
+  const translated = i18nextTranslate(i18nKey);
+  const restored = translated ?? originalText;
+  if (restored !== null) {
+    element.textContent = restored;
+  }
+  if (i18nKey !== null) {
+    element.setAttribute('data-i18n', i18nKey);
+  }
+  retranslateI18n(element);
 }
 
 /** Заменяет текст кнопки OPS на статус инвентаря «inv/lim» с реактивным обновлением */
@@ -25,7 +63,9 @@ function setupOpsInventory(container: Element, opsButton: HTMLElement): { destro
   const limSpan = $('#self-info__inv-lim', container);
   const invEntry = invSpan?.closest('.self-info__entry');
 
-  // Убираем data-i18n чтобы i18n не перезаписывала наш текст
+  // Сохраняем оригинальные текст и data-i18n ДО мутации, чтобы на disable
+  // откатиться без зависимостей от внешних библиотек.
+  const opsOriginalText = opsButton.textContent;
   const opsI18nKey = opsButton.getAttribute('data-i18n');
   opsButton.removeAttribute('data-i18n');
 
@@ -53,11 +93,7 @@ function setupOpsInventory(container: Element, opsButton: HTMLElement): { destro
     destroy: () => {
       observer.disconnect();
       opsButton.style.color = '';
-      // Восстанавливаем data-i18n и запускаем перевод через jqueryI18next
-      if (opsI18nKey) {
-        opsButton.setAttribute('data-i18n', opsI18nKey);
-      }
-      retranslateI18n(opsButton);
+      restoreI18nText(opsButton, opsOriginalText, opsI18nKey);
     },
   };
 }
@@ -100,6 +136,7 @@ async function setup(): Promise<() => void> {
   // Заменить текст кнопки Settings на символ шестерёнки (text presentation)
   // Убираем data-i18n чтобы система i18n игры не перезаписывала текст
   const settingsButton = $('#settings', container);
+  const settingsOriginalText = settingsButton?.textContent ?? null;
   const settingsI18nKey = settingsButton?.getAttribute('data-i18n') ?? null;
   if (isHTMLElement(settingsButton)) {
     settingsButton.textContent = '\u2699\uFE0E';
@@ -110,12 +147,8 @@ async function setup(): Promise<() => void> {
 
   return () => {
     opsInventory.destroy();
-    // Восстанавливаем data-i18n и запускаем перевод через jqueryI18next
     if (isHTMLElement(settingsButton)) {
-      if (settingsI18nKey !== null) {
-        settingsButton.setAttribute('data-i18n', settingsI18nKey);
-      }
-      retranslateI18n(settingsButton);
+      restoreI18nText(settingsButton, settingsOriginalText, settingsI18nKey);
     }
     // Вернуть span ника на прежнее место в оригинальной записи
     if (nameSpan && nameSpanParent) {
