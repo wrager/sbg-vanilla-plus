@@ -29,6 +29,39 @@ describe('settings/storage', () => {
     expect(loaded.modules.test).toBe(true);
   });
 
+  test('saveSettings не бросает при QuotaExceededError', () => {
+    const setItemSpy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota', 'QuotaExceededError');
+    });
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+
+    expect(() => {
+      saveSettings({ ...DEFAULT_SETTINGS, modules: { test: true } });
+    }).not.toThrow();
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Не удалось сохранить настройки'),
+      expect.any(DOMException),
+    );
+
+    setItemSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  test('saveSettings не бросает при SecurityError (private mode)', () => {
+    const setItemSpy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('access denied', 'SecurityError');
+    });
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+
+    expect(() => {
+      saveSettings(DEFAULT_SETTINGS);
+    }).not.toThrow();
+
+    setItemSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
   test('loadSettings returns defaults on corrupted data', () => {
     localStorage.setItem('svp_settings', 'not-json');
     const settings = loadSettings();

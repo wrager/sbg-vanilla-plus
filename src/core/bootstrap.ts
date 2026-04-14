@@ -12,7 +12,26 @@ import { initSettingsUI } from './settings/ui';
 import { injectStyles } from './dom';
 import toastStyles from './toast.css?inline';
 
+// Guard от повторного вызова bootstrap(). Повторный init/enable уже
+// инициализированных модулей привёл бы к двойным side-effects (например,
+// двойной выдаче dragPanControl или двойному оборачиванию view.calculateExtent
+// при регрессе в модулях) и к созданию дубликата settings panel в DOM.
+// Сценарий повторного вызова в проде: SPA-перенавигация, которая заново
+// триггерит DOMContentLoaded; нештатные перезапуски entry.ts.
+let bootstrapped = false;
+
+/** Сбрасывает guard. Только для тестов. */
+export function resetBootstrapForTest(): void {
+  bootstrapped = false;
+}
+
 export function bootstrap(modules: IFeatureModule[]): void {
+  if (bootstrapped) {
+    console.warn('[SVP] bootstrap() вызван повторно — игнорирую. Модули уже инициализированы.');
+    return;
+  }
+  bootstrapped = true;
+
   injectStyles(toastStyles, 'svp-toast');
   registerModules(modules);
   let settings = loadSettings();

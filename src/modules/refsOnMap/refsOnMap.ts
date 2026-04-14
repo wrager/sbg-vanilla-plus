@@ -555,104 +555,131 @@ export const refsOnMap: IFeatureModule = {
   enable() {
     injectStyles(css, MODULE_ID);
 
-    return getOlMap().then((map) => {
-      const ol = window.ol;
-      const OlVectorSource = ol?.source?.Vector;
-      const OlVectorLayer = ol?.layer?.Vector;
-      if (!OlVectorSource || !OlVectorLayer) return;
+    return getOlMap().then(
+      (map) => {
+        try {
+          const ol = window.ol;
+          const OlVectorSource = ol?.source?.Vector;
+          const OlVectorLayer = ol?.layer?.Vector;
+          if (!OlVectorSource || !OlVectorLayer) return;
 
-      olMap = map;
-      refsSource = new OlVectorSource();
-      refsLayer = new OlVectorLayer({
-        // as unknown as: OL Vector constructor accepts a generic options bag;
-        // IOlVectorSource cannot be narrowed to Record<string, unknown> without a guard
-        source: refsSource as unknown as Record<string, unknown>,
-        name: 'svp-refs-on-map',
-        zIndex: 8,
-        minZoom: 0,
-        style: createLayerStyleFunction() as unknown as Record<string, unknown>,
-      });
-      map.addLayer(refsLayer);
+          olMap = map;
+          refsSource = new OlVectorSource();
+          refsLayer = new OlVectorLayer({
+            // as unknown as: OL Vector constructor accepts a generic options bag;
+            // IOlVectorSource cannot be narrowed to Record<string, unknown> without a guard
+            source: refsSource as unknown as Record<string, unknown>,
+            name: 'svp-refs-on-map',
+            zIndex: 8,
+            minZoom: 0,
+            style: createLayerStyleFunction() as unknown as Record<string, unknown>,
+          });
+          map.addLayer(refsLayer);
 
-      // "On map" button in inventory controls
-      showButton = document.createElement('button');
-      showButton.className = 'svp-refs-on-map-button';
-      showButton.textContent = t({ en: 'On map', ru: 'На карте' });
-      showButton.addEventListener('click', showViewer);
-      showButton.style.display = 'none';
+          // "On map" button in inventory controls
+          showButton = document.createElement('button');
+          showButton.className = 'svp-refs-on-map-button';
+          showButton.textContent = t({ en: 'On map', ru: 'На карте' });
+          showButton.addEventListener('click', showViewer);
+          showButton.style.display = 'none';
 
-      const inventoryDelete = $('#inventory-delete');
-      if (inventoryDelete?.parentElement) {
-        inventoryDelete.parentElement.insertBefore(showButton, inventoryDelete);
-      }
+          const inventoryDelete = $('#inventory-delete');
+          if (inventoryDelete?.parentElement) {
+            inventoryDelete.parentElement.insertBefore(showButton, inventoryDelete);
+          }
 
-      // Track active tab
-      tabClickHandler = () => {
-        updateButtonVisibility();
-      };
-      const tabContainer = $('.inventory__tabs');
-      if (tabContainer) {
-        tabContainer.addEventListener('click', tabClickHandler);
-      }
+          // Track active tab
+          tabClickHandler = () => {
+            updateButtonVisibility();
+          };
+          const tabContainer = $('.inventory__tabs');
+          if (tabContainer) {
+            tabContainer.addEventListener('click', tabClickHandler);
+          }
 
-      updateButtonVisibility();
+          updateButtonVisibility();
 
-      // Close button — собственный класс, не popup-close, чтобы не триггерить игровой closePopup
-      closeButton = document.createElement('button');
-      closeButton.className = 'svp-refs-on-map-close';
-      closeButton.textContent = '[x]';
-      closeButton.style.display = 'none';
-      closeButton.addEventListener('click', hideViewer);
-      document.body.appendChild(closeButton);
+          // Close button — собственный класс, не popup-close, чтобы не триггерить игровой closePopup
+          closeButton = document.createElement('button');
+          closeButton.className = 'svp-refs-on-map-close';
+          closeButton.textContent = '[x]';
+          closeButton.style.display = 'none';
+          closeButton.addEventListener('click', hideViewer);
+          document.body.appendChild(closeButton);
 
-      // Trash/delete button
-      trashButton = document.createElement('button');
-      trashButton.className = 'svp-refs-on-map-trash';
-      trashButton.style.display = 'none';
-      trashButton.addEventListener('click', () => {
-        void handleDeleteClick();
-      });
-      document.body.appendChild(trashButton);
-    });
+          // Trash/delete button
+          trashButton = document.createElement('button');
+          trashButton.className = 'svp-refs-on-map-trash';
+          trashButton.style.display = 'none';
+          trashButton.addEventListener('click', () => {
+            void handleDeleteClick();
+          });
+          document.body.appendChild(trashButton);
+        } catch (error) {
+          // Частичный успех enable() оставил бы hidden-кнопки/слой в DOM
+          // (модуль помечен failed, но disable() автоматически не вызывается).
+          // Сворачиваем всё, что успели создать, чтобы DOM остался чистым.
+          cleanupEnableSideEffects();
+          throw error;
+        }
+      },
+      (error: unknown) => {
+        // getOlMap отказался — откатываем injectStyles(), иначе стиль
+        // остался бы в head даже после пометки модуля failed.
+        removeStyles(MODULE_ID);
+        throw error;
+      },
+    );
   },
 
   disable() {
-    if (viewerOpen) hideViewer();
-    teamLoadAborted = true;
-
-    if (olMap && refsLayer) {
-      olMap.removeLayer(refsLayer);
-    }
-
-    if (showButton) {
-      showButton.removeEventListener('click', showViewer);
-      showButton.remove();
-      showButton = null;
-    }
-
-    if (closeButton) {
-      closeButton.removeEventListener('click', hideViewer);
-      closeButton.remove();
-      closeButton = null;
-    }
-
-    if (trashButton) {
-      trashButton.remove();
-      trashButton = null;
-    }
-
-    if (tabClickHandler) {
-      const tabContainer = $('.inventory__tabs');
-      if (tabContainer) {
-        tabContainer.removeEventListener('click', tabClickHandler);
-      }
-      tabClickHandler = null;
-    }
-
-    removeStyles(MODULE_ID);
-    teamCache.clear();
-    olMap = null;
-    refsSource = null;
-    refsLayer = null;
+    cleanupEnableSideEffects();
   },
 };
+
+/**
+ * Снимает все side-effects, которые enable() мог успеть сделать: слой OL,
+ * hidden-кнопки в DOM, listener на табах инвентаря, инжекцию стилей,
+ * team-кеш. Идемпотентна — безопасно вызывать на любом промежуточном
+ * состоянии enable (частичный успех при throw) или из disable() после
+ * полного enable.
+ */
+function cleanupEnableSideEffects(): void {
+  if (viewerOpen) hideViewer();
+  teamLoadAborted = true;
+
+  if (olMap && refsLayer) {
+    olMap.removeLayer(refsLayer);
+  }
+
+  if (showButton) {
+    showButton.removeEventListener('click', showViewer);
+    showButton.remove();
+    showButton = null;
+  }
+
+  if (closeButton) {
+    closeButton.removeEventListener('click', hideViewer);
+    closeButton.remove();
+    closeButton = null;
+  }
+
+  if (trashButton) {
+    trashButton.remove();
+    trashButton = null;
+  }
+
+  if (tabClickHandler) {
+    const tabContainer = $('.inventory__tabs');
+    if (tabContainer) {
+      tabContainer.removeEventListener('click', tabClickHandler);
+    }
+    tabClickHandler = null;
+  }
+
+  removeStyles(MODULE_ID);
+  teamCache.clear();
+  olMap = null;
+  refsSource = null;
+  refsLayer = null;
+}

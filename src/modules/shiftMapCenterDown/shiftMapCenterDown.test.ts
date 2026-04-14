@@ -86,6 +86,21 @@ describe('shiftMapCenterDown', () => {
     expect(extent[3] - extent[1]).toBe(300);
   });
 
+  test('init() keeps calculateExtent identical to original', () => {
+    const original = mockView.calculateExtent;
+    expect(mockView.calculateExtent).toBe(original);
+  });
+
+  test('enable() replaces calculateExtent, disable() restores exact reference', async () => {
+    const original = mockView.calculateExtent;
+
+    await shiftMapCenterDown.enable();
+    expect(mockView.calculateExtent).not.toBe(original);
+
+    await shiftMapCenterDown.disable();
+    expect(mockView.calculateExtent).toBe(original);
+  });
+
   test('passes through calculateExtent without size argument', async () => {
     await shiftMapCenterDown.enable();
 

@@ -1,5 +1,5 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import type { IDragPanControl, IOlMap } from '../../core/olMap';
+import type { IDragPanControl, IOlMap, IOlView } from '../../core/olMap';
 import { createDragPanControl, getOlMap } from '../../core/olMap';
 import { $ } from '../../core/dom';
 
@@ -9,10 +9,11 @@ let viewport: HTMLElement | null = null;
 let map: IOlMap | null = null;
 let dragPanControl: IDragPanControl | null = null;
 let latestPoint: [number, number] | null = null;
-let inflateExtent = false;
-let enabled = false;
 let pendingDelta = 0;
 let frameRequestId: number | null = null;
+// Сохранённая ссылка на оригинальный view.calculateExtent, чтобы корректно
+// восстановить его в disable(). null, когда обёртка не установлена.
+let originalCalculateExtent: IOlView['calculateExtent'] | null = null;
 
 function isFollowActive(): boolean {
   // Игра считает follow активным по умолчанию (null != 'false'),
@@ -124,6 +125,41 @@ function removeListeners(): void {
   viewport.removeEventListener('touchend', onTouchEnd);
 }
 
+/**
+ * Оборачивает view.calculateExtent, расширяя область до диагонали вьюпорта.
+ * Игра запрашивает точки через view.calculateExtent(map.getSize()), но
+ * перезапрашивает только при смещении центра >30м или изменении зума —
+ * поворот не вызывает перезагрузку. Расширяем extent до диагонали, чтобы
+ * загруженная область покрывала любой угол поворота.
+ *
+ * Сохраняется ссылка на оригинал как есть (без bind): иначе каждый цикл
+ * enable/disable наращивал бы слой bound-обёрток, и disable() не
+ * восстанавливал бы исходную функцию by-reference. Контекст передаётся
+ * через .call(view, ...) в самом wrapper'е.
+ */
+function installCalculateExtentWrapper(): void {
+  if (!map || originalCalculateExtent !== null) return;
+  const view = map.getView();
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- см. комментарий выше, контекст явно передаётся через .call(view, ...)
+  const original = view.calculateExtent;
+  originalCalculateExtent = original;
+  view.calculateExtent = (size?: number[]) => {
+    if (size) {
+      const diagonal = Math.ceil(Math.sqrt(size[0] ** 2 + size[1] ** 2));
+      return original.call(view, [diagonal, diagonal]);
+    }
+    return original.call(view, size);
+  };
+}
+
+/** Возвращает view.calculateExtent в исходное состояние. Идемпотентна. */
+function restoreCalculateExtentWrapper(): void {
+  if (!map || originalCalculateExtent === null) return;
+  const view = map.getView();
+  view.calculateExtent = originalCalculateExtent;
+  originalCalculateExtent = null;
+}
+
 export const singleFingerRotation: IFeatureModule = {
   id: MODULE_ID,
   name: {
@@ -137,10 +173,13 @@ export const singleFingerRotation: IFeatureModule = {
   defaultEnabled: true,
   category: 'map',
   init() {
+    // Защитный сброс на случай повторной инициализации: предыдущий view и
+    // dragPanControl уже не актуальны, а ссылки на них привели бы к попытке
+    // restore через мёртвый объект.
+    originalCalculateExtent = null;
+    dragPanControl = null;
     return getOlMap().then((olMap) => {
       map = olMap;
-      dragPanControl = createDragPanControl(olMap);
-
       // .ol-viewport создаётся конструктором ol.Map — гарантированно есть
       // в DOM к моменту резолва getOlMap(). waitForElement не используем,
       // чтобы не зависеть от его таймаута: если авторизация в игре длится
@@ -149,38 +188,21 @@ export const singleFingerRotation: IFeatureModule = {
       if (viewportElement instanceof HTMLElement) {
         viewport = viewportElement;
       }
-
-      // Игра запрашивает точки через view.calculateExtent(map.getSize()),
-      // но перезапрашивает только при смещении центра >30м или изменении
-      // зума — поворот не вызывает перезагрузку. Расширяем extent до
-      // диагонали вьюпорта, чтобы загруженная область покрывала любой
-      // угол поворота (аналогично shiftMapCenterDown для padding).
-      // Wrapper создаётся один раз, переключается флагом в enable/disable.
-      const view = olMap.getView();
-      const originalCalculateExtent = view.calculateExtent.bind(view);
-      view.calculateExtent = (size?: number[]) => {
-        if (inflateExtent && size) {
-          const diagonal = Math.ceil(Math.sqrt(size[0] ** 2 + size[1] ** 2));
-          return originalCalculateExtent([diagonal, diagonal]);
-        }
-        return originalCalculateExtent(size);
-      };
-
-      if (enabled) {
-        addListeners();
-      }
     });
   },
   enable() {
-    enabled = true;
-    inflateExtent = true;
+    if (!map) return;
+    installCalculateExtentWrapper();
+    if (dragPanControl === null) {
+      dragPanControl = createDragPanControl(map);
+    }
     addListeners();
   },
   disable() {
-    enabled = false;
-    inflateExtent = false;
     removeListeners();
     dragPanControl?.restore();
+    dragPanControl = null;
     resetGesture();
+    restoreCalculateExtentWrapper();
   },
 };

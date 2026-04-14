@@ -244,28 +244,29 @@ export const ngrsZoom: IFeatureModule = {
   defaultEnabled: true,
   category: 'map',
   init() {
-    return getOlMap().then((olMap) => {
-      map = olMap;
-      dragPanControl = createDragPanControl(olMap);
-      if (enabled) {
-        disableDoubleClickZoomInteractions();
-        addListeners();
-      }
-    });
+    // init() остаётся чистым: никаких listener'ов, никакого createDragPanControl,
+    // никакой модификации OL-интеракций. Вся активация — в enable().
   },
   enable() {
     enabled = true;
     addListeners();
     return getOlMap().then((olMap) => {
+      // Между addListeners() и разрешением getOlMap() модуль мог быть отключён
+      // (disable()). В этом случае не трогаем интеракции карты.
       if (!enabled) return;
       map = olMap;
+      if (dragPanControl === null) {
+        dragPanControl = createDragPanControl(olMap);
+      }
       disableDoubleClickZoomInteractions();
     });
   },
   disable() {
     enabled = false;
-    restoreDoubleClickZoomInteractions();
     removeListeners();
+    restoreDoubleClickZoomInteractions();
+    dragPanControl?.restore();
+    dragPanControl = null;
     resetGesture();
   },
 };

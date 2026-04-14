@@ -1,5 +1,5 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import type { IOlMap } from '../../core/olMap';
+import type { IOlMap, IOlView } from '../../core/olMap';
 import { getOlMap } from '../../core/olMap';
 
 const MODULE_ID = 'shiftMapCenterDown';
@@ -8,10 +8,12 @@ const ACTION_PANEL_SELECTORS = '.attack-slider-wrp, .draw-slider-wrp';
 
 let map: IOlMap | null = null;
 let topPadding = 0;
-let inflateForPadding = false;
 let actionObserver: MutationObserver | null = null;
 let actionPanelActive = false;
 let actionRafId: number | null = null;
+// Сохранённая ссылка на оригинальный view.calculateExtent, чтобы корректно
+// восстановить его в disable(). null, когда обёртка не установлена.
+let originalCalculateExtent: IOlView['calculateExtent'] | null = null;
 
 /** Применить padding к view, сохраняя текущий центр карты. */
 function applyPadding(padding: number[]): void {
@@ -75,6 +77,40 @@ function stopActionObserver(): void {
   actionObserver = null;
 }
 
+/**
+ * Устанавливает обёртку на view.calculateExtent, которая увеличивает height
+ * на topPadding. Игра вызывает calculateExtent(map.getSize()) для определения
+ * видимой области и загрузки точек. OL при наличии padding уменьшает эту
+ * область, из-за чего точки в padding-зоне не загружаются. Компенсируем.
+ *
+ * Идемпотентна: повторный вызов — no-op (не оборачивает уже обёрнутое).
+ */
+function installCalculateExtentWrapper(): void {
+  if (!map || originalCalculateExtent !== null) return;
+  const view = map.getView();
+  // Сохраняем ровно то, что лежит в view.calculateExtent сейчас, без .bind():
+  // иначе каждый цикл enable/disable наращивал бы слой bound-обёрток, и
+  // disable() не восстанавливал бы исходную функцию by-reference. Контекст
+  // восстанавливаем через .call(view, ...) в самом wrapper'е.
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- см. комментарий выше, контекст явно передаётся через .call(view, ...)
+  const original = view.calculateExtent;
+  originalCalculateExtent = original;
+  view.calculateExtent = (size?: number[]) => {
+    if (size) {
+      return original.call(view, [size[0], size[1] + topPadding]);
+    }
+    return original.call(view, size);
+  };
+}
+
+/** Возвращает view.calculateExtent в исходное состояние. Идемпотентна. */
+function restoreCalculateExtentWrapper(): void {
+  if (!map || originalCalculateExtent === null) return;
+  const view = map.getView();
+  view.calculateExtent = originalCalculateExtent;
+  originalCalculateExtent = null;
+}
+
 export const shiftMapCenterDown: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Shift Map Center Down', ru: 'Сдвиг центра карты вниз' },
@@ -86,34 +122,24 @@ export const shiftMapCenterDown: IFeatureModule = {
   category: 'map',
   init() {
     topPadding = Math.round(window.innerHeight * PADDING_FACTOR);
-
+    // Защитный сброс на случай повторной инициализации: view, на который
+    // ссылается originalCalculateExtent, после предыдущего init() уже не
+    // актуален и попытка restore через него испортит свежий view.
+    originalCalculateExtent = null;
+    actionPanelActive = false;
     return getOlMap().then((olMap) => {
       map = olMap;
-
-      // Игра вызывает view.calculateExtent(map.getSize()) для определения
-      // видимой области и загрузки точек. OL при наличии padding уменьшает
-      // эту область, из-за чего точки в padding-зоне не загружаются.
-      // Компенсируем: увеличиваем height на величину padding.
-      // Wrapper создаётся один раз, переключается флагом в enable/disable.
-      const view = olMap.getView();
-      const originalCalculateExtent = view.calculateExtent.bind(view);
-      view.calculateExtent = (size?: number[]) => {
-        if (inflateForPadding && size) {
-          return originalCalculateExtent([size[0], size[1] + topPadding]);
-        }
-        return originalCalculateExtent(size);
-      };
     });
   },
   enable() {
-    inflateForPadding = true;
+    installCalculateExtentWrapper();
     applyPadding([topPadding, 0, 0, 0]);
     startActionObserver();
   },
   disable() {
-    inflateForPadding = false;
     stopActionObserver();
     actionPanelActive = false;
     applyPadding([0, 0, 0, 0]);
+    restoreCalculateExtentWrapper();
   },
 };

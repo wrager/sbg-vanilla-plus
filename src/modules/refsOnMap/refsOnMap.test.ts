@@ -356,6 +356,67 @@ describe('refsOnMap enable/disable', () => {
     await refsOnMap.enable();
     expect((map.addLayer as jest.Mock).mock.calls.length).toBe(0);
   });
+
+  test('частичный провал enable: слой и hidden-кнопки снимаются с DOM', async () => {
+    // Заставляем OlVectorLayer constructor бросать — это случится после того
+    // как injectStyles уже отработал и OlVectorSource уже создан, но до
+    // создания hidden-кнопок. Проверяем что enable() cleanup'ает state.
+    const ol = window.ol;
+    if (!ol?.layer) throw new Error('ol.layer not mocked');
+    (ol.layer.Vector as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('OlVectorLayer constructor failed');
+    });
+
+    await expect(refsOnMap.enable()).rejects.toThrow('OlVectorLayer constructor failed');
+
+    // Стили должны быть сняты.
+    expect(document.getElementById('svp-refsOnMap')).toBeNull();
+    // Hidden-кнопки не должны висеть в DOM (на момент падения они ещё
+    // не были созданы, но проверим инвариант).
+    expect(document.querySelector('.svp-refs-on-map-close')).toBeNull();
+    expect(document.querySelector('.svp-refs-on-map-trash')).toBeNull();
+    // showButton на момент падения тоже ещё не создан.
+    expect(document.querySelector('.svp-refs-on-map-button')).toBeNull();
+  });
+
+  test('частичный провал после создания showButton: все элементы убраны', async () => {
+    // Заставляем document.body.appendChild бросать на третьем вызове
+    // (showButton вставляется через insertBefore в inventory, closeButton
+    // и trashButton — через document.body.appendChild). Первый appendChild
+    // на closeButton должен упасть.
+    const originalAppendChild = document.body.appendChild.bind(document.body);
+    let callCount = 0;
+    const appendSpy = jest
+      .spyOn(document.body, 'appendChild')
+      .mockImplementation(<T extends Node>(node: T): T => {
+        callCount++;
+        if (callCount === 1) {
+          throw new Error('appendChild boom on closeButton');
+        }
+        return originalAppendChild(node);
+      });
+
+    await expect(refsOnMap.enable()).rejects.toThrow('appendChild boom');
+    appendSpy.mockRestore();
+
+    // showButton уже был вставлен в inventory-delete parent, должен быть снят.
+    expect(document.querySelector('.svp-refs-on-map-button')).toBeNull();
+    // closeButton/trashButton не были созданы до конца или не прикреплены.
+    expect(document.querySelector('.svp-refs-on-map-close')).toBeNull();
+    expect(document.querySelector('.svp-refs-on-map-trash')).toBeNull();
+    // Стили сняты.
+    expect(document.getElementById('svp-refsOnMap')).toBeNull();
+    // Слой из карты удалён.
+    expect((map.removeLayer as jest.Mock).mock.calls.length).toBeGreaterThan(0);
+  });
+
+  test('getOlMap reject: стили откатываются', async () => {
+    mockGetOlMap.mockRejectedValueOnce(new Error('getOlMap rejected'));
+
+    await expect(refsOnMap.enable()).rejects.toThrow('getOlMap rejected');
+
+    expect(document.getElementById('svp-refsOnMap')).toBeNull();
+  });
 });
 
 // ── viewer open/close ────────────────────────────────────────────────────────

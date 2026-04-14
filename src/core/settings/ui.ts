@@ -1,5 +1,4 @@
 import type { IFeatureModule } from '../moduleRegistry';
-import { runModuleAction } from '../moduleRegistry';
 import { buildBugReportUrl, buildDiagnosticClipboard } from '../bugReport';
 import { injectStyles } from '../dom';
 import type { ILocalizedString } from '../l10n';
@@ -150,12 +149,22 @@ const PANEL_STYLES = `
   font-style: italic;
 }
 
-.svp-module-checkbox {
+.svp-module-row-render-error {
+  padding: 4px 0;
+  color: var(--accent);
+  font-size: 10px;
+  font-family: monospace;
+  border-bottom: 1px dashed var(--border-transp);
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.svp-module-checkbox,
+.svp-toggle-all-checkbox {
   flex-shrink: 0;
   cursor: pointer;
   width: 16px;
   height: 16px;
-
 }
 
 .svp-settings-footer {
@@ -328,48 +337,159 @@ function fillSection(
   title.textContent = t(CATEGORY_LABELS[category]);
   section.appendChild(title);
 
-  let settings = loadSettings();
+  // Читаем settings один раз только для начального построения строк. Все
+  // последующие мутации (клик чекбокса, запись ошибки модуля) идут через свежий
+  // loadSettings() — иначе onChange перетёр бы любые изменения, произошедшие
+  // в storage между построением панели и кликом (ошибки других модулей от
+  // async-enable, внешняя правка, etc.).
+  const initialSettings = loadSettings();
 
   for (const mod of modules) {
-    const enabled = isModuleEnabled(settings, mod.id, mod.defaultEnabled);
-    const errorMessage = settings.errors[mod.id] ?? null;
+    try {
+      const enabled = isModuleEnabled(initialSettings, mod.id, mod.defaultEnabled);
+      const errorMessage = initialSettings.errors[mod.id] ?? null;
 
-    const { row, checkbox, setError } = createModuleRow(
-      mod,
-      enabled,
-      (newEnabled) => {
-        settings = setModuleEnabled(settings, mod.id, newEnabled);
-        saveSettings(settings);
-        if (mod.requiresReload) {
-          location.hash = 'svp-settings';
-          location.reload();
-          return;
-        }
-        const phaseLabel = newEnabled ? 'включении' : 'выключении';
-        function onToggleError(e: unknown): void {
-          const message = e instanceof Error ? e.message : String(e);
-          console.error(`[SVP] Ошибка при ${phaseLabel} модуля "${t(mod.name)}":`, e);
-          mod.status = 'failed';
-          settings = setModuleError(settings, mod.id, message);
-          saveSettings(settings);
-          setError(message);
-        }
+      // checkboxRef — late-bound ссылка на чекбокс, которую получаем СРАЗУ
+      // после destructuring. Нужна чтобы onChange мог откатить checkbox.checked
+      // при провале enable/disable — handleModuleToggle вызывается только при
+      // change event, к этому моменту checkboxRef уже присвоен.
+      let checkboxRef: HTMLInputElement | null = null;
+      const { row, checkbox, setError } = createModuleRow(
+        mod,
+        enabled,
+        (newEnabled) => {
+          void handleModuleToggle(
+            mod,
+            newEnabled,
+            (checked) => {
+              if (checkboxRef) checkboxRef.checked = checked;
+            },
+            setError,
+            onAnyToggle,
+          );
+        },
+        errorMessage,
+      );
+      checkboxRef = checkbox;
+      checkboxMap.set(mod.id, checkbox);
+      errorDisplay.set(mod.id, setError);
+      section.appendChild(row);
+    } catch (error) {
+      // Error boundary: падение рендера одного модуля не должно срывать рендер
+      // остальных модулей и всей панели. Ставим в секцию плейсхолдер с id и
+      // текстом ошибки, пишем в консоль и продолжаем цикл.
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[SVP] Ошибка рендера настроек модуля "${mod.id}":`, error);
+      section.appendChild(createRenderErrorRow(mod.id, message));
+    }
+  }
+}
 
-        const toggleAction = newEnabled ? mod.enable.bind(mod) : mod.disable.bind(mod);
-        void runModuleAction(toggleAction, onToggleError);
-        if (mod.status !== 'failed') {
-          mod.status = 'ready';
-          settings = clearModuleError(settings, mod.id);
-          saveSettings(settings);
-          setError(null);
-        }
-        onAnyToggle();
-      },
-      errorMessage,
-    );
-    checkboxMap.set(mod.id, checkbox);
-    errorDisplay.set(mod.id, setError);
-    section.appendChild(row);
+async function handleModuleToggle(
+  mod: IFeatureModule,
+  newEnabled: boolean,
+  setChecked: (checked: boolean) => void,
+  setError: (message: string | null) => void,
+  onAnyToggle: () => void,
+): Promise<void> {
+  // Каждая операция начинается со свежего loadSettings() — мы не знаем, что
+  // изменилось в storage с момента построения панели (ошибки других модулей,
+  // добавленные через onError в initModules, правки через иные вкладки, и т.п.).
+  saveSettings(setModuleEnabled(loadSettings(), mod.id, newEnabled));
+  if (mod.requiresReload) {
+    location.hash = 'svp-settings';
+    location.reload();
+    return;
+  }
+  const phaseLabel = newEnabled ? 'включении' : 'выключении';
+  const toggleAction = newEnabled ? mod.enable.bind(mod) : mod.disable.bind(mod);
+
+  try {
+    const result = toggleAction();
+    if (result instanceof Promise) {
+      await result;
+    }
+    mod.status = 'ready';
+    saveSettings(clearModuleError(loadSettings(), mod.id));
+    setError(null);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[SVP] Ошибка при ${phaseLabel} модуля "${t(mod.name)}":`, error);
+    mod.status = 'failed';
+    // Откат: возвращаем чекбокс и settings.modules[id] к значению ДО клика,
+    // чтобы на перезагрузке SVP не пытался снова запустить упавший модуль
+    // (и не зацикливался на одной и той же ошибке). Ошибку сохраняем в
+    // settings.errors для отображения в UI.
+    const previousEnabled = !newEnabled;
+    setChecked(previousEnabled);
+    saveSettings(setModuleEnabled(loadSettings(), mod.id, previousEnabled));
+    saveSettings(setModuleError(loadSettings(), mod.id, message));
+    setError(message);
+  }
+  onAnyToggle();
+}
+
+function createRenderErrorRow(moduleId: string, message: string): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'svp-module-row-render-error';
+  row.dataset['svpModuleId'] = moduleId;
+  row.textContent = `${moduleId}: render error — ${message}`;
+  return row;
+}
+
+async function handleToggleAll(
+  modules: readonly IFeatureModule[],
+  enableAll: boolean,
+  checkboxMap: Map<string, HTMLInputElement>,
+  errorDisplay: Map<string, (message: string | null) => void>,
+): Promise<void> {
+  let needsReload = false;
+
+  for (const mod of modules) {
+    const checkbox = checkboxMap.get(mod.id);
+    if (!checkbox || checkbox.checked === enableAll) continue;
+
+    // Оптимистично переключаем чекбокс и storage. При провале enable/disable
+    // откатимся обратно к previousEnabled (ниже в catch).
+    const previousEnabled = !enableAll;
+    checkbox.checked = enableAll;
+    saveSettings(setModuleEnabled(loadSettings(), mod.id, enableAll));
+
+    if (mod.requiresReload) {
+      needsReload = true;
+      continue;
+    }
+
+    const phaseLabel = enableAll ? 'включении' : 'выключении';
+    const toggleAction = enableAll ? mod.enable.bind(mod) : mod.disable.bind(mod);
+    const setError = errorDisplay.get(mod.id);
+
+    try {
+      const result = toggleAction();
+      if (result instanceof Promise) {
+        await result;
+      }
+      mod.status = 'ready';
+      saveSettings(clearModuleError(loadSettings(), mod.id));
+      setError?.(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[SVP] Ошибка при ${phaseLabel} модуля "${t(mod.name)}":`, error);
+      mod.status = 'failed';
+      // Откат: возвращаем чекбокс и settings в прежнее состояние, чтобы на
+      // перезагрузке SVP не зацикливался на одном и том же упавшем модуле.
+      // Другие успешно обработанные модули в том же toggle-all остаются
+      // в новом положении — их saveSettings уже выполнен выше.
+      checkbox.checked = previousEnabled;
+      saveSettings(setModuleEnabled(loadSettings(), mod.id, previousEnabled));
+      saveSettings(setModuleError(loadSettings(), mod.id, message));
+      setError?.(message);
+    }
+  }
+
+  if (needsReload) {
+    location.hash = 'svp-settings';
+    location.reload();
   }
 }
 
@@ -390,7 +510,7 @@ export function initSettingsUI(
   toggleAllLabel.className = 'svp-toggle-all';
   const toggleAllCheckbox = document.createElement('input');
   toggleAllCheckbox.type = 'checkbox';
-  toggleAllCheckbox.className = 'svp-module-checkbox';
+  toggleAllCheckbox.className = 'svp-toggle-all-checkbox';
   const toggleAllText = document.createElement('span');
   toggleAllText.textContent = t(TOGGLE_ALL_LABEL);
   toggleAllLabel.appendChild(toggleAllCheckbox);
@@ -443,49 +563,9 @@ export function initSettingsUI(
   updateMasterState();
 
   toggleAllCheckbox.addEventListener('change', () => {
-    const enableAll = toggleAllCheckbox.checked;
-    let settings = loadSettings();
-    let needsReload = false;
-
-    for (const mod of modules) {
-      const checkbox = checkboxMap.get(mod.id);
-      if (!checkbox || checkbox.checked === enableAll) continue;
-
-      checkbox.checked = enableAll;
-      settings = setModuleEnabled(settings, mod.id, enableAll);
-
-      if (mod.requiresReload) {
-        needsReload = true;
-        continue;
-      }
-
-      const phaseLabel = enableAll ? 'включении' : 'выключении';
-      function onToggleError(e: unknown): void {
-        const message = e instanceof Error ? e.message : String(e);
-        console.error(`[SVP] Ошибка при ${phaseLabel} модуля "${t(mod.name)}":`, e);
-        mod.status = 'failed';
-        settings = setModuleError(settings, mod.id, message);
-        const setError = errorDisplay.get(mod.id);
-        setError?.(message);
-      }
-
-      const toggleAction = enableAll ? mod.enable.bind(mod) : mod.disable.bind(mod);
-      void runModuleAction(toggleAction, onToggleError);
-      if (mod.status !== 'failed') {
-        mod.status = 'ready';
-        settings = clearModuleError(settings, mod.id);
-        const setError = errorDisplay.get(mod.id);
-        setError?.(null);
-      }
-    }
-
-    saveSettings(settings);
-    updateMasterState();
-
-    if (needsReload) {
-      location.hash = 'svp-settings';
-      location.reload();
-    }
+    void handleToggleAll(modules, toggleAllCheckbox.checked, checkboxMap, errorDisplay).then(() => {
+      updateMasterState();
+    });
   });
 
   panel.appendChild(content);

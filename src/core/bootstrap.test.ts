@@ -1,4 +1,4 @@
-import { bootstrap } from './bootstrap';
+import { bootstrap, resetBootstrapForTest } from './bootstrap';
 import type { IFeatureModule } from './moduleRegistry';
 import type { ISvpSettings } from './settings/types';
 import * as storage from './settings/storage';
@@ -23,6 +23,7 @@ describe('bootstrap', () => {
     document.body.innerHTML = '';
     localStorage.clear();
     jest.restoreAllMocks();
+    resetBootstrapForTest();
   });
 
   test('enables module when enabled in settings', () => {
@@ -163,5 +164,57 @@ describe('bootstrap', () => {
 
     expect(lastSaved).toBeDefined();
     expect(lastSaved?.errors['ok-mod']).toBeUndefined();
+  });
+
+  describe('идемпотентность: повторный вызов bootstrap', () => {
+    test('второй вызов не вызывает init/enable модулей повторно', () => {
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { 'idem-mod': true },
+        errors: {},
+      });
+      const mod = createMockModule({ id: 'idem-mod' });
+
+      bootstrap([mod]);
+      bootstrap([mod]);
+
+      expect(mod.init).toHaveBeenCalledTimes(1);
+      expect(mod.enable).toHaveBeenCalledTimes(1);
+    });
+
+    test('второй вызов не создаёт дубликат settings panel', () => {
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({ version: 2, modules: {}, errors: {} });
+      const mod = createMockModule({ id: 'panel-mod' });
+
+      bootstrap([mod]);
+      bootstrap([mod]);
+
+      const panels = document.querySelectorAll('#svp-settings-panel');
+      expect(panels.length).toBe(1);
+    });
+
+    test('второй вызов пишет console.warn', () => {
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({ version: 2, modules: {}, errors: {} });
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+      const mod = createMockModule({ id: 'warn-mod' });
+
+      bootstrap([mod]);
+      bootstrap([mod]);
+
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('bootstrap() вызван повторно'));
+    });
+
+    test('после resetBootstrapForTest() bootstrap снова работает', () => {
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({ version: 2, modules: {}, errors: {} });
+      const mod = createMockModule({ id: 'reset-mod' });
+
+      bootstrap([mod]);
+      resetBootstrapForTest();
+      // После reset — следующий вызов должен снова пройти полный цикл.
+      bootstrap([mod]);
+
+      expect(mod.init).toHaveBeenCalledTimes(2);
+      expect(mod.enable).toHaveBeenCalledTimes(2);
+    });
   });
 });

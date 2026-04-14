@@ -140,6 +140,22 @@ afterEach(async () => {
   jest.useRealTimers();
 });
 
+test('enable() оборачивает calculateExtent, disable() восстанавливает by-reference', async () => {
+  // beforeEach уже сделал init+enable и afterEach сделает disable.
+  // Сейчас calculateExtent уже обёрнут; проверим что wrapper расширяет до диагонали.
+  const size: [number, number] = [400, 300];
+  const diagonal = Math.ceil(Math.sqrt(size[0] ** 2 + size[1] ** 2));
+  const extent = mockView.calculateExtent(size);
+  expect(extent[2] - extent[0]).toBe(diagonal);
+  expect(extent[3] - extent[1]).toBe(diagonal);
+
+  // disable — и calculateExtent проходит без модификации.
+  await singleFingerRotation.disable();
+  const passthrough = mockView.calculateExtent(size);
+  expect(passthrough[2] - passthrough[0]).toBe(size[0]);
+  expect(passthrough[3] - passthrough[1]).toBe(size[1]);
+});
+
 test('rotates when follow is not explicitly set (default state)', () => {
   // При первой загрузке игры localStorage.follow === null.
   // Игра считает follow активным по умолчанию (null != 'false').
