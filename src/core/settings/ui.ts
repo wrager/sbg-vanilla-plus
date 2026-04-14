@@ -1,6 +1,7 @@
 import type { IFeatureModule } from '../moduleRegistry';
 import { buildBugReportUrl, buildDiagnosticClipboard } from '../bugReport';
 import { injectStyles } from '../dom';
+import { isSbgScout } from '../host';
 import type { ILocalizedString } from '../l10n';
 import { t } from '../l10n';
 import {
@@ -642,9 +643,8 @@ export function initSettingsUI(
     item.appendChild(openButton);
 
     // В SBG Scout добавляется строка с «SBG Scout» — вставляем после неё
-    const isSbgScout = navigator.userAgent.includes('SbgScout/');
     let inserted = false;
-    if (isSbgScout) {
+    if (isSbgScout()) {
       for (const child of gameSettingsContent.querySelectorAll('.settings-section__item')) {
         if (child.textContent.includes('SBG Scout')) {
           child.after(item);
