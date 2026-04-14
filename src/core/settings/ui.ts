@@ -4,6 +4,7 @@ import { injectStyles } from '../dom';
 import { isModuleDisallowedInCurrentHost, isSbgScout } from '../host';
 import type { ILocalizedString } from '../l10n';
 import { t } from '../l10n';
+import { showToast } from '../toast';
 import {
   loadSettings,
   saveSettings,
@@ -12,6 +13,17 @@ import {
   setModuleError,
   clearModuleError,
 } from './storage';
+
+function persistOrNotify(settings: ReturnType<typeof loadSettings>): boolean {
+  if (saveSettings(settings)) return true;
+  showToast(
+    t({
+      en: 'Failed to save settings (storage full or inaccessible)',
+      ru: 'Не удалось сохранить настройки (хранилище заполнено или недоступно)',
+    }),
+  );
+  return false;
+}
 
 declare const __SVP_VERSION__: string;
 
@@ -416,7 +428,13 @@ async function handleModuleToggle(
   // Каждая операция начинается со свежего loadSettings() — мы не знаем, что
   // изменилось в storage с момента построения панели (ошибки других модулей,
   // добавленные через onError в initModules, правки через иные вкладки, и т.п.).
-  saveSettings(setModuleEnabled(loadSettings(), mod.id, newEnabled));
+  if (!persistOrNotify(setModuleEnabled(loadSettings(), mod.id, newEnabled))) {
+    // Storage отказал — откатываем чекбокс и не трогаем модуль: пользователь
+    // увидел toast и понимает, почему переключение не произошло.
+    setChecked(!newEnabled);
+    onAnyToggle();
+    return;
+  }
   if (mod.requiresReload) {
     location.hash = 'svp-settings';
     location.reload();
@@ -431,7 +449,7 @@ async function handleModuleToggle(
       await result;
     }
     mod.status = 'ready';
-    saveSettings(clearModuleError(loadSettings(), mod.id));
+    persistOrNotify(clearModuleError(loadSettings(), mod.id));
     setError(null);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -443,8 +461,8 @@ async function handleModuleToggle(
     // settings.errors для отображения в UI.
     const previousEnabled = !newEnabled;
     setChecked(previousEnabled);
-    saveSettings(setModuleEnabled(loadSettings(), mod.id, previousEnabled));
-    saveSettings(setModuleError(loadSettings(), mod.id, message));
+    persistOrNotify(setModuleEnabled(loadSettings(), mod.id, previousEnabled));
+    persistOrNotify(setModuleError(loadSettings(), mod.id, message));
     setError(message);
   }
   onAnyToggle();
@@ -474,7 +492,12 @@ async function handleToggleAll(
     // откатимся обратно к previousEnabled (ниже в catch).
     const previousEnabled = !enableAll;
     checkbox.checked = enableAll;
-    saveSettings(setModuleEnabled(loadSettings(), mod.id, enableAll));
+    if (!persistOrNotify(setModuleEnabled(loadSettings(), mod.id, enableAll))) {
+      // Storage отказал: откатываем чекбокс, для остальных модулей в батче
+      // смысла продолжать нет — последующие saveSettings тоже упадут.
+      checkbox.checked = previousEnabled;
+      return;
+    }
 
     if (mod.requiresReload) {
       needsReload = true;
@@ -491,7 +514,7 @@ async function handleToggleAll(
         await result;
       }
       mod.status = 'ready';
-      saveSettings(clearModuleError(loadSettings(), mod.id));
+      persistOrNotify(clearModuleError(loadSettings(), mod.id));
       setError?.(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -502,8 +525,8 @@ async function handleToggleAll(
       // Другие успешно обработанные модули в том же toggle-all остаются
       // в новом положении — их saveSettings уже выполнен выше.
       checkbox.checked = previousEnabled;
-      saveSettings(setModuleEnabled(loadSettings(), mod.id, previousEnabled));
-      saveSettings(setModuleError(loadSettings(), mod.id, message));
+      persistOrNotify(setModuleEnabled(loadSettings(), mod.id, previousEnabled));
+      persistOrNotify(setModuleError(loadSettings(), mod.id, message));
       setError?.(message);
     }
   }

@@ -87,15 +87,18 @@ export function loadSettings(): ISvpSettings {
   }
 }
 
-export function saveSettings(settings: ISvpSettings): void {
+export function saveSettings(settings: ISvpSettings): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    return true;
   } catch (error) {
     // localStorage.setItem бросает QuotaExceededError на переполненном
     // storage и SecurityError в приватном режиме некоторых браузеров.
     // Глотаем и логируем: ронять bootstrap() из-за storage — ошибка
-    // хуже чем потеря записи настроек.
+    // хуже чем потеря записи настроек. Возвращаем false, чтобы вызывающий
+    // UI-код мог показать пользователю явное уведомление.
     console.error('[SVP] Не удалось сохранить настройки в localStorage:', error);
+    return false;
   }
 }
 

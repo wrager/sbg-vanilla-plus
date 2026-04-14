@@ -81,6 +81,7 @@ describe('bootstrap', () => {
     let lastSaved: ISvpSettings | undefined;
     jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
       lastSaved = s;
+      return true;
     });
     jest.spyOn(storage, 'loadSettings').mockReturnValue({ version: 2, modules: {}, errors: {} });
 
@@ -101,6 +102,7 @@ describe('bootstrap', () => {
     let lastSaved: ISvpSettings | undefined;
     jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
       lastSaved = s;
+      return true;
     });
     jest.spyOn(storage, 'loadSettings').mockReturnValue({ version: 2, modules: {}, errors: {} });
 
@@ -121,6 +123,7 @@ describe('bootstrap', () => {
     let lastSaved: ISvpSettings | undefined;
     jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
       lastSaved = s;
+      return true;
     });
     jest.spyOn(storage, 'loadSettings').mockReturnValue({ version: 2, modules: {}, errors: {} });
 
@@ -141,6 +144,7 @@ describe('bootstrap', () => {
     let lastSaved: ISvpSettings | undefined;
     jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
       lastSaved = s;
+      return true;
     });
     jest
       .spyOn(storage, 'loadSettings')
@@ -163,6 +167,7 @@ describe('bootstrap', () => {
     let lastSaved: ISvpSettings | undefined;
     jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
       lastSaved = s;
+      return true;
     });
     jest
       .spyOn(storage, 'loadSettings')
@@ -251,6 +256,7 @@ describe('bootstrap', () => {
       let lastSaved: ISvpSettings | undefined;
       jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
         lastSaved = s;
+        return true;
       });
       jest.spyOn(storage, 'loadSettings').mockReturnValue({
         version: 2,

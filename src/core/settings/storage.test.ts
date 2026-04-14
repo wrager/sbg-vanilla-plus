@@ -29,15 +29,22 @@ describe('settings/storage', () => {
     expect(loaded.modules.test).toBe(true);
   });
 
-  test('saveSettings не бросает при QuotaExceededError', () => {
+  test('saveSettings возвращает true при успешной записи', () => {
+    const result = saveSettings({ ...DEFAULT_SETTINGS, modules: { test: true } });
+    expect(result).toBe(true);
+  });
+
+  test('saveSettings не бросает и возвращает false при QuotaExceededError', () => {
     const setItemSpy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('quota', 'QuotaExceededError');
     });
     const errorSpy = jest.spyOn(console, 'error').mockImplementation();
 
+    let result: boolean | undefined;
     expect(() => {
-      saveSettings({ ...DEFAULT_SETTINGS, modules: { test: true } });
+      result = saveSettings({ ...DEFAULT_SETTINGS, modules: { test: true } });
     }).not.toThrow();
+    expect(result).toBe(false);
 
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining('Не удалось сохранить настройки'),
@@ -48,15 +55,17 @@ describe('settings/storage', () => {
     errorSpy.mockRestore();
   });
 
-  test('saveSettings не бросает при SecurityError (private mode)', () => {
+  test('saveSettings не бросает и возвращает false при SecurityError (private mode)', () => {
     const setItemSpy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('access denied', 'SecurityError');
     });
     const errorSpy = jest.spyOn(console, 'error').mockImplementation();
 
+    let result: boolean | undefined;
     expect(() => {
-      saveSettings(DEFAULT_SETTINGS);
+      result = saveSettings(DEFAULT_SETTINGS);
     }).not.toThrow();
+    expect(result).toBe(false);
 
     setItemSpy.mockRestore();
     errorSpy.mockRestore();
