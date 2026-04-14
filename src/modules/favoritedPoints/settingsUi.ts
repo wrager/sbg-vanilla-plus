@@ -1,10 +1,4 @@
-import {
-  exportToJson,
-  importFromJson,
-  getFavoritesCount,
-  isFavoritesSnapshotReady,
-  SEAL_KEY,
-} from '../../core/favoritesStore';
+import { exportToJson, importFromJson, getFavoritesCount } from '../../core/favoritesStore';
 import { t } from '../../core/l10n';
 import { loadFavoritedPointsSettings, saveFavoritedPointsSettings } from './settings';
 
@@ -97,15 +91,6 @@ function buildPanel(): HTMLElement {
   });
   content.appendChild(exportButton);
 
-  const diagButton = document.createElement('button');
-  diagButton.type = 'button';
-  diagButton.className = 'svp-fav-settings-button';
-  diagButton.textContent = 'Диагностика IDB';
-  diagButton.addEventListener('click', () => {
-    void showDiagnostics();
-  });
-  content.appendChild(diagButton);
-
   element.appendChild(content);
 
   const footer = document.createElement('div');
@@ -122,59 +107,6 @@ function buildPanel(): HTMLElement {
   element.appendChild(footer);
 
   return element;
-}
-
-async function readIdbRawCount(): Promise<{ count: number; error: string | null }> {
-  return new Promise((resolve) => {
-    const req = indexedDB.open('CUI');
-    req.onerror = (): void => {
-      resolve({ count: -1, error: req.error?.message ?? 'open failed' });
-    };
-    req.onsuccess = (): void => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains('favorites')) {
-        db.close();
-        resolve({ count: -1, error: 'no favorites store' });
-        return;
-      }
-      const tx = db.transaction('favorites', 'readonly');
-      const store = tx.objectStore('favorites');
-      const countReq = store.count();
-      countReq.onsuccess = (): void => {
-        db.close();
-        resolve({ count: countReq.result, error: null });
-      };
-      countReq.onerror = (): void => {
-        db.close();
-        resolve({ count: -1, error: countReq.error?.message ?? 'count failed' });
-      };
-    };
-  });
-}
-
-async function showDiagnostics(): Promise<void> {
-  const seal = localStorage.getItem(SEAL_KEY);
-  const memorySize = getFavoritesCount();
-  const snapshotReady = isFavoritesSnapshotReady();
-  const idb = await readIdbRawCount();
-
-  const sealNum = seal === null ? null : parseInt(seal, 10);
-  const mismatch =
-    idb.error === null && ((sealNum !== null && sealNum !== idb.count) || memorySize !== idb.count);
-
-  const lines = [
-    'Диагностика избранных точек',
-    '',
-    `seal (localStorage): ${seal ?? '(нет)'}`,
-    `memory cache (getFavoritesCount): ${memorySize}`,
-    `snapshotLoaded (готов к автоочистке): ${snapshotReady}`,
-    `IDB raw count (прямое чтение): ${idb.count === -1 ? 'ошибка' : idb.count}`,
-    idb.error ? `IDB error: ${idb.error}` : '',
-    '',
-    mismatch ? '⚠ РАСХОЖДЕНИЕ: seal/memory/IDB не совпадают' : '✓ seal, memory и IDB совпадают',
-    !snapshotReady ? '⚠ snapshot не загружен — loadFavorites не прошёл или был alert' : '',
-  ].filter(Boolean);
-  alert(lines.join('\n'));
 }
 
 async function downloadExport(): Promise<void> {
