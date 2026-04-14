@@ -6,7 +6,6 @@ import {
   saveSettings,
   persistModuleDefaults,
   isModuleEnabled,
-  setModuleEnabled,
   setModuleError,
   clearModuleError,
 } from './settings/storage';
@@ -39,22 +38,16 @@ export function bootstrap(modules: IFeatureModule[]): void {
   let settings = loadSettings();
   settings = persistModuleDefaults(settings, modules);
 
-  // Модули, несовместимые с текущим хостом (например, keepScreenOn в SBG Scout),
-  // принудительно выключаем в settings. Это гарантирует и пропуск enable в
-  // initModules ниже, и постоянную запись false в localStorage — чтобы при
-  // возврате в другое окружение бывший выбор пользователя был переопределён
-  // только для окружений с конфликтом.
-  for (const mod of modules) {
-    if (isModuleDisallowedInCurrentHost(mod.id) && settings.modules[mod.id]) {
-      settings = setModuleEnabled(settings, mod.id, false);
-    }
-  }
-
   const errorDisplay = new Map<string, (message: string | null) => void>();
 
   initModules(
     modules,
     (id) => {
+      // Модули, несовместимые с текущим хостом (например, keepScreenOn в
+      // SBG Scout), подавляются на уровне runtime — persisted settings не
+      // трогаем, иначе при возврате в обычный браузер пользовательский
+      // выбор (или defaultEnabled) оказался бы затёрт записью false.
+      if (isModuleDisallowedInCurrentHost(id)) return false;
       const mod = modules.find((m) => m.id === id);
       return isModuleEnabled(settings, id, mod?.defaultEnabled ?? true);
     },
