@@ -28,6 +28,34 @@ const INVENTORY_CONTENT_SELECTOR = '.inventory__content';
 const INVENTORY_POPUP_SELECTOR = '.inventory.popup';
 const REFS_TAB = '3';
 
+// Максимум параллельных GET /api/point для загрузки данных placeholder'ов.
+// При большом списке избранных без ключей (десятки точек) залп одновременных
+// запросов перегружал сервер и игровой клиент; очередь растягивает их по
+// времени и держит нагрузку предсказуемой.
+const MAX_CONCURRENT_POINT_FETCHES = 4;
+let activePointFetches = 0;
+const pointFetchQueue: (() => void)[] = [];
+
+function scheduleLimitedPointFetch<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const run = (): void => {
+      activePointFetches++;
+      task()
+        .then(resolve, reject)
+        .finally(() => {
+          activePointFetches--;
+          const next = pointFetchQueue.shift();
+          if (next) next();
+        });
+    };
+    if (activePointFetches < MAX_CONCURRENT_POINT_FETCHES) {
+      run();
+    } else {
+      pointFetchQueue.push(run);
+    }
+  });
+}
+
 // Placeholder для избранных точек без ключей: видны только при активном фильтре.
 const PLACEHOLDER_CLASS = 'svp-fav-placeholder';
 // Класс loaded предотвращает обработку игровой функцией getRefsData (script.js:2212),
@@ -316,8 +344,9 @@ function injectPlaceholders(content: Element): void {
     const placeholder = createPlaceholderItem(guid);
     content.appendChild(placeholder);
     // Звезда инжектируется в processItems → updateItemMarks.
-    // Подгрузка данных — fire-and-forget, результат заполняет DOM.
-    void fetchPointData(guid).then((data) => {
+    // Подгрузка данных — fire-and-forget через ограниченную очередь,
+    // чтобы N избранных без ключей не породили N параллельных запросов.
+    void scheduleLimitedPointFetch(() => fetchPointData(guid)).then((data) => {
       // Placeholder мог быть удалён (фильтр выключен, инвентарь закрыт).
       if (!placeholder.isConnected) return;
       if (data) {

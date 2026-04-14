@@ -664,4 +664,52 @@ describe('placeholder для избранных без ключей', () => {
     expect(isFavorited('point-no-keys')).toBe(false);
     expect(star.classList.contains('is-filled')).toBe(false);
   });
+
+  test('ограничивает параллельные GET /api/point при большом числе избранных', async () => {
+    for (let i = 0; i < 12; i++) {
+      await addFavorite(`p${i}`);
+    }
+
+    // fetch-мок, который не резолвится до явного разрешения — так мы видим,
+    // сколько запросов стартовали одновременно, пока ни один не завершился.
+    const pending: (() => void)[] = [];
+    let started = 0;
+    global.fetch = jest.fn().mockImplementation(() => {
+      started++;
+      return new Promise((resolve) => {
+        pending.push(() => {
+          resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                data: { t: 'Test', te: 1, l: 5, o: 'Owner', e: 80, co: 3 },
+              }),
+          });
+        });
+      });
+    });
+
+    const { content } = createInventoryDom('3');
+    installInventoryFilter();
+    findCheckbox().checked = true;
+    findCheckbox().dispatchEvent(new Event('change'));
+
+    // Дать микротаскам стартовать — первые запросы должны уйти, остальные
+    // ждать освобождения слота.
+    await flush();
+
+    expect(content.querySelectorAll('.svp-fav-placeholder')).toHaveLength(12);
+    // Исходная реализация без concurrency-лимита запускала все 12 сразу.
+    // Ожидаем потолок не выше 4 параллельных запросов.
+    expect(started).toBeLessThanOrEqual(4);
+
+    // Резолвим все запросы постепенно, чтобы очередь освободила все 12.
+    while (pending.length > 0 || started < 12) {
+      const next = pending.shift();
+      if (next) next();
+      await flush();
+    }
+
+    expect(started).toBe(12);
+  });
 });
