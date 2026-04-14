@@ -3,6 +3,14 @@ import type { IFeatureModule } from './moduleRegistry';
 import type { ISvpSettings } from './settings/types';
 import * as storage from './settings/storage';
 
+const SCOUT_UA = 'Mozilla/5.0 (Linux; Android 13) SbgScout/1.2.3';
+const BROWSER_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0';
+const ORIGINAL_USER_AGENT = navigator.userAgent;
+
+function setUserAgent(value: string): void {
+  Object.defineProperty(navigator, 'userAgent', { value, configurable: true });
+}
+
 function createMockModule(overrides: Partial<IFeatureModule> = {}): IFeatureModule {
   return {
     id: 'test',
@@ -24,6 +32,7 @@ describe('bootstrap', () => {
     localStorage.clear();
     jest.restoreAllMocks();
     resetBootstrapForTest();
+    setUserAgent(ORIGINAL_USER_AGENT);
   });
 
   test('enables module when enabled in settings', () => {
@@ -215,6 +224,74 @@ describe('bootstrap', () => {
 
       expect(mod.init).toHaveBeenCalledTimes(2);
       expect(mod.enable).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('модули, несовместимые с хостом', () => {
+    test('в SBG Scout keepScreenOn не enable-ится, даже если в settings был true', () => {
+      setUserAgent(SCOUT_UA);
+      let lastSaved: ISvpSettings | undefined;
+      jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
+        lastSaved = s;
+      });
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { keepScreenOn: true },
+        errors: {},
+      });
+
+      const keepScreenOn = createMockModule({ id: 'keepScreenOn', defaultEnabled: true });
+      bootstrap([keepScreenOn]);
+
+      expect(keepScreenOn.enable).not.toHaveBeenCalled();
+      expect(lastSaved?.modules['keepScreenOn']).toBe(false);
+    });
+
+    test('в SBG Scout keepScreenOn записывается как false, если его не было в settings', () => {
+      setUserAgent(SCOUT_UA);
+      let lastSaved: ISvpSettings | undefined;
+      jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
+        lastSaved = s;
+      });
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: {},
+        errors: {},
+      });
+
+      const keepScreenOn = createMockModule({ id: 'keepScreenOn', defaultEnabled: true });
+      bootstrap([keepScreenOn]);
+
+      expect(keepScreenOn.enable).not.toHaveBeenCalled();
+      expect(lastSaved?.modules['keepScreenOn']).toBe(false);
+    });
+
+    test('в SBG Scout другие модули работают нормально', () => {
+      setUserAgent(SCOUT_UA);
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { 'other-mod': true },
+        errors: {},
+      });
+
+      const other = createMockModule({ id: 'other-mod', defaultEnabled: true });
+      bootstrap([other]);
+
+      expect(other.enable).toHaveBeenCalledTimes(1);
+    });
+
+    test('в обычном браузере keepScreenOn включается как обычно', () => {
+      setUserAgent(BROWSER_UA);
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { keepScreenOn: true },
+        errors: {},
+      });
+
+      const keepScreenOn = createMockModule({ id: 'keepScreenOn', defaultEnabled: true });
+      bootstrap([keepScreenOn]);
+
+      expect(keepScreenOn.enable).toHaveBeenCalledTimes(1);
     });
   });
 });

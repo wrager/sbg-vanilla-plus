@@ -1,7 +1,7 @@
 import type { IFeatureModule } from '../moduleRegistry';
 import { buildBugReportUrl, buildDiagnosticClipboard } from '../bugReport';
 import { injectStyles } from '../dom';
-import { isSbgScout } from '../host';
+import { isModuleDisallowedInCurrentHost, isSbgScout } from '../host';
 import type { ILocalizedString } from '../l10n';
 import { t } from '../l10n';
 import {
@@ -241,11 +241,19 @@ const CATEGORY_LABELS: Record<Category, ILocalizedString> = {
   fix: { en: 'Bugfixes', ru: 'Багфиксы' },
 };
 
-function createCheckbox(checked: boolean, onChange: (enabled: boolean) => void): HTMLInputElement {
+function createCheckbox(
+  checked: boolean,
+  onChange: (enabled: boolean) => void,
+  disabled = false,
+): HTMLInputElement {
   const input = document.createElement('input');
   input.type = 'checkbox';
   input.className = 'svp-module-checkbox';
   input.checked = checked;
+  if (disabled) {
+    input.disabled = true;
+    return input;
+  }
   input.addEventListener('change', () => {
     onChange(input.checked);
   });
@@ -263,6 +271,7 @@ function createModuleRow(
   enabled: boolean,
   onChange: (enabled: boolean) => void,
   errorMessage: string | null,
+  disabled: boolean,
 ): ModuleRowResult {
   const row = document.createElement('div');
   row.className = 'svp-module-row';
@@ -306,7 +315,7 @@ function createModuleRow(
   failed.className = 'svp-module-failed';
 
   row.appendChild(info);
-  const checkbox = createCheckbox(enabled, onChange);
+  const checkbox = createCheckbox(enabled, onChange, disabled);
   row.appendChild(checkbox);
 
   function setError(message: string | null): void {
@@ -347,7 +356,13 @@ function fillSection(
 
   for (const mod of modules) {
     try {
-      const enabled = isModuleEnabled(initialSettings, mod.id, mod.defaultEnabled);
+      // Модули, несовместимые с текущим хостом (например, keepScreenOn в SBG Scout),
+      // рендерятся как disabled, всегда выключенные. bootstrap уже перезаписал
+      // их значение в settings на false — поэтому enabled здесь тоже false.
+      const disallowed = isModuleDisallowedInCurrentHost(mod.id);
+      const enabled = disallowed
+        ? false
+        : isModuleEnabled(initialSettings, mod.id, mod.defaultEnabled);
       const errorMessage = initialSettings.errors[mod.id] ?? null;
 
       // checkboxRef — late-bound ссылка на чекбокс, которую получаем СРАЗУ
@@ -370,9 +385,14 @@ function fillSection(
           );
         },
         errorMessage,
+        disallowed,
       );
       checkboxRef = checkbox;
-      checkboxMap.set(mod.id, checkbox);
+      // Disabled чекбоксы не регистрируем в checkboxMap, чтобы toggle-all и
+      // updateMasterState их игнорировали (их состояние нельзя менять).
+      if (!disallowed) {
+        checkboxMap.set(mod.id, checkbox);
+      }
       errorDisplay.set(mod.id, setError);
       section.appendChild(row);
     } catch (error) {

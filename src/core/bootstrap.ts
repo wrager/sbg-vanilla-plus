@@ -1,3 +1,4 @@
+import { isModuleDisallowedInCurrentHost } from './host';
 import type { IFeatureModule } from './moduleRegistry';
 import { initModules, registerModules } from './moduleRegistry';
 import {
@@ -5,6 +6,7 @@ import {
   saveSettings,
   persistModuleDefaults,
   isModuleEnabled,
+  setModuleEnabled,
   setModuleError,
   clearModuleError,
 } from './settings/storage';
@@ -36,6 +38,17 @@ export function bootstrap(modules: IFeatureModule[]): void {
   registerModules(modules);
   let settings = loadSettings();
   settings = persistModuleDefaults(settings, modules);
+
+  // Модули, несовместимые с текущим хостом (например, keepScreenOn в SBG Scout),
+  // принудительно выключаем в settings. Это гарантирует и пропуск enable в
+  // initModules ниже, и постоянную запись false в localStorage — чтобы при
+  // возврате в другое окружение бывший выбор пользователя был переопределён
+  // только для окружений с конфликтом.
+  for (const mod of modules) {
+    if (isModuleDisallowedInCurrentHost(mod.id) && settings.modules[mod.id]) {
+      settings = setModuleEnabled(settings, mod.id, false);
+    }
+  }
 
   const errorDisplay = new Map<string, (message: string | null) => void>();
 

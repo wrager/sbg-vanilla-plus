@@ -533,3 +533,108 @@ describe('initSettingsUI toggle-all — откат чекбоксов при ч�
     expect(toggleAll.checked).toBe(false);
   });
 });
+
+describe('initSettingsUI — модули, несовместимые с хостом', () => {
+  const SCOUT_UA = 'Mozilla/5.0 (Linux; Android 13) SbgScout/1.2.3';
+  const BROWSER_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0';
+  const ORIGINAL_USER_AGENT = navigator.userAgent;
+
+  function setUserAgent(value: string): void {
+    Object.defineProperty(navigator, 'userAgent', { value, configurable: true });
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('style[id^="svp-"]').forEach((node) => {
+      node.remove();
+    });
+  });
+
+  afterEach(() => {
+    setUserAgent(ORIGINAL_USER_AGENT);
+  });
+
+  function getCheckboxByModuleId(moduleId: string): HTMLInputElement {
+    const panel = document.getElementById('svp-settings-panel');
+    if (!panel) throw new Error('svp-settings-panel not rendered');
+    const rows = panel.querySelectorAll('.svp-module-row');
+    for (const row of rows) {
+      const id = row.querySelector('.svp-module-id')?.textContent;
+      if (id === moduleId) {
+        const checkbox = row.querySelector<HTMLInputElement>('.svp-module-checkbox');
+        if (!checkbox) throw new Error(`checkbox for ${moduleId} not found`);
+        return checkbox;
+      }
+    }
+    throw new Error(`row for ${moduleId} not found`);
+  }
+
+  test('в SBG Scout keepScreenOn рендерится как disabled + unchecked', () => {
+    setUserAgent(SCOUT_UA);
+    const keepScreenOn = createMockModule({ id: 'keepScreenOn', defaultEnabled: true });
+
+    initSettingsUI([keepScreenOn], new Map());
+
+    const checkbox = getCheckboxByModuleId('keepScreenOn');
+    expect(checkbox.disabled).toBe(true);
+    expect(checkbox.checked).toBe(false);
+  });
+
+  test('в обычном браузере keepScreenOn рендерится как обычный чекбокс', () => {
+    setUserAgent(BROWSER_UA);
+    const keepScreenOn = createMockModule({ id: 'keepScreenOn', defaultEnabled: true });
+    localStorage.setItem(
+      'svp_settings',
+      JSON.stringify({ version: 4, modules: { keepScreenOn: true }, errors: {} }),
+    );
+
+    initSettingsUI([keepScreenOn], new Map());
+
+    const checkbox = getCheckboxByModuleId('keepScreenOn');
+    expect(checkbox.disabled).toBe(false);
+    expect(checkbox.checked).toBe(true);
+  });
+
+  test('в SBG Scout toggle-all не переключает disabled чекбокс keepScreenOn', async () => {
+    setUserAgent(SCOUT_UA);
+    const keepScreenOn = createMockModule({
+      id: 'keepScreenOn',
+      defaultEnabled: true,
+      enable: jest.fn(),
+    });
+    const other = createMockModule({ id: 'other', defaultEnabled: true, enable: jest.fn() });
+
+    initSettingsUI([keepScreenOn, other], new Map());
+
+    const toggleAll = document.querySelector<HTMLInputElement>('.svp-toggle-all-checkbox');
+    if (!toggleAll) throw new Error('toggle-all checkbox not rendered');
+    toggleAll.checked = true;
+    toggleAll.dispatchEvent(new Event('change'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const keepScreenOnCheckbox = getCheckboxByModuleId('keepScreenOn');
+    expect(keepScreenOnCheckbox.checked).toBe(false);
+    expect(keepScreenOn.enable).not.toHaveBeenCalled();
+  });
+
+  test('в SBG Scout master-состояние toggle-all игнорирует disabled чекбокс', () => {
+    setUserAgent(SCOUT_UA);
+    const keepScreenOn = createMockModule({ id: 'keepScreenOn', defaultEnabled: true });
+    const other = createMockModule({ id: 'other', defaultEnabled: true });
+    localStorage.setItem(
+      'svp_settings',
+      JSON.stringify({ version: 4, modules: { other: true }, errors: {} }),
+    );
+
+    initSettingsUI([keepScreenOn, other], new Map());
+
+    // other включён, keepScreenOn disabled и не считается — master должен быть
+    // полностью checked, без indeterminate.
+    const toggleAll = document.querySelector<HTMLInputElement>('.svp-toggle-all-checkbox');
+    if (!toggleAll) throw new Error('toggle-all checkbox not rendered');
+    expect(toggleAll.checked).toBe(true);
+    expect(toggleAll.indeterminate).toBe(false);
+  });
+});
