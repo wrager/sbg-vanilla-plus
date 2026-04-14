@@ -264,6 +264,47 @@ async function fetchGameAssets() {
   }
 }
 
+function generateScoutReadme() {
+  return `# SBG Scout
+
+Android-приложение, которое оборачивает [sbg-game.ru/app](https://sbg-game.ru/app) в нативный WebView и включает встроенный менеджер юзерскриптов. Vanilla+ устанавливается и обновляется через Scout автоматически.
+
+- Репозиторий: https://github.com/wrager/sbg-scout
+- Релизы: https://github.com/wrager/sbg-scout/releases
+
+Эта папка — **только справочник**. Источники/релизы Scout сюда автоматически не выкачиваются: Scout — нативное Android-приложение (Kotlin/Java), взаимодействие юзерскрипта с ним исчерпывается UA-детектом и поведением WebView, а не чтением его исходников.
+
+## Детект
+
+Scout добавляет в \`navigator.userAgent\` суффикс \`SbgScout/<version>\`. Канонический детект — функция \`isSbgScout()\` из \`src/core/host.ts\`. Напрямую матчить \`navigator.userAgent\` в модулях запрещено — всегда через \`host.ts\`.
+
+\`\`\`ts
+import { isSbgScout } from '../../core/host';
+
+if (isSbgScout()) {
+  // Код, специфичный для Scout
+}
+\`\`\`
+
+## Особенности окружения
+
+- **WebView, а не браузер.** Нет полноценной адресной строки, часть UX (bookmarks, share) перенесена в нативные меню Scout. Tampermonkey/Violentmonkey не используются — менеджер скриптов встроен в сам Scout.
+- **Нативное управление экраном.** Scout сам определяет, когда экран должен оставаться включённым (геолокационная игра), поэтому Wake Lock API изнутри WebView в лучшем случае дублирует поведение хоста, а в худшем конфликтует с ним. См. ниже «Несовместимые модули».
+- **Собственная строка в игровом меню настроек.** Игра рендерит внутри \`.settings-content\` отдельный \`.settings-section__item\` с текстом «SBG Scout», ведущий в нативный экран Scout. Vanilla+ использует эту строку как якорь для вставки своего пункта настроек (см. [src/core/settings/ui.ts](../../src/core/settings/ui.ts)): в Scout пункт SVP встаёт после неё, а в обычном браузере — в начале списка.
+- **Установка/обновление юзерскриптов.** Scout сам скачивает релизы \`sbg-vanilla-plus.user.js\` с GitHub и ставит их в WebView — шаг «поставить Tampermonkey» для пользователя Scout отсутствует, и в README инструкция по установке в Scout отличается от инструкции для обычного браузера.
+
+## Модули, несовместимые со Scout
+
+Список централизован в [src/core/host.ts](../../src/core/host.ts) (\`DISALLOWED_IN_SCOUT\`). Для таких модулей \`bootstrap()\` принудительно выставляет \`false\` в \`svp_settings.modules[id]\`, а settings-UI рендерит чекбокс как \`disabled + unchecked\`.
+
+| Модуль         | Причина несовместимости                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------- |
+| \`keepScreenOn\` | Scout нативно управляет экраном. Wake Lock API из WebView дублирует/конфликтует с хостом, модуль там вреден. |
+
+Если появляется новый несовместимый модуль — добавлять id в \`DISALLOWED_IN_SCOUT\` в \`host.ts\` и строку в таблицу выше.
+`;
+}
+
 function generateReadme() {
   const timestamp = new Date().toISOString();
   const rows = manifest
@@ -287,7 +328,7 @@ ${rows}
 
 ## Automatic content
 
-Everything except \`game/dom/\`, \`game/css/\` and \`screenshots/\` is downloaded automatically.
+Everything except \`game/dom/\`, \`game/css/\`, \`screenshots/\` and \`scout/\` is downloaded automatically.
 Re-run \`npm run refs:fetch\` to update (manual content is preserved).
 
 ## Manual content
@@ -298,6 +339,7 @@ Open the stub file for details on how to populate it.
 - \`game/dom/body.html\` — rendered DOM (from DevTools)
 - \`game/css/variables.css\` — :root CSS custom properties (from DevTools)
 - \`screenshots/\` — UI screenshots
+- \`scout/\` — справочник по SBG Scout (хост-приложение Android)
 `;
 }
 
@@ -313,6 +355,7 @@ async function main() {
     join(REFS, 'game', 'dom'),
     join(REFS, 'game', 'css'),
     join(REFS, 'screenshots'),
+    join(REFS, 'scout'),
   ];
   const preservedPaths = [];
   for (const dir of manualDirs) {
@@ -341,6 +384,7 @@ async function main() {
     join(REFS, 'game', 'css'),
     join(REFS, 'releases'),
     join(REFS, 'screenshots'),
+    join(REFS, 'scout'),
   ];
   for (const dir of dirs) {
     await mkdir(dir, { recursive: true });
@@ -382,6 +426,10 @@ async function main() {
         ' */',
         '',
       ].join('\n'),
+    },
+    {
+      path: join(REFS, 'scout', 'README.md'),
+      content: generateScoutReadme(),
     },
   ];
   for (const stub of stubs) {
