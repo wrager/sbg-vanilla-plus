@@ -172,6 +172,18 @@ const PANEL_STYLES = `
   word-break: break-word;
 }
 
+.svp-module-row-host-provided .svp-module-name,
+.svp-module-row-host-provided .svp-module-desc {
+  color: var(--text-disabled);
+}
+
+.svp-module-row-host-provided-label {
+  font-size: 10px;
+  font-style: italic;
+  color: var(--text-disabled);
+  margin-top: 2px;
+}
+
 .svp-module-checkbox,
 .svp-toggle-all-checkbox {
   flex-shrink: 0;
@@ -253,19 +265,11 @@ const CATEGORY_LABELS: Record<Category, ILocalizedString> = {
   fix: { en: 'Bugfixes', ru: 'Багфиксы' },
 };
 
-function createCheckbox(
-  checked: boolean,
-  onChange: (enabled: boolean) => void,
-  disabled = false,
-): HTMLInputElement {
+function createCheckbox(checked: boolean, onChange: (enabled: boolean) => void): HTMLInputElement {
   const input = document.createElement('input');
   input.type = 'checkbox';
   input.className = 'svp-module-checkbox';
   input.checked = checked;
-  if (disabled) {
-    input.disabled = true;
-    return input;
-  }
   input.addEventListener('change', () => {
     onChange(input.checked);
   });
@@ -278,12 +282,82 @@ interface ModuleRowResult {
   setError: (message: string | null) => void;
 }
 
+interface HostProvidedRowResult {
+  row: HTMLElement;
+  setError: (message: string | null) => void;
+}
+
+const HOST_PROVIDED_LABEL: ILocalizedString = {
+  en: 'Implemented in SBG Scout',
+  ru: 'Реализовано в SBG Scout',
+};
+
+/**
+ * Строка для модуля, функциональность которого даёт сам хост (например,
+ * keepScreenOn в SBG Scout управляется нативно Android). Чекбокса нет,
+ * текст серый, есть подпись с указанием хоста.
+ */
+function createHostProvidedRow(
+  mod: IFeatureModule,
+  errorMessage: string | null,
+): HostProvidedRowResult {
+  const row = document.createElement('div');
+  row.className = 'svp-module-row svp-module-row-host-provided';
+
+  const info = document.createElement('div');
+  info.className = 'svp-module-info';
+
+  const nameLine = document.createElement('div');
+  nameLine.className = 'svp-module-name-line';
+
+  const name = document.createElement('div');
+  name.className = 'svp-module-name';
+  name.textContent = t(mod.name);
+
+  const modId = document.createElement('div');
+  modId.className = 'svp-module-id';
+  modId.textContent = mod.id;
+
+  nameLine.appendChild(name);
+  nameLine.appendChild(modId);
+
+  const desc = document.createElement('div');
+  desc.className = 'svp-module-desc';
+  desc.textContent = t(mod.description);
+
+  const hostLabel = document.createElement('div');
+  hostLabel.className = 'svp-module-row-host-provided-label';
+  hostLabel.textContent = t(HOST_PROVIDED_LABEL);
+
+  info.appendChild(nameLine);
+  info.appendChild(desc);
+  info.appendChild(hostLabel);
+
+  const failed = document.createElement('div');
+  failed.className = 'svp-module-failed';
+
+  function setError(message: string | null): void {
+    if (message) {
+      failed.textContent = message;
+      failed.style.display = '';
+    } else {
+      failed.textContent = '';
+      failed.style.display = 'none';
+    }
+  }
+
+  setError(errorMessage);
+  info.appendChild(failed);
+
+  row.appendChild(info);
+  return { row, setError };
+}
+
 function createModuleRow(
   mod: IFeatureModule,
   enabled: boolean,
   onChange: (enabled: boolean) => void,
   errorMessage: string | null,
-  disabled: boolean,
 ): ModuleRowResult {
   const row = document.createElement('div');
   row.className = 'svp-module-row';
@@ -327,7 +401,7 @@ function createModuleRow(
   failed.className = 'svp-module-failed';
 
   row.appendChild(info);
-  const checkbox = createCheckbox(enabled, onChange, disabled);
+  const checkbox = createCheckbox(enabled, onChange);
   row.appendChild(checkbox);
 
   function setError(message: string | null): void {
@@ -368,14 +442,20 @@ function fillSection(
 
   for (const mod of modules) {
     try {
-      // Модули, несовместимые с текущим хостом (например, keepScreenOn в SBG Scout),
-      // рендерятся как disabled, всегда выключенные. bootstrap уже перезаписал
-      // их значение в settings на false — поэтому enabled здесь тоже false.
+      // Модули, несовместимые с текущим хостом (например, keepScreenOn в SBG
+      // Scout), рендерятся без чекбокса вовсе: функциональность даёт сам хост,
+      // управлять ей пользователь не может. Подпись указывает хост.
       const disallowed = isModuleDisallowedInCurrentHost(mod.id);
-      const enabled = disallowed
-        ? false
-        : isModuleEnabled(initialSettings, mod.id, mod.defaultEnabled);
       const errorMessage = initialSettings.errors[mod.id] ?? null;
+
+      if (disallowed) {
+        const { row, setError } = createHostProvidedRow(mod, errorMessage);
+        errorDisplay.set(mod.id, setError);
+        section.appendChild(row);
+        continue;
+      }
+
+      const enabled = isModuleEnabled(initialSettings, mod.id, mod.defaultEnabled);
 
       // checkboxRef — late-bound ссылка на чекбокс, которую получаем СРАЗУ
       // после destructuring. Нужна чтобы onChange мог откатить checkbox.checked
@@ -397,14 +477,9 @@ function fillSection(
           );
         },
         errorMessage,
-        disallowed,
       );
       checkboxRef = checkbox;
-      // Disabled чекбоксы не регистрируем в checkboxMap, чтобы toggle-all и
-      // updateMasterState их игнорировали (их состояние нельзя менять).
-      if (!disallowed) {
-        checkboxMap.set(mod.id, checkbox);
-      }
+      checkboxMap.set(mod.id, checkbox);
       errorDisplay.set(mod.id, setError);
       section.appendChild(row);
     } catch (error) {
