@@ -1,0 +1,107 @@
+/* Кнопка «Настроить» у модуля drawingRestrictions в панели настроек SVP */
+.svp-dr-configure-button {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.2));
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text, #ddd);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.svp-dr-configure-button:hover {
+  background: var(--accent, #ffcc33);
+  color: var(--background, #000);
+}
+
+/* Модалка настроек ограничений рисования */
+.svp-dr-settings-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 10011;
+  display: flex;
+  flex-direction: column;
+  background: var(--background, #1a1a1a);
+  color: var(--text, #ddd);
+  padding: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.svp-dr-settings-header {
+  font-size: 14px;
+  font-weight: bold;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border, #444);
+}
+
+.svp-dr-settings-content {
+  flex: 1;
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.svp-dr-settings-group-title {
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--text-disabled, #aaa);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 4px;
+}
+
+.svp-dr-settings-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  padding-left: 8px;
+}
+
+.svp-dr-settings-number-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.svp-dr-settings-number-row input[type='number'] {
+  width: 80px;
+  padding: 4px 6px;
+  border: 1px solid var(--border, #444);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text, #ddd);
+  font-size: 13px;
+}
+
+.svp-dr-settings-button {
+  display: inline-block;
+  padding: 6px 12px;
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text, #ddd);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.svp-dr-settings-button:hover {
+  background: var(--accent, #ffcc33);
+  color: var(--background, #000);
+  border-color: var(--accent, #ffcc33);
+}
+
+.svp-dr-settings-footer {
+  padding-top: 8px;
+  border-top: 1px solid var(--border, #444);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
