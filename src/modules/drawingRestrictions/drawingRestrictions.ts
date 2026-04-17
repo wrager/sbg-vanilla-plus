@@ -1,5 +1,6 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { injectStyles, removeStyles } from '../../core/dom';
+import { installDrawFilter, uninstallDrawFilter } from './drawFilter';
 import { installSettingsUi, uninstallSettingsUi } from './settingsUi';
 import styles from './styles.css?inline';
 
@@ -19,16 +20,18 @@ export const drawingRestrictions: IFeatureModule = {
   category: 'feature',
 
   init() {
-    // Загружает настройки (и мигрирует hideLastFavRef из favoritedPoints при первом запуске).
-    // Дальше фильтр подключается в enable() — см. последующие коммиты.
+    // Загрузка настроек (и миграция hideLastFavRef) выполняется при первом обращении
+    // из drawFilter/settingsUi — loadDrawingRestrictionsSettings lazy.
   },
 
   enable() {
     injectStyles(styles, MODULE_ID);
+    installDrawFilter();
     installSettingsUi();
   },
 
   disable() {
+    uninstallDrawFilter();
     uninstallSettingsUi();
     removeStyles(MODULE_ID);
   },

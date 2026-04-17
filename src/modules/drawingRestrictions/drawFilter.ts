@@ -1,12 +1,18 @@
 import { getFavoritedGuids } from '../../core/favoritesStore';
 import { t } from '../../core/l10n';
 import { showToast } from '../../core/toast';
-import { loadFavoritedPointsSettings } from './settings';
+import {
+  applyPredicates,
+  buildPredicates,
+  countHiddenByLastKey,
+  type IDrawEntry,
+} from './filterRules';
+import { loadDrawingRestrictionsSettings } from './settings';
 
 const DRAW_URL_PATTERN = /\/api\/draw(?:\?|$)/;
 
 interface IDrawResponseShape {
-  data: { p?: string; a?: number }[];
+  data: IDrawEntry[];
 }
 
 let originalFetch: typeof window.fetch | null = null;
@@ -37,7 +43,7 @@ function isDrawResponseShape(value: unknown): value is IDrawResponseShape {
   return Array.isArray(record.data);
 }
 
-function showHideLastFavRefToast(hidden: number): void {
+function showLastKeyToast(hidden: number): void {
   const message = t(
     hidden === 1
       ? {
@@ -53,11 +59,11 @@ function showHideLastFavRefToast(hidden: number): void {
 }
 
 async function filterDrawResponse(response: Response): Promise<Response> {
-  const settings = loadFavoritedPointsSettings();
-  if (!settings.hideLastFavRef) return response;
-
+  const settings = loadDrawingRestrictionsSettings();
   const favorites = getFavoritedGuids();
-  if (favorites.size === 0) return response;
+
+  const predicates = buildPredicates({ settings, favorites });
+  if (predicates.length === 0) return response;
 
   let parsed: unknown;
   try {
@@ -68,18 +74,14 @@ async function filterDrawResponse(response: Response): Promise<Response> {
 
   if (!isDrawResponseShape(parsed)) return response;
 
-  const originalLength = parsed.data.length;
-  parsed.data = parsed.data.filter((entry) => {
-    const pointGuid = entry.p;
-    const amount = entry.a;
-    if (typeof pointGuid !== 'string' || typeof amount !== 'number') return true;
-    const isLastFav = favorites.has(pointGuid) && amount === 1;
-    return !isLastFav;
-  });
+  const original = parsed.data;
+  parsed.data = applyPredicates(original, predicates);
 
-  const hidden = originalLength - parsed.data.length;
-  if (hidden > 0) {
-    showHideLastFavRefToast(hidden);
+  // Toast только по protectLastKey: остальные ветки скрывают предсказуемо-массово
+  // и не требуют точечного уведомления.
+  const hiddenLastKey = countHiddenByLastKey(original, favorites, settings.favProtectionMode);
+  if (hiddenLastKey > 0) {
+    showLastKeyToast(hiddenLastKey);
   }
 
   const modified = new Response(JSON.stringify(parsed), {
@@ -93,7 +95,7 @@ async function filterDrawResponse(response: Response): Promise<Response> {
   return modified;
 }
 
-export function installLastRefProtection(): void {
+export function installDrawFilter(): void {
   if (originalFetch) return;
   originalFetch = window.fetch;
   const native = originalFetch;
@@ -106,7 +108,7 @@ export function installLastRefProtection(): void {
   };
 }
 
-export function uninstallLastRefProtection(): void {
+export function uninstallDrawFilter(): void {
   if (!originalFetch) return;
   window.fetch = originalFetch;
   originalFetch = null;
