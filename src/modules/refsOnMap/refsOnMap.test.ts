@@ -145,9 +145,11 @@ function mockOl(): void {
         .mockImplementation(() => makeSource()) as unknown as new () => IOlVectorSource,
     },
     layer: {
-      Vector: jest.fn().mockImplementation(() => makeLayer('svp-refs-on-map')) as unknown as new (
-        opts: Record<string, unknown>,
-      ) => IOlLayer,
+      Vector: jest
+        .fn()
+        .mockImplementation((opts: Record<string, unknown>) =>
+          makeLayer('svp-refs-on-map', (opts.source ?? null) as IOlVectorSource | null),
+        ) as unknown as new (opts: Record<string, unknown>) => IOlLayer,
     },
     Feature: jest.fn().mockImplementation(() => {
       const feature: IOlFeature = {
@@ -266,14 +268,35 @@ jest.mock('../../core/moduleRegistry', () => {
   return {
     ...jest.requireActual('../../core/moduleRegistry'),
     getModuleById: jest.fn((id: string) => (id === 'ngrsZoom' ? mockNgrsZoomModule : undefined)),
+    // По умолчанию защита активна, но `isFavorited` mocked возвращает false для всех GUID,
+    // так что в существующих тестах поведение не меняется (isFavorite=false у всех фич).
+    isModuleActive: jest.fn((id: string) => id === 'favoritedPoints'),
   };
 });
 
+jest.mock('../../core/favoritesStore', () => ({
+  isFavorited: jest.fn(() => false),
+  getFavoritedGuids: jest.fn(() => new Set<string>()),
+  isFavoritesSnapshotReady: jest.fn(() => true),
+}));
+
 import { getOlMap } from '../../core/olMap';
 import { isModuleEnabled } from '../../core/settings/storage';
+import { isModuleActive } from '../../core/moduleRegistry';
+import {
+  isFavorited,
+  getFavoritedGuids,
+  isFavoritesSnapshotReady,
+} from '../../core/favoritesStore';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 const mockIsModuleEnabled = isModuleEnabled as jest.MockedFunction<typeof isModuleEnabled>;
+const mockIsModuleActive = isModuleActive as jest.MockedFunction<typeof isModuleActive>;
+const mockIsFavorited = isFavorited as jest.MockedFunction<typeof isFavorited>;
+const mockGetFavoritedGuids = getFavoritedGuids as jest.MockedFunction<typeof getFavoritedGuids>;
+const mockIsFavoritesSnapshotReady = isFavoritesSnapshotReady as jest.MockedFunction<
+  typeof isFavoritesSnapshotReady
+>;
 
 describe('refsOnMap enable/disable', () => {
   let view: ReturnType<typeof makeView>;
@@ -566,5 +589,497 @@ describe('refsOnMap viewer', () => {
     clickCloseButton();
 
     expect(mockNgrsZoomModule.enable).not.toHaveBeenCalled();
+  });
+});
+
+// ── favorites protection ─────────────────────────────────────────────────────
+
+describe('refsOnMap: защита избранных', () => {
+  let view: ReturnType<typeof makeView>;
+  let map: ReturnType<typeof makeMap>;
+  let confirmSpy: jest.SpyInstance;
+  let alertSpy: jest.SpyInstance;
+  let consoleWarnSpy: jest.SpyInstance;
+  let fetchMock: jest.Mock;
+  const originalFetch = global.fetch;
+
+  function clickShowButton(): void {
+    const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
+    button.click();
+  }
+
+  function getSourceFromLayer(): ReturnType<typeof makeSource> {
+    const calls = (map.addLayer as jest.Mock).mock.calls as [IOlLayer][];
+    if (calls.length === 0) throw new Error('no layer added');
+    return calls[0][0].getSource() as ReturnType<typeof makeSource>;
+  }
+
+  function selectFeature(source: ReturnType<typeof makeSource>, pointGuid: string): IOlFeature {
+    const feature = source.getFeatures().find((f) => f.get?.('pointGuid') === pointGuid);
+    if (!feature) throw new Error(`feature for ${pointGuid} not found`);
+    feature.set?.('isSelected', true);
+    return feature;
+  }
+
+  beforeEach(async () => {
+    setupInventoryDom();
+    view = makeView(16, 0.5);
+    const pointsLayer = makeLayer('points', makeSource());
+    const linesLayer = makeLayer('lines', makeSource());
+    const regionsLayer = makeLayer('regions', makeSource());
+    map = makeMap([pointsLayer, linesLayer, regionsLayer], view);
+    mockGetOlMap.mockResolvedValue(map);
+    mockOl();
+
+    mockIsModuleActive.mockImplementation((id: string) => id === 'favoritedPoints');
+    mockIsFavorited.mockReturnValue(false);
+    mockGetFavoritedGuids.mockReturnValue(new Set<string>());
+    mockIsFavoritesSnapshotReady.mockReturnValue(true);
+
+    confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    alertSpy = jest.spyOn(window, 'alert').mockImplementation();
+    consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+    // Два вида запросов: /api/point?guid=... (загрузка команды точек, вызывается
+    // внутри loadTeamDataForRefs после showViewer) и /api/inventory (DELETE при
+    // trash). Разделяем по наличию method=DELETE в options.
+    fetchMock = jest.fn().mockImplementation((_url: string, opts?: RequestInit) => {
+      if (opts?.method === 'DELETE') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ count: { total: 100 } }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ data: { te: 1 } }),
+      });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await refsOnMap.enable();
+  });
+
+  afterEach(async () => {
+    await refsOnMap.disable();
+    delete window.ol;
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('follow');
+    document.body.innerHTML = '';
+    confirmSpy.mockRestore();
+    alertSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+    global.fetch = originalFetch;
+    mockIsFavorited.mockReturnValue(false);
+    mockGetFavoritedGuids.mockReturnValue(new Set<string>());
+    mockIsFavoritesSnapshotReady.mockReturnValue(true);
+    mockIsModuleActive.mockImplementation((id: string) => id === 'favoritedPoints');
+  });
+
+  async function clickTrash(): Promise<void> {
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    // handleDeleteClick — async: await deleteRefsFromServer + await response.json().
+    // Даём микротаскам прокрутиться до конца.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  function getDeleteCalls(): Array<[string, { body: string; method: string }]> {
+    const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit | undefined]>;
+    return calls.filter((call) => call[1]?.method === 'DELETE') as unknown as Array<
+      [string, { body: string; method: string }]
+    >;
+  }
+
+  // ── Уровень 1: визуал ─────────────────────────────────────────────────────
+
+  test('T4.V1: showViewer выставляет isFavorite у фич с pointGuid в избранных', () => {
+    mockIsFavorited.mockImplementation((guid: string) => guid === 'point-1');
+    setInventoryCache();
+    clickShowButton();
+
+    const source = getSourceFromLayer();
+    const feature1 = source.getFeatures().find((f) => f.get?.('pointGuid') === 'point-1');
+    const feature2 = source.getFeatures().find((f) => f.get?.('pointGuid') === 'point-2');
+    expect(feature1?.get?.('isFavorite')).toBe(true);
+    expect(feature2?.get?.('isFavorite')).toBe(false);
+  });
+
+  test('T4.V2: модуль выключен — isFavorite=false у всех фич', () => {
+    mockIsModuleActive.mockReturnValue(false);
+    mockIsFavorited.mockReturnValue(true);
+    setInventoryCache();
+    clickShowButton();
+
+    const source = getSourceFromLayer();
+    for (const feature of source.getFeatures()) {
+      expect(feature.get?.('isFavorite')).toBe(false);
+    }
+  });
+
+  test('T4.V3: snapshot не готов — isFavorite=false у всех (защита сработает в delete click)', () => {
+    mockIsFavoritesSnapshotReady.mockReturnValue(false);
+    mockIsFavorited.mockReturnValue(true);
+    setInventoryCache();
+    clickShowButton();
+
+    const source = getSourceFromLayer();
+    for (const feature of source.getFeatures()) {
+      expect(feature.get?.('isFavorite')).toBe(false);
+    }
+  });
+
+  // ── Уровень 2: клик ───────────────────────────────────────────────────────
+
+  test('T4.C1: клик по isFavorite=true фиче — isSelected не меняется', () => {
+    mockIsFavorited.mockImplementation((guid: string) => guid === 'point-1');
+    setInventoryCache();
+    clickShowButton();
+
+    const source = getSourceFromLayer();
+    const feature = source.getFeatures().find((f) => f.get?.('pointGuid') === 'point-1');
+    if (!feature) throw new Error('feature not found');
+
+    // Симуляция forEachFeatureAtPixel: последний зарегистрированный listener —
+    // это handleMapClick (сам виртуальный клик мы не можем имитировать в OL-mock'е,
+    // но можем вызвать тот же путь напрямую через forEachFeatureAtPixel jest.fn).
+    const forEachMock = map.forEachFeatureAtPixel as jest.Mock;
+    forEachMock.mockImplementation((_pixel: unknown, callback: (f: IOlFeature) => void) => {
+      callback(feature);
+    });
+    const clickListeners = map._clickListeners;
+    expect(clickListeners.length).toBeGreaterThan(0);
+    clickListeners[0]({ pixel: [0, 0] });
+
+    expect(feature.get?.('isSelected')).not.toBe(true);
+  });
+
+  test('T4.C2: клик по обычной фиче — isSelected меняется (регрессия)', () => {
+    setInventoryCache();
+    clickShowButton();
+
+    const source = getSourceFromLayer();
+    const feature = source.getFeatures().find((f) => f.get?.('pointGuid') === 'point-1');
+    if (!feature) throw new Error('feature not found');
+
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (f: IOlFeature) => void) => {
+        callback(feature);
+      },
+    );
+    map._clickListeners[0]({ pixel: [0, 0] });
+
+    expect(feature.get?.('isSelected')).toBe(true);
+  });
+
+  test('T4.C3: freshness — isFavorite=false на фиче, но isFavorited вернул true — клик блокируется', () => {
+    // На момент showViewer точка не избранная.
+    setInventoryCache();
+    clickShowButton();
+
+    const source = getSourceFromLayer();
+    const feature = source.getFeatures().find((f) => f.get?.('pointGuid') === 'point-1');
+    if (!feature) throw new Error('feature not found');
+    expect(feature.get?.('isFavorite')).toBe(false);
+
+    // Пользователь добавил точку в избранные — isFavorited начинает возвращать true.
+    mockIsFavorited.mockImplementation((guid: string) => guid === 'point-1');
+
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (f: IOlFeature) => void) => {
+        callback(feature);
+      },
+    );
+    map._clickListeners[0]({ pixel: [0, 0] });
+
+    expect(feature.get?.('isSelected')).not.toBe(true);
+  });
+
+  test('T4.C4: freshness не срабатывает если модуль выключен — клик проходит', () => {
+    mockIsModuleActive.mockReturnValue(false);
+    setInventoryCache();
+    clickShowButton();
+
+    const source = getSourceFromLayer();
+    const feature = source.getFeatures().find((f) => f.get?.('pointGuid') === 'point-1');
+    if (!feature) throw new Error('feature not found');
+
+    mockIsFavorited.mockReturnValue(true);
+
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (f: IOlFeature) => void) => {
+        callback(feature);
+      },
+    );
+    map._clickListeners[0]({ pixel: [0, 0] });
+
+    expect(feature.get?.('isSelected')).toBe(true);
+  });
+
+  // ── Уровень 3: delete guard ───────────────────────────────────────────────
+
+  test('T4.D1: snapshot не готов — alert показан, fetch не вызван', async () => {
+    setInventoryCache();
+    clickShowButton();
+    const source = getSourceFromLayer();
+    selectFeature(source, 'point-1');
+    // Вручную обновляем счётчик — в реальности его бы обновил toggleFeatureSelection.
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.style.visibility = 'visible';
+    trash.textContent = '🗑️ 1';
+
+    mockIsFavoritesSnapshotReady.mockReturnValue(false);
+    // Чтобы handleDeleteClick дошёл до guard'а snapshot, uniqueRefsToDelete>0.
+    // Эмулируем клик для увеличения счётчика: через mock forEach + listener.
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (f: IOlFeature) => void) => {
+        const feature = source.getFeatures().find((f) => f.get?.('pointGuid') === 'point-2');
+        if (feature) callback(feature);
+      },
+    );
+    map._clickListeners[0]({ pixel: [0, 0] });
+
+    await clickTrash();
+
+    expect(alertSpy).toHaveBeenCalled();
+    expect(getDeleteCalls()).toHaveLength(0);
+  });
+
+  test('T4.D2: смешанный выбор — избранная исключается, не-избранные отправляются в DELETE', async () => {
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'P1' },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'P2' },
+      { t: 3, a: 3, c: [102.0, 15.0], g: 'ref-3', l: 'point-3', ti: 'P3' },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    mockGetFavoritedGuids.mockReturnValue(new Set(['point-2']));
+    mockIsFavorited.mockImplementation((guid: string) => guid === 'point-2');
+
+    clickShowButton();
+    const source = getSourceFromLayer();
+
+    // Выбираем все три вручную (клик по избранной в реальности заблокирован,
+    // но тест специально проверяет финальный guard — что даже если выбор
+    // каким-то образом прошёл, DELETE фильтрует).
+    for (const pointGuid of ['point-1', 'point-2', 'point-3']) {
+      selectFeature(source, pointGuid);
+    }
+
+    // Поднимаем счётчик искусственно через клики по обычным фичам.
+    for (const pointGuid of ['point-1', 'point-3']) {
+      const f = source.getFeatures().find((x) => x.get?.('pointGuid') === pointGuid);
+      if (!f) throw new Error(`${pointGuid} not found`);
+      f.set?.('isSelected', false);
+      (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+        (_p: unknown, cb: (x: IOlFeature) => void) => {
+          cb(f);
+        },
+      );
+      map._clickListeners[0]({ pixel: [0, 0] });
+    }
+
+    await clickTrash();
+
+    const deleteCalls = getDeleteCalls();
+    expect(deleteCalls).toHaveLength(1);
+    const body = JSON.parse(deleteCalls[0][1].body) as {
+      selection: Record<string, number>;
+      tab: number;
+    };
+    expect(body.selection).toEqual({ 'ref-1': 4, 'ref-3': 3 });
+    expect(body.selection['ref-2']).toBeUndefined();
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('избранных'));
+
+    // Избранная фича осталась в source, не-избранные удалены.
+    const remainingGuids = source.getFeatures().map((f) => f.get?.('pointGuid'));
+    expect(remainingGuids).toContain('point-2');
+    expect(remainingGuids).not.toContain('point-1');
+    expect(remainingGuids).not.toContain('point-3');
+  });
+
+  test('T4.D3: все выбранные — избранные, alert показан, fetch не вызван', async () => {
+    setInventoryCache();
+    // Сценарий: на момент showViewer никто не избранный — клики разрешены, счётчик
+    // инкрементируется. Перед trash все выбранные становятся избранными (пользователь
+    // добавил их в избранные), финальный guard исключает их всех, items пуст —
+    // показываем alert «все избранные, удаление отменено».
+    setInventoryCache();
+    clickShowButton();
+    const source = getSourceFromLayer();
+
+    for (const pointGuid of ['point-1', 'point-2']) {
+      const f = source.getFeatures().find((x) => x.get?.('pointGuid') === pointGuid);
+      if (!f) throw new Error(`${pointGuid} not found`);
+      (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+        (_p: unknown, cb: (x: IOlFeature) => void) => {
+          cb(f);
+        },
+      );
+      map._clickListeners[0]({ pixel: [0, 0] });
+    }
+
+    // Перед trash — обе точки становятся избранными (runtime-переключение).
+    mockGetFavoritedGuids.mockReturnValue(new Set(['point-1', 'point-2']));
+    mockIsFavorited.mockImplementation((guid: string) => guid === 'point-1' || guid === 'point-2');
+
+    await clickTrash();
+
+    expect(getDeleteCalls()).toHaveLength(0);
+    expect(alertSpy).toHaveBeenCalled();
+  });
+
+  test('T4.D4: freshness — getFavoritedGuids стал содержать pointGuid между showViewer и trash', async () => {
+    setInventoryCache();
+    clickShowButton(); // на момент showViewer никто не избранный
+    const source = getSourceFromLayer();
+
+    const feature1 = source.getFeatures().find((f) => f.get?.('pointGuid') === 'point-1');
+    const feature2 = source.getFeatures().find((f) => f.get?.('pointGuid') === 'point-2');
+    if (!feature1 || !feature2) throw new Error('features not found');
+
+    // Кликаем по обеим, чтобы счётчик стал 2.
+    for (const f of [feature1, feature2]) {
+      (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+        (_p: unknown, cb: (x: IOlFeature) => void) => {
+          cb(f);
+        },
+      );
+      map._clickListeners[0]({ pixel: [0, 0] });
+    }
+    expect(feature1.get?.('isSelected')).toBe(true);
+    expect(feature2.get?.('isSelected')).toBe(true);
+
+    // Перед trash — добавляем point-1 в избранные. На feature1 флаг isFavorite
+    // всё ещё false (снапшот устарел), но getFavoritedGuids уже включает point-1.
+    mockGetFavoritedGuids.mockReturnValue(new Set(['point-1']));
+
+    await clickTrash();
+
+    const deleteCalls = getDeleteCalls();
+    expect(deleteCalls).toHaveLength(1);
+    const body = JSON.parse(deleteCalls[0][1].body) as {
+      selection: Record<string, number>;
+    };
+    expect(body.selection['ref-1']).toBeUndefined();
+    expect(body.selection['ref-2']).toBe(2);
+  });
+
+  test('T4.D5: защита выключена — избранные удаляются как обычные', async () => {
+    mockIsModuleActive.mockReturnValue(false);
+    setInventoryCache();
+    mockIsFavorited.mockReturnValue(true); // не важно — защита выключена
+    mockGetFavoritedGuids.mockReturnValue(new Set(['point-1', 'point-2']));
+
+    clickShowButton();
+    const source = getSourceFromLayer();
+
+    for (const pointGuid of ['point-1', 'point-2']) {
+      const f = source.getFeatures().find((x) => x.get?.('pointGuid') === pointGuid);
+      if (!f) throw new Error(`${pointGuid} not found`);
+      (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+        (_p: unknown, cb: (x: IOlFeature) => void) => {
+          cb(f);
+        },
+      );
+      map._clickListeners[0]({ pixel: [0, 0] });
+    }
+
+    await clickTrash();
+
+    const deleteCalls = getDeleteCalls();
+    expect(deleteCalls).toHaveLength(1);
+    const body = JSON.parse(deleteCalls[0][1].body) as {
+      selection: Record<string, number>;
+    };
+    expect(body.selection['ref-1']).toBe(4);
+    expect(body.selection['ref-2']).toBe(2);
+  });
+});
+
+// ── removeRefsFromCache defence-in-depth ─────────────────────────────────────
+
+describe('refsOnMap: removeRefsFromCache (defence-in-depth)', () => {
+  // removeRefsFromCache — internal функция. Протестируем её через публичный путь
+  // handleDeleteClick, но задача R1-R4 — документация контракта, а не новая механика.
+  // Основная защита — на delete guard (T4.D2/D3/D4). Здесь только проверим, что при
+  // patологическом вызове removeRefsFromCache с GUID избранной записи кэш не теряет
+  // эту запись. Тестируем через handleDeleteClick flow с принудительно исправленным
+  // deletedGuids — через side-effect, не прямым доступом.
+
+  test('R1/R2: кэш сохраняет избранную запись при успешном DELETE (косвенно, через flow)', async () => {
+    // Этот кейс частично дублирует T4.D2: после DELETE point-1 и point-3 кэш
+    // не содержит ref-1/ref-3, но содержит ref-2 (избранный). R1 (сохранение
+    // избранного при попадании в deletedGuids) проверяется через console.warn
+    // и присутствие записи.
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'P1' },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'P2' },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+
+    setupInventoryDom();
+    const view = makeView(16, 0.5);
+    const map = makeMap(
+      [makeLayer('points', makeSource()), makeLayer('lines', makeSource())],
+      view,
+    );
+    mockGetOlMap.mockResolvedValue(map);
+    mockOl();
+    mockIsFavoritesSnapshotReady.mockReturnValue(true);
+    mockIsFavorited.mockImplementation((guid: string) => guid === 'point-2');
+    mockGetFavoritedGuids.mockReturnValue(new Set(['point-2']));
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
+    const savedFetch = global.fetch;
+    const fetchMockLocal = jest.fn().mockImplementation((_url: string, opts?: RequestInit) => {
+      if (opts?.method === 'DELETE') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ count: { total: 50 } }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ data: { te: 1 } }),
+      });
+    });
+    global.fetch = fetchMockLocal as unknown as typeof fetch;
+
+    await refsOnMap.enable();
+    (document.querySelector('.svp-refs-on-map-button') as HTMLElement).click();
+
+    const addLayerCalls = (map.addLayer as jest.Mock).mock.calls as [IOlLayer][];
+    const sourceLayer = addLayerCalls[0][0];
+    const source = sourceLayer.getSource() as ReturnType<typeof makeSource>;
+    const f1 = source.getFeatures().find((f) => f.get?.('pointGuid') === 'point-1');
+    if (!f1) throw new Error('f1 not found');
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_p: unknown, cb: (x: IOlFeature) => void) => {
+        cb(f1);
+      },
+    );
+    map._clickListeners[0]({ pixel: [0, 0] });
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const cache = JSON.parse(localStorage.getItem('inventory-cache') ?? '[]') as {
+      g: string;
+    }[];
+    const cacheGuids = cache.map((item) => item.g);
+    // ref-1 удалён (не избранный), ref-2 остался (избранный).
+    expect(cacheGuids).not.toContain('ref-1');
+    expect(cacheGuids).toContain('ref-2');
+
+    await refsOnMap.disable();
+    confirmSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+    global.fetch = savedFetch;
+    expect(fetchMockLocal).toHaveBeenCalled();
+    delete window.ol;
+    localStorage.removeItem('inventory-cache');
+    document.body.innerHTML = '';
   });
 });

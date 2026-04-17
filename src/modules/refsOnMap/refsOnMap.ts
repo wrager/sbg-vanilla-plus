@@ -4,9 +4,14 @@ import { t } from '../../core/l10n';
 import { getOlMap } from '../../core/olMap';
 import type { IOlFeature, IOlMap, IOlLayer, IOlMapEvent, IOlVectorSource } from '../../core/olMap';
 import { loadSettings, isModuleEnabled } from '../../core/settings/storage';
-import { getModuleById } from '../../core/moduleRegistry';
+import { getModuleById, isModuleActive } from '../../core/moduleRegistry';
 import { readFullInventoryReferences, INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 import type { IInventoryReferenceFull } from '../../core/inventoryTypes';
+import {
+  isFavorited,
+  getFavoritedGuids,
+  isFavoritesSnapshotReady,
+} from '../../core/favoritesStore';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 import css from './styles.css?inline';
 
@@ -22,6 +27,18 @@ const SELECTED_COLOR = '#BB7100';
 const NEUTRAL_COLOR = '#666666';
 const INVENTORY_API = '/api/inventory';
 const REFS_TAB_TYPE = 3;
+const FAVORITE_STAR = '\u2B50';
+const FAVORITE_DASH = [4, 3];
+const FAVORITE_STROKE_WIDTH = 2;
+
+// Единый источник правды о том, действует ли защита избранных в refsOnMap.
+// Модуль favoritedPoints должен быть включён + status=ready. Снимок из IDB не
+// всегда готов — в таком случае UI-маркировка консервативна (не рисуем звезду,
+// клик блокируется только runtime-проверкой), а handleDeleteClick блокирует
+// удаление целиком через alert, как inventoryCleanup.
+function isFavoritesModuleOn(): boolean {
+  return isModuleActive('favoritedPoints');
+}
 
 // ID элементов из модуля collapsibleTopPanel — связь закреплена явно
 const COLLAPSIBLE_TOGGLE_ID = 'svp-top-toggle';
@@ -86,11 +103,28 @@ function removeRefsFromCache(deletedGuids: Set<string>): void {
     return;
   }
   if (!Array.isArray(items)) return;
+
+  // Defence-in-depth: если ключ избранной точки по какой-то причине попал
+  // в deletedGuids (баг на уровнях 1-3), не удаляем его из кэша.
+  const protectionOn = isFavoritesModuleOn();
+  const favoritedGuids: ReadonlySet<string> = protectionOn
+    ? getFavoritedGuids()
+    : new Set<string>();
+
   const filtered = items.filter((item) => {
     if (typeof item !== 'object' || item === null) return true;
     const record = item as Record<string, unknown>;
     if (record.t !== REFS_TAB_TYPE) return true;
-    return typeof record.g === 'string' && !deletedGuids.has(record.g);
+    if (typeof record.g !== 'string') return true;
+    if (!deletedGuids.has(record.g)) return true;
+    if (protectionOn && typeof record.l === 'string' && favoritedGuids.has(record.l)) {
+      console.warn(
+        `[SVP] refsOnMap: запись избранной точки ${record.l} не удалена из кэша — ` +
+          'defence-in-depth сработал, проверьте защиту на уровнях клика и DELETE.',
+      );
+      return true;
+    }
+    return false;
   });
   localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(filtered));
 }
@@ -154,16 +188,23 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
     const title = typeof properties.title === 'string' ? properties.title : '';
     const team = typeof properties.team === 'number' ? properties.team : undefined;
     const isSelected = properties.isSelected === true;
+    const isFavorite = properties.isFavorite === true;
 
     const zoom = olMap?.getView().getZoom?.() ?? 0;
     const teamColor = getTeamColor(team);
     const baseRadius = zoom >= 16 ? 10 : 8;
     const radius = isSelected ? baseRadius * 1.4 : baseRadius;
 
-    // CUI style: transparent fill + colored stroke; selected = orange
+    // Приоритет визуала: selected перебивает favorite (в норме такого не бывает —
+    // клик по favorite заблокирован, — но визуал всё равно сначала покажет selected
+    // как экстренный сигнал defence-in-depth). Обычные — team color без lineDash.
     const fillColor = isSelected ? SELECTED_COLOR : teamColor + '40';
     const strokeColor = isSelected ? SELECTED_COLOR : teamColor;
-    const strokeWidth = isSelected ? 4 : 3;
+    const strokeWidth = isSelected ? 4 : isFavorite ? FAVORITE_STROKE_WIDTH : 3;
+    const strokeOptions: Record<string, unknown> = { color: strokeColor, width: strokeWidth };
+    if (!isSelected && isFavorite) {
+      strokeOptions.lineDash = FAVORITE_DASH;
+    }
 
     const textColor = getTextColor();
     const backgroundColor = getBackgroundColor();
@@ -173,11 +214,26 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
         image: new OlCircle({
           radius,
           fill: new OlFill({ color: fillColor }),
-          stroke: new OlStroke({ color: strokeColor, width: strokeWidth }),
+          stroke: new OlStroke(strokeOptions),
         }),
         zIndex: isSelected ? 3 : 1,
       }),
     ];
+
+    // Звезда поверх круга — маркер «эта точка защищена от удаления».
+    if (isFavorite) {
+      styles.push(
+        new OlStyle({
+          text: new OlText({
+            font: `${zoom >= 15 ? 12 : 10}px Manrope`,
+            text: FAVORITE_STAR,
+            offsetY: -radius - 4,
+            textBaseline: 'bottom',
+          }),
+          zIndex: 4,
+        }),
+      );
+    }
 
     if (zoom >= AMOUNT_ZOOM) {
       styles.push(
@@ -230,6 +286,20 @@ function updateTrashCounter(): void {
 
 function toggleFeatureSelection(feature: IOlFeature): void {
   const properties = feature.getProperties?.() ?? {};
+  // Основной guard: isFavorite выставляется в showViewer по снапшоту избранных.
+  if (properties.isFavorite === true) return;
+  // Freshness-слой: пользователь мог добавить точку в избранные уже после showViewer,
+  // и флажок на фиче не обновился. Перечитываем snapshot на каждый клик.
+  const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+  if (
+    pointGuid !== null &&
+    isFavoritesModuleOn() &&
+    isFavoritesSnapshotReady() &&
+    isFavorited(pointGuid)
+  ) {
+    return;
+  }
+
   const isSelected = properties.isSelected === true;
   const amount = typeof properties.amount === 'number' ? properties.amount : 0;
 
@@ -258,6 +328,19 @@ function handleMapClick(event: IOlMapEvent): void {
 async function handleDeleteClick(): Promise<void> {
   if (uniqueRefsToDelete === 0 || !refsSource) return;
 
+  // Полная блокировка, если модуль favoritedPoints включён, но снимок избранных
+  // не готов (например, Android IDB wipe). Эталон inventoryCleanup: лучше не
+  // удалить ничего, чем удалить защищённые ключи по ошибке.
+  if (isFavoritesModuleOn() && !isFavoritesSnapshotReady()) {
+    alert(
+      t({
+        en: 'Favorited-points data not ready — key deletion blocked.',
+        ru: 'Данные избранных не готовы — удаление ключей заблокировано.',
+      }),
+    );
+    return;
+  }
+
   const message = t({
     en: `Delete ${overallRefsToDelete} ref(s) from ${uniqueRefsToDelete} point(s)?`,
     ru: `Удалить ${overallRefsToDelete} ключ(ей) от ${uniqueRefsToDelete} точ(ек)?`,
@@ -270,17 +353,59 @@ async function handleDeleteClick(): Promise<void> {
     return properties !== undefined && properties.isSelected === true;
   });
 
+  // Финальный guard: перечитываем свежий snapshot избранных — пользователь мог
+  // добавить точку в избранные между showViewer и кликом на корзину.
+  const protectionOn = isFavoritesModuleOn();
+  const favoritedGuids: ReadonlySet<string> = protectionOn
+    ? getFavoritedGuids()
+    : new Set<string>();
+
   const items: Record<string, number> = {};
   const deletedGuids = new Set<string>();
+  const skippedFavorites = new Set<string>();
 
   for (const feature of selectedFeatures) {
     const id = feature.getId();
     const properties = feature.getProperties?.();
     const amount = properties?.amount;
+    const pointGuid = typeof properties?.pointGuid === 'string' ? properties.pointGuid : null;
+
+    if (pointGuid !== null && favoritedGuids.has(pointGuid)) {
+      // Снимаем выделение с избранной: пользователь её не удалит, и счётчик
+      // надо скорректировать. Это же даёт визуальный сигнал в viewer.
+      feature.set?.('isSelected', false);
+      if (typeof amount === 'number') {
+        overallRefsToDelete -= amount;
+        uniqueRefsToDelete -= 1;
+      }
+      skippedFavorites.add(pointGuid);
+      continue;
+    }
+
     if (typeof id === 'string' && typeof amount === 'number') {
       items[id] = amount;
       deletedGuids.add(id);
     }
+  }
+
+  updateTrashCounter();
+
+  if (skippedFavorites.size > 0) {
+    console.warn(
+      `[SVP] ${MODULE_ID}: пропущено ${skippedFavorites.size} избранных точ(ек) — ключи от них не удаляются.`,
+    );
+  }
+
+  if (Object.keys(items).length === 0) {
+    if (skippedFavorites.size > 0) {
+      alert(
+        t({
+          en: 'All selected points are favorited. Deletion cancelled.',
+          ru: 'Все выбранные точки — избранные, удаление отменено.',
+        }),
+      );
+    }
+    return;
   }
 
   try {
@@ -290,12 +415,15 @@ async function handleDeleteClick(): Promise<void> {
       return;
     }
 
-    // Remove features from map
+    // Remove features from map — только неизбранные, попавшие в deletedGuids.
     for (const feature of selectedFeatures) {
-      refsSource.removeFeature?.(feature);
+      const id = feature.getId();
+      if (typeof id === 'string' && deletedGuids.has(id)) {
+        refsSource.removeFeature?.(feature);
+      }
     }
 
-    // Update local cache
+    // Update local cache (removeRefsFromCache тоже учитывает избранные как страховка)
     removeRefsFromCache(deletedGuids);
 
     // Update inventory counter
@@ -454,6 +582,13 @@ function showViewer(): void {
     ngrsZoomDisabledByViewer = true;
   }
 
+  // Маркировка избранных делается один раз на снапшоте перед отрисовкой.
+  // Если protectionOn=false (модуль выключен) или snapshotReady=false — isFavorite=false
+  // у всех фич; защита применится через handleDeleteClick (который в snapshotReady=false
+  // заблокирует всё удаление полностью).
+  const protectionOn = isFavoritesModuleOn();
+  const snapshotReady = isFavoritesSnapshotReady();
+
   // Create one feature per ref (not per point)
   for (const ref of refs) {
     const mapCoords = olProj.fromLonLat(ref.c);
@@ -463,6 +598,7 @@ function showViewer(): void {
     feature.set?.('title', ref.ti);
     feature.set?.('pointGuid', ref.l);
     feature.set?.('isSelected', false);
+    feature.set?.('isFavorite', protectionOn && snapshotReady && isFavorited(ref.l));
 
     const cachedTeam = teamCache.get(ref.l);
     if (cachedTeam !== undefined) {
