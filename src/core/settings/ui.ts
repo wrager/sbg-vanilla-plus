@@ -518,6 +518,20 @@ async function handleModuleToggle(
   const phaseLabel = newEnabled ? 'включении' : 'выключении';
   const toggleAction = newEnabled ? mod.enable.bind(mod) : mod.disable.bind(mod);
 
+  // Диагностический лог при выключении enhancedMainScreen: если класса svp-compact
+  // на .topleft-container нет, значит модуль не применял наши модификации. Если
+  // при этом пользователь наблюдает «компактную топ-панель», её источник — другой
+  // юзерскрипт (CUI и т.п.), не мы. Помогает атрибутировать визуальные изменения.
+  if (!newEnabled && mod.id === 'enhancedMainScreen') {
+    const container = document.querySelector('.topleft-container');
+    if (container && !container.classList.contains('svp-compact')) {
+      console.info(
+        '[SVP] enhancedMainScreen: на .topleft-container нет svp-compact при выключении; ' +
+          'модификации топ-панели, если они есть, принадлежат не этому модулю.',
+      );
+    }
+  }
+
   try {
     const result = toggleAction();
     if (result instanceof Promise) {

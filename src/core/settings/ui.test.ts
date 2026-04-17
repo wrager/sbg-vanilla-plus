@@ -862,3 +862,111 @@ describe('initSettingsUI refresh-on-show', () => {
     }).not.toThrow();
   });
 });
+
+describe('initSettingsUI — диагностический лог enhancedMainScreen', () => {
+  let consoleInfoSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('style[id^="svp-"]').forEach((node) => {
+      node.remove();
+    });
+    localStorage.setItem('svp_settings', JSON.stringify({ version: 4, modules: {}, errors: {} }));
+    consoleInfoSpy = jest.spyOn(console, 'info').mockImplementation();
+  });
+
+  afterEach(() => {
+    consoleInfoSpy.mockRestore();
+  });
+
+  function createEnhancedMainScreenMock(overrides: Partial<IFeatureModule> = {}): IFeatureModule {
+    return {
+      id: 'enhancedMainScreen',
+      name: { en: 'EMS', ru: 'ГУЭ' },
+      description: { en: 'EMS', ru: 'ГУЭ' },
+      defaultEnabled: true,
+      category: 'ui',
+      init: jest.fn(),
+      enable: jest.fn(),
+      disable: jest.fn(),
+      ...overrides,
+    };
+  }
+
+  test('T2.5: при выключении без svp-compact на контейнере пишется диагностический лог', () => {
+    // .topleft-container существует, но модуль не применил свои изменения — класса нет.
+    document.body.innerHTML = '<div class="topleft-container"></div>';
+
+    const ems = createEnhancedMainScreenMock();
+    initSettingsUI([ems], new Map());
+
+    const checkbox = document.querySelector<HTMLInputElement>(
+      '.svp-module-row .svp-module-checkbox',
+    );
+    if (!checkbox) throw new Error('checkbox not found');
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event('change'));
+
+    expect(consoleInfoSpy).toHaveBeenCalledWith(expect.stringContaining('enhancedMainScreen'));
+    expect(ems.disable).toHaveBeenCalledTimes(1);
+  });
+
+  test('при выключении со svp-compact на контейнере лог не пишется', () => {
+    // .topleft-container имеет класс — значит наши изменения применены, атрибуция ясна.
+    document.body.innerHTML = '<div class="topleft-container svp-compact"></div>';
+
+    const ems = createEnhancedMainScreenMock();
+    initSettingsUI([ems], new Map());
+
+    const checkbox = document.querySelector<HTMLInputElement>(
+      '.svp-module-row .svp-module-checkbox',
+    );
+    if (!checkbox) throw new Error('checkbox not found');
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event('change'));
+
+    expect(consoleInfoSpy).not.toHaveBeenCalled();
+  });
+
+  test('при включении диагностический лог не пишется', () => {
+    document.body.innerHTML = '<div class="topleft-container"></div>';
+    // Модуль изначально выключен — чекбокс будет false, кликаем на true.
+    localStorage.setItem(
+      'svp_settings',
+      JSON.stringify({
+        version: 4,
+        modules: { enhancedMainScreen: false },
+        errors: {},
+      }),
+    );
+
+    const ems = createEnhancedMainScreenMock();
+    initSettingsUI([ems], new Map());
+
+    const checkbox = document.querySelector<HTMLInputElement>(
+      '.svp-module-row .svp-module-checkbox',
+    );
+    if (!checkbox) throw new Error('checkbox not found');
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+
+    expect(consoleInfoSpy).not.toHaveBeenCalled();
+  });
+
+  test('у других модулей диагностический лог не срабатывает', () => {
+    document.body.innerHTML = '<div class="topleft-container"></div>';
+
+    const other = createMockModule({ id: 'otherModule', defaultEnabled: true });
+    initSettingsUI([other], new Map());
+
+    const checkbox = document.querySelector<HTMLInputElement>(
+      '.svp-module-row .svp-module-checkbox',
+    );
+    if (!checkbox) throw new Error('checkbox not found');
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event('change'));
+
+    expect(consoleInfoSpy).not.toHaveBeenCalled();
+  });
+});
