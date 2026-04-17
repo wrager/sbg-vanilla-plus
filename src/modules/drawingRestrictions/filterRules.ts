@@ -12,10 +12,7 @@ export interface IBuildPredicatesDeps {
   settings: IDrawingRestrictionsSettings;
   favorites: ReadonlySet<string>;
   starCenterGuid: string | null;
-  /**
-   * GUID точки в открытом попапе — достоверный маркер «игрок рядом с этой точкой»,
-   * т.к. игра разрешает рисовать только из точки, у которой стоит игрок.
-   */
+  /** GUID точки в открытом попапе — точка, с которой уходит /api/draw. */
   currentPopupGuid: string | null;
 }
 
@@ -55,9 +52,10 @@ function keepByStar(
   currentPopupGuid: string | null,
 ): DrawPredicate | null {
   if (starCenterGuid === null) return null;
-  // Игрок у центра: все видимые цели — звёздные линии по определению.
+  // Открыт попап самого центра: все линии из него — звёздные по определению,
+  // фильтровать нечего.
   if (currentPopupGuid === starCenterGuid) return null;
-  // Иначе оставляем только центр звезды.
+  // Открыт попап любой другой точки — оставляем только линию на центр.
   return (entry) => entry.p === starCenterGuid;
 }
 

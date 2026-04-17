@@ -90,13 +90,13 @@ describe('buildPredicates', () => {
     expect(run(settings({ maxDistanceMeters: -100 }))).toHaveLength(ENTRIES.length);
   });
 
-  test('звезда: игрок у центра — все записи остаются', () => {
+  test('звезда: открыт попап центра — все записи остаются', () => {
     expect(
       run(settings(), { starCenterGuid: STAR_CENTER, currentPopupGuid: STAR_CENTER }),
     ).toHaveLength(ENTRIES.length);
   });
 
-  test('звезда: игрок не у центра — остаётся только центр', () => {
+  test('звезда: открыт попап другой точки — остаётся только центр', () => {
     expect(run(settings(), { starCenterGuid: STAR_CENTER, currentPopupGuid: 'n1' })).toEqual([
       'p3',
     ]);
@@ -132,7 +132,7 @@ describe('buildPredicates', () => {
     ]);
   });
 
-  test('композиция всех трёх правил, игрок не у центра — остаётся только центр', () => {
+  test('композиция всех трёх правил, открыт попап другой точки — остаётся только центр', () => {
     expect(
       run(settings({ favProtectionMode: 'hideAllFavorites', maxDistanceMeters: 500 }), {
         starCenterGuid: STAR_CENTER,

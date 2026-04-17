@@ -213,7 +213,7 @@ describe('drawFilter', () => {
     expect(window.fetch).toBe(afterFirst);
   });
 
-  test('звезда: игрок у центра — фильтр не срабатывает', async () => {
+  test('звезда: открыт попап центра — фильтр не срабатывает', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
       favProtectionMode: 'off',
@@ -237,7 +237,7 @@ describe('drawFilter', () => {
     expect(body.data.map((entry) => entry.p)).toEqual(['a', 'b', 'center']);
   });
 
-  test('звезда: игрок не у центра — остаётся только центр', async () => {
+  test('звезда: открыт попап другой точки — остаётся только центр', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
       favProtectionMode: 'off',
@@ -261,7 +261,7 @@ describe('drawFilter', () => {
     expect(body.data.map((entry) => entry.p)).toEqual(['center']);
   });
 
-  test('звезда: попап hidden трактуется как «не у центра»', async () => {
+  test('звезда: попап hidden трактуется как «попап центра не открыт»', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
       favProtectionMode: 'off',
