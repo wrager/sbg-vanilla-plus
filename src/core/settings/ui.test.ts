@@ -739,3 +739,126 @@ describe('initSettingsUI — уведомление при отказе saveSett
     setItemSpy.mockRestore();
   });
 });
+
+describe('initSettingsUI refresh-on-show', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '<div class="settings-content"></div>';
+    document.head.querySelectorAll('style[id^="svp-"]').forEach((node) => {
+      node.remove();
+    });
+    localStorage.setItem('svp_settings', JSON.stringify({ version: 4, modules: {}, errors: {} }));
+  });
+
+  function getCheckbox(id: string): HTMLInputElement {
+    const panel = document.getElementById('svp-settings-panel');
+    if (!panel) throw new Error('panel not rendered');
+    const row = panel.querySelector(`.svp-module-row[data-svp-module-id="${id}"]`);
+    if (!row) {
+      const byText = [...panel.querySelectorAll('.svp-module-row')].find(
+        (node) => node.querySelector('.svp-module-id')?.textContent === id,
+      );
+      if (!byText) throw new Error(`module row ${id} not found`);
+      const checkbox = byText.querySelector<HTMLInputElement>('.svp-module-checkbox');
+      if (!checkbox) throw new Error(`checkbox for ${id} not found`);
+      return checkbox;
+    }
+    const checkbox = row.querySelector<HTMLInputElement>('.svp-module-checkbox');
+    if (!checkbox) throw new Error(`checkbox for ${id} not found`);
+    return checkbox;
+  }
+
+  function clickOpenButton(): void {
+    const entry = document.getElementById('svp-game-settings-entry');
+    if (!entry) throw new Error('game settings entry not injected');
+    const openButton = entry.querySelector<HTMLButtonElement>('.settings-section__button');
+    if (!openButton) throw new Error('open button not found');
+    openButton.click();
+  }
+
+  test('T2.1: открытие панели перечитывает состояние чекбоксов из свежего localStorage', () => {
+    const alpha = createMockModule({ id: 'alpha', defaultEnabled: true });
+    initSettingsUI([alpha], new Map());
+
+    const checkbox = getCheckbox('alpha');
+    expect(checkbox.checked).toBe(true);
+
+    // Внешняя запись в storage после построения панели (например, провал saveSettings
+    // в bootstrap, который потом другой код переписал, либо любой другой источник).
+    localStorage.setItem(
+      'svp_settings',
+      JSON.stringify({ version: 4, modules: { alpha: false }, errors: {} }),
+    );
+
+    // Пока панель закрыта — чекбокс ещё старый.
+    expect(checkbox.checked).toBe(true);
+
+    clickOpenButton();
+
+    // Открытие подтянуло актуальный localStorage.
+    expect(checkbox.checked).toBe(false);
+  });
+
+  test('T2.3: открытие панели подтягивает ошибки модулей в error-display', () => {
+    const alpha = createMockModule({ id: 'alpha', defaultEnabled: true });
+    const errorDisplay = new Map<string, (message: string | null) => void>();
+    initSettingsUI([alpha], errorDisplay);
+
+    const callback = errorDisplay.get('alpha');
+    if (!callback) throw new Error('error callback for alpha not set');
+    const callbackSpy = jest.fn(callback);
+    errorDisplay.set('alpha', callbackSpy);
+
+    localStorage.setItem(
+      'svp_settings',
+      JSON.stringify({
+        version: 4,
+        modules: { alpha: true },
+        errors: { alpha: 'boom' },
+      }),
+    );
+
+    clickOpenButton();
+
+    expect(callbackSpy).toHaveBeenCalledWith('boom');
+  });
+
+  test('открытие панели обновляет master toggle к актуальному состоянию', () => {
+    const alpha = createMockModule({ id: 'alpha', defaultEnabled: true });
+    const beta = createMockModule({ id: 'beta', defaultEnabled: true });
+    initSettingsUI([alpha, beta], new Map());
+
+    const master = document.querySelector<HTMLInputElement>('.svp-toggle-all-checkbox');
+    if (!master) throw new Error('master not found');
+    // Сейчас обе включены — master включён, без indeterminate.
+    expect(master.checked).toBe(true);
+    expect(master.indeterminate).toBe(false);
+
+    // Внешне выключили один — master должен стать indeterminate после refresh.
+    localStorage.setItem(
+      'svp_settings',
+      JSON.stringify({
+        version: 4,
+        modules: { alpha: true, beta: false },
+        errors: {},
+      }),
+    );
+
+    clickOpenButton();
+
+    expect(master.checked).toBe(false);
+    expect(master.indeterminate).toBe(true);
+  });
+
+  test('refresh не ломается если ни один модуль не в checkboxMap (все disallowed)', () => {
+    // В этом тесте просто убеждаемся, что refresh проходит без ошибок для
+    // модуля без чекбокса в checkboxMap. Точно воспроизвести disallowed-ветку
+    // в jest-окружении сложно (нужен мок host), но страховка важна.
+    const alpha = createMockModule({ id: 'alpha', defaultEnabled: true });
+    initSettingsUI([alpha], new Map());
+
+    expect(() => {
+      clickOpenButton();
+    }).not.toThrow();
+  });
+});

@@ -662,6 +662,26 @@ export function initSettingsUI(
     }
   }
 
+  // Перечитывает состояние из localStorage и синхронизирует с ним все чекбоксы
+  // и индикаторы ошибок. Вызывается перед каждым показом панели — чтобы UI
+  // отражал актуальное состояние storage, а не snapshot на момент построения
+  // (storage мог поменяться от async-init модулей, провала saveSettings в
+  // bootstrap, кода других юзерскриптов).
+  function refreshPanelState(): void {
+    const fresh = loadSettings();
+    for (const mod of modules) {
+      const checkbox = checkboxMap.get(mod.id);
+      if (checkbox) {
+        checkbox.checked = isModuleEnabled(fresh, mod.id, mod.defaultEnabled);
+      }
+      const errorCallback = errorDisplay.get(mod.id);
+      if (errorCallback) {
+        errorCallback(fresh.errors[mod.id] ?? null);
+      }
+    }
+    updateMasterState();
+  }
+
   const grouped = new Map<Category, IFeatureModule[]>();
   for (const mod of modules) {
     const list = grouped.get(mod.category) ?? [];
@@ -753,6 +773,7 @@ export function initSettingsUI(
     openButton.className = 'settings-section__button';
     openButton.textContent = t(OPEN_LABEL);
     openButton.addEventListener('click', () => {
+      refreshPanelState();
       panel.classList.add('svp-open');
       requestAnimationFrame(updateScrollIndicators);
     });
@@ -777,6 +798,7 @@ export function initSettingsUI(
   }
 
   if (location.hash.includes('svp-settings')) {
+    refreshPanelState();
     panel.classList.add('svp-open');
     history.replaceState(null, '', location.pathname + location.search);
     requestAnimationFrame(updateScrollIndicators);
