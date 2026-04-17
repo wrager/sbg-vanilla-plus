@@ -1,6 +1,7 @@
 import { installDrawFilter, uninstallDrawFilter } from './drawFilter';
 import { addFavorite, loadFavorites, resetForTests } from '../../core/favoritesStore';
 import { saveDrawingRestrictionsSettings } from './settings';
+import { clearStarCenter, setStarCenterGuid } from './starCenter';
 
 async function resetIdb(): Promise<void> {
   resetForTests();
@@ -27,17 +28,29 @@ function buildResponse(body: unknown, status = 200): Response {
 
 let originalFetch: typeof window.fetch;
 
+function createPopup(guid: string, hidden = false): HTMLElement {
+  const popup = document.createElement('div');
+  popup.className = hidden ? 'info popup hidden' : 'info popup';
+  popup.dataset.guid = guid;
+  document.body.appendChild(popup);
+  return popup;
+}
+
 beforeEach(async () => {
   await resetIdb();
   await loadFavorites();
   localStorage.clear();
+  clearStarCenter();
+  localStorage.clear();
   originalFetch = window.fetch;
+  document.body.innerHTML = '';
 });
 
 afterEach(() => {
   uninstallDrawFilter();
   window.fetch = originalFetch;
   localStorage.clear();
+  document.body.innerHTML = '';
 });
 
 describe('drawFilter', () => {
@@ -198,6 +211,77 @@ describe('drawFilter', () => {
     const afterFirst = window.fetch;
     installDrawFilter();
     expect(window.fetch).toBe(afterFirst);
+  });
+
+  test('звезда: игрок у центра — фильтр не срабатывает', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'off',
+      maxDistanceMeters: 0,
+    });
+    setStarCenterGuid('center');
+    createPopup('center');
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        data: [
+          { p: 'a', a: 2 },
+          { p: 'b', a: 2 },
+          { p: 'center', a: 5 },
+        ],
+      }),
+    );
+    installDrawFilter();
+
+    const response = await window.fetch('/api/draw');
+    const body = (await response.json()) as { data: { p: string }[] };
+    expect(body.data.map((entry) => entry.p)).toEqual(['a', 'b', 'center']);
+  });
+
+  test('звезда: игрок не у центра — остаётся только центр', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'off',
+      maxDistanceMeters: 0,
+    });
+    setStarCenterGuid('center');
+    createPopup('other');
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        data: [
+          { p: 'a', a: 2 },
+          { p: 'b', a: 2 },
+          { p: 'center', a: 5 },
+        ],
+      }),
+    );
+    installDrawFilter();
+
+    const response = await window.fetch('/api/draw');
+    const body = (await response.json()) as { data: { p: string }[] };
+    expect(body.data.map((entry) => entry.p)).toEqual(['center']);
+  });
+
+  test('звезда: попап hidden трактуется как «не у центра»', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'off',
+      maxDistanceMeters: 0,
+    });
+    setStarCenterGuid('center');
+    createPopup('center', true);
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        data: [
+          { p: 'a', a: 2 },
+          { p: 'center', a: 5 },
+        ],
+      }),
+    );
+    installDrawFilter();
+
+    const response = await window.fetch('/api/draw');
+    const body = (await response.json()) as { data: { p: string }[] };
+    expect(body.data.map((entry) => entry.p)).toEqual(['center']);
   });
 
   test('настройки перечитываются при каждом запросе', async () => {

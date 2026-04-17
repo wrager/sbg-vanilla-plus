@@ -7,6 +7,7 @@ import {
 import type { IDrawingRestrictionsSettings } from './settings';
 
 const FAVORITES = new Set(['fav1', 'fav2']);
+const STAR_CENTER = 'p3';
 
 const ENTRIES: IDrawEntry[] = [
   { p: 'fav1', a: 1, d: 300 },
@@ -30,9 +31,18 @@ function settings(
 
 function run(
   current: IDrawingRestrictionsSettings,
-  favorites: ReadonlySet<string> = FAVORITES,
+  options: {
+    favorites?: ReadonlySet<string>;
+    starCenterGuid?: string | null;
+    currentPopupGuid?: string | null;
+  } = {},
 ): string[] {
-  const predicates = buildPredicates({ settings: current, favorites });
+  const predicates = buildPredicates({
+    settings: current,
+    favorites: options.favorites ?? FAVORITES,
+    starCenterGuid: options.starCenterGuid ?? null,
+    currentPopupGuid: options.currentPopupGuid ?? null,
+  });
   return applyPredicates(ENTRIES, predicates)
     .map((entry) => entry.p)
     .filter((value): value is string => typeof value === 'string');
@@ -63,9 +73,9 @@ describe('buildPredicates', () => {
   });
 
   test('favMode без избранных — ничего не фильтрует', () => {
-    expect(run(settings({ favProtectionMode: 'hideAllFavorites' }), new Set())).toHaveLength(
-      ENTRIES.length,
-    );
+    expect(
+      run(settings({ favProtectionMode: 'hideAllFavorites' }), { favorites: new Set() }),
+    ).toHaveLength(ENTRIES.length);
   });
 
   test('distance=500 — скрывает записи дальше порога, отсутствие d оставляет', () => {
@@ -80,6 +90,34 @@ describe('buildPredicates', () => {
     expect(run(settings({ maxDistanceMeters: -100 }))).toHaveLength(ENTRIES.length);
   });
 
+  test('звезда: игрок у центра — все записи остаются', () => {
+    expect(
+      run(settings(), { starCenterGuid: STAR_CENTER, currentPopupGuid: STAR_CENTER }),
+    ).toHaveLength(ENTRIES.length);
+  });
+
+  test('звезда: игрок не у центра — остаётся только центр', () => {
+    expect(run(settings(), { starCenterGuid: STAR_CENTER, currentPopupGuid: 'n1' })).toEqual([
+      'p3',
+    ]);
+  });
+
+  test('звезда: центр отсутствует в data — пустой список', () => {
+    expect(run(settings(), { starCenterGuid: 'unknown', currentPopupGuid: 'n1' })).toEqual([]);
+  });
+
+  test('звезда не назначена — не фильтрует по звезде', () => {
+    expect(run(settings(), { starCenterGuid: null, currentPopupGuid: 'n1' })).toHaveLength(
+      ENTRIES.length,
+    );
+  });
+
+  test('звезда: закрытый попап (currentPopupGuid=null) — фильтр оставляет только центр', () => {
+    expect(run(settings(), { starCenterGuid: STAR_CENTER, currentPopupGuid: null })).toEqual([
+      'p3',
+    ]);
+  });
+
   test('композиция hideAllFavorites + distance=500', () => {
     expect(
       run(settings({ favProtectionMode: 'hideAllFavorites', maxDistanceMeters: 500 })),
@@ -92,6 +130,15 @@ describe('buildPredicates', () => {
       'p3',
       'noD',
     ]);
+  });
+
+  test('композиция всех трёх правил, игрок не у центра — остаётся только центр', () => {
+    expect(
+      run(settings({ favProtectionMode: 'hideAllFavorites', maxDistanceMeters: 500 }), {
+        starCenterGuid: STAR_CENTER,
+        currentPopupGuid: 'n1',
+      }),
+    ).toEqual(['p3']);
   });
 });
 

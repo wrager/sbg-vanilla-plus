@@ -2,6 +2,8 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 import { injectStyles, removeStyles } from '../../core/dom';
 import { installDrawFilter, uninstallDrawFilter } from './drawFilter';
 import { installSettingsUi, uninstallSettingsUi } from './settingsUi';
+import { installStarCenterButton, uninstallStarCenterButton } from './starCenterButton';
+import { installStarCenterHighlight, uninstallStarCenterHighlight } from './starCenterHighlight';
 import styles from './styles.css?inline';
 
 const MODULE_ID = 'drawingRestrictions';
@@ -28,11 +30,15 @@ export const drawingRestrictions: IFeatureModule = {
     injectStyles(styles, MODULE_ID);
     installDrawFilter();
     installSettingsUi();
+    installStarCenterButton();
+    installStarCenterHighlight();
   },
 
   disable() {
     uninstallDrawFilter();
     uninstallSettingsUi();
+    uninstallStarCenterButton();
+    uninstallStarCenterHighlight();
     removeStyles(MODULE_ID);
   },
 };

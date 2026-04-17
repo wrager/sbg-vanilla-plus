@@ -8,6 +8,9 @@ import {
   type IDrawEntry,
 } from './filterRules';
 import { loadDrawingRestrictionsSettings } from './settings';
+import { getStarCenterGuid } from './starCenter';
+
+const POPUP_SELECTOR = '.info.popup';
 
 const DRAW_URL_PATTERN = /\/api\/draw(?:\?|$)/;
 
@@ -58,11 +61,26 @@ function showLastKeyToast(hidden: number): void {
   showToast(message, 4000);
 }
 
+function getCurrentPopupGuid(): string | null {
+  const popup = document.querySelector(POPUP_SELECTOR);
+  if (!popup || !(popup instanceof HTMLElement)) return null;
+  if (popup.classList.contains('hidden')) return null;
+  const guid = popup.dataset.guid;
+  return guid && guid.length > 0 ? guid : null;
+}
+
 async function filterDrawResponse(response: Response): Promise<Response> {
   const settings = loadDrawingRestrictionsSettings();
   const favorites = getFavoritedGuids();
+  const starCenterGuid = getStarCenterGuid();
+  const currentPopupGuid = getCurrentPopupGuid();
 
-  const predicates = buildPredicates({ settings, favorites });
+  const predicates = buildPredicates({
+    settings,
+    favorites,
+    starCenterGuid,
+    currentPopupGuid,
+  });
   if (predicates.length === 0) return response;
 
   let parsed: unknown;

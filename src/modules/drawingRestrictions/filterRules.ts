@@ -11,6 +11,12 @@ export type DrawPredicate = (entry: IDrawEntry) => boolean;
 export interface IBuildPredicatesDeps {
   settings: IDrawingRestrictionsSettings;
   favorites: ReadonlySet<string>;
+  starCenterGuid: string | null;
+  /**
+   * GUID точки в открытом попапе — достоверный маркер «игрок рядом с этой точкой»,
+   * т.к. игра разрешает рисовать только из точки, у которой стоит игрок.
+   */
+  currentPopupGuid: string | null;
 }
 
 function keepByFavMode(
@@ -44,12 +50,25 @@ function keepByDistance(maxDistanceMeters: number): DrawPredicate | null {
   };
 }
 
+function keepByStar(
+  starCenterGuid: string | null,
+  currentPopupGuid: string | null,
+): DrawPredicate | null {
+  if (starCenterGuid === null) return null;
+  // Игрок у центра: все видимые цели — звёздные линии по определению.
+  if (currentPopupGuid === starCenterGuid) return null;
+  // Иначе оставляем только центр звезды.
+  return (entry) => entry.p === starCenterGuid;
+}
+
 export function buildPredicates(deps: IBuildPredicatesDeps): DrawPredicate[] {
   const predicates: DrawPredicate[] = [];
   const favPredicate = keepByFavMode(deps.settings.favProtectionMode, deps.favorites);
   if (favPredicate) predicates.push(favPredicate);
   const distancePredicate = keepByDistance(deps.settings.maxDistanceMeters);
   if (distancePredicate) predicates.push(distancePredicate);
+  const starPredicate = keepByStar(deps.starCenterGuid, deps.currentPopupGuid);
+  if (starPredicate) predicates.push(starPredicate);
   return predicates;
 }
 

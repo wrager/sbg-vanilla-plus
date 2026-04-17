@@ -1,3 +1,78 @@
+/* Контекстные кнопки звезды в попапе точки — назначить центром и сбросить центр.
+   Вставляются после .svp-fav-star внутри .i-image-box. Абсолютно позиционированы,
+   смещены левее избранной звезды. */
+.svp-star-center-btn,
+.svp-star-center-clear-btn {
+  position: absolute;
+  bottom: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 50%;
+  color: #ccc;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition:
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.svp-star-center-btn {
+  right: 32px;
+}
+
+.svp-star-center-clear-btn {
+  right: 64px;
+}
+
+.svp-star-center-btn svg,
+.svp-star-center-clear-btn svg {
+  fill: currentColor;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 24;
+  paint-order: stroke fill;
+}
+
+.svp-star-center-btn:hover,
+.svp-star-center-clear-btn:hover {
+  transform: scale(1.1);
+}
+
+.svp-star-center-btn.is-active {
+  color: #ffcc33;
+}
+
+.svp-star-center-clear-btn {
+  color: #ff9999;
+}
+
+.svp-star-center-btn[disabled],
+.svp-star-center-clear-btn[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.svp-star-center-clear-btn[hidden] {
+  display: none;
+}
+
+/* Если кнопка звезды центра есть, сдвигаем #i-ref ещё левее, чтобы не
+   перекрываться. Базовый сдвиг от .svp-fav-star (32px) задан в стилях
+   favoritedPoints — мы расширяем на ширину своей основной кнопки. */
+.i-image-box:has(.svp-star-center-btn) #i-ref {
+  margin-right: 64px;
+}
+
+.i-image-box:has(.svp-star-center-clear-btn:not([hidden])) #i-ref {
+  margin-right: 96px;
+}
+
 /* Кнопка «Настроить» у модуля drawingRestrictions в панели настроек SVP */
 .svp-dr-configure-button {
   margin-left: 8px;
