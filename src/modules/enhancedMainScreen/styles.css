@@ -4,6 +4,12 @@
   left: 0.45em;
 }
 
+/* Скрытые записи self-info. Используется класс-маркер вместо inline display,
+   чтобы disable мог снять их по селектору без ссылок на конкретные DOM-узлы. */
+.topleft-container.svp-compact .self-info__entry.svp-ems-hidden {
+  display: none !important;
+}
+
 /* Компактная панель информации: ник под game-menu */
 .topleft-container.svp-compact .self-info {
   display: flex !important;
