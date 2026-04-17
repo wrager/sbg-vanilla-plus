@@ -518,6 +518,20 @@ async function handleModuleToggle(
   const phaseLabel = newEnabled ? 'включении' : 'выключении';
   const toggleAction = newEnabled ? mod.enable.bind(mod) : mod.disable.bind(mod);
 
+  // Диагностический лог при выключении enhancedMainScreen: если класса svp-compact
+  // на .topleft-container нет, значит модуль не применял наши модификации. Если
+  // при этом пользователь наблюдает «компактную топ-панель», её источник — другой
+  // юзерскрипт (CUI и т.п.), не мы. Помогает атрибутировать визуальные изменения.
+  if (!newEnabled && mod.id === 'enhancedMainScreen') {
+    const container = document.querySelector('.topleft-container');
+    if (container && !container.classList.contains('svp-compact')) {
+      console.info(
+        '[SVP] enhancedMainScreen: на .topleft-container нет svp-compact при выключении; ' +
+          'модификации топ-панели, если они есть, принадлежат не этому модулю.',
+      );
+    }
+  }
+
   try {
     const result = toggleAction();
     if (result instanceof Promise) {
@@ -662,6 +676,26 @@ export function initSettingsUI(
     }
   }
 
+  // Перечитывает состояние из localStorage и синхронизирует с ним все чекбоксы
+  // и индикаторы ошибок. Вызывается перед каждым показом панели — чтобы UI
+  // отражал актуальное состояние storage, а не snapshot на момент построения
+  // (storage мог поменяться от async-init модулей, провала saveSettings в
+  // bootstrap, кода других юзерскриптов).
+  function refreshPanelState(): void {
+    const fresh = loadSettings();
+    for (const mod of modules) {
+      const checkbox = checkboxMap.get(mod.id);
+      if (checkbox) {
+        checkbox.checked = isModuleEnabled(fresh, mod.id, mod.defaultEnabled);
+      }
+      const errorCallback = errorDisplay.get(mod.id);
+      if (errorCallback) {
+        errorCallback(fresh.errors[mod.id] ?? null);
+      }
+    }
+    updateMasterState();
+  }
+
   const grouped = new Map<Category, IFeatureModule[]>();
   for (const mod of modules) {
     const list = grouped.get(mod.category) ?? [];
@@ -753,6 +787,7 @@ export function initSettingsUI(
     openButton.className = 'settings-section__button';
     openButton.textContent = t(OPEN_LABEL);
     openButton.addEventListener('click', () => {
+      refreshPanelState();
       panel.classList.add('svp-open');
       requestAnimationFrame(updateScrollIndicators);
     });
@@ -777,6 +812,7 @@ export function initSettingsUI(
   }
 
   if (location.hash.includes('svp-settings')) {
+    refreshPanelState();
     panel.classList.add('svp-open');
     history.replaceState(null, '', location.pathname + location.search);
     requestAnimationFrame(updateScrollIndicators);

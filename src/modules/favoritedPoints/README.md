@@ -51,6 +51,17 @@
 | `debugHooks.ts`        | Opt-in отладочный API (window.svpFavs)                     |
 | `styles.css`           | Стили звезды, фильтра, settingsUi                          |
 
-## Взаимодействие с inventoryCleanup
+## Взаимодействие с другими модулями
+
+### inventoryCleanup
 
 `inventoryCleanup` использует `getFavoritedGuids()` и `isFavoritesSnapshotReady()` из `favoritesStore` (core) для определения какие ключи защищены. Прямого импорта между модулями нет — связь через core.
+
+### refsOnMap
+
+`refsOnMap` (ручное удаление ключей через корзину на карте) повторяет 4-уровневую защиту:
+
+1. **Визуальная маркировка в showViewer** — фичи избранных точек получают `isFavorite=true`, рисуются с пунктирной обводкой и символом звезды.
+2. **Блокировка клика в `toggleFeatureSelection`** — клик по фиче с `isFavorite=true` игнорируется; freshness-проверка `isFavorited(pointGuid)` в runtime ловит случаи, когда точка стала избранной уже после `showViewer`.
+3. **Финальный guard в `handleDeleteClick`** — перед DELETE перечитывается свежий `getFavoritedGuids()`; избранные исключаются из `items`/`deletedGuids`. Если все выбранные — избранные, показывается alert «Все выбранные точки — избранные, удаление отменено». Если `snapshot not ready` — удаление блокируется полностью (alert).
+4. **Defence-in-depth в `removeRefsFromCache`** — при попадании GUID избранной точки в `deletedGuids` (баг на уровнях 1–3) запись в inventory-cache не удаляется, `console.warn` фиксирует срабатывание.

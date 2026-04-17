@@ -11,6 +11,8 @@ import {
 } from './settings/storage';
 import { initSettingsUI } from './settings/ui';
 import { injectStyles } from './dom';
+import { showToast } from './toast';
+import { t } from './l10n';
 import toastStyles from './toast.css?inline';
 
 // Guard от повторного вызова bootstrap(). Повторный init/enable уже
@@ -65,6 +67,18 @@ export function bootstrap(modules: IFeatureModule[]): void {
     },
   );
 
-  saveSettings(settings);
+  // saveSettings может провалиться (QuotaExceededError в переполненном
+  // localStorage, SecurityError в приватном режиме). В этом случае модули
+  // уже запустились по in-memory settings, а в localStorage остались старые
+  // значения — UI настроек будет показывать устаревшие чекбоксы. Уведомляем
+  // пользователя, чтобы разошедшееся состояние не выглядело как наш баг.
+  if (!saveSettings(settings)) {
+    showToast(
+      t({
+        en: 'Failed to save SVP settings — UI state may not match running modules.',
+        ru: 'Не удалось сохранить настройки SVP — UI может расходиться с реальным состоянием модулей.',
+      }),
+    );
+  }
   initSettingsUI(modules, errorDisplay);
 }

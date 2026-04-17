@@ -326,4 +326,41 @@ describe('bootstrap', () => {
       expect(keepScreenOnBrowser.enable).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('T2.4: quota-trap — провал saveSettings в bootstrap', () => {
+    test('показывает toast и продолжает работу, модули всё равно запущены', () => {
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { alpha: true },
+        errors: {},
+      });
+      jest.spyOn(storage, 'saveSettings').mockReturnValue(false);
+
+      const alpha = createMockModule({ id: 'alpha', defaultEnabled: true });
+      bootstrap([alpha]);
+
+      // Модуль запущен (изменилось in-memory settings) несмотря на провал saveSettings.
+      expect(alpha.enable).toHaveBeenCalledTimes(1);
+
+      // Пользователь уведомлён через toast, а не тихо.
+      const toast = document.querySelector('.svp-toast');
+      expect(toast).not.toBeNull();
+      expect(toast?.textContent.toLowerCase()).toMatch(/(настрой|settings)/);
+    });
+
+    test('в обычном сценарии (saveSettings успешен) toast не показывается', () => {
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { alpha: true },
+        errors: {},
+      });
+      jest.spyOn(storage, 'saveSettings').mockReturnValue(true);
+
+      const alpha = createMockModule({ id: 'alpha' });
+      bootstrap([alpha]);
+
+      const toast = document.querySelector('.svp-toast');
+      expect(toast).toBeNull();
+    });
+  });
 });
