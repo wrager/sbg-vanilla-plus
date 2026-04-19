@@ -10,7 +10,6 @@ import {
 } from './starCenter';
 
 const TOGGLE_CLASS = 'svp-star-center-btn';
-const CLEAR_CLASS = 'svp-star-center-clear-btn';
 const NEXT_POINT_CLASS = 'svp-next-point-button';
 const POPUP_SELECTOR = '.info.popup';
 const BUTTONS_SELECTOR = '.i-buttons';
@@ -35,29 +34,6 @@ const TOGGLE_SVG = `
 </svg>
 `;
 
-// Полупрозрачные лучи + перечёркнутый крест сверху — «сбросить центр».
-const CLEAR_SVG = `
-<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-  <g opacity="0.35">
-    <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
-    <g stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none">
-      <line x1="12" y1="2.5" x2="12" y2="7"/>
-      <line x1="12" y1="17" x2="12" y2="21.5"/>
-      <line x1="2.5" y1="12" x2="7" y2="12"/>
-      <line x1="17" y1="12" x2="21.5" y2="12"/>
-      <line x1="5.2" y1="5.2" x2="8.4" y2="8.4"/>
-      <line x1="15.6" y1="15.6" x2="18.8" y2="18.8"/>
-      <line x1="18.8" y1="5.2" x2="15.6" y2="8.4"/>
-      <line x1="8.4" y1="15.6" x2="5.2" y2="18.8"/>
-    </g>
-  </g>
-  <g stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
-    <line x1="4.5" y1="4.5" x2="19.5" y2="19.5"/>
-    <line x1="19.5" y1="4.5" x2="4.5" y2="19.5"/>
-  </g>
-</svg>
-`;
-
 let popupObserver: MutationObserver | null = null;
 let clickAbortController: AbortController | null = null;
 let changeHandler: (() => void) | null = null;
@@ -72,10 +48,6 @@ function getCurrentGuid(popup: Element): string | null {
 
 function findToggle(popup: Element): HTMLButtonElement | null {
   return popup.querySelector<HTMLButtonElement>(`.${TOGGLE_CLASS}`);
-}
-
-function findClear(popup: Element): HTMLButtonElement | null {
-  return popup.querySelector<HTMLButtonElement>(`.${CLEAR_CLASS}`);
 }
 
 /**
@@ -188,22 +160,6 @@ function updateButtons(popup: Element): void {
         ? t({ en: 'Reassign star center to this point', ru: 'Назначить эту точку центром звезды' })
         : t({ en: 'Set as star center', ru: 'Назначить центром звезды' });
   }
-
-  // Clear-кнопка: add/remove из DOM, чтобы CSS `:has()` для позиционирования
-  // работал без хаков с hidden.
-  const clearNeeded = popupGuid !== null && starCenterGuid !== null && !isCurrentCenter;
-  const existingClear = findClear(popup);
-  if (clearNeeded) {
-    if (!existingClear) {
-      const clear = createButton(CLEAR_CLASS, CLEAR_SVG, () => {
-        onClearClick();
-      });
-      clear.title = t({ en: 'Clear star center', ru: 'Сбросить центр звезды' });
-      insertIntoButtons(buttons, clear);
-    }
-  } else {
-    existingClear?.remove();
-  }
 }
 
 async function onToggleClick(popup: Element): Promise<void> {
@@ -221,14 +177,6 @@ async function onToggleClick(popup: Element): Promise<void> {
   // Назначение: достаём имя из feature и сохраняем вместе с GUID.
   const name = await getPointName(guid);
   setStarCenter(guid, name);
-}
-
-function onClearClick(): void {
-  const star = getStarCenter();
-  clearStarCenter();
-  if (star) {
-    showCenterClearedToast(star.name);
-  }
 }
 
 function startObserving(popup: Element): void {
@@ -283,7 +231,7 @@ export function uninstallStarCenterButton(): void {
     document.removeEventListener(STAR_CENTER_CHANGED_EVENT, changeHandler);
     changeHandler = null;
   }
-  document.querySelectorAll(`.${TOGGLE_CLASS}, .${CLEAR_CLASS}`).forEach((element) => {
+  document.querySelectorAll(`.${TOGGLE_CLASS}`).forEach((element) => {
     element.remove();
   });
 }

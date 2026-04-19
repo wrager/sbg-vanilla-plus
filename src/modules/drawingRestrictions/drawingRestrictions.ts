@@ -3,6 +3,10 @@ import { injectStyles, removeStyles } from '../../core/dom';
 import { installDrawFilter, uninstallDrawFilter } from './drawFilter';
 import { installSettingsUi, uninstallSettingsUi } from './settingsUi';
 import { installStarCenterButton, uninstallStarCenterButton } from './starCenterButton';
+import {
+  installStarCenterClearControl,
+  uninstallStarCenterClearControl,
+} from './starCenterClearControl';
 import { installStarCenterHighlight, uninstallStarCenterHighlight } from './starCenterHighlight';
 import styles from './styles.css?inline';
 
@@ -31,6 +35,7 @@ export const drawingRestrictions: IFeatureModule = {
     installDrawFilter();
     installSettingsUi();
     installStarCenterButton();
+    installStarCenterClearControl();
     installStarCenterHighlight();
   },
 
@@ -38,6 +43,7 @@ export const drawingRestrictions: IFeatureModule = {
     uninstallDrawFilter();
     uninstallSettingsUi();
     uninstallStarCenterButton();
+    uninstallStarCenterClearControl();
     uninstallStarCenterHighlight();
     removeStyles(MODULE_ID);
   },

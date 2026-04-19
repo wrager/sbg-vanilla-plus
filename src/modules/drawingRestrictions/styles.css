@@ -1,11 +1,9 @@
-/* Контекстные кнопки звезды в попапе точки: toggle «назначить/снять центром»
-   и clear «сбросить центр». Базовые visual-свойства (фон, рамка, padding, hover,
-   disabled) наследуются от игровых стилей `.i-buttons button` — мы задаём только
-   позиционирование, размер и акцентные цвета, как это делает `.svp-next-point-button`.
-   Порядок справа налево: [next-point] [clear] [toggle]; clear появляется в DOM
-   только в попапе не-центральной точки при активном центре. */
-.svp-star-center-btn,
-.svp-star-center-clear-btn {
+/* Кнопка назначения/снятия центра звезды в попапе точки. Базовые visual-свойства
+   (фон, рамка, padding, hover, disabled) наследуются от игровых стилей
+   `.i-buttons button` — задаём только позиционирование и размер, как это делает
+   `.svp-next-point-button`. Если next-point-button присутствует, толчок сдвигается
+   левее через :has(). Сброс центра живёт на карте как отдельный OL-control. */
+.svp-star-center-btn {
   position: fixed;
   bottom: 5px;
   right: 5px;
@@ -14,27 +12,31 @@
   min-height: auto;
 }
 
-/* Есть next-point-button — мои кнопки сдвигаются левее на её ширину + gap. */
-.info.popup:has(.svp-next-point-button) .svp-star-center-btn,
-.info.popup:has(.svp-next-point-button) .svp-star-center-clear-btn {
+.info.popup:has(.svp-next-point-button) .svp-star-center-btn {
   right: 42px;
 }
 
-/* Если clear-кнопка видна, toggle уходит ещё левее. Clear добавляется в DOM
-   только когда нужна, поэтому `:has()` корректен без хаков с hidden. */
-.info.popup:has(.svp-star-center-clear-btn) .svp-star-center-btn {
-  right: 42px;
-}
-.info.popup:has(.svp-next-point-button):has(.svp-star-center-clear-btn) .svp-star-center-btn {
-  right: 79px;
-}
-
-/* Акцентные цвета: жёлтый для активного центра, красноватый — для сброса. */
 .svp-star-center-btn.is-active {
   color: #ffcc33;
 }
-.svp-star-center-clear-btn {
+
+/* OL-control для сброса центра звезды на карте. Структурно повторяет
+   `.region-picker.ol-unselectable.ol-control` (тот же внешний <div> с
+   OL-классами + внутренняя <button>), поэтому наследует игровой стиль OL-кнопки
+   автоматически. Класс `region-picker` мы не используем — игра через jQuery
+   навешивает на все `.region-picker` свой click-handler, и наш control не должен
+   в этот лист попадать. Позиционируем `fixed` относительно viewport и ставим
+   вручную под region-picker (в родительском контейнере OL-controls всё в
+   абсолютных координатах). Видимость управляется атрибутом hidden. */
+.svp-star-center-clear-control {
+  position: fixed;
+  top: 48px;
+  right: 8px;
   color: #ff9999;
+}
+
+.svp-star-center-clear-control[hidden] {
+  display: none;
 }
 
 /* Кнопка «Настроить» у модуля drawingRestrictions в панели настроек SVP */

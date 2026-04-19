@@ -2,7 +2,6 @@ import { installStarCenterButton, uninstallStarCenterButton } from './starCenter
 import { clearStarCenter, getStarCenter, getStarCenterGuid, setStarCenter } from './starCenter';
 
 const TOGGLE_CLASS = 'svp-star-center-btn';
-const CLEAR_CLASS = 'svp-star-center-clear-btn';
 
 jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(() =>
@@ -32,10 +31,6 @@ function getToggle(popup: HTMLElement): HTMLButtonElement | null {
   return popup.querySelector<HTMLButtonElement>(`.${TOGGLE_CLASS}`);
 }
 
-function getClear(popup: HTMLElement): HTMLButtonElement | null {
-  return popup.querySelector<HTMLButtonElement>(`.${CLEAR_CLASS}`);
-}
-
 async function flushMicrotasks(): Promise<void> {
   for (let i = 0; i < 5; i++) {
     await Promise.resolve();
@@ -61,19 +56,11 @@ describe('starCenterButton — базовая инъекция', () => {
     expect(getToggle(popup)).not.toBeNull();
   });
 
-  test('clear не появляется, пока центр не назначен', () => {
+  test('кнопка вставляется в .i-buttons', () => {
     const popup = createPopupDom('p1');
-    installStarCenterButton();
-    expect(getClear(popup)).toBeNull();
-  });
-
-  test('кнопки вставляются в .i-buttons', () => {
-    const popup = createPopupDom('p1');
-    setStarCenter('other', 'Other');
     installStarCenterButton();
     const buttons = popup.querySelector('.i-buttons');
     expect(buttons?.querySelector(`.${TOGGLE_CLASS}`)).not.toBeNull();
-    expect(buttons?.querySelector(`.${CLEAR_CLASS}`)).not.toBeNull();
   });
 
   test('toggle вставляется слева от .svp-next-point-button', () => {
@@ -88,35 +75,31 @@ describe('starCenterButton — базовая инъекция', () => {
     const toggle = getToggle(popup);
     expect(toggle).not.toBeNull();
     if (!toggle) throw new Error('toggle not found');
-    // toggle должен быть раньше next-point в DOM-порядке
     const children = Array.from(buttons.children);
     expect(children.indexOf(toggle)).toBeLessThan(children.indexOf(nextPoint));
   });
 });
 
-describe('starCenterButton — видимость и состояние', () => {
-  test('центра нет: toggle без is-active, clear нет в DOM', () => {
+describe('starCenterButton — состояние', () => {
+  test('центра нет: toggle без is-active', () => {
     const popup = createPopupDom('p1');
     installStarCenterButton();
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(false);
-    expect(getClear(popup)).toBeNull();
   });
 
-  test('текущая точка = центр: toggle is-active, clear нет в DOM', () => {
+  test('текущая точка = центр: toggle is-active', () => {
     setStarCenter('p1', 'Альфа');
     const popup = createPopupDom('p1');
     installStarCenterButton();
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(true);
     expect(getToggle(popup)?.getAttribute('aria-pressed')).toBe('true');
-    expect(getClear(popup)).toBeNull();
   });
 
-  test('центр есть на другой точке: toggle без is-active, clear в DOM', () => {
+  test('центр есть на другой точке: toggle без is-active', () => {
     setStarCenter('other', 'Другая');
     const popup = createPopupDom('p1');
     installStarCenterButton();
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(false);
-    expect(getClear(popup)).not.toBeNull();
   });
 });
 
@@ -151,51 +134,23 @@ describe('starCenterButton — клики toggle', () => {
   });
 });
 
-describe('starCenterButton — клик clear', () => {
-  test('сбрасывает центр, не назначая текущую, удаляет clear из DOM', () => {
-    setStarCenter('other', 'Другая');
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    const clear = getClear(popup);
-    expect(clear).not.toBeNull();
-    clear?.click();
-    expect(getStarCenter()).toBeNull();
-    expect(getClear(popup)).toBeNull();
-    expect(getToggle(popup)?.classList.contains('is-active')).toBe(false);
-  });
-});
-
 describe('starCenterButton — реактивность', () => {
   test('смена data-guid пересчитывает состояние', async () => {
     setStarCenter('p1', 'Альфа');
     const popup = createPopupDom('p2');
     installStarCenterButton();
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(false);
-    expect(getClear(popup)).not.toBeNull();
 
     popup.dataset.guid = 'p1';
     await flushMicrotasks();
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(true);
-    expect(getClear(popup)).toBeNull();
   });
 
-  test('внешний setStarCenter обновляет кнопки', async () => {
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    expect(getClear(popup)).toBeNull();
-
-    setStarCenter('other', 'Другая');
-    await flushMicrotasks();
-    expect(getClear(popup)).not.toBeNull();
-  });
-
-  test('uninstall удаляет обе кнопки и отключает observer', async () => {
-    setStarCenter('other', 'Другая');
+  test('uninstall удаляет кнопку и отключает observer', async () => {
     const popup = createPopupDom('p1');
     installStarCenterButton();
     uninstallStarCenterButton();
     expect(getToggle(popup)).toBeNull();
-    expect(getClear(popup)).toBeNull();
 
     popup.dataset.guid = 'p2';
     await flushMicrotasks();
