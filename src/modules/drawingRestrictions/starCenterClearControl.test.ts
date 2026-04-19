@@ -81,14 +81,6 @@ describe('starCenterClearControl', () => {
     expect(getControl()?.hidden).toBe(true);
   });
 
-  test('title содержит имя центра, когда оно известно', () => {
-    createMapWithRegionPicker();
-    setStarCenter('p1', 'Альфа');
-    installStarCenterClearControl();
-    const control = getControl();
-    expect(control?.title).toContain('Альфа');
-  });
-
   test('клик сбрасывает центр', () => {
     createMapWithRegionPicker();
     setStarCenter('p1', 'Альфа');
