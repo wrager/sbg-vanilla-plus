@@ -108,9 +108,11 @@ function createButton(
   onClick: () => void,
 ): HTMLButtonElement {
   const button = document.createElement('button');
-  button.type = 'button';
   // svp-popup-action-button — общий класс для всех SVP-кнопок действий в
   // попапе точки (core/popupActionButton.css задаёт единые размер/padding).
+  // type="button" не задаём — соседние кнопки в .i-buttons (next-point и
+  // игровые Deploy/Discover/Draw) без него, для визуального соответствия
+  // полагаемся на тот же default.
   button.className = `${className} ${POPUP_ACTION_BUTTON_CLASS}`;
   button.innerHTML = innerHTML;
   if (!clickAbortController) clickAbortController = new AbortController();
