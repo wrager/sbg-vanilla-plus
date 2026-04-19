@@ -1,7 +1,7 @@
 import { installDrawFilter, uninstallDrawFilter } from './drawFilter';
 import { addFavorite, loadFavorites, resetForTests } from '../../core/favoritesStore';
 import { saveDrawingRestrictionsSettings } from './settings';
-import { clearStarCenter, setStarCenterGuid } from './starCenter';
+import { clearStarCenter, setStarCenter } from './starCenter';
 
 async function resetIdb(): Promise<void> {
   resetForTests();
@@ -219,7 +219,7 @@ describe('drawFilter', () => {
       favProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
-    setStarCenterGuid('center');
+    setStarCenter('center', '');
     createPopup('center');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
@@ -243,7 +243,7 @@ describe('drawFilter', () => {
       favProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
-    setStarCenterGuid('center');
+    setStarCenter('center', '');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
@@ -267,7 +267,7 @@ describe('drawFilter', () => {
       favProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
-    setStarCenterGuid('center');
+    setStarCenter('center', '');
     createPopup('center', true);
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({

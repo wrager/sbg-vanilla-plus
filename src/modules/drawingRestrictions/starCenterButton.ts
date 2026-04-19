@@ -1,32 +1,60 @@
 import { waitForElement } from '../../core/dom';
 import { t } from '../../core/l10n';
+import { findLayerByName, getOlMap } from '../../core/olMap';
+import { showToast } from '../../core/toast';
 import {
   STAR_CENTER_CHANGED_EVENT,
   clearStarCenter,
-  getStarCenterGuid,
-  setStarCenterGuid,
+  getStarCenter,
+  setStarCenter,
 } from './starCenter';
 
 const TOGGLE_CLASS = 'svp-star-center-btn';
 const CLEAR_CLASS = 'svp-star-center-clear-btn';
+const NEXT_POINT_CLASS = 'svp-next-point-button';
 const POPUP_SELECTOR = '.info.popup';
-const IMAGE_BOX_SELECTOR = '.i-image-box';
+const BUTTONS_SELECTOR = '.i-buttons';
+const POINTS_LAYER_NAME = 'points';
 
-// 5-конечная звезда с точкой в центре — визуально отличает «назначить центром»
-// от обычной избранной звезды favoritedPoints.
+// 8 лучей из центральной точки — визуально отличается от пятиконечной звезды
+// избранного (.svp-fav-star). Радиальный паттерн читается как «рисование из
+// одной точки во все стороны», что и есть режим «звезда».
 const TOGGLE_SVG = `
-<svg viewBox="0 0 576 512" width="20" height="20" aria-hidden="true">
-  <path d="M287.9 0c9.2 0 17.6 5.2 21.6 13.5l68.6 141.3 153.2 22.6c9 1.3 16.5 7.6 19.3 16.3s.5 18.1-6 24.5L433.6 328.4l26.2 155.6c1.5 9-2.2 18.1-9.7 23.5s-17.3 6-25.3 1.7l-137-73.2L151 509.1c-8.1 4.3-17.9 3.7-25.3-1.7s-11.2-14.5-9.7-23.5l26.2-155.6L31.1 218.2c-6.5-6.4-8.7-15.9-6-24.5s10.3-15 19.3-16.3l153.2-22.6L266.3 13.5C270.4 5.2 278.7 0 287.9 0z"/>
-  <circle cx="287.9" cy="244" r="46" fill="#fff"/>
+<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+  <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+  <g stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none">
+    <line x1="12" y1="2.5" x2="12" y2="7"/>
+    <line x1="12" y1="17" x2="12" y2="21.5"/>
+    <line x1="2.5" y1="12" x2="7" y2="12"/>
+    <line x1="17" y1="12" x2="21.5" y2="12"/>
+    <line x1="5.2" y1="5.2" x2="8.4" y2="8.4"/>
+    <line x1="15.6" y1="15.6" x2="18.8" y2="18.8"/>
+    <line x1="18.8" y1="5.2" x2="15.6" y2="8.4"/>
+    <line x1="8.4" y1="15.6" x2="5.2" y2="18.8"/>
+  </g>
 </svg>
 `;
 
-// Звезда с перечёркиванием (крестик поверх) — «сбросить центр звезды».
+// Полупрозрачные лучи + перечёркнутый крест сверху — «сбросить центр».
 const CLEAR_SVG = `
-<svg viewBox="0 0 576 512" width="20" height="20" aria-hidden="true">
-  <path d="M287.9 0c9.2 0 17.6 5.2 21.6 13.5l68.6 141.3 153.2 22.6c9 1.3 16.5 7.6 19.3 16.3s.5 18.1-6 24.5L433.6 328.4l26.2 155.6c1.5 9-2.2 18.1-9.7 23.5s-17.3 6-25.3 1.7l-137-73.2L151 509.1c-8.1 4.3-17.9 3.7-25.3-1.7s-11.2-14.5-9.7-23.5l26.2-155.6L31.1 218.2c-6.5-6.4-8.7-15.9-6-24.5s10.3-15 19.3-16.3l153.2-22.6L266.3 13.5C270.4 5.2 278.7 0 287.9 0z"/>
-  <line x1="96" y1="96" x2="480" y2="480" stroke="#fff" stroke-width="56" stroke-linecap="round"/>
-  <line x1="480" y1="96" x2="96" y2="480" stroke="#fff" stroke-width="56" stroke-linecap="round"/>
+<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+  <g opacity="0.35">
+    <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+    <g stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none">
+      <line x1="12" y1="2.5" x2="12" y2="7"/>
+      <line x1="12" y1="17" x2="12" y2="21.5"/>
+      <line x1="2.5" y1="12" x2="7" y2="12"/>
+      <line x1="17" y1="12" x2="21.5" y2="12"/>
+      <line x1="5.2" y1="5.2" x2="8.4" y2="8.4"/>
+      <line x1="15.6" y1="15.6" x2="18.8" y2="18.8"/>
+      <line x1="18.8" y1="5.2" x2="15.6" y2="8.4"/>
+      <line x1="8.4" y1="15.6" x2="5.2" y2="18.8"/>
+    </g>
+  </g>
+  <g stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+    <line x1="4.5" y1="4.5" x2="19.5" y2="19.5"/>
+    <line x1="19.5" y1="4.5" x2="4.5" y2="19.5"/>
+  </g>
 </svg>
 `;
 
@@ -50,119 +78,174 @@ function findClear(popup: Element): HTMLButtonElement | null {
   return popup.querySelector<HTMLButtonElement>(`.${CLEAR_CLASS}`);
 }
 
+/**
+ * Достаёт название точки из features слоя `points`. Проверяет ряд вероятных
+ * свойств (`title`, `name`, `label`) — конкретное имя зависит от того, как
+ * игра заводит feature. Возвращает пустую строку, если не удалось найти.
+ */
+async function getPointName(guid: string): Promise<string> {
+  try {
+    const map = await getOlMap();
+    const layer = findLayerByName(map, POINTS_LAYER_NAME);
+    const source = layer?.getSource();
+    if (!source) return '';
+    for (const feature of source.getFeatures()) {
+      if (feature.getId() !== guid) continue;
+      const candidateKeys = ['title', 'name', 'label'] as const;
+      for (const key of candidateKeys) {
+        const value = feature.get?.(key);
+        if (typeof value === 'string' && value.length > 0) return value;
+      }
+      const props = feature.getProperties?.();
+      if (props) {
+        for (const key of candidateKeys) {
+          const value = props[key];
+          if (typeof value === 'string' && value.length > 0) return value;
+        }
+      }
+      return '';
+    }
+  } catch (error) {
+    console.warn('[SVP drawingRestrictions] не удалось получить имя точки:', error);
+  }
+  return '';
+}
+
+function showCenterClearedToast(name: string): void {
+  if (name.length === 0) {
+    showToast(t({ en: 'Star center cleared', ru: 'Центр звезды снят' }), 3000);
+    return;
+  }
+  showToast(
+    t({
+      en: `Star center cleared: ${name}`,
+      ru: `Центр звезды снят: ${name}`,
+    }),
+    3000,
+  );
+}
+
+function createButton(
+  className: string,
+  innerHTML: string,
+  onClick: () => void,
+): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = className;
+  button.innerHTML = innerHTML;
+  if (!clickAbortController) clickAbortController = new AbortController();
+  button.addEventListener(
+    'click',
+    (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      onClick();
+    },
+    { signal: clickAbortController.signal },
+  );
+  return button;
+}
+
+/**
+ * Вставить кнопку в `.i-buttons` слева от `.svp-next-point-button` (если есть)
+ * либо в конец контейнера.
+ */
+function insertIntoButtons(buttons: Element, button: HTMLButtonElement): void {
+  const nextPoint = buttons.querySelector(`.${NEXT_POINT_CLASS}`);
+  if (nextPoint) {
+    nextPoint.before(button);
+  } else {
+    buttons.appendChild(button);
+  }
+}
+
 function updateButtons(popup: Element): void {
-  const toggle = findToggle(popup);
-  const clear = findClear(popup);
-  if (!toggle || !clear) return;
+  const buttons = popup.querySelector(BUTTONS_SELECTOR);
+  if (!buttons) return;
 
   const popupGuid = getCurrentGuid(popup);
-  const starCenterGuid = getStarCenterGuid();
+  const star = getStarCenter();
+  const starCenterGuid = star?.guid ?? null;
   const isCurrentCenter = popupGuid !== null && popupGuid === starCenterGuid;
 
+  let toggle = findToggle(popup);
   if (popupGuid === null) {
-    toggle.disabled = true;
-    toggle.classList.remove('is-active');
-    toggle.title = '';
-    clear.disabled = true;
-    clear.hidden = true;
-    return;
+    if (toggle) toggle.disabled = true;
+  } else {
+    if (!toggle) {
+      toggle = createButton(TOGGLE_CLASS, TOGGLE_SVG, () => {
+        void onToggleClick(popup);
+      });
+      insertIntoButtons(buttons, toggle);
+    }
+    toggle.disabled = false;
+    toggle.classList.toggle('is-active', isCurrentCenter);
+    toggle.setAttribute('aria-pressed', isCurrentCenter ? 'true' : 'false');
+    toggle.title = isCurrentCenter
+      ? t({ en: 'Clear star center', ru: 'Снять центр звезды' })
+      : starCenterGuid !== null
+        ? t({ en: 'Reassign star center to this point', ru: 'Назначить эту точку центром звезды' })
+        : t({ en: 'Set as star center', ru: 'Назначить центром звезды' });
   }
 
-  toggle.disabled = false;
-  toggle.classList.toggle('is-active', isCurrentCenter);
-  toggle.setAttribute('aria-pressed', isCurrentCenter ? 'true' : 'false');
-  toggle.title = isCurrentCenter
-    ? t({ en: 'Clear star center', ru: 'Снять центр звезды' })
-    : starCenterGuid !== null
-      ? t({ en: 'Reassign star center to this point', ru: 'Назначить эту точку центром звезды' })
-      : t({ en: 'Set as star center', ru: 'Назначить центром звезды' });
-
-  // Кнопка сброса видна только когда центр назначен И это не текущая точка.
-  const clearVisible = starCenterGuid !== null && !isCurrentCenter;
-  clear.hidden = !clearVisible;
-  clear.disabled = !clearVisible;
-  clear.title = clearVisible ? t({ en: 'Clear star center', ru: 'Сбросить центр звезды' }) : '';
+  // Clear-кнопка: add/remove из DOM, чтобы CSS `:has()` для позиционирования
+  // работал без хаков с hidden.
+  const clearNeeded = popupGuid !== null && starCenterGuid !== null && !isCurrentCenter;
+  const existingClear = findClear(popup);
+  if (clearNeeded) {
+    if (!existingClear) {
+      const clear = createButton(CLEAR_CLASS, CLEAR_SVG, () => {
+        onClearClick();
+      });
+      clear.title = t({ en: 'Clear star center', ru: 'Сбросить центр звезды' });
+      insertIntoButtons(buttons, clear);
+    }
+  } else {
+    existingClear?.remove();
+  }
 }
 
-function onToggleClick(popup: Element): void {
+async function onToggleClick(popup: Element): Promise<void> {
   const guid = getCurrentGuid(popup);
   if (guid === null) return;
-  const starCenterGuid = getStarCenterGuid();
-  if (guid === starCenterGuid) {
+  const star = getStarCenter();
+  if (star?.guid === guid) {
+    // Снятие центра через ту же точку, где он назначен. Имя уже в LS — покажем
+    // его в toast перед очисткой.
+    const name = star.name;
     clearStarCenter();
-  } else {
-    setStarCenterGuid(guid);
-  }
-  // Событие svp:star-center-changed само триггерит updateButtons.
-}
-
-function onClearClick(popup: Element): void {
-  clearStarCenter();
-  // popup остаётся открытым, updateButtons пересчитает состояние через listener.
-  void popup;
-}
-
-function injectButtons(popup: Element): void {
-  const imageBox = popup.querySelector(IMAGE_BOX_SELECTOR);
-  if (!imageBox) return;
-  if (findToggle(popup)) {
-    updateButtons(popup);
+    showCenterClearedToast(name);
     return;
   }
+  // Назначение: достаём имя из feature и сохраняем вместе с GUID.
+  const name = await getPointName(guid);
+  setStarCenter(guid, name);
+}
 
-  const toggle = document.createElement('button');
-  toggle.className = TOGGLE_CLASS;
-  toggle.type = 'button';
-  toggle.innerHTML = TOGGLE_SVG;
-
-  const clear = document.createElement('button');
-  clear.className = CLEAR_CLASS;
-  clear.type = 'button';
-  clear.innerHTML = CLEAR_SVG;
-
-  clickAbortController = new AbortController();
-  toggle.addEventListener(
-    'click',
-    (event) => {
-      event.stopPropagation();
-      event.preventDefault();
-      onToggleClick(popup);
-    },
-    { signal: clickAbortController.signal },
-  );
-  clear.addEventListener(
-    'click',
-    (event) => {
-      event.stopPropagation();
-      event.preventDefault();
-      onClearClick(popup);
-    },
-    { signal: clickAbortController.signal },
-  );
-
-  // Вставляем ПОСЛЕ кнопки-звёздочки избранного (.svp-fav-star) внутри .i-image-box,
-  // чтобы визуально сгруппировать все «точечные» действия.
-  const favStar = imageBox.querySelector('.svp-fav-star');
-  if (favStar) {
-    favStar.after(clear);
-    favStar.after(toggle);
-  } else {
-    imageBox.appendChild(toggle);
-    imageBox.appendChild(clear);
+function onClearClick(): void {
+  const star = getStarCenter();
+  clearStarCenter();
+  if (star) {
+    showCenterClearedToast(star.name);
   }
-
-  updateButtons(popup);
 }
 
 function startObserving(popup: Element): void {
-  injectButtons(popup);
+  updateButtons(popup);
 
   popupObserver = new MutationObserver(() => {
-    injectButtons(popup);
+    updateButtons(popup);
   });
+  // Наблюдаем и за атрибутами попапа (смена data-guid/class), и за subtree —
+  // игра пересоздаёт `.i-buttons` при открытии новой точки, и кнопку
+  // `.svp-next-point-button` инжектит отдельный модуль; нам нужно успевать
+  // переставляться относительно неё.
   popupObserver.observe(popup, {
     attributes: true,
     attributeFilter: ['class', 'data-guid'],
+    childList: true,
+    subtree: true,
   });
 
   changeHandler = (): void => {
