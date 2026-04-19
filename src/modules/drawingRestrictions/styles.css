@@ -1,24 +1,30 @@
-/* Кнопка назначения/снятия центра звезды в попапе точки. Базовые visual-свойства
-   (фон, рамка, padding, hover, disabled) наследуются от игровых стилей
-   `.i-buttons button` — задаём только позиционирование и размер, как это делает
-   `.svp-next-point-button`. Если next-point-button присутствует, кнопка сдвигается
-   левее через :has(). Сброс центра живёт на карте как отдельный OL-control. */
-.svp-star-center-btn {
-  position: fixed;
-  bottom: 5px;
-  right: 5px;
+/* Кнопки центра звезды: toggle в попапе точки и clear-control на карте. Фон,
+   рамка, hover, disabled наследуются от игровых стилей (`.i-buttons button` для
+   toggle, `.ol-control button` для clear-control). Наше дело — только те правила,
+   что задаёт `.svp-next-point-button` в nextPointNavigation: размер 32×32
+   и snapping SVG к центру без inline-baseline (display:block убирает добавочную
+   высоту, которой у `.svp-next-point-button` нет, потому что её контент — просто
+   текстовый символ `→`). */
+.svp-star-center-btn,
+.svp-star-center-clear-control button {
   width: 32px;
   height: 32px;
   min-height: auto;
 }
 
-/* SVG по умолчанию inline — имеет baseline и растягивает кнопку по высоте выше
-   заданных 32px. `display: block` убирает baseline, кнопка остаётся квадратной,
-   как .svp-next-point-button (у неё контент — просто текстовый символ без baseline
-   issue). */
-.svp-star-center-btn svg {
+.svp-star-center-btn svg,
+.svp-star-center-clear-control svg {
   display: block;
   margin: auto;
+}
+
+/* Специфично для toggle в попапе: позиционируется как `.svp-next-point-button`
+   (position: fixed, правый нижний угол); сдвигается левее через :has() если
+   соседняя кнопка next-point-button включена. */
+.svp-star-center-btn {
+  position: fixed;
+  bottom: 5px;
+  right: 5px;
 }
 
 .info.popup:has(.svp-next-point-button) .svp-star-center-btn {
@@ -29,18 +35,11 @@
   color: #ffcc33;
 }
 
-/* OL-control для сброса центра звезды. Наследует игровой стиль OL-кнопок
-   через ol-control + ol-unselectable. Позиционирование задаётся в runtime
-   (starCenterClearControl.ts) относительно .region-picker, чтобы control
-   оказался ровно под ней — CSS не знает, где picker физически расположен.
-   Видимость — атрибут hidden. */
+/* Специфично для clear-control: позиционирование абсолютное, координаты
+   выставляются в runtime (starCenterClearControl.ts) относительно
+   `.region-picker`. Видимость — через атрибут hidden. */
 .svp-star-center-clear-control[hidden] {
   display: none;
-}
-
-.svp-star-center-clear-control svg {
-  display: block;
-  margin: auto;
 }
 
 /* Кнопка «Настроить» у модуля drawingRestrictions в панели настроек SVP */
