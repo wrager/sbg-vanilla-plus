@@ -1,7 +1,7 @@
 /* Кнопка назначения/снятия центра звезды в попапе точки. Базовые visual-свойства
    (фон, рамка, padding, hover, disabled) наследуются от игровых стилей
    `.i-buttons button` — задаём только позиционирование и размер, как это делает
-   `.svp-next-point-button`. Если next-point-button присутствует, толчок сдвигается
+   `.svp-next-point-button`. Если next-point-button присутствует, кнопка сдвигается
    левее через :has(). Сброс центра живёт на карте как отдельный OL-control. */
 .svp-star-center-btn {
   position: fixed;
@@ -12,6 +12,15 @@
   min-height: auto;
 }
 
+/* SVG по умолчанию inline — имеет baseline и растягивает кнопку по высоте выше
+   заданных 32px. `display: block` убирает baseline, кнопка остаётся квадратной,
+   как .svp-next-point-button (у неё контент — просто текстовый символ без baseline
+   issue). */
+.svp-star-center-btn svg {
+  display: block;
+  margin: auto;
+}
+
 .info.popup:has(.svp-next-point-button) .svp-star-center-btn {
   right: 42px;
 }
@@ -20,23 +29,18 @@
   color: #ffcc33;
 }
 
-/* OL-control для сброса центра звезды на карте. Структурно повторяет
-   `.region-picker.ol-unselectable.ol-control` (тот же внешний <div> с
-   OL-классами + внутренняя <button>), поэтому наследует игровой стиль OL-кнопки
-   автоматически. Класс `region-picker` мы не используем — игра через jQuery
-   навешивает на все `.region-picker` свой click-handler, и наш control не должен
-   в этот лист попадать. Позиционируем `fixed` относительно viewport и ставим
-   вручную под region-picker (в родительском контейнере OL-controls всё в
-   абсолютных координатах). Видимость управляется атрибутом hidden. */
-.svp-star-center-clear-control {
-  position: fixed;
-  top: 48px;
-  right: 8px;
-  color: #ff9999;
-}
-
+/* OL-control для сброса центра звезды. Наследует игровой стиль OL-кнопок
+   через ol-control + ol-unselectable. Позиционирование задаётся в runtime
+   (starCenterClearControl.ts) относительно .region-picker, чтобы control
+   оказался ровно под ней — CSS не знает, где picker физически расположен.
+   Видимость — атрибут hidden. */
 .svp-star-center-clear-control[hidden] {
   display: none;
+}
+
+.svp-star-center-clear-control svg {
+  display: block;
+  margin: auto;
 }
 
 /* Кнопка «Настроить» у модуля drawingRestrictions в панели настроек SVP */
