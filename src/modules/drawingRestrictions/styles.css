@@ -1,49 +1,27 @@
 /* Контекстные кнопки звезды в попапе точки: toggle «назначить/снять центром»
-   и clear «сбросить центр». Позиционируются так же, как кнопка nextPointNavigation
-   (position: fixed, правый нижний угол попапа), располагаясь левее неё:
-   - Порядок справа налево: [next-point] [clear] [toggle]
-   - Кнопка clear видна только в попапе не-центральной точки при активном центре. */
+   и clear «сбросить центр». Базовые visual-свойства (фон, рамка, padding, hover,
+   disabled) наследуются от игровых стилей `.i-buttons button` — мы задаём только
+   позиционирование, размер и акцентные цвета, как это делает `.svp-next-point-button`.
+   Порядок справа налево: [next-point] [clear] [toggle]; clear появляется в DOM
+   только в попапе не-центральной точки при активном центре. */
 .svp-star-center-btn,
 .svp-star-center-clear-btn {
   position: fixed;
   bottom: 5px;
+  right: 5px;
   width: 32px;
   height: 32px;
   min-height: auto;
-  padding: 0;
-  margin: 0;
-  border: none;
-  background: rgba(0, 0, 0, 0.35);
-  border-radius: 50%;
-  color: #ccc;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2;
-  transition:
-    color 0.15s ease,
-    transform 0.15s ease;
 }
 
-/* Базовая позиция (нет next-point-button, нет clear): toggle на правом краю. */
-.info.popup .svp-star-center-btn {
-  right: 5px;
-}
-.info.popup .svp-star-center-clear-btn {
-  right: 5px;
-}
-
-/* Есть next-point-button — все мои кнопки сдвигаются левее на её ширину + gap. */
-.info.popup:has(.svp-next-point-button) .svp-star-center-btn {
-  right: 42px;
-}
+/* Есть next-point-button — мои кнопки сдвигаются левее на её ширину + gap. */
+.info.popup:has(.svp-next-point-button) .svp-star-center-btn,
 .info.popup:has(.svp-next-point-button) .svp-star-center-clear-btn {
   right: 42px;
 }
 
-/* Если обе мои кнопки видны одновременно, toggle уходит ещё левее. Clear-кнопка
-   добавляется в DOM только когда нужна, поэтому `:has()` корректен. */
+/* Если clear-кнопка видна, toggle уходит ещё левее. Clear добавляется в DOM
+   только когда нужна, поэтому `:has()` корректен без хаков с hidden. */
 .info.popup:has(.svp-star-center-clear-btn) .svp-star-center-btn {
   right: 42px;
 }
@@ -51,28 +29,12 @@
   right: 79px;
 }
 
-.svp-star-center-btn svg,
-.svp-star-center-clear-btn svg {
-  color: currentColor;
-}
-
-.svp-star-center-btn:hover,
-.svp-star-center-clear-btn:hover {
-  transform: scale(1.1);
-}
-
+/* Акцентные цвета: жёлтый для активного центра, красноватый — для сброса. */
 .svp-star-center-btn.is-active {
   color: #ffcc33;
 }
-
 .svp-star-center-clear-btn {
   color: #ff9999;
-}
-
-.svp-star-center-btn[disabled],
-.svp-star-center-clear-btn[disabled] {
-  opacity: 0.4;
-  cursor: default;
 }
 
 /* Кнопка «Настроить» у модуля drawingRestrictions в панели настроек SVP */
