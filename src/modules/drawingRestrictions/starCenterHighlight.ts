@@ -1,4 +1,4 @@
-import type { IOlFeature, IOlMap, IOlVectorSource } from '../../core/olMap';
+import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource } from '../../core/olMap';
 import { findLayerByName, getOlMap } from '../../core/olMap';
 import { STAR_CENTER_CHANGED_EVENT, getStarCenterGuid } from './starCenter';
 
@@ -6,9 +6,10 @@ const POINTS_LAYER_NAME = 'points';
 
 let map: IOlMap | null = null;
 let pointsSource: IOlVectorSource | null = null;
+let overlayLayer: IOlLayer | null = null;
+let overlaySource: IOlVectorSource | null = null;
 let sourceChangeHandler: (() => void) | null = null;
 let starCenterChangeHandler: (() => void) | null = null;
-let currentStyledFeature: IOlFeature | null = null;
 let installGeneration = 0;
 
 function buildHighlightStyle(): unknown {
@@ -37,30 +38,40 @@ function findFeatureByGuid(source: IOlVectorSource, guid: string): IOlFeature | 
   return null;
 }
 
-function clearCurrentStyle(): void {
-  if (currentStyledFeature) {
-    currentStyledFeature.setStyle(null);
-    currentStyledFeature = null;
-  }
+/**
+ * Пересобирает overlay feature: кольцо поверх точки-центра. Overlay живёт в
+ * собственном layer/source, поэтому оригинальная feature в слое points не
+ * трогается — стандартный вид точки (иконка, цвет команды) сохраняется, а
+ * наш highlight дополняет его сверху.
+ */
+function refreshOverlay(): void {
+  if (!overlaySource || !pointsSource) return;
+  overlaySource.clear();
+  const guid = getStarCenterGuid();
+  if (guid === null) return;
+  const centerFeature = findFeatureByGuid(pointsSource, guid);
+  if (!centerFeature) return;
+  const coords = centerFeature.getGeometry().getCoordinates();
+  const ol = window.ol;
+  if (!ol?.Feature || !ol.geom?.Point) return;
+  const style = buildHighlightStyle();
+  if (!style) return;
+  const overlayFeature = new ol.Feature({ geometry: new ol.geom.Point(coords) });
+  overlayFeature.setStyle(style);
+  overlaySource.addFeature(overlayFeature);
 }
 
-function refreshHighlight(): void {
-  if (!pointsSource) return;
-  const starCenterGuid = getStarCenterGuid();
-  if (starCenterGuid === null) {
-    clearCurrentStyle();
-    return;
-  }
-  const feature = findFeatureByGuid(pointsSource, starCenterGuid);
-  if (feature === currentStyledFeature) return;
-  clearCurrentStyle();
-  if (feature) {
-    const style = buildHighlightStyle();
-    if (style !== null) {
-      feature.setStyle(style);
-      currentStyledFeature = feature;
-    }
-  }
+function createOverlayLayer(targetMap: IOlMap): boolean {
+  const ol = window.ol;
+  if (!ol?.source?.Vector || !ol.layer?.Vector) return false;
+  overlaySource = new ol.source.Vector();
+  overlayLayer = new ol.layer.Vector({
+    source: overlaySource,
+    // zIndex выше стандартных слоёв игры, чтобы кольцо было поверх иконки.
+    zIndex: 999,
+  });
+  targetMap.addLayer(overlayLayer);
+  return true;
 }
 
 export function installStarCenterHighlight(): void {
@@ -78,24 +89,33 @@ export function installStarCenterHighlight(): void {
     }
     pointsSource = source;
 
-    // Пересчитываем подсветку при каждом обновлении слоя (появление/исчезновение точек).
+    if (!createOverlayLayer(captured)) {
+      console.warn('[SVP drawingRestrictions] OL Vector layer/source недоступны');
+      return;
+    }
+
+    // Перерисовка при появлении/изменении features (центр мог быть за viewport
+    // при install, а потом подгрузиться).
     sourceChangeHandler = (): void => {
-      refreshHighlight();
+      refreshOverlay();
     };
     source.on('change', sourceChangeHandler);
 
     starCenterChangeHandler = (): void => {
-      refreshHighlight();
+      refreshOverlay();
     };
     document.addEventListener(STAR_CENTER_CHANGED_EVENT, starCenterChangeHandler);
 
-    refreshHighlight();
+    refreshOverlay();
   });
 }
 
 export function uninstallStarCenterHighlight(): void {
   installGeneration++;
-  clearCurrentStyle();
+  overlaySource?.clear();
+  if (map && overlayLayer) {
+    map.removeLayer(overlayLayer);
+  }
   if (pointsSource && sourceChangeHandler) {
     pointsSource.un('change', sourceChangeHandler);
   }
@@ -104,6 +124,8 @@ export function uninstallStarCenterHighlight(): void {
   }
   map = null;
   pointsSource = null;
+  overlayLayer = null;
+  overlaySource = null;
   sourceChangeHandler = null;
   starCenterChangeHandler = null;
 }
