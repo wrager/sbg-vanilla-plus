@@ -297,7 +297,9 @@ function injectButton(popup: Element): void {
 
   if (!popup.querySelector(`.${BUTTON_CLASS}`)) {
     const rangeButton = document.createElement('button');
-    rangeButton.className = BUTTON_CLASS;
+    // svp-popup-action-button — общий класс для всех SVP-кнопок действий в попапе
+    // точки. Задаёт единый размер/оформление (core/popupActionButton.css).
+    rangeButton.className = `${BUTTON_CLASS} svp-popup-action-button`;
     rangeButton.textContent = '→';
     rangeButton.title = 'Следующая точка в радиусе взаимодействия';
 

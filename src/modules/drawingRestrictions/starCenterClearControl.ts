@@ -1,19 +1,11 @@
-import { showToast } from '../../core/toast';
 import { t } from '../../core/l10n';
+import { showToast } from '../../core/toast';
 import { STAR_CENTER_CHANGED_EVENT, clearStarCenter, getStarCenter } from './starCenter';
+import { STAR_ICON_SLASH_SVG } from './starCenterIcon';
 
 const CONTROL_CLASS = 'svp-star-center-clear-control';
+const ICON_BUTTON_CLASS = 'svp-star-icon-button';
 const REGION_PICKER_SELECTOR = '.region-picker.ol-unselectable.ol-control';
-
-// Asterisk, визуально как `fa-solid-asterisk` (иконка режима звезды в CUI).
-// FA-классы напрямую использовать нельзя — FontAwesome в игре подгружает CUI;
-// без CUI наш символ не отобразится. Берём готовый SVG-путь из FontAwesome
-// Free 6 (asterisk, solid).
-const ASTERISK_SVG = `
-<svg viewBox="0 0 512 512" width="20" height="20" aria-hidden="true">
-  <path fill="currentColor" d="M320 48C320 21.5 298.5 0 272 0L240 0C213.5 0 192 21.5 192 48L192 192L65.6 140C41.1 131 14 143.4 5 167.9C-4 192.4 8.4 219.5 32.9 228.5L159.2 280.5L60.3 389.5C42.4 408.8 43.7 438.9 63 456.8C82.3 474.7 112.4 473.4 130.3 454.1L256 316.5L381.7 454.1C399.6 473.4 429.7 474.7 449 456.8C468.3 438.9 469.6 408.8 451.7 389.5L352.8 280.5L479.1 228.5C503.6 219.5 516 192.4 507 167.9C498 143.4 470.9 131 446.4 140L320 192L320 48z"/>
-</svg>
-`;
 
 let controlElement: HTMLDivElement | null = null;
 let pickerElement: HTMLElement | null = null;
@@ -21,6 +13,7 @@ let abortController: AbortController | null = null;
 let changeHandler: (() => void) | null = null;
 let domObserver: MutationObserver | null = null;
 let resizeObserver: ResizeObserver | null = null;
+let windowResizeHandler: (() => void) | null = null;
 
 function showCenterClearedToast(name: string): void {
   if (name.length === 0) {
@@ -37,45 +30,45 @@ function showCenterClearedToast(name: string): void {
 }
 
 /**
- * Позиционирует control прямо под `.region-picker`. CSS у региона-пикера задан
- * игрой (нам недоступен как константа), поэтому читаем в runtime: computedTop
- * + offsetHeight + gap. То же значение `right` наследуется 1-в-1 — визуально
- * кнопка смотрится как продолжение picker вниз.
+ * Позиционирует control прямо под `.region-picker`. Координаты читаем через
+ * getBoundingClientRect() и применяем как position: fixed относительно viewport —
+ * это работает независимо от того, как именно игра позиционирует picker (inline
+ * style, CSS класс, trasnform и т.д.). getComputedStyle().top не годится: для
+ * ol-control с позицией через игровой CSS оно часто возвращает `auto`.
  */
 function syncPosition(): void {
   if (!controlElement || !pickerElement) return;
-  const computed = getComputedStyle(pickerElement);
-  const top = parseFloat(computed.top);
-  const height = pickerElement.offsetHeight || 32;
-  const gap = 8;
-  if (!Number.isNaN(top)) {
-    controlElement.style.top = `${top + height + gap}px`;
-  }
-  // right/left тянем 1-в-1 у picker — чтобы control стоял строго под ней.
-  if (computed.right && computed.right !== 'auto') {
-    controlElement.style.right = computed.right;
-  }
-  if (computed.left && computed.left !== 'auto') {
-    controlElement.style.left = computed.left;
-  }
-  controlElement.style.position = 'absolute';
+  const rect = pickerElement.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return; // picker скрыт
+  // OL-controls в игре выстроены вертикально вплотную (zoom-in / zoom-out /
+  // region-picker / ...), без gap. Ставим control сразу под region-picker,
+  // чтобы визуально продолжить колонку.
+  controlElement.style.top = `${rect.bottom}px`;
+  controlElement.style.right = `${window.innerWidth - rect.right}px`;
+  controlElement.style.left = 'auto';
+  controlElement.style.bottom = 'auto';
 }
 
 function applyVisibility(): void {
   if (!controlElement) return;
   controlElement.hidden = getStarCenter() === null;
+  if (!controlElement.hidden) syncPosition();
 }
 
 function createControl(): HTMLDivElement {
   // Структура 1-в-1 как у `.region-picker` (div.ol-unselectable.ol-control >
   // button), чтобы наследовать игровые стили OL-кнопок. Класс `region-picker`
   // сознательно НЕ добавляем: игра через jQuery навешивает на все `.region-picker`
-  // свой click-handler toggle регионов — наш control не должен туда попасть.
+  // свой click-handler toggle регионов — наш control не должен попасть туда.
+  // Внутренняя button получает общий с toggle-кнопкой класс svp-star-icon-button,
+  // который задаёт единые размеры/padding для обеих кнопок режима звезды.
   const element = document.createElement('div');
   element.className = `${CONTROL_CLASS} ol-unselectable ol-control`;
+  element.style.position = 'fixed';
   const button = document.createElement('button');
   button.type = 'button';
-  button.innerHTML = ASTERISK_SVG;
+  button.className = ICON_BUTTON_CLASS;
+  button.innerHTML = STAR_ICON_SLASH_SVG;
   abortController = new AbortController();
   button.addEventListener(
     'click',
@@ -98,11 +91,9 @@ function tryAttach(): boolean {
   if (!picker) return false;
   pickerElement = picker;
   if (!controlElement) controlElement = createControl();
-  // Вставляем в общий с picker родительский контейнер OL-controls.
   picker.after(controlElement);
   syncPosition();
   applyVisibility();
-  // Следим за изменениями размера picker (resize viewport, переориентация).
   if (typeof ResizeObserver !== 'undefined' && !resizeObserver) {
     resizeObserver = new ResizeObserver(() => {
       syncPosition();
@@ -117,8 +108,11 @@ export function installStarCenterClearControl(): void {
   // Наблюдатель отслеживает появление/исчезновение .region-picker — control
   // перевставляется автоматически, если игра пересоздаёт DOM вокруг карты.
   domObserver = new MutationObserver(() => {
-    if (!controlElement || !controlElement.isConnected) tryAttach();
-    else syncPosition();
+    if (!controlElement || !controlElement.isConnected) {
+      tryAttach();
+    } else {
+      syncPosition();
+    }
   });
   domObserver.observe(document.body, { childList: true, subtree: true });
   tryAttach();
@@ -127,6 +121,11 @@ export function installStarCenterClearControl(): void {
     applyVisibility();
   };
   document.addEventListener(STAR_CENTER_CHANGED_EVENT, changeHandler);
+
+  windowResizeHandler = (): void => {
+    syncPosition();
+  };
+  window.addEventListener('resize', windowResizeHandler);
 }
 
 export function uninstallStarCenterClearControl(): void {
@@ -139,6 +138,10 @@ export function uninstallStarCenterClearControl(): void {
   if (changeHandler) {
     document.removeEventListener(STAR_CENTER_CHANGED_EVENT, changeHandler);
     changeHandler = null;
+  }
+  if (windowResizeHandler) {
+    window.removeEventListener('resize', windowResizeHandler);
+    windowResizeHandler = null;
   }
   controlElement?.remove();
   controlElement = null;

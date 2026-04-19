@@ -12,8 +12,11 @@ jest.mock('../../core/olMap', () => ({
   findLayerByName: jest.fn(() => null),
 }));
 
+const showToastMock = jest.fn();
 jest.mock('../../core/toast', () => ({
-  showToast: jest.fn(),
+  showToast: (...args: unknown[]) => {
+    showToastMock(...args);
+  },
 }));
 
 function createPopupDom(guid: string | null, hidden = false): HTMLElement {
@@ -41,6 +44,7 @@ beforeEach(() => {
   localStorage.clear();
   clearStarCenter();
   localStorage.clear();
+  showToastMock.mockClear();
 });
 
 afterEach(() => {
@@ -111,6 +115,21 @@ describe('starCenterButton — клики toggle', () => {
     await flushMicrotasks();
     expect(getStarCenterGuid()).toBe('p1');
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(true);
+  });
+
+  test('назначение показывает toast с формулировкой CUI', async () => {
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(showToastMock).toHaveBeenCalled();
+    const messages = showToastMock.mock.calls.map((call: unknown[]) => {
+      const [first] = call;
+      return typeof first === 'string' ? first : '';
+    });
+    expect(
+      messages.some((message) => message.includes('selected as star center for drawing')),
+    ).toBe(true);
   });
 
   test('это центр → снимает центр', async () => {

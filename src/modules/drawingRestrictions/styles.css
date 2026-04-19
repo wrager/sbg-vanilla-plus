@@ -1,43 +1,38 @@
-/* Кнопки центра звезды: toggle в попапе точки и clear-control на карте. Фон,
-   рамка, hover, disabled наследуются от игровых стилей (`.i-buttons button` для
-   toggle, `.ol-control button` для clear-control). Наше дело — только те правила,
-   что задаёт `.svp-next-point-button` в nextPointNavigation: размер 32×32
-   и snapping SVG к центру без inline-baseline (display:block убирает добавочную
-   высоту, которой у `.svp-next-point-button` нет, потому что её контент — просто
-   текстовый символ `→`). */
-.svp-star-center-btn,
-.svp-star-center-clear-control button {
-  width: 32px;
-  height: 32px;
-  min-height: auto;
-}
-
-.svp-star-center-btn svg,
-.svp-star-center-clear-control svg {
-  display: block;
-  margin: auto;
-}
-
-/* Специфично для toggle в попапе: позиционируется как `.svp-next-point-button`
-   (position: fixed, правый нижний угол); сдвигается левее через :has() если
-   соседняя кнопка next-point-button включена. */
-.svp-star-center-btn {
+/* Общий размер и оформление обеих кнопок действий в попапе (toggle + соседние
+   модули) задаётся в core/popupActionButton.css через класс
+   .svp-popup-action-button. Здесь — только специфичное для toggle:
+   позиционирование в правом нижнем углу попапа (повторяет .svp-next-point-button)
+   и is-active окраска. */
+.info.popup .i-buttons .svp-star-center-btn {
   position: fixed;
   bottom: 5px;
   right: 5px;
 }
 
-.info.popup:has(.svp-next-point-button) .svp-star-center-btn {
+.info.popup:has(.svp-next-point-button) .i-buttons .svp-star-center-btn {
   right: 42px;
 }
 
-.svp-star-center-btn.is-active {
+.info.popup .i-buttons .svp-star-center-btn.is-active {
   color: #ffcc33;
 }
 
-/* Специфично для clear-control: позиционирование абсолютное, координаты
-   выставляются в runtime (starCenterClearControl.ts) относительно
-   `.region-picker`. Видимость — через атрибут hidden. */
+/* clear-control (OL-control на карте под region-picker): position и видимость
+   управляются runtime из starCenterClearControl.ts; размер внутренней button
+   повторяет .svp-popup-action-button, но живёт здесь отдельно — класс
+   popup-action-button по имени привязан к попапу, clear-control не в попапе. */
+.svp-star-center-clear-control button {
+  width: 32px;
+  height: 32px;
+  min-height: auto;
+  padding: 0;
+}
+
+.svp-star-center-clear-control button svg {
+  display: block;
+  margin: auto;
+}
+
 .svp-star-center-clear-control[hidden] {
   display: none;
 }

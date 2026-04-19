@@ -8,31 +8,14 @@ import {
   getStarCenter,
   setStarCenter,
 } from './starCenter';
+import { STAR_ICON_SVG } from './starCenterIcon';
 
 const TOGGLE_CLASS = 'svp-star-center-btn';
+const POPUP_ACTION_BUTTON_CLASS = 'svp-popup-action-button';
 const NEXT_POINT_CLASS = 'svp-next-point-button';
 const POPUP_SELECTOR = '.info.popup';
 const BUTTONS_SELECTOR = '.i-buttons';
 const POINTS_LAYER_NAME = 'points';
-
-// 8 лучей из центральной точки — визуально отличается от пятиконечной звезды
-// избранного (.svp-fav-star). Радиальный паттерн читается как «рисование из
-// одной точки во все стороны», что и есть режим «звезда».
-const TOGGLE_SVG = `
-<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-  <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
-  <g stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none">
-    <line x1="12" y1="2.5" x2="12" y2="7"/>
-    <line x1="12" y1="17" x2="12" y2="21.5"/>
-    <line x1="2.5" y1="12" x2="7" y2="12"/>
-    <line x1="17" y1="12" x2="21.5" y2="12"/>
-    <line x1="5.2" y1="5.2" x2="8.4" y2="8.4"/>
-    <line x1="15.6" y1="15.6" x2="18.8" y2="18.8"/>
-    <line x1="18.8" y1="5.2" x2="15.6" y2="8.4"/>
-    <line x1="8.4" y1="15.6" x2="5.2" y2="18.8"/>
-  </g>
-</svg>
-`;
 
 let popupObserver: MutationObserver | null = null;
 let clickAbortController: AbortController | null = null;
@@ -97,6 +80,28 @@ function showCenterClearedToast(name: string): void {
   );
 }
 
+function showCenterAssignedToast(name: string): void {
+  // Формулировка повторяет CUI (onPointPopupOpened): «Точка X выбрана центром
+  // для рисования звезды.» — узнаваемость для игроков, пришедших из CUI.
+  if (name.length === 0) {
+    showToast(
+      t({
+        en: 'Point selected as star center for drawing.',
+        ru: 'Точка выбрана центром для рисования звезды.',
+      }),
+      3000,
+    );
+    return;
+  }
+  showToast(
+    t({
+      en: `Point "${name}" selected as star center for drawing.`,
+      ru: `Точка "${name}" выбрана центром для рисования звезды.`,
+    }),
+    3000,
+  );
+}
+
 function createButton(
   className: string,
   innerHTML: string,
@@ -104,7 +109,9 @@ function createButton(
 ): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = className;
+  // svp-popup-action-button — общий класс для всех SVP-кнопок действий в
+  // попапе точки (core/popupActionButton.css задаёт единые размер/padding).
+  button.className = `${className} ${POPUP_ACTION_BUTTON_CLASS}`;
   button.innerHTML = innerHTML;
   if (!clickAbortController) clickAbortController = new AbortController();
   button.addEventListener(
@@ -146,7 +153,7 @@ function updateButtons(popup: Element): void {
     if (toggle) toggle.disabled = true;
   } else {
     if (!toggle) {
-      toggle = createButton(TOGGLE_CLASS, TOGGLE_SVG, () => {
+      toggle = createButton(TOGGLE_CLASS, STAR_ICON_SVG, () => {
         void onToggleClick(popup);
       });
       insertIntoButtons(buttons, toggle);
@@ -177,6 +184,7 @@ async function onToggleClick(popup: Element): Promise<void> {
   // Назначение: достаём имя из feature и сохраняем вместе с GUID.
   const name = await getPointName(guid);
   setStarCenter(guid, name);
+  showCenterAssignedToast(name);
 }
 
 function startObserving(popup: Element): void {
