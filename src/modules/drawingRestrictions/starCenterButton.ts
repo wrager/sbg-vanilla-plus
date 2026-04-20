@@ -14,6 +14,7 @@ const TOGGLE_CLASS = 'svp-star-center-btn';
 const POPUP_ACTION_BUTTON_CLASS = 'svp-popup-action-button';
 const NEXT_POINT_CLASS = 'svp-next-point-button';
 const POPUP_SELECTOR = '.info.popup';
+const POPUP_CLOSE_SELECTOR = '.info .popup-close';
 const BUTTONS_SELECTOR = '.i-buttons';
 const POINTS_LAYER_NAME = 'points';
 
@@ -147,16 +148,62 @@ async function onToggleClick(popup: Element): Promise<void> {
   const star = getStarCenter();
   if (star?.guid === guid) {
     // Снятие центра через ту же точку, где он назначен. Имя уже в LS — покажем
-    // его в toast перед очисткой.
+    // его в toast перед очисткой. #draw-count при этом уже был корректный
+    // ([N], т.к. попап центра отключает keepByStar): после снятия фильтр тоже
+    // отключён (centerGuid === null), состояние не меняется — переоткрытие
+    // попапа не нужно.
     const name = star.name;
     clearStarCenter();
     showCenterClearedToast(name);
     return;
   }
-  // Назначение: достаём имя из feature и сохраняем вместе с GUID.
+  const wasDifferentCenter = star !== null && star.guid !== guid;
   const name = await getPointName(guid);
   setStarCenter(guid, name);
   showCenterAssignedToast(name);
+  if (wasDifferentCenter) {
+    // Переназначение центра (был на другой точке → теперь на текущей).
+    // `#draw-count` показывает отфильтрованное число из предыдущего /api/draw,
+    // `point_state.possible_lines` тоже отражает старый фильтр, но оба закрыты
+    // в closure игры — мы не можем их обновить напрямую. Закрываем попап
+    // (closePopup ставит `#draw-count = '[N/A]'` и сбрасывает draw-request)
+    // и переоткрываем через `window.showInfo(guid)` — игра сделает свежий
+    // /api/draw, наш drawFilter применит новые правила (фильтр звезды
+    // отключён, т.к. currentPopup = center), счётчик и слайдер станут
+    // корректными и синхронными.
+    refreshPopupForDrawCounter(guid);
+  }
+}
+
+/**
+ * Закрывает попап точки и переоткрывает его через `window.showInfo(guid)`,
+ * чтобы заставить игру сделать свежий `/api/draw`-запрос и обновить
+ * `#draw-count` с `point_state.possible_lines` под актуальные правила
+ * drawFilter. Используется при переназначении центра звезды через попап
+ * другой точки — без этого `#draw-count` остаётся со старым значением.
+ *
+ * `window.showInfo` экспонируется патчем `src/core/gameScriptPatcher.ts`
+ * (вставка `window.showInfo = showInfo` перед `class Bitfield` в теле
+ * game-скрипта, см. `refs/game/script.js:1687` для реализации).
+ */
+function refreshPopupForDrawCounter(popupGuid: string): void {
+  const popupClose = document.querySelector<HTMLButtonElement>(POPUP_CLOSE_SELECTOR);
+  if (!popupClose) return;
+  if (typeof window.showInfo !== 'function') {
+    // gameScriptPatcher не применился (устаревший селектор, сетевая ошибка).
+    // Тогда закрывать попап смысла нет — пользователь не увидит обновления.
+    return;
+  }
+
+  // closePopup игры ставит `#draw-count = '[N/A]'` и abort'ит in-flight
+  // draw-request — это триггер рефетча при следующем showInfo.
+  popupClose.click();
+
+  // showInfo с guid делает apiQuery('point', { guid }) и после его резолва
+  // вновь отображает попап + инициирует draw-refetch (наш drawFilter уже
+  // видит новый starCenter, поэтому result будет корректным для режима
+  // звезды). Передаём guid (string) — ветка с `typeof data === 'string'`.
+  window.showInfo(popupGuid);
 }
 
 function startObserving(popup: Element): void {
