@@ -1,4 +1,5 @@
 import { injectStyles, removeStyles, waitForElement } from '../../core/dom';
+import { t } from '../../core/l10n';
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { getOlMap, findLayerByName } from '../../core/olMap';
 import type { IOlMap, IOlFeature, IOlVectorSource } from '../../core/olMap';
@@ -297,9 +298,14 @@ function injectButton(popup: Element): void {
 
   if (!popup.querySelector(`.${BUTTON_CLASS}`)) {
     const rangeButton = document.createElement('button');
-    rangeButton.className = BUTTON_CLASS;
+    // svp-popup-action-button — общий класс для всех SVP-кнопок действий в попапе
+    // точки. Задаёт единый размер/оформление (core/popupActionButton.css).
+    rangeButton.className = `${BUTTON_CLASS} svp-popup-action-button`;
     rangeButton.textContent = '→';
-    rangeButton.title = 'Следующая точка в радиусе взаимодействия';
+    rangeButton.title = t({
+      en: 'Next point in interaction range',
+      ru: 'Следующая точка в радиусе взаимодействия',
+    });
 
     onRangeButtonClick = () => {
       navigateInRange();

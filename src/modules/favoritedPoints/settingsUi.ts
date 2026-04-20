@@ -1,6 +1,5 @@
 import { exportToJson, importFromJson, getFavoritesCount } from '../../core/favoritesStore';
 import { t } from '../../core/l10n';
-import { loadFavoritedPointsSettings, saveFavoritedPointsSettings } from './settings';
 
 const MODULE_ID = 'favoritedPoints';
 const CONFIGURE_BUTTON_CLASS = 'svp-fav-configure-button';
@@ -11,8 +10,6 @@ let configureButton: HTMLElement | null = null;
 let moduleRowObserver: MutationObserver | null = null;
 
 function buildPanel(): HTMLElement {
-  const settings = loadFavoritedPointsSettings();
-
   const element = document.createElement('div');
   element.className = PANEL_CLASS;
 
@@ -23,26 +20,6 @@ function buildPanel(): HTMLElement {
 
   const content = document.createElement('div');
   content.className = 'svp-fav-settings-content';
-
-  // Чекбокс hideLastFavRef
-  const hideLastRow = document.createElement('label');
-  hideLastRow.className = 'svp-fav-settings-checkbox-row';
-  const hideLastCheckbox = document.createElement('input');
-  hideLastCheckbox.type = 'checkbox';
-  hideLastCheckbox.checked = settings.hideLastFavRef;
-  hideLastCheckbox.addEventListener('change', () => {
-    const updated = loadFavoritedPointsSettings();
-    updated.hideLastFavRef = hideLastCheckbox.checked;
-    saveFavoritedPointsSettings(updated);
-  });
-  hideLastRow.appendChild(hideLastCheckbox);
-  const hideLastLabel = document.createElement('span');
-  hideLastLabel.textContent = t({
-    en: ' Protect last key of favorited point when drawing',
-    ru: ' Защищать последний ключ от избранной точки при рисовании',
-  });
-  hideLastRow.appendChild(hideLastLabel);
-  content.appendChild(hideLastRow);
 
   // Счётчик избранных
   const counter = document.createElement('div');

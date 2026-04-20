@@ -1,0 +1,23 @@
+/* Общий класс для кнопок действий SVP в попапе точки (контейнер `.i-buttons`).
+   К нему относятся все кнопки, добавляемые модулями рядом с игровыми Deploy
+   / Discover / Draw / Repair — сейчас это .svp-next-point-button и
+   .svp-star-center-btn. Задача класса — унифицировать их размер и внутреннее
+   оформление независимо от модуля.
+
+   Повторяет specificity эталона (.svp-next-point-button в nextPointNavigation
+   стилизуется через 3-уровневый селектор `.info.popup .i-buttons .svp-*`, 0,3,0)
+   — игровые правила `.i-buttons button` иначе перебивают наши width/height. */
+.info.popup .i-buttons .svp-popup-action-button {
+  width: 32px;
+  height: 32px;
+  min-height: auto;
+  padding: 0;
+}
+
+/* SVG inline имеет baseline, растягивающий кнопку по высоте. display: block
+   убирает baseline — кнопка остаётся квадратной, как игровые соседки. margin:
+   auto центрирует иконку. */
+.info.popup .i-buttons .svp-popup-action-button svg {
+  display: block;
+  margin: auto;
+}

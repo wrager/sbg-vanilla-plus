@@ -4,7 +4,6 @@ import { loadFavorites } from '../../core/favoritesStore';
 import { installDebugHooks, uninstallDebugHooks } from './debugHooks';
 import { installStarButton, uninstallStarButton } from './starButton';
 import { installInventoryFilter, uninstallInventoryFilter } from './inventoryFilter';
-import { installLastRefProtection, uninstallLastRefProtection } from './lastRefProtection';
 import { installSettingsUi, uninstallSettingsUi } from './settingsUi';
 import styles from './styles.css?inline';
 
@@ -33,7 +32,6 @@ export const favoritedPoints: IFeatureModule = {
     injectStyles(styles, MODULE_ID);
     installStarButton();
     installInventoryFilter();
-    installLastRefProtection();
     installSettingsUi();
     installDebugHooks();
   },
@@ -41,7 +39,6 @@ export const favoritedPoints: IFeatureModule = {
   disable() {
     uninstallStarButton();
     uninstallInventoryFilter();
-    uninstallLastRefProtection();
     uninstallSettingsUi();
     removeStyles(MODULE_ID);
     uninstallDebugHooks();

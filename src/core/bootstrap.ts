@@ -11,6 +11,7 @@ import {
 } from './settings/storage';
 import { initSettingsUI } from './settings/ui';
 import { injectStyles } from './dom';
+import popupActionButtonStyles from './popupActionButton.css?inline';
 import toastStyles from './toast.css?inline';
 
 // Guard от повторного вызова bootstrap(). Повторный init/enable уже
@@ -34,6 +35,7 @@ export function bootstrap(modules: IFeatureModule[]): void {
   bootstrapped = true;
 
   injectStyles(toastStyles, 'svp-toast');
+  injectStyles(popupActionButtonStyles, 'svp-popup-action-button');
   registerModules(modules);
   let settings = loadSettings();
   settings = persistModuleDefaults(settings, modules);

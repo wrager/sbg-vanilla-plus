@@ -22,6 +22,7 @@ import { singleFingerRotation } from './modules/singleFingerRotation/singleFinge
 import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
 import { favoritedPoints } from './modules/favoritedPoints/favoritedPoints';
+import { drawingRestrictions } from './modules/drawingRestrictions/drawingRestrictions';
 
 if (!isDisabled()) {
   // Перехваты, которые должны быть установлены ДО парсинга DOM:
@@ -45,6 +46,7 @@ if (!isDisabled()) {
       removeAttackCloseButton,
       // feature (favoritedPoints ПЕРЕД inventoryCleanup — зависимость init)
       favoritedPoints,
+      drawingRestrictions,
       inventoryCleanup,
       keepScreenOn,
       repairAtFullCharge,
