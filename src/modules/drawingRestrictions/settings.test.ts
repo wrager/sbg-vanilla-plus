@@ -1,6 +1,7 @@
 import {
   defaultDrawingRestrictionsSettings,
   loadDrawingRestrictionsSettings,
+  migrateDrawingRestrictionsSettings,
   saveDrawingRestrictionsSettings,
 } from './settings';
 
@@ -17,9 +18,22 @@ describe('loadDrawingRestrictionsSettings', () => {
     expect(loaded).toEqual(defaultDrawingRestrictionsSettings());
   });
 
+  // 10.F FALSE: load без svp_drawingRestrictions — чистый геттер, без записи.
+  test('load без ключа НЕ пишет в localStorage (чистый геттер)', () => {
+    loadDrawingRestrictionsSettings();
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
   test('defaults при невалидном JSON', () => {
     localStorage.setItem(STORAGE_KEY, '{broken');
     expect(loadDrawingRestrictionsSettings()).toEqual(defaultDrawingRestrictionsSettings());
+  });
+
+  test('load при невалидном JSON НЕ перезаписывает ключ', () => {
+    localStorage.setItem(STORAGE_KEY, '{broken');
+    loadDrawingRestrictionsSettings();
+    // Значение в localStorage осталось как было (load не пишет).
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('{broken');
   });
 
   test('defaults при невалидной структуре', () => {
@@ -89,69 +103,88 @@ describe('loadDrawingRestrictionsSettings', () => {
     saveDrawingRestrictionsSettings(custom);
     expect(loadDrawingRestrictionsSettings()).toEqual(custom);
   });
+});
 
-  describe('миграция hideLastFavRef', () => {
-    test('true → protectLastKey и сохраняет результат', () => {
-      localStorage.setItem(
-        LEGACY_STORAGE_KEY,
-        JSON.stringify({ version: 1, hideLastFavRef: true }),
-      );
-      const loaded = loadDrawingRestrictionsSettings();
-      expect(loaded.favProtectionMode).toBe('protectLastKey');
-      // Миграция закрыта: повторный load читает из основного ключа, не из legacy.
-      expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
-    });
+describe('migrateDrawingRestrictionsSettings', () => {
+  // 10.E FALSE (legacy=true): protectLastKey.
+  test('legacy hideLastFavRef=true → сохраняет svp_drawingRestrictions с protectLastKey', () => {
+    localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify({ hideLastFavRef: true }));
+    migrateDrawingRestrictionsSettings();
+    expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('protectLastKey');
+    expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+  });
 
-    test('false → off', () => {
-      localStorage.setItem(
-        LEGACY_STORAGE_KEY,
-        JSON.stringify({ version: 1, hideLastFavRef: false }),
-      );
-      const loaded = loadDrawingRestrictionsSettings();
-      expect(loaded.favProtectionMode).toBe('off');
-    });
+  // 10.E FALSE (legacy=false): off.
+  test('legacy hideLastFavRef=false → off', () => {
+    localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify({ hideLastFavRef: false }));
+    migrateDrawingRestrictionsSettings();
+    expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('off');
+  });
 
-    test('не перезаписывает существующий svp_drawingRestrictions', () => {
-      const current = {
-        version: 1,
-        favProtectionMode: 'hideAllFavorites' as const,
-        maxDistanceMeters: 500,
-      };
-      saveDrawingRestrictionsSettings(current);
-      localStorage.setItem(
-        LEGACY_STORAGE_KEY,
-        JSON.stringify({ version: 1, hideLastFavRef: true }),
-      );
-      const loaded = loadDrawingRestrictionsSettings();
-      expect(loaded).toEqual(current);
-    });
+  // 10.A TRUE: ключ уже есть — не перезаписывает.
+  test('не перезаписывает существующий svp_drawingRestrictions', () => {
+    const current = {
+      version: 1,
+      favProtectionMode: 'hideAllFavorites' as const,
+      maxDistanceMeters: 500,
+    };
+    saveDrawingRestrictionsSettings(current);
+    localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify({ hideLastFavRef: true }));
+    migrateDrawingRestrictionsSettings();
+    expect(loadDrawingRestrictionsSettings()).toEqual(current);
+  });
 
-    test('битый legacy JSON → default protectLastKey', () => {
-      localStorage.setItem(LEGACY_STORAGE_KEY, '{broken');
-      const loaded = loadDrawingRestrictionsSettings();
-      expect(loaded.favProtectionMode).toBe('protectLastKey');
-    });
+  // 10.E TRUE (legacy=null) — defaults.
+  test('новый пользователь без legacy → defaults с protectLastKey', () => {
+    migrateDrawingRestrictionsSettings();
+    const loaded = loadDrawingRestrictionsSettings();
+    expect(loaded).toEqual(defaultDrawingRestrictionsSettings());
+    expect(loaded.favProtectionMode).toBe('protectLastKey');
+  });
 
-    test('legacy без поля hideLastFavRef → default protectLastKey', () => {
-      localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify({ version: 1 }));
-      const loaded = loadDrawingRestrictionsSettings();
-      expect(loaded.favProtectionMode).toBe('protectLastKey');
-    });
+  // readLegacyFavMode FALSE-ветки → legacy=null → default protectLastKey.
+  test('битый legacy JSON → default protectLastKey', () => {
+    localStorage.setItem(LEGACY_STORAGE_KEY, '{broken');
+    migrateDrawingRestrictionsSettings();
+    expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('protectLastKey');
+  });
 
-    // readLegacyFavMode narrowing: FALSE-ветки атомарных проверок.
-    test('legacy — строка (typeof !== object) → default protectLastKey', () => {
-      localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify('just-a-string'));
-      expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('protectLastKey');
-    });
+  test('legacy без поля hideLastFavRef → default protectLastKey', () => {
+    localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify({ version: 1 }));
+    migrateDrawingRestrictionsSettings();
+    expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('protectLastKey');
+  });
 
-    test('legacy — null → default protectLastKey', () => {
-      localStorage.setItem(LEGACY_STORAGE_KEY, 'null');
-      expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('protectLastKey');
-    });
+  test('legacy — строка (typeof !== object) → default protectLastKey', () => {
+    localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify('just-a-string'));
+    migrateDrawingRestrictionsSettings();
+    expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('protectLastKey');
+  });
 
-    test('legacy hideLastFavRef — строка (не boolean) → default protectLastKey', () => {
-      localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify({ hideLastFavRef: 'true' }));
-      expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('protectLastKey');
+  test('legacy — null → default protectLastKey', () => {
+    localStorage.setItem(LEGACY_STORAGE_KEY, 'null');
+    migrateDrawingRestrictionsSettings();
+    expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('protectLastKey');
+  });
+
+  test('legacy hideLastFavRef — строка (не boolean) → default protectLastKey', () => {
+    localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify({ hideLastFavRef: 'true' }));
+    migrateDrawingRestrictionsSettings();
+    expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('protectLastKey');
+  });
+
+  // Идемпотентность: повторный вызов не меняет.
+  test('повторный migrate — не перезаписывает', () => {
+    localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify({ hideLastFavRef: true }));
+    migrateDrawingRestrictionsSettings();
+    // Пользователь сохранил кастомную настройку.
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'off',
+      maxDistanceMeters: 0,
     });
+    // Второй вызов migrate не должен вернуть protectLastKey.
+    migrateDrawingRestrictionsSettings();
+    expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('off');
   });
 });

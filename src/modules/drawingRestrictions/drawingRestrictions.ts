@@ -1,6 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { injectStyles, removeStyles } from '../../core/dom';
 import { installDrawFilter, uninstallDrawFilter } from './drawFilter';
+import { migrateDrawingRestrictionsSettings } from './settings';
 import { installSettingsUi, uninstallSettingsUi } from './settingsUi';
 import { installStarCenterButton, uninstallStarCenterButton } from './starCenterButton';
 import {
@@ -26,8 +27,7 @@ export const drawingRestrictions: IFeatureModule = {
   category: 'feature',
 
   init() {
-    // Загрузка настроек (и миграция hideLastFavRef) выполняется при первом обращении
-    // из drawFilter/settingsUi — loadDrawingRestrictionsSettings lazy.
+    migrateDrawingRestrictionsSettings();
   },
 
   enable() {

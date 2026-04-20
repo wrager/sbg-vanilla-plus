@@ -50,29 +50,41 @@ function readLegacyFavMode(): FavProtectionMode | null {
   return value ? 'protectLastKey' : 'off';
 }
 
+/**
+ * Чистый геттер: читает свежий ключ localStorage, без записи. Возвращает defaults,
+ * если ключ отсутствует или значение не проходит валидацию. Миграция со старого
+ * ключа `hideLastFavRef` выполняется отдельно — `migrateDrawingRestrictionsSettings`
+ * вызывается из `init()` модуля.
+ */
 export function loadDrawingRestrictionsSettings(): IDrawingRestrictionsSettings {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw) as unknown;
-    } catch {
-      return defaultDrawingRestrictionsSettings();
-    }
-    if (!isSettings(parsed)) return defaultDrawingRestrictionsSettings();
-    return parsed;
+  if (!raw) return defaultDrawingRestrictionsSettings();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return defaultDrawingRestrictionsSettings();
   }
-  // Первый запуск: переносим значение из favoritedPoints.hideLastFavRef, чтобы
-  // пользовательская настройка «защита последнего ключа» не сбросилась при переезде.
+  if (!isSettings(parsed)) return defaultDrawingRestrictionsSettings();
+  return parsed;
+}
+
+export function saveDrawingRestrictionsSettings(settings: IDrawingRestrictionsSettings): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+}
+
+/**
+ * Идемпотентная миграция: при отсутствии `svp_drawingRestrictions` переносит
+ * настройку `hideLastFavRef` из legacy-ключа `svp_favoritedPoints` и сохраняет
+ * defaults с подставленным `favProtectionMode`. Вызывается из `init()` модуля —
+ * один раз за жизнь страницы, до первого `load`.
+ */
+export function migrateDrawingRestrictionsSettings(): void {
+  if (localStorage.getItem(STORAGE_KEY) !== null) return;
   const legacy = readLegacyFavMode();
   const migrated: IDrawingRestrictionsSettings = {
     ...defaultDrawingRestrictionsSettings(),
     favProtectionMode: legacy ?? 'protectLastKey',
   };
   saveDrawingRestrictionsSettings(migrated);
-  return migrated;
-}
-
-export function saveDrawingRestrictionsSettings(settings: IDrawingRestrictionsSettings): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 }
