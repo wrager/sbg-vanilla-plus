@@ -1,5 +1,7 @@
 import { installStarCenterButton, uninstallStarCenterButton } from './starCenterButton';
 import { clearStarCenter, getStarCenter, getStarCenterGuid, setStarCenter } from './starCenter';
+import { findLayerByName, getOlMap } from '../../core/olMap';
+import type { IOlFeature, IOlLayer, IOlVectorSource } from '../../core/olMap';
 
 const TOGGLE_CLASS = 'svp-star-center-btn';
 
@@ -11,6 +13,9 @@ jest.mock('../../core/olMap', () => ({
   ),
   findLayerByName: jest.fn(() => null),
 }));
+
+const findLayerByNameMock = jest.mocked(findLayerByName);
+const getOlMapMock = jest.mocked(getOlMap);
 
 const showToastMock = jest.fn();
 jest.mock('../../core/toast', () => ({
@@ -45,6 +50,8 @@ beforeEach(() => {
   clearStarCenter();
   localStorage.clear();
   showToastMock.mockClear();
+  // Восстанавливаем дефолтный мок findLayerByName — null (layer недоступен).
+  findLayerByNameMock.mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -174,6 +181,185 @@ describe('starCenterButton — реактивность', () => {
     popup.dataset.guid = 'p2';
     await flushMicrotasks();
     expect(getToggle(popup)).toBeNull();
+  });
+});
+
+describe('starCenterButton — getPointName (извлечение имени точки из feature)', () => {
+  function makeFeatureWithGet(id: string, props: Record<string, unknown>): IOlFeature {
+    return {
+      getId: () => id,
+      getGeometry: () => ({ getCoordinates: () => [0, 0] }),
+      setId: () => {},
+      setStyle: () => {},
+      get(key: string) {
+        return props[key];
+      },
+      getProperties() {
+        return props;
+      },
+    };
+  }
+
+  function makeFeatureWithPropsOnly(id: string, props: Record<string, unknown>): IOlFeature {
+    return {
+      getId: () => id,
+      getGeometry: () => ({ getCoordinates: () => [0, 0] }),
+      setId: () => {},
+      setStyle: () => {},
+      // get() отсутствует — должен сработать fallback на getProperties().
+      getProperties() {
+        return props;
+      },
+    };
+  }
+
+  function makeLayer(features: IOlFeature[]): IOlLayer {
+    const source: IOlVectorSource = {
+      getFeatures: () => features,
+      addFeature: () => {},
+      clear: () => {},
+      on: () => {},
+      un: () => {},
+    };
+    return {
+      get: () => 'points',
+      getSource: () => source,
+    };
+  }
+
+  function getLastToastMessage(): string {
+    const calls = showToastMock.mock.calls as unknown[][];
+    if (calls.length === 0) return '';
+    const last = calls[calls.length - 1];
+    const [first] = last;
+    return typeof first === 'string' ? first : '';
+  }
+
+  // 9.D all-pass: feature.get('title') → строка.
+  test('имя через feature.get(title) попадает в toast', async () => {
+    findLayerByNameMock.mockReturnValue(makeLayer([makeFeatureWithGet('p1', { title: 'Alpha' })]));
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(getLastToastMessage()).toContain('"Alpha"');
+  });
+
+  // 9.D FALSE на title → переход к name.
+  test('title отсутствует — имя через feature.get(name)', async () => {
+    findLayerByNameMock.mockReturnValue(makeLayer([makeFeatureWithGet('p1', { name: 'Beta' })]));
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(getLastToastMessage()).toContain('"Beta"');
+  });
+
+  // 9.D: label — последний вариант.
+  test('title/name отсутствуют — имя через feature.get(label)', async () => {
+    findLayerByNameMock.mockReturnValue(makeLayer([makeFeatureWithGet('p1', { label: 'Gamma' })]));
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(getLastToastMessage()).toContain('"Gamma"');
+  });
+
+  // 9.E FALSE: нет get() → fallback на getProperties().
+  test('feature без get() — имя через getProperties()[title]', async () => {
+    findLayerByNameMock.mockReturnValue(
+      makeLayer([makeFeatureWithPropsOnly('p1', { title: 'Delta' })]),
+    );
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(getLastToastMessage()).toContain('"Delta"');
+  });
+
+  // 9.D.1 FALSE (undefined) на title, но есть name в getProperties.
+  test('get(title)=undefined и getProperties[name]=Epsilon — имя через getProperties', async () => {
+    const feature: IOlFeature = {
+      getId: () => 'p1',
+      getGeometry: () => ({ getCoordinates: () => [0, 0] }),
+      setId: () => {},
+      setStyle: () => {},
+      get: () => undefined,
+      getProperties: () => ({ name: 'Epsilon' }),
+    };
+    findLayerByNameMock.mockReturnValue(makeLayer([feature]));
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(getLastToastMessage()).toContain('"Epsilon"');
+  });
+
+  // 9.D.2 FALSE: пустая строка → переход к name.
+  test('get(title) = "" — переходим к следующему candidateKey', async () => {
+    findLayerByNameMock.mockReturnValue(
+      makeLayer([makeFeatureWithGet('p1', { title: '', name: 'Zeta' })]),
+    );
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(getLastToastMessage()).toContain('"Zeta"');
+  });
+
+  // 9.E FALSE: props null.
+  test('feature без title/name/label и без getProperties — toast без имени', async () => {
+    const feature: IOlFeature = {
+      getId: () => 'p1',
+      getGeometry: () => ({ getCoordinates: () => [0, 0] }),
+      setId: () => {},
+      setStyle: () => {},
+    };
+    findLayerByNameMock.mockReturnValue(makeLayer([feature]));
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(getLastToastMessage()).toContain('selected as star center for drawing');
+    expect(getLastToastMessage()).not.toContain('"');
+  });
+
+  // 9.C TRUE: feature с другим GUID в source — не матчится, пустая строка.
+  test('feature с matching GUID не найдена среди features — toast без имени', async () => {
+    findLayerByNameMock.mockReturnValue(
+      makeLayer([makeFeatureWithGet('other', { title: 'Other' })]),
+    );
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(getLastToastMessage()).not.toContain('"');
+  });
+
+  // 9.B TRUE: layer найден, но source = null.
+  test('layer без source — toast без имени', async () => {
+    findLayerByNameMock.mockReturnValue({
+      get: () => 'points',
+      getSource: () => null,
+    });
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(getLastToastMessage()).not.toContain('"');
+  });
+
+  // 9.A catch: getOlMap reject → warn + пустая строка.
+  test('getOlMap reject — warn, toast без имени', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    getOlMapMock.mockRejectedValueOnce(new Error('no map'));
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(warn).toHaveBeenCalled();
+    expect(getLastToastMessage()).not.toContain('"');
+    warn.mockRestore();
   });
 });
 
