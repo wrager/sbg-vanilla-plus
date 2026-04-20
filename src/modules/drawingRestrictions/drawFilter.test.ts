@@ -168,6 +168,77 @@ describe('drawFilter', () => {
     expect(response.status).toBe(200);
   });
 
+  // isDrawResponseShape narrowing: FALSE-ветки атомарных проверок.
+  test('response.json = строка — возвращается исходный Response', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'protectLastKey',
+      maxDistanceMeters: 0,
+    });
+    await addFavorite('fav1');
+    const originalResponse = buildResponse('just-a-string');
+    window.fetch = jest.fn().mockResolvedValue(originalResponse);
+    installDrawFilter();
+    const response = await window.fetch('/api/draw');
+    expect(response).toBe(originalResponse);
+  });
+
+  test('response.json = null — возвращается исходный Response', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'protectLastKey',
+      maxDistanceMeters: 0,
+    });
+    await addFavorite('fav1');
+    const originalResponse = buildResponse(null);
+    window.fetch = jest.fn().mockResolvedValue(originalResponse);
+    installDrawFilter();
+    const response = await window.fetch('/api/draw');
+    expect(response).toBe(originalResponse);
+  });
+
+  test('response.json без поля data — возвращается исходный Response', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'protectLastKey',
+      maxDistanceMeters: 0,
+    });
+    await addFavorite('fav1');
+    const originalResponse = buildResponse({ other: 1 });
+    window.fetch = jest.fn().mockResolvedValue(originalResponse);
+    installDrawFilter();
+    const response = await window.fetch('/api/draw');
+    expect(response).toBe(originalResponse);
+  });
+
+  test('response.json с data = null — возвращается исходный Response', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'protectLastKey',
+      maxDistanceMeters: 0,
+    });
+    await addFavorite('fav1');
+    const originalResponse = buildResponse({ data: null });
+    window.fetch = jest.fn().mockResolvedValue(originalResponse);
+    installDrawFilter();
+    const response = await window.fetch('/api/draw');
+    expect(response).toBe(originalResponse);
+  });
+
+  test('response.json с data-строкой — возвращается исходный Response', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'protectLastKey',
+      maxDistanceMeters: 0,
+    });
+    await addFavorite('fav1');
+    const originalResponse = buildResponse({ data: 'not-an-array' });
+    window.fetch = jest.fn().mockResolvedValue(originalResponse);
+    installDrawFilter();
+    const response = await window.fetch('/api/draw');
+    expect(response).toBe(originalResponse);
+  });
+
   test('все фильтры отключены — ответ не модифицируется', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,

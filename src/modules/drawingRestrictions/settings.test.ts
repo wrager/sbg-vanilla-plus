@@ -27,6 +27,59 @@ describe('loadDrawingRestrictionsSettings', () => {
     expect(loadDrawingRestrictionsSettings()).toEqual(defaultDrawingRestrictionsSettings());
   });
 
+  // isSettings narrowing: FALSE-ветки каждой атомарной проверки.
+  test('defaults если parsed — строка (typeof !== object)', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify('just-a-string'));
+    expect(loadDrawingRestrictionsSettings()).toEqual(defaultDrawingRestrictionsSettings());
+  });
+
+  test('defaults если parsed — null', () => {
+    localStorage.setItem(STORAGE_KEY, 'null');
+    expect(loadDrawingRestrictionsSettings()).toEqual(defaultDrawingRestrictionsSettings());
+  });
+
+  test('defaults если нет поля version', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ favProtectionMode: 'off', maxDistanceMeters: 0 }),
+    );
+    expect(loadDrawingRestrictionsSettings()).toEqual(defaultDrawingRestrictionsSettings());
+  });
+
+  test('defaults если version — не число', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ version: '1', favProtectionMode: 'off', maxDistanceMeters: 0 }),
+    );
+    expect(loadDrawingRestrictionsSettings()).toEqual(defaultDrawingRestrictionsSettings());
+  });
+
+  test('defaults если нет поля favProtectionMode', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, maxDistanceMeters: 0 }));
+    expect(loadDrawingRestrictionsSettings()).toEqual(defaultDrawingRestrictionsSettings());
+  });
+
+  test('defaults если favProtectionMode — неизвестное значение', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ version: 1, favProtectionMode: 'invalid', maxDistanceMeters: 0 }),
+    );
+    expect(loadDrawingRestrictionsSettings()).toEqual(defaultDrawingRestrictionsSettings());
+  });
+
+  test('defaults если нет поля maxDistanceMeters', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, favProtectionMode: 'off' }));
+    expect(loadDrawingRestrictionsSettings()).toEqual(defaultDrawingRestrictionsSettings());
+  });
+
+  test('defaults если maxDistanceMeters — строка', () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ version: 1, favProtectionMode: 'off', maxDistanceMeters: '500' }),
+    );
+    expect(loadDrawingRestrictionsSettings()).toEqual(defaultDrawingRestrictionsSettings());
+  });
+
   test('round-trip: save → load сохраняет значения', () => {
     const custom = {
       version: 1,
@@ -83,6 +136,22 @@ describe('loadDrawingRestrictionsSettings', () => {
       localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify({ version: 1 }));
       const loaded = loadDrawingRestrictionsSettings();
       expect(loaded.favProtectionMode).toBe('protectLastKey');
+    });
+
+    // readLegacyFavMode narrowing: FALSE-ветки атомарных проверок.
+    test('legacy — строка (typeof !== object) → default protectLastKey', () => {
+      localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify('just-a-string'));
+      expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('protectLastKey');
+    });
+
+    test('legacy — null → default protectLastKey', () => {
+      localStorage.setItem(LEGACY_STORAGE_KEY, 'null');
+      expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('protectLastKey');
+    });
+
+    test('legacy hideLastFavRef — строка (не boolean) → default protectLastKey', () => {
+      localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify({ hideLastFavRef: 'true' }));
+      expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('protectLastKey');
     });
   });
 });

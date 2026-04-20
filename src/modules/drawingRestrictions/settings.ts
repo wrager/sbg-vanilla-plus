@@ -22,12 +22,15 @@ function isFavProtectionMode(value: unknown): value is FavProtectionMode {
 }
 
 function isSettings(value: unknown): value is IDrawingRestrictionsSettings {
-  if (typeof value !== 'object' || value === null) return false;
-  const record = value as Record<string, unknown>;
   return (
-    typeof record.version === 'number' &&
-    isFavProtectionMode(record.favProtectionMode) &&
-    typeof record.maxDistanceMeters === 'number'
+    typeof value === 'object' &&
+    value !== null &&
+    'version' in value &&
+    typeof value.version === 'number' &&
+    'favProtectionMode' in value &&
+    isFavProtectionMode(value.favProtectionMode) &&
+    'maxDistanceMeters' in value &&
+    typeof value.maxDistanceMeters === 'number'
   );
 }
 
@@ -41,7 +44,8 @@ function readLegacyFavMode(): FavProtectionMode | null {
     return null;
   }
   if (typeof parsed !== 'object' || parsed === null) return null;
-  const value = (parsed as Record<string, unknown>).hideLastFavRef;
+  if (!('hideLastFavRef' in parsed)) return null;
+  const value = parsed.hideLastFavRef;
   if (typeof value !== 'boolean') return null;
   return value ? 'protectLastKey' : 'off';
 }

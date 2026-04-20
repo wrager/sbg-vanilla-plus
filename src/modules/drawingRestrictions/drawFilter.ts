@@ -39,11 +39,9 @@ function getMethod(input: RequestInfo | URL, init: RequestInit | undefined): str
 }
 
 function isDrawResponseShape(value: unknown): value is IDrawResponseShape {
-  if (typeof value !== 'object' || value === null) return false;
-  if (!('data' in value)) return false;
-  // as Record — после typeof+null+'data' in; TS не сужает до индексируемого типа.
-  const record = value as Record<string, unknown>;
-  return Array.isArray(record.data);
+  return (
+    typeof value === 'object' && value !== null && 'data' in value && Array.isArray(value.data)
+  );
 }
 
 function showLastKeyToast(hidden: number): void {

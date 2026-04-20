@@ -14,11 +14,12 @@ function parseStored(raw: string | null): IStarCenter | null {
   // JSON не удался или результат — строка, трактуем как legacy-формат.
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed === 'object' && parsed !== null) {
-      const record = parsed as Record<string, unknown>;
-      if (typeof record.guid === 'string' && record.guid.length > 0) {
-        const name = typeof record.name === 'string' ? record.name : '';
-        return { guid: record.guid, name };
+    if (typeof parsed === 'object' && parsed !== null && 'guid' in parsed) {
+      const guidValue = parsed.guid;
+      if (typeof guidValue === 'string' && guidValue.length > 0) {
+        const nameValue = 'name' in parsed ? parsed.name : undefined;
+        const name = typeof nameValue === 'string' ? nameValue : '';
+        return { guid: guidValue, name };
       }
     }
   } catch {
