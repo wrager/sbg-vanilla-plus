@@ -96,3 +96,22 @@ export function countHiddenByLastKey(
   }
   return hidden;
 }
+
+/**
+ * Сколько элементов было бы скрыто правилом звезды. Возвращает 0, если центр
+ * не назначен или открыт попап самого центра (в этих случаях `keepByStar`
+ * предикат не создаётся — фильтр не применяется).
+ */
+export function countHiddenByStar(
+  entries: readonly IDrawEntry[],
+  starCenterGuid: string | null,
+  currentPopupGuid: string | null,
+): number {
+  if (starCenterGuid === null || currentPopupGuid === starCenterGuid) return 0;
+  let hidden = 0;
+  for (const entry of entries) {
+    if (typeof entry.p !== 'string') continue;
+    if (entry.p !== starCenterGuid) hidden += 1;
+  }
+  return hidden;
+}

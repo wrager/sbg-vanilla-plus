@@ -2,6 +2,7 @@ import {
   applyPredicates,
   buildPredicates,
   countHiddenByLastKey,
+  countHiddenByStar,
   type IDrawEntry,
 } from './filterRules';
 import type { IDrawingRestrictionsSettings } from './settings';
@@ -162,5 +163,39 @@ describe('countHiddenByLastKey', () => {
   test('игнорирует записи без p или a', () => {
     const entries: IDrawEntry[] = [{ p: 'fav1', a: 1 }, { a: 1 }, { p: 'fav2' }];
     expect(countHiddenByLastKey(entries, FAVORITES, 'protectLastKey')).toBe(1);
+  });
+});
+
+describe('countHiddenByStar', () => {
+  // Ранние выходы (5.B.1 / 5.B.2):
+  test('центр не назначен — 0', () => {
+    expect(countHiddenByStar(ENTRIES, null, 'n1')).toBe(0);
+  });
+
+  test('открыт попап центра — 0 (фильтр отключён)', () => {
+    expect(countHiddenByStar(ENTRIES, STAR_CENTER, STAR_CENTER)).toBe(0);
+  });
+
+  // Основная ветка: центр назначен, попап НЕ центра.
+  test('центр назначен, попап другой точки — считает всё кроме центра', () => {
+    // ENTRIES имеет 6 записей, одна из них — центр (p3). Скрыто: 5.
+    expect(countHiddenByStar(ENTRIES, STAR_CENTER, 'n1')).toBe(5);
+  });
+
+  test('центр назначен, попап null — считает всё кроме центра', () => {
+    expect(countHiddenByStar(ENTRIES, STAR_CENTER, null)).toBe(5);
+  });
+
+  // 5.D: typeof entry.p !== 'string' — skip.
+  test('entry без поля p не считается скрытым', () => {
+    const entries: IDrawEntry[] = [{ a: 1 }, { p: 'p3', a: 5 }, { p: 'other', a: 2 }];
+    // p3 = центр (не скрыт), other — скрыт. entry без p — пропущен.
+    expect(countHiddenByStar(entries, STAR_CENTER, 'n1')).toBe(1);
+  });
+
+  // 5.C: FALSE-ветка «entry.p === center» — центр не считается скрытым.
+  test('все точки равны центру — 0', () => {
+    const entries: IDrawEntry[] = [{ p: STAR_CENTER, a: 1 }];
+    expect(countHiddenByStar(entries, STAR_CENTER, 'n1')).toBe(0);
   });
 });
