@@ -176,3 +176,32 @@ describe('starCenterButton — реактивность', () => {
     expect(getToggle(popup)).toBeNull();
   });
 });
+
+describe('starCenterButton — идемпотентность async install', () => {
+  // Ветка через waitForElement: попап появляется ПОСЛЕ install (а не до).
+  // Без флага pendingInstall второй install прошёл бы guard (observer=null),
+  // оба колбэка отвалились бы по generation — кнопка не появилась бы вовсе.
+  test('повторный install до резолва waitForElement — no-op через pendingInstall', async () => {
+    installStarCenterButton();
+    installStarCenterButton();
+
+    // Попап появляется только теперь. Оба waitForElement резолвятся асинхронно.
+    const popup = createPopupDom('p1');
+    await flushMicrotasks();
+
+    const toggles = popup.querySelectorAll(`.${TOGGLE_CLASS}`);
+    expect(toggles.length).toBe(1);
+  });
+
+  test('install → uninstall → install до появления попапа — корректно инициализируется', async () => {
+    installStarCenterButton();
+    uninstallStarCenterButton();
+    installStarCenterButton();
+
+    const popup = createPopupDom('p1');
+    await flushMicrotasks();
+
+    const toggles = popup.querySelectorAll(`.${TOGGLE_CLASS}`);
+    expect(toggles.length).toBe(1);
+  });
+});

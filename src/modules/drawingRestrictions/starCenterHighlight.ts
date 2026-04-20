@@ -11,6 +11,9 @@ let overlaySource: IOlVectorSource | null = null;
 let sourceChangeHandler: (() => void) | null = null;
 let starCenterChangeHandler: (() => void) | null = null;
 let installGeneration = 0;
+// pendingInstall защищает от race `install() → install()` до резолва getOlMap:
+// синхронный guard `map !== null` недостаточен (map присваивается в .then()).
+let pendingInstall = false;
 
 function buildHighlightStyle(): unknown {
   const styleLib = window.ol?.style;
@@ -75,43 +78,56 @@ function createOverlayLayer(targetMap: IOlMap): boolean {
 }
 
 export function installStarCenterHighlight(): void {
-  if (map) return;
+  if (map || pendingInstall) return;
   installGeneration++;
   const generation = installGeneration;
-  void getOlMap().then((captured) => {
-    if (generation !== installGeneration) return;
-    map = captured;
-    const layer = findLayerByName(captured, POINTS_LAYER_NAME);
-    const source = layer?.getSource();
-    if (!source) {
-      console.warn('[SVP drawingRestrictions] слой points не найден — подсветка звезды недоступна');
-      return;
-    }
-    pointsSource = source;
+  pendingInstall = true;
+  void getOlMap()
+    .then((captured) => {
+      if (generation !== installGeneration) return;
+      const layer = findLayerByName(captured, POINTS_LAYER_NAME);
+      const source = layer?.getSource();
+      if (!source) {
+        console.warn(
+          '[SVP drawingRestrictions] слой points не найден — подсветка звезды недоступна',
+        );
+        pendingInstall = false;
+        return;
+      }
 
-    if (!createOverlayLayer(captured)) {
-      console.warn('[SVP drawingRestrictions] OL Vector layer/source недоступны');
-      return;
-    }
+      if (!createOverlayLayer(captured)) {
+        console.warn('[SVP drawingRestrictions] OL Vector layer/source недоступны');
+        pendingInstall = false;
+        return;
+      }
 
-    // Перерисовка при появлении/изменении features (центр мог быть за viewport
-    // при install, а потом подгрузиться).
-    sourceChangeHandler = (): void => {
+      map = captured;
+      pointsSource = source;
+
+      // Перерисовка при появлении/изменении features (центр мог быть за viewport
+      // при install, а потом подгрузиться).
+      sourceChangeHandler = (): void => {
+        refreshOverlay();
+      };
+      source.on('change', sourceChangeHandler);
+
+      starCenterChangeHandler = (): void => {
+        refreshOverlay();
+      };
+      document.addEventListener(STAR_CENTER_CHANGED_EVENT, starCenterChangeHandler);
+
       refreshOverlay();
-    };
-    source.on('change', sourceChangeHandler);
-
-    starCenterChangeHandler = (): void => {
-      refreshOverlay();
-    };
-    document.addEventListener(STAR_CENTER_CHANGED_EVENT, starCenterChangeHandler);
-
-    refreshOverlay();
-  });
+      pendingInstall = false;
+    })
+    .catch((error: unknown) => {
+      console.warn('[SVP drawingRestrictions] не удалось получить OL Map:', error);
+      pendingInstall = false;
+    });
 }
 
 export function uninstallStarCenterHighlight(): void {
   installGeneration++;
+  pendingInstall = false;
   overlaySource?.clear();
   if (map && overlayLayer) {
     map.removeLayer(overlayLayer);

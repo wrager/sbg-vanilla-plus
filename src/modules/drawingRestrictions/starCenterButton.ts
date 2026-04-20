@@ -21,6 +21,12 @@ let popupObserver: MutationObserver | null = null;
 let clickAbortController: AbortController | null = null;
 let changeHandler: (() => void) | null = null;
 let installGeneration = 0;
+// pendingInstall защищает от race `install() → install()` до того как первый
+// waitForElement резолвится: синхронный guard `popupObserver !== null`
+// недостаточен, потому что observer ставится только в .then(). Без флага оба
+// install'а пройдут guard, оба колбэка отвалятся по generation — observer не
+// установится вовсе.
+let pendingInstall = false;
 
 function getCurrentGuid(popup: Element): string | null {
   if (popup.classList.contains('hidden')) return null;
@@ -213,7 +219,7 @@ function startObserving(popup: Element): void {
 }
 
 export function installStarCenterButton(): void {
-  if (popupObserver) return;
+  if (popupObserver || pendingInstall) return;
   installGeneration++;
   const generation = installGeneration;
   const existing = document.querySelector(POPUP_SELECTOR);
@@ -221,18 +227,22 @@ export function installStarCenterButton(): void {
     startObserving(existing);
     return;
   }
+  pendingInstall = true;
   waitForElement(POPUP_SELECTOR)
     .then((popup) => {
       if (generation !== installGeneration) return;
       startObserving(popup);
+      pendingInstall = false;
     })
     .catch((error: unknown) => {
       console.warn('[SVP drawingRestrictions] попап точки не найден:', error);
+      pendingInstall = false;
     });
 }
 
 export function uninstallStarCenterButton(): void {
   installGeneration++;
+  pendingInstall = false;
   popupObserver?.disconnect();
   popupObserver = null;
   clickAbortController?.abort();
