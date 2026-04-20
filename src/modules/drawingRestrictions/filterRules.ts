@@ -115,3 +115,21 @@ export function countHiddenByStar(
   }
   return hidden;
 }
+
+/**
+ * Сколько элементов было бы скрыто правилом дистанции. Возвращает 0, если
+ * `maxDistanceMeters` не положительное число (в этом случае `keepByDistance`
+ * предикат не создаётся — фильтр не применяется).
+ */
+export function countHiddenByDistance(
+  entries: readonly IDrawEntry[],
+  maxDistanceMeters: number,
+): number {
+  if (!Number.isFinite(maxDistanceMeters) || maxDistanceMeters <= 0) return 0;
+  let hidden = 0;
+  for (const entry of entries) {
+    if (typeof entry.d !== 'number') continue;
+    if (entry.d > maxDistanceMeters) hidden += 1;
+  }
+  return hidden;
+}

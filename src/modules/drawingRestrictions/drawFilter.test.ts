@@ -3,6 +3,21 @@ import { addFavorite, loadFavorites, resetForTests } from '../../core/favoritesS
 import { saveDrawingRestrictionsSettings } from './settings';
 import { clearStarCenter, setStarCenter } from './starCenter';
 
+const showToastMock = jest.fn();
+jest.mock('../../core/toast', () => ({
+  showToast: (...args: unknown[]) => {
+    showToastMock(...args);
+  },
+}));
+
+function lastToastMessage(): string {
+  const calls = showToastMock.mock.calls as unknown[][];
+  if (calls.length === 0) return '';
+  const last = calls[calls.length - 1];
+  const [first] = last;
+  return typeof first === 'string' ? first : '';
+}
+
 async function resetIdb(): Promise<void> {
   resetForTests();
   await new Promise<void>((resolve, reject) => {
@@ -44,6 +59,7 @@ beforeEach(async () => {
   localStorage.clear();
   originalFetch = window.fetch;
   document.body.innerHTML = '';
+  showToastMock.mockClear();
 });
 
 afterEach(() => {
@@ -378,5 +394,224 @@ describe('drawFilter', () => {
     const second = await window.fetch('/api/draw');
     const secondBody = (await second.json()) as { data: unknown[] };
     expect(secondBody.data).toHaveLength(0);
+  });
+});
+
+describe('drawFilter — выбор toast по комбинации счётчиков', () => {
+  // s/d/k = hiddenByStar/Distance/LastKey > 0.
+
+  // 0 0 0 — ничего не скрыто → showToast не вызывается.
+  test('s=0 d=0 k=0 (нет скрытых) — showToast не вызван', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'protectLastKey',
+      maxDistanceMeters: 0,
+    });
+    // Избранные не добавлены → last-key не сработает. Центра нет, distance=0.
+    window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'a', a: 3 }] }));
+    installDrawFilter();
+    await window.fetch('/api/draw');
+    expect(showToastMock).not.toHaveBeenCalled();
+  });
+
+  // 1 0 0 — только звезда.
+  test('s=1 d=0 k=0 — star-only toast', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'off',
+      maxDistanceMeters: 0,
+    });
+    setStarCenter('center', '');
+    createPopup('other');
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        data: [
+          { p: 'a', a: 2 },
+          { p: 'b', a: 2 },
+          { p: 'center', a: 5 },
+        ],
+      }),
+    );
+    installDrawFilter();
+    await window.fetch('/api/draw');
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(lastToastMessage()).toContain('star mode');
+    expect(lastToastMessage()).toContain('(2)');
+  });
+
+  // 0 1 0 — только дистанция.
+  test('s=0 d=1 k=0 — distance-only toast', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'off',
+      maxDistanceMeters: 500,
+    });
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        data: [
+          { p: 'a', d: 300 },
+          { p: 'b', d: 900 },
+          { p: 'c', d: 1200 },
+        ],
+      }),
+    );
+    installDrawFilter();
+    await window.fetch('/api/draw');
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(lastToastMessage()).toContain('distance limit');
+    expect(lastToastMessage()).toContain('(2)');
+    expect(lastToastMessage()).toContain('500');
+  });
+
+  // 0 0 1 — только last-key (старое поведение сохраняется).
+  test('s=0 d=0 k=1 — last-key toast с плюрализацией', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'protectLastKey',
+      maxDistanceMeters: 0,
+    });
+    await addFavorite('fav1');
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        data: [
+          { p: 'fav1', a: 1 },
+          { p: 'other', a: 5 },
+        ],
+      }),
+    );
+    installDrawFilter();
+    await window.fetch('/api/draw');
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(lastToastMessage()).toContain('last key');
+  });
+
+  // 1 1 0 — звезда + дистанция.
+  test('s=1 d=1 k=0 — combined star+distance toast (totalHidden)', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'off',
+      maxDistanceMeters: 500,
+    });
+    setStarCenter('center', '');
+    createPopup('other');
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        // center (d=300), другие: a(d=300, скрыт звездой), b(d=900, скрыт и звездой и distance),
+        // c(d=200, скрыт звездой). originalLength=4, filteredLength=1, totalHidden=3.
+        data: [
+          { p: 'center', d: 300 },
+          { p: 'a', d: 300 },
+          { p: 'b', d: 900 },
+          { p: 'c', d: 200 },
+        ],
+      }),
+    );
+    installDrawFilter();
+    await window.fetch('/api/draw');
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(lastToastMessage()).toContain('star mode');
+    expect(lastToastMessage()).toContain('distance limit');
+    expect(lastToastMessage()).toContain('(3)');
+  });
+
+  // 1 0 1 — звезда + last-key.
+  test('s=1 d=0 k=1 — combined star+lastKey toast с breakdown', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'protectLastKey',
+      maxDistanceMeters: 0,
+    });
+    await addFavorite('fav1');
+    setStarCenter('center', '');
+    createPopup('other');
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        data: [
+          { p: 'fav1', a: 1 }, // last-key hit (и звезда)
+          { p: 'a', a: 2 }, // star hit
+          { p: 'center', a: 5 }, // остаётся
+        ],
+      }),
+    );
+    installDrawFilter();
+    await window.fetch('/api/draw');
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(lastToastMessage()).toContain('star mode');
+    expect(lastToastMessage()).toContain('last key');
+  });
+
+  // 0 1 1 — дистанция + last-key.
+  test('s=0 d=1 k=1 — combined distance+lastKey toast', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'protectLastKey',
+      maxDistanceMeters: 500,
+    });
+    await addFavorite('fav1');
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        data: [
+          { p: 'fav1', a: 1, d: 300 }, // last-key hit
+          { p: 'a', a: 2, d: 900 }, // distance hit
+          { p: 'b', a: 2, d: 300 }, // остаётся
+        ],
+      }),
+    );
+    installDrawFilter();
+    await window.fetch('/api/draw');
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(lastToastMessage()).toContain('beyond');
+    expect(lastToastMessage()).toContain('500');
+    expect(lastToastMessage()).toContain('last key');
+  });
+
+  // 1 1 1 — все три.
+  test('s=1 d=1 k=1 — all-three toast', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'protectLastKey',
+      maxDistanceMeters: 500,
+    });
+    await addFavorite('fav1');
+    setStarCenter('center', '');
+    createPopup('other');
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        data: [
+          { p: 'fav1', a: 1, d: 300 }, // last-key hit (и star)
+          { p: 'a', a: 2, d: 900 }, // star + distance hit
+          { p: 'center', a: 5, d: 200 }, // остаётся
+        ],
+      }),
+    );
+    installDrawFilter();
+    await window.fetch('/api/draw');
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(lastToastMessage()).toContain('star mode');
+    expect(lastToastMessage()).toContain('distance');
+    expect(lastToastMessage()).toContain('last-key');
+  });
+
+  test('ровно один showToast на response при любой активной комбинации', async () => {
+    // Двойная проверка: для all-three не вызываются дополнительные toast'ы.
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'protectLastKey',
+      maxDistanceMeters: 500,
+    });
+    await addFavorite('fav1');
+    setStarCenter('center', '');
+    createPopup('other');
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        data: [
+          { p: 'fav1', a: 1, d: 900 },
+          { p: 'center', a: 5, d: 200 },
+        ],
+      }),
+    );
+    installDrawFilter();
+    await window.fetch('/api/draw');
+    expect(showToastMock).toHaveBeenCalledTimes(1);
   });
 });

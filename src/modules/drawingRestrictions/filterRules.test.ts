@@ -1,6 +1,7 @@
 import {
   applyPredicates,
   buildPredicates,
+  countHiddenByDistance,
   countHiddenByLastKey,
   countHiddenByStar,
   type IDrawEntry,
@@ -197,5 +198,43 @@ describe('countHiddenByStar', () => {
   test('все точки равны центру — 0', () => {
     const entries: IDrawEntry[] = [{ p: STAR_CENTER, a: 1 }];
     expect(countHiddenByStar(entries, STAR_CENTER, 'n1')).toBe(0);
+  });
+});
+
+describe('countHiddenByDistance', () => {
+  // Ранние выходы (5.E.1 / 5.E.2):
+  test('max = 0 — 0', () => {
+    expect(countHiddenByDistance(ENTRIES, 0)).toBe(0);
+  });
+
+  test('max = -1 — 0', () => {
+    expect(countHiddenByDistance(ENTRIES, -1)).toBe(0);
+  });
+
+  test('max = NaN — 0', () => {
+    expect(countHiddenByDistance(ENTRIES, Number.NaN)).toBe(0);
+  });
+
+  test('max = Infinity — 0', () => {
+    expect(countHiddenByDistance(ENTRIES, Number.POSITIVE_INFINITY)).toBe(0);
+  });
+
+  // 5.F: typeof entry.d !== 'number' — skip.
+  test('entry без поля d не считается скрытым', () => {
+    const entries: IDrawEntry[] = [{ p: 'a', d: 600 }, { p: 'b' }];
+    // Только первая точка с d=600 > 500, вторая без d — пропущена.
+    expect(countHiddenByDistance(entries, 500)).toBe(1);
+  });
+
+  // 5.G: entry.d > maxDistanceMeters.
+  test('max = 500 — считает записи с d > 500', () => {
+    // ENTRIES: d=300, 900, 300, 900, 500 (центр), noD. Скрыто: 2 (fav2=900, n2=900).
+    // p3 имеет d=500 — не строго больше 500, не скрыт.
+    expect(countHiddenByDistance(ENTRIES, 500)).toBe(2);
+  });
+
+  test('запись с d равным порогу не считается скрытой (строгое >)', () => {
+    const entries: IDrawEntry[] = [{ p: 'a', d: 500 }];
+    expect(countHiddenByDistance(entries, 500)).toBe(0);
   });
 });

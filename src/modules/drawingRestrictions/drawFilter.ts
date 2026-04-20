@@ -4,7 +4,9 @@ import { showToast } from '../../core/toast';
 import {
   applyPredicates,
   buildPredicates,
+  countHiddenByDistance,
   countHiddenByLastKey,
+  countHiddenByStar,
   type IDrawEntry,
 } from './filterRules';
 import { loadDrawingRestrictionsSettings } from './settings';
@@ -44,8 +46,8 @@ function isDrawResponseShape(value: unknown): value is IDrawResponseShape {
   );
 }
 
-function showLastKeyToast(hidden: number): void {
-  const message = t(
+function lastKeyMessage(hidden: number): string {
+  return t(
     hidden === 1
       ? {
           en: `Hidden last key from a favorited point`,
@@ -56,7 +58,97 @@ function showLastKeyToast(hidden: number): void {
           ru: `Скрыты последние ${hidden} ${hidden < 5 ? 'ключа' : 'ключей'} от избранных точек`,
         },
   );
-  showToast(message, 4000);
+}
+
+function starMessage(hidden: number): string {
+  return t({
+    en: `Points (${hidden}) hidden: star mode`,
+    ru: `Точки (${hidden}) скрыты: режим "Звезда"`,
+  });
+}
+
+function distanceMessage(hidden: number, maxMeters: number): string {
+  return t({
+    en: `Points (${hidden}) hidden: distance limit (max ${maxMeters} m)`,
+    ru: `Точки (${hidden}) скрыты: ограничение дальности (макс. ${maxMeters} м)`,
+  });
+}
+
+function starAndDistanceMessage(totalHidden: number): string {
+  return t({
+    en: `Points (${totalHidden}) hidden: star mode + distance limit`,
+    ru: `Точки (${totalHidden}) скрыты: режим "Звезда" + ограничение дальности`,
+  });
+}
+
+function starAndLastKeyMessage(star: number, lastKey: number): string {
+  return t({
+    en: `Hidden: ${star} in star mode, ${lastKey} last key(s) of favorited points`,
+    ru: `Скрыто: ${star} в режиме "Звезда", ${lastKey} последних ключ(а/ей) избранных точек`,
+  });
+}
+
+function distanceAndLastKeyMessage(distance: number, lastKey: number, maxMeters: number): string {
+  return t({
+    en: `Hidden: ${distance} beyond ${maxMeters} m, ${lastKey} last key(s) of favorited points`,
+    ru: `Скрыто: ${distance} за ${maxMeters} м, ${lastKey} последних ключ(а/ей) избранных точек`,
+  });
+}
+
+function allThreeMessage(totalHidden: number): string {
+  return t({
+    en: `Points (${totalHidden}) hidden: star mode + distance + last-key protection`,
+    ru: `Точки (${totalHidden}) скрыты: "Звезда" + дальность + защита последних ключей`,
+  });
+}
+
+interface IToastInputs {
+  hiddenByStar: number;
+  hiddenByDistance: number;
+  hiddenByLastKey: number;
+  totalHidden: number;
+  maxDistanceMeters: number;
+}
+
+/**
+ * Выбор единственного toast-сообщения по комбинации счётчиков (ровно один
+ * showToast на response). Матрица покрывает 7 ненулевых комбинаций + no-op
+ * при all-zero. Логика: каждый counter > 0 — отдельная причина, мы объединяем
+ * названия активных причин; для star+distance и all-three используется
+ * totalHidden (реально скрыто уникально после AND-композиции предикатов),
+ * для комбинаций с lastKey — breakdown по причинам (lastKey-скрытие всегда
+ * отдельно подсчитывается и не пересекается семантически с остальными).
+ */
+function pickToastMessage(inputs: IToastInputs): string | null {
+  const s = inputs.hiddenByStar > 0 ? 1 : 0;
+  const d = inputs.hiddenByDistance > 0 ? 1 : 0;
+  const k = inputs.hiddenByLastKey > 0 ? 1 : 0;
+  const mask = (s << 2) | (d << 1) | k;
+
+  switch (mask) {
+    case 0b000:
+      return null;
+    case 0b100:
+      return starMessage(inputs.hiddenByStar);
+    case 0b010:
+      return distanceMessage(inputs.hiddenByDistance, inputs.maxDistanceMeters);
+    case 0b001:
+      return lastKeyMessage(inputs.hiddenByLastKey);
+    case 0b110:
+      return starAndDistanceMessage(inputs.totalHidden);
+    case 0b101:
+      return starAndLastKeyMessage(inputs.hiddenByStar, inputs.hiddenByLastKey);
+    case 0b011:
+      return distanceAndLastKeyMessage(
+        inputs.hiddenByDistance,
+        inputs.hiddenByLastKey,
+        inputs.maxDistanceMeters,
+      );
+    case 0b111:
+      return allThreeMessage(inputs.totalHidden);
+    default:
+      return null;
+  }
 }
 
 function getCurrentPopupGuid(): string | null {
@@ -93,12 +185,14 @@ async function filterDrawResponse(response: Response): Promise<Response> {
   const original = parsed.data;
   parsed.data = applyPredicates(original, predicates);
 
-  // Toast только по protectLastKey: остальные ветки скрывают предсказуемо-массово
-  // и не требуют точечного уведомления.
-  const hiddenLastKey = countHiddenByLastKey(original, favorites, settings.favProtectionMode);
-  if (hiddenLastKey > 0) {
-    showLastKeyToast(hiddenLastKey);
-  }
+  const message = pickToastMessage({
+    hiddenByStar: countHiddenByStar(original, starCenterGuid, currentPopupGuid),
+    hiddenByDistance: countHiddenByDistance(original, settings.maxDistanceMeters),
+    hiddenByLastKey: countHiddenByLastKey(original, favorites, settings.favProtectionMode),
+    totalHidden: original.length - parsed.data.length,
+    maxDistanceMeters: settings.maxDistanceMeters,
+  });
+  if (message !== null) showToast(message, 4000);
 
   const modified = new Response(JSON.stringify(parsed), {
     status: response.status,
