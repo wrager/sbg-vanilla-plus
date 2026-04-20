@@ -1,7 +1,6 @@
 import { waitForElement } from '../../core/dom';
 import { t } from '../../core/l10n';
 import { findLayerByName, getOlMap } from '../../core/olMap';
-import { showToast } from '../../core/toast';
 import {
   STAR_CENTER_CHANGED_EVENT,
   clearStarCenter,
@@ -9,6 +8,7 @@ import {
   setStarCenter,
 } from './starCenter';
 import { STAR_ICON_SVG } from './starCenterIcon';
+import { showCenterAssignedToast, showCenterClearedToast } from './starCenterToasts';
 
 const TOGGLE_CLASS = 'svp-star-center-btn';
 const POPUP_ACTION_BUTTON_CLASS = 'svp-popup-action-button';
@@ -70,42 +70,6 @@ async function getPointName(guid: string): Promise<string> {
     console.warn('[SVP drawingRestrictions] не удалось получить имя точки:', error);
   }
   return '';
-}
-
-function showCenterClearedToast(name: string): void {
-  if (name.length === 0) {
-    showToast(t({ en: 'Star center cleared', ru: 'Центр звезды снят' }), 3000);
-    return;
-  }
-  showToast(
-    t({
-      en: `Star center cleared: ${name}`,
-      ru: `Центр звезды снят: ${name}`,
-    }),
-    3000,
-  );
-}
-
-function showCenterAssignedToast(name: string): void {
-  // Формулировка повторяет CUI (onPointPopupOpened): «Точка X выбрана центром
-  // для рисования звезды.» — узнаваемость для игроков, пришедших из CUI.
-  if (name.length === 0) {
-    showToast(
-      t({
-        en: 'Point selected as star center for drawing.',
-        ru: 'Точка выбрана центром для рисования звезды.',
-      }),
-      3000,
-    );
-    return;
-  }
-  showToast(
-    t({
-      en: `Point "${name}" selected as star center for drawing.`,
-      ru: `Точка "${name}" выбрана центром для рисования звезды.`,
-    }),
-    3000,
-  );
 }
 
 function createButton(

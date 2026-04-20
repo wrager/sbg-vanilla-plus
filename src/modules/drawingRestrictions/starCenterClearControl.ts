@@ -1,7 +1,6 @@
-import { t } from '../../core/l10n';
-import { showToast } from '../../core/toast';
 import { STAR_CENTER_CHANGED_EVENT, clearStarCenter, getStarCenter } from './starCenter';
 import { STAR_ICON_SLASH_SVG } from './starCenterIcon';
+import { showCenterClearedToast } from './starCenterToasts';
 
 const CONTROL_CLASS = 'svp-star-center-clear-control';
 const ICON_BUTTON_CLASS = 'svp-star-icon-button';
@@ -14,20 +13,6 @@ let changeHandler: (() => void) | null = null;
 let domObserver: MutationObserver | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let windowResizeHandler: (() => void) | null = null;
-
-function showCenterClearedToast(name: string): void {
-  if (name.length === 0) {
-    showToast(t({ en: 'Star center cleared', ru: 'Центр звезды снят' }), 3000);
-    return;
-  }
-  showToast(
-    t({
-      en: `Star center cleared: ${name}`,
-      ru: `Центр звезды снят: ${name}`,
-    }),
-    3000,
-  );
-}
 
 /**
  * Позиционирует control прямо под `.region-picker`. Координаты читаем через
