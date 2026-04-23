@@ -73,6 +73,11 @@ describe('isModuleNativeInCurrentGame', () => {
     document.body.innerHTML = '<div class="navi-floater hidden"></div>';
     expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(true);
   });
+
+  test('с .navi-floater inventoryCleanup считается нативно реализованным', () => {
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    expect(isModuleNativeInCurrentGame('inventoryCleanup')).toBe(true);
+  });
 });
 
 describe('getGameVersionWhereNative', () => {
@@ -83,5 +88,9 @@ describe('getGameVersionWhereNative', () => {
 
   test('для favoritedPoints возвращает 0.6.1', () => {
     expect(getGameVersionWhereNative('favoritedPoints')).toBe('0.6.1');
+  });
+
+  test('для inventoryCleanup возвращает 0.6.1', () => {
+    expect(getGameVersionWhereNative('inventoryCleanup')).toBe('0.6.1');
   });
 });

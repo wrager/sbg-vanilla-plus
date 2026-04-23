@@ -21,7 +21,10 @@ export function isSbg061Detected(): boolean {
 // Модули, чья функциональность реализована нативно в SBG 0.6.1.
 // Множество заполняется по одному id за раз — каждый с обоснованием
 // перекрытия use case в commit message соответствующего коммита.
-const DEPRECATED_SINCE_061: ReadonlySet<string> = new Set<string>(['favoritedPoints']);
+const DEPRECATED_SINCE_061: ReadonlySet<string> = new Set<string>([
+  'favoritedPoints',
+  'inventoryCleanup',
+]);
 
 export function isModuleNativeInCurrentGame(moduleId: string): boolean {
   return isSbg061Detected() && DEPRECATED_SINCE_061.has(moduleId);
