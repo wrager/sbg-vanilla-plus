@@ -93,6 +93,11 @@ describe('isModuleNativeInCurrentGame', () => {
     document.body.innerHTML = '<div class="navi-floater hidden"></div>';
     expect(isModuleNativeInCurrentGame('ngrsZoom')).toBe(true);
   });
+
+  test('с .navi-floater singleFingerRotation считается нативно реализованным', () => {
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    expect(isModuleNativeInCurrentGame('singleFingerRotation')).toBe(true);
+  });
 });
 
 describe('getGameVersionWhereNative', () => {
@@ -119,5 +124,9 @@ describe('getGameVersionWhereNative', () => {
 
   test('для ngrsZoom возвращает 0.6.1', () => {
     expect(getGameVersionWhereNative('ngrsZoom')).toBe('0.6.1');
+  });
+
+  test('для singleFingerRotation возвращает 0.6.1', () => {
+    expect(getGameVersionWhereNative('singleFingerRotation')).toBe('0.6.1');
   });
 });

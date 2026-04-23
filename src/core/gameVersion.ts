@@ -27,6 +27,7 @@ const DEPRECATED_SINCE_061: ReadonlySet<string> = new Set<string>([
   'keyCountOnPoints',
   'repairAtFullCharge',
   'ngrsZoom',
+  'singleFingerRotation',
 ]);
 
 export function isModuleNativeInCurrentGame(moduleId: string): boolean {
