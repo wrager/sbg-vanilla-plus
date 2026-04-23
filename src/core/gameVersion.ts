@@ -28,6 +28,7 @@ const DEPRECATED_SINCE_061: ReadonlySet<string> = new Set<string>([
   'repairAtFullCharge',
   'ngrsZoom',
   'singleFingerRotation',
+  'nextPointNavigation',
 ]);
 
 export function isModuleNativeInCurrentGame(moduleId: string): boolean {

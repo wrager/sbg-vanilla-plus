@@ -98,6 +98,11 @@ describe('isModuleNativeInCurrentGame', () => {
     document.body.innerHTML = '<div class="navi-floater hidden"></div>';
     expect(isModuleNativeInCurrentGame('singleFingerRotation')).toBe(true);
   });
+
+  test('с .navi-floater nextPointNavigation считается нативно реализованным', () => {
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    expect(isModuleNativeInCurrentGame('nextPointNavigation')).toBe(true);
+  });
 });
 
 describe('getGameVersionWhereNative', () => {
@@ -128,5 +133,9 @@ describe('getGameVersionWhereNative', () => {
 
   test('для singleFingerRotation возвращает 0.6.1', () => {
     expect(getGameVersionWhereNative('singleFingerRotation')).toBe('0.6.1');
+  });
+
+  test('для nextPointNavigation возвращает 0.6.1', () => {
+    expect(getGameVersionWhereNative('nextPointNavigation')).toBe('0.6.1');
   });
 });
