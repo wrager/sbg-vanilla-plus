@@ -78,6 +78,11 @@ describe('isModuleNativeInCurrentGame', () => {
     document.body.innerHTML = '<div class="navi-floater hidden"></div>';
     expect(isModuleNativeInCurrentGame('inventoryCleanup')).toBe(true);
   });
+
+  test('с .navi-floater keyCountOnPoints считается нативно реализованным', () => {
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    expect(isModuleNativeInCurrentGame('keyCountOnPoints')).toBe(true);
+  });
 });
 
 describe('getGameVersionWhereNative', () => {
@@ -92,5 +97,9 @@ describe('getGameVersionWhereNative', () => {
 
   test('для inventoryCleanup возвращает 0.6.1', () => {
     expect(getGameVersionWhereNative('inventoryCleanup')).toBe('0.6.1');
+  });
+
+  test('для keyCountOnPoints возвращает 0.6.1', () => {
+    expect(getGameVersionWhereNative('keyCountOnPoints')).toBe('0.6.1');
   });
 });
