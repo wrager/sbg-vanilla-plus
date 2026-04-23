@@ -25,6 +25,7 @@ const DEPRECATED_SINCE_061: ReadonlySet<string> = new Set<string>([
   'favoritedPoints',
   'inventoryCleanup',
   'keyCountOnPoints',
+  'repairAtFullCharge',
 ]);
 
 export function isModuleNativeInCurrentGame(moduleId: string): boolean {
