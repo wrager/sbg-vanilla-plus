@@ -1,4 +1,4 @@
-import { isModuleNativeInCurrentGame } from './gameVersion';
+import { isModuleConflictingWithCurrentGame, isModuleNativeInCurrentGame } from './gameVersion';
 import { isModuleDisallowedInCurrentHost } from './host';
 import type { IFeatureModule } from './moduleRegistry';
 import { initModules, registerModules } from './moduleRegistry';
@@ -54,6 +54,11 @@ export function bootstrap(modules: IFeatureModule[]): void {
       // нативные жесты карты и т. д.), тоже подавляются на уровне runtime.
       // Persisted settings не трогаем по той же причине, что и для host.
       if (isModuleNativeInCurrentGame(id)) return false;
+      // Модули, которые конфликтуют с новой версией игры (наш жест/событие
+      // перехвачен нативным обработчиком на том же DOM-элементе), тоже
+      // подавляются — иначе одновременная работа даёт сломанный UX.
+      // В отличие от native-случая, здесь нашего функционала у игры нет.
+      if (isModuleConflictingWithCurrentGame(id)) return false;
       const mod = modules.find((m) => m.id === id);
       return isModuleEnabled(settings, id, mod?.defaultEnabled ?? true);
     },

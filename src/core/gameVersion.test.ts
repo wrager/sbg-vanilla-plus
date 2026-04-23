@@ -1,6 +1,8 @@
 import {
   checkVersion,
+  getGameVersionWhereConflicts,
   getGameVersionWhereNative,
+  isModuleConflictingWithCurrentGame,
   isModuleNativeInCurrentGame,
   isSbg061Detected,
   SBG_COMPATIBLE_VERSIONS,
@@ -103,6 +105,39 @@ describe('isModuleNativeInCurrentGame', () => {
     document.body.innerHTML = '<div class="navi-floater hidden"></div>';
     expect(isModuleNativeInCurrentGame('nextPointNavigation')).toBe(true);
   });
+
+  test('swipeToClosePopup НЕ native (конфликт, а не нативная замена)', () => {
+    // Игра не реализует закрытие попапа свайпом — её swipe переключает
+    // между точками. Наш модуль не заменён нативом, а конфликтует с ним.
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    expect(isModuleNativeInCurrentGame('swipeToClosePopup')).toBe(false);
+  });
+});
+
+describe('isModuleConflictingWithCurrentGame', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  test('без .navi-floater swipeToClosePopup не считается конфликтующим', () => {
+    document.body.innerHTML = '';
+    expect(isModuleConflictingWithCurrentGame('swipeToClosePopup')).toBe(false);
+  });
+
+  test('с .navi-floater swipeToClosePopup считается конфликтующим', () => {
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    expect(isModuleConflictingWithCurrentGame('swipeToClosePopup')).toBe(true);
+  });
+
+  test('native-модули не попадают в категорию конфликтующих', () => {
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    expect(isModuleConflictingWithCurrentGame('favoritedPoints')).toBe(false);
+  });
+
+  test('модуль вне обоих множеств не конфликтует', () => {
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    expect(isModuleConflictingWithCurrentGame('enhancedMainScreen')).toBe(false);
+  });
 });
 
 describe('getGameVersionWhereNative', () => {
@@ -137,5 +172,23 @@ describe('getGameVersionWhereNative', () => {
 
   test('для nextPointNavigation возвращает 0.6.1', () => {
     expect(getGameVersionWhereNative('nextPointNavigation')).toBe('0.6.1');
+  });
+
+  test('для swipeToClosePopup возвращает null (он конфликтует, а не native)', () => {
+    expect(getGameVersionWhereNative('swipeToClosePopup')).toBeNull();
+  });
+});
+
+describe('getGameVersionWhereConflicts', () => {
+  test('для swipeToClosePopup возвращает 0.6.1', () => {
+    expect(getGameVersionWhereConflicts('swipeToClosePopup')).toBe('0.6.1');
+  });
+
+  test('для native-модуля возвращает null', () => {
+    expect(getGameVersionWhereConflicts('favoritedPoints')).toBeNull();
+  });
+
+  test('для модуля вне обоих множеств возвращает null', () => {
+    expect(getGameVersionWhereConflicts('enhancedMainScreen')).toBeNull();
   });
 });

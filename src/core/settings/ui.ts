@@ -1,7 +1,7 @@
 import type { IFeatureModule } from '../moduleRegistry';
 import { buildBugReportUrl, buildDiagnosticClipboard } from '../bugReport';
 import { injectStyles } from '../dom';
-import { isModuleNativeInCurrentGame } from '../gameVersion';
+import { isModuleConflictingWithCurrentGame, isModuleNativeInCurrentGame } from '../gameVersion';
 import { isModuleDisallowedInCurrentHost, isSbgScout } from '../host';
 import type { ILocalizedString } from '../l10n';
 import { t } from '../l10n';
@@ -176,12 +176,15 @@ const PANEL_STYLES = `
 .svp-module-row-host-provided .svp-module-name,
 .svp-module-row-host-provided .svp-module-desc,
 .svp-module-row-native-in-game .svp-module-name,
-.svp-module-row-native-in-game .svp-module-desc {
+.svp-module-row-native-in-game .svp-module-desc,
+.svp-module-row-conflicting-with-game .svp-module-name,
+.svp-module-row-conflicting-with-game .svp-module-desc {
   color: var(--text-disabled);
 }
 
 .svp-module-row-host-provided-label,
-.svp-module-row-native-in-game-label {
+.svp-module-row-native-in-game-label,
+.svp-module-row-conflicting-with-game-label {
   font-size: 10px;
   font-style: italic;
   color: var(--text-disabled);
@@ -301,6 +304,11 @@ const NATIVE_IN_GAME_LABEL: ILocalizedString = {
   ru: 'Реализовано в игре',
 };
 
+const CONFLICTING_WITH_GAME_LABEL: ILocalizedString = {
+  en: 'Conflicts with the new version of the game',
+  ru: 'Конфликтует с новой версией игры',
+};
+
 /**
  * Строка для модуля, функциональность которого даёт сам хост (например,
  * keepScreenOn в SBG Scout управляется нативно Android). Чекбокса нет,
@@ -341,6 +349,69 @@ function createHostProvidedRow(
   info.appendChild(nameLine);
   info.appendChild(desc);
   info.appendChild(hostLabel);
+
+  const failed = document.createElement('div');
+  failed.className = 'svp-module-failed';
+
+  function setError(message: string | null): void {
+    if (message) {
+      failed.textContent = message;
+      failed.style.display = '';
+    } else {
+      failed.textContent = '';
+      failed.style.display = 'none';
+    }
+  }
+
+  setError(errorMessage);
+  info.appendChild(failed);
+
+  row.appendChild(info);
+  return { row, setError };
+}
+
+/**
+ * Строка для модуля, который конфликтует с новой версией игры:
+ * нативного аналога у игры нет, но её новый жест/обработчик перехватил
+ * тот же DOM-элемент, что слушает наш модуль. Структурно идентична
+ * native-in-game-строке, но с другой подписью — чтобы пользователь
+ * различал «игра заменила» и «игра несовместима».
+ */
+function createConflictingWithGameRow(
+  mod: IFeatureModule,
+  errorMessage: string | null,
+): HostProvidedRowResult {
+  const row = document.createElement('div');
+  row.className = 'svp-module-row svp-module-row-conflicting-with-game';
+
+  const info = document.createElement('div');
+  info.className = 'svp-module-info';
+
+  const nameLine = document.createElement('div');
+  nameLine.className = 'svp-module-name-line';
+
+  const name = document.createElement('div');
+  name.className = 'svp-module-name';
+  name.textContent = t(mod.name);
+
+  const modId = document.createElement('div');
+  modId.className = 'svp-module-id';
+  modId.textContent = mod.id;
+
+  nameLine.appendChild(name);
+  nameLine.appendChild(modId);
+
+  const desc = document.createElement('div');
+  desc.className = 'svp-module-desc';
+  desc.textContent = t(mod.description);
+
+  const conflictLabel = document.createElement('div');
+  conflictLabel.className = 'svp-module-row-conflicting-with-game-label';
+  conflictLabel.textContent = t(CONFLICTING_WITH_GAME_LABEL);
+
+  info.appendChild(nameLine);
+  info.appendChild(desc);
+  info.appendChild(conflictLabel);
 
   const failed = document.createElement('div');
   failed.className = 'svp-module-failed';
@@ -533,6 +604,17 @@ function fillSection(
       // логики. Подпись указывает, что причина — сама игра.
       if (isModuleNativeInCurrentGame(mod.id)) {
         const { row, setError } = createNativeInGameRow(mod, errorMessage);
+        errorDisplay.set(mod.id, setError);
+        section.appendChild(row);
+        continue;
+      }
+
+      // Модули, которые конфликтуют с новой версией игры: нативной замены
+      // нет, но её новый жест/обработчик занял тот же DOM-элемент. Подпись
+      // другая — пользователь не должен думать, что получил функцию игры
+      // взамен нашей.
+      if (isModuleConflictingWithCurrentGame(mod.id)) {
+        const { row, setError } = createConflictingWithGameRow(mod, errorMessage);
         errorDisplay.set(mod.id, setError);
         section.appendChild(row);
         continue;

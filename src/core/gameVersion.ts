@@ -42,3 +42,21 @@ export function getGameVersionWhereNative(moduleId: string): string | null {
   if (DEPRECATED_SINCE_061.has(moduleId)) return '0.6.1';
   return null;
 }
+
+// Модули, которые конфликтуют с новой версией SBG: use case у нашей
+// реализации не перекрыт нативом, но новая версия ввела жест/событие
+// на тех же DOM-элементах, что слушает наш модуль — одновременная
+// работа даёт сломанный UX (двойное срабатывание, перехват жеста и т. п.).
+// Отличие от DEPRECATED_SINCE_061 принципиальное: там игра заменила
+// нашу фичу — подпись «Реализовано в игре»; здесь наш функционал
+// пропадает без нативной замены — подпись «Конфликтует с новой версией игры».
+const CONFLICTS_WITH_061: ReadonlySet<string> = new Set<string>(['swipeToClosePopup']);
+
+export function isModuleConflictingWithCurrentGame(moduleId: string): boolean {
+  return isSbg061Detected() && CONFLICTS_WITH_061.has(moduleId);
+}
+
+export function getGameVersionWhereConflicts(moduleId: string): string | null {
+  if (CONFLICTS_WITH_061.has(moduleId)) return '0.6.1';
+  return null;
+}

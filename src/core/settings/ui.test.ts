@@ -768,6 +768,114 @@ describe('initSettingsUI — модули, нативные в SBG 0.6.1', () =>
   });
 });
 
+describe('initSettingsUI — модули, конфликтующие с SBG 0.6.1', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('style[id^="svp-"]').forEach((node) => {
+      node.remove();
+    });
+  });
+
+  function getRowByModuleId(moduleId: string): HTMLElement {
+    const panel = document.getElementById('svp-settings-panel');
+    if (!panel) throw new Error('svp-settings-panel not rendered');
+    const rows = panel.querySelectorAll<HTMLElement>('.svp-module-row');
+    for (const row of rows) {
+      const id = row.querySelector('.svp-module-id')?.textContent;
+      if (id === moduleId) return row;
+    }
+    throw new Error(`row for ${moduleId} not found`);
+  }
+
+  test('в 0.6.1 строка swipeToClosePopup рендерится без чекбокса', () => {
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    const swipeToClosePopup = createMockModule({
+      id: 'swipeToClosePopup',
+      defaultEnabled: true,
+    });
+
+    initSettingsUI([swipeToClosePopup], new Map());
+
+    const row = getRowByModuleId('swipeToClosePopup');
+    expect(row.querySelector('.svp-module-checkbox')).toBeNull();
+  });
+
+  test('в 0.6.1 строка swipeToClosePopup содержит подпись о конфликте', () => {
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    // Локаль берётся из localStorage['settings'].lang игры — заряжаем RU
+    // чтобы проверить русскую подпись.
+    localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
+    const swipeToClosePopup = createMockModule({
+      id: 'swipeToClosePopup',
+      defaultEnabled: true,
+    });
+
+    initSettingsUI([swipeToClosePopup], new Map());
+
+    const row = getRowByModuleId('swipeToClosePopup');
+    const label = row.querySelector('.svp-module-row-conflicting-with-game-label');
+    expect(label).not.toBeNull();
+    expect(label?.textContent).toContain('Конфликтует');
+  });
+
+  test('в 0.6.1 строка swipeToClosePopup имеет CSS-класс conflicting-with-game', () => {
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    const swipeToClosePopup = createMockModule({
+      id: 'swipeToClosePopup',
+      defaultEnabled: true,
+    });
+
+    initSettingsUI([swipeToClosePopup], new Map());
+
+    const row = getRowByModuleId('swipeToClosePopup');
+    expect(row.classList.contains('svp-module-row-conflicting-with-game')).toBe(true);
+    expect(row.classList.contains('svp-module-row-native-in-game')).toBe(false);
+  });
+
+  test('в 0.6.0 swipeToClosePopup рендерится как обычный чекбокс', () => {
+    document.body.innerHTML = '';
+    localStorage.setItem(
+      'svp_settings',
+      JSON.stringify({ version: 4, modules: { swipeToClosePopup: true }, errors: {} }),
+    );
+    const swipeToClosePopup = createMockModule({
+      id: 'swipeToClosePopup',
+      defaultEnabled: true,
+    });
+
+    initSettingsUI([swipeToClosePopup], new Map());
+
+    const row = getRowByModuleId('swipeToClosePopup');
+    const checkbox = row.querySelector<HTMLInputElement>('.svp-module-checkbox');
+    expect(checkbox).not.toBeNull();
+    expect(checkbox?.checked).toBe(true);
+  });
+
+  test('в 0.6.1 toggle-all не вызывает enable для swipeToClosePopup', async () => {
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    const swipeToClosePopup = createMockModule({
+      id: 'swipeToClosePopup',
+      defaultEnabled: true,
+      enable: jest.fn(),
+    });
+    const other = createMockModule({ id: 'other', defaultEnabled: true, enable: jest.fn() });
+
+    initSettingsUI([swipeToClosePopup, other], new Map());
+
+    const toggleAll = document.querySelector<HTMLInputElement>('.svp-toggle-all-checkbox');
+    if (!toggleAll) throw new Error('toggle-all checkbox not rendered');
+    toggleAll.checked = true;
+    toggleAll.dispatchEvent(new Event('change'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const row = getRowByModuleId('swipeToClosePopup');
+    expect(row.querySelector('.svp-module-checkbox')).toBeNull();
+    expect(swipeToClosePopup.enable).not.toHaveBeenCalled();
+  });
+});
+
 describe('initSettingsUI — уведомление при отказе saveSettings', () => {
   beforeEach(() => {
     localStorage.clear();

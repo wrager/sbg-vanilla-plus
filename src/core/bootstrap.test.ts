@@ -396,4 +396,63 @@ describe('bootstrap', () => {
       expect(other.enable).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('модули, конфликтующие с SBG 0.6.1', () => {
+    test('в 0.6.1 swipeToClosePopup не enable-ится (жест перехватывает игра)', () => {
+      document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { swipeToClosePopup: true },
+        errors: {},
+      });
+
+      const swipeToClosePopup = createMockModule({
+        id: 'swipeToClosePopup',
+        defaultEnabled: true,
+      });
+      bootstrap([swipeToClosePopup]);
+
+      expect(swipeToClosePopup.enable).not.toHaveBeenCalled();
+    });
+
+    test('в 0.6.1 swipeToClosePopup не перезаписывает пользовательский true в settings', () => {
+      document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+      let lastSaved: ISvpSettings | undefined;
+      jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
+        lastSaved = s;
+        return true;
+      });
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { swipeToClosePopup: true },
+        errors: {},
+      });
+
+      const swipeToClosePopup = createMockModule({
+        id: 'swipeToClosePopup',
+        defaultEnabled: true,
+      });
+      bootstrap([swipeToClosePopup]);
+
+      expect(swipeToClosePopup.enable).not.toHaveBeenCalled();
+      expect(lastSaved?.modules['swipeToClosePopup']).toBe(true);
+    });
+
+    test('в 0.6.0 (без .navi-floater) swipeToClosePopup включается как обычно', () => {
+      document.body.innerHTML = '';
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { swipeToClosePopup: true },
+        errors: {},
+      });
+
+      const swipeToClosePopup = createMockModule({
+        id: 'swipeToClosePopup',
+        defaultEnabled: true,
+      });
+      bootstrap([swipeToClosePopup]);
+
+      expect(swipeToClosePopup.enable).toHaveBeenCalledTimes(1);
+    });
+  });
 });
