@@ -88,6 +88,11 @@ describe('isModuleNativeInCurrentGame', () => {
     document.body.innerHTML = '<div class="navi-floater hidden"></div>';
     expect(isModuleNativeInCurrentGame('repairAtFullCharge')).toBe(true);
   });
+
+  test('с .navi-floater ngrsZoom считается нативно реализованным', () => {
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    expect(isModuleNativeInCurrentGame('ngrsZoom')).toBe(true);
+  });
 });
 
 describe('getGameVersionWhereNative', () => {
@@ -110,5 +115,9 @@ describe('getGameVersionWhereNative', () => {
 
   test('для repairAtFullCharge возвращает 0.6.1', () => {
     expect(getGameVersionWhereNative('repairAtFullCharge')).toBe('0.6.1');
+  });
+
+  test('для ngrsZoom возвращает 0.6.1', () => {
+    expect(getGameVersionWhereNative('ngrsZoom')).toBe('0.6.1');
   });
 });
