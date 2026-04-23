@@ -326,4 +326,74 @@ describe('bootstrap', () => {
       expect(keepScreenOnBrowser.enable).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('модули, нативные в SBG 0.6.1', () => {
+    test('в 0.6.1 (.navi-floater в DOM) favoritedPoints не enable-ится', () => {
+      // .navi-floater — статический маркер 0.6.1 из body.html. Наш модуль
+      // перекрывается нативным избранным и должен быть подавлен.
+      document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { favoritedPoints: true },
+        errors: {},
+      });
+
+      const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
+      bootstrap([favoritedPoints]);
+
+      expect(favoritedPoints.enable).not.toHaveBeenCalled();
+    });
+
+    test('в 0.6.1 favoritedPoints не перезаписывает пользовательский true в settings', () => {
+      // Runtime-блокировка по версии игры НЕ должна трогать persisted settings:
+      // поведение симметрично host-гейту.
+      document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+      let lastSaved: ISvpSettings | undefined;
+      jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
+        lastSaved = s;
+        return true;
+      });
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { favoritedPoints: true },
+        errors: {},
+      });
+
+      const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
+      bootstrap([favoritedPoints]);
+
+      expect(favoritedPoints.enable).not.toHaveBeenCalled();
+      expect(lastSaved?.modules['favoritedPoints']).toBe(true);
+    });
+
+    test('в 0.6.0 (без .navi-floater) favoritedPoints включается как обычно', () => {
+      // На проде (0.6.0) маркер отсутствует — гейт не срабатывает, модуль
+      // работает штатно.
+      document.body.innerHTML = '';
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { favoritedPoints: true },
+        errors: {},
+      });
+
+      const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
+      bootstrap([favoritedPoints]);
+
+      expect(favoritedPoints.enable).toHaveBeenCalledTimes(1);
+    });
+
+    test('в 0.6.1 другие (не-native) модули работают нормально', () => {
+      document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { 'other-mod': true },
+        errors: {},
+      });
+
+      const other = createMockModule({ id: 'other-mod', defaultEnabled: true });
+      bootstrap([other]);
+
+      expect(other.enable).toHaveBeenCalledTimes(1);
+    });
+  });
 });

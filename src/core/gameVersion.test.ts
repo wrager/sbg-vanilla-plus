@@ -68,11 +68,20 @@ describe('isModuleNativeInCurrentGame', () => {
     // работать как обычно.
     expect(isModuleNativeInCurrentGame('enhancedMainScreen')).toBe(false);
   });
+
+  test('с .navi-floater favoritedPoints считается нативно реализованным', () => {
+    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(true);
+  });
 });
 
 describe('getGameVersionWhereNative', () => {
   test('для модуля вне списка возвращает null', () => {
     expect(getGameVersionWhereNative('enhancedMainScreen')).toBeNull();
     expect(getGameVersionWhereNative('keepScreenOn')).toBeNull();
+  });
+
+  test('для favoritedPoints возвращает 0.6.1', () => {
+    expect(getGameVersionWhereNative('favoritedPoints')).toBe('0.6.1');
   });
 });
