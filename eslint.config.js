@@ -30,6 +30,7 @@ export default [
       'node_modules/',
       'refs/',
       'scripts/',
+      '.claude/worktrees/',
       'eslint.config.js',
       'jest.config.js',
     ],
