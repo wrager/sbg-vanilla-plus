@@ -1,6 +1,7 @@
 import type { IFeatureModule } from '../moduleRegistry';
 import { buildBugReportUrl, buildDiagnosticClipboard } from '../bugReport';
 import { injectStyles } from '../dom';
+import { isModuleNativeInCurrentGame } from '../gameVersion';
 import { isModuleDisallowedInCurrentHost, isSbgScout } from '../host';
 import type { ILocalizedString } from '../l10n';
 import { t } from '../l10n';
@@ -173,11 +174,14 @@ const PANEL_STYLES = `
 }
 
 .svp-module-row-host-provided .svp-module-name,
-.svp-module-row-host-provided .svp-module-desc {
+.svp-module-row-host-provided .svp-module-desc,
+.svp-module-row-native-in-game .svp-module-name,
+.svp-module-row-native-in-game .svp-module-desc {
   color: var(--text-disabled);
 }
 
-.svp-module-row-host-provided-label {
+.svp-module-row-host-provided-label,
+.svp-module-row-native-in-game-label {
   font-size: 10px;
   font-style: italic;
   color: var(--text-disabled);
@@ -292,6 +296,11 @@ const HOST_PROVIDED_LABEL: ILocalizedString = {
   ru: 'Реализовано в SBG Scout',
 };
 
+const NATIVE_IN_GAME_LABEL: ILocalizedString = {
+  en: 'Implemented natively in the game',
+  ru: 'Реализовано в игре',
+};
+
 /**
  * Строка для модуля, функциональность которого даёт сам хост (например,
  * keepScreenOn в SBG Scout управляется нативно Android). Чекбокса нет,
@@ -332,6 +341,68 @@ function createHostProvidedRow(
   info.appendChild(nameLine);
   info.appendChild(desc);
   info.appendChild(hostLabel);
+
+  const failed = document.createElement('div');
+  failed.className = 'svp-module-failed';
+
+  function setError(message: string | null): void {
+    if (message) {
+      failed.textContent = message;
+      failed.style.display = '';
+    } else {
+      failed.textContent = '';
+      failed.style.display = 'none';
+    }
+  }
+
+  setError(errorMessage);
+  info.appendChild(failed);
+
+  row.appendChild(info);
+  return { row, setError };
+}
+
+/**
+ * Строка для модуля, чья функциональность реализована нативно в текущей
+ * версии игры (SBG 0.6.1+). Структурно идентична host-provided-строке,
+ * но с другим CSS-классом и подписью — чтобы пользователь различал
+ * «сделал хост» и «сделала игра».
+ */
+function createNativeInGameRow(
+  mod: IFeatureModule,
+  errorMessage: string | null,
+): HostProvidedRowResult {
+  const row = document.createElement('div');
+  row.className = 'svp-module-row svp-module-row-native-in-game';
+
+  const info = document.createElement('div');
+  info.className = 'svp-module-info';
+
+  const nameLine = document.createElement('div');
+  nameLine.className = 'svp-module-name-line';
+
+  const name = document.createElement('div');
+  name.className = 'svp-module-name';
+  name.textContent = t(mod.name);
+
+  const modId = document.createElement('div');
+  modId.className = 'svp-module-id';
+  modId.textContent = mod.id;
+
+  nameLine.appendChild(name);
+  nameLine.appendChild(modId);
+
+  const desc = document.createElement('div');
+  desc.className = 'svp-module-desc';
+  desc.textContent = t(mod.description);
+
+  const gameLabel = document.createElement('div');
+  gameLabel.className = 'svp-module-row-native-in-game-label';
+  gameLabel.textContent = t(NATIVE_IN_GAME_LABEL);
+
+  info.appendChild(nameLine);
+  info.appendChild(desc);
+  info.appendChild(gameLabel);
 
   const failed = document.createElement('div');
   failed.className = 'svp-module-failed';
@@ -450,6 +521,18 @@ function fillSection(
 
       if (disallowed) {
         const { row, setError } = createHostProvidedRow(mod, errorMessage);
+        errorDisplay.set(mod.id, setError);
+        section.appendChild(row);
+        continue;
+      }
+
+      // Модули, чья функциональность реализована нативно в текущей версии
+      // игры (SBG 0.6.1+), тоже рендерятся без чекбокса: игрок получит ту
+      // же самую фичу через штатный игровой UI, а параллельная работа
+      // нашего модуля привела бы к дублированию UI или двойному применению
+      // логики. Подпись указывает, что причина — сама игра.
+      if (isModuleNativeInCurrentGame(mod.id)) {
+        const { row, setError } = createNativeInGameRow(mod, errorMessage);
         errorDisplay.set(mod.id, setError);
         section.appendChild(row);
         continue;

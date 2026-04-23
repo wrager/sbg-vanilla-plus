@@ -1,3 +1,4 @@
+import { isModuleNativeInCurrentGame } from './gameVersion';
 import { isModuleDisallowedInCurrentHost } from './host';
 import type { IFeatureModule } from './moduleRegistry';
 import { initModules, registerModules } from './moduleRegistry';
@@ -48,6 +49,11 @@ export function bootstrap(modules: IFeatureModule[]): void {
       // трогаем, иначе при возврате в обычный браузер пользовательский
       // выбор (или defaultEnabled) оказался бы затёрт записью false.
       if (isModuleDisallowedInCurrentHost(id)) return false;
+      // Модули, чья функциональность реализована нативно в текущей версии
+      // игры (SBG 0.6.1+ — избранное ключей, серверная garbage-чистка,
+      // нативные жесты карты и т. д.), тоже подавляются на уровне runtime.
+      // Persisted settings не трогаем по той же причине, что и для host.
+      if (isModuleNativeInCurrentGame(id)) return false;
       const mod = modules.find((m) => m.id === id);
       return isModuleEnabled(settings, id, mod?.defaultEnabled ?? true);
     },
