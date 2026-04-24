@@ -1,18 +1,26 @@
 export const SBG_COMPATIBLE_VERSIONS: readonly string[] = ['0.6.0', '0.6.1'];
 
-// Сервер SBG ставит заголовок `x-sbg-version` на КАЖДЫЙ ответ /api/*,
-// включая 404. CUI (refs/cui/index.js:1499-1501) и EUI
-// (refs/eui/src/constants/index.js:24) детектят версию именно так.
-// Мы опираемся на этот же публичный API-контракт: он стабильнее любого
-// клиентского сигнала (DOM-маркера, имени скрипта, inline-текста) —
-// тех вещей, которые игра может переформатировать в любой версии, не
-// трогая backend. Используем HEAD /api/version — эндпоинт не существует
-// (404), поэтому запрос максимально лёгкий, но middleware всё равно
-// возвращает нужный заголовок.
-const VERSION_ENDPOINT = '/api/version';
+// Сервер SBG ставит заголовок `x-sbg-version` на ответы обычных игровых
+// запросов к /api/*. Игра сама берёт версию именно так: в
+// refs/game/script.js:363 после fetch /api/self выполняется
+// `VERSION = request.headers.get('x-sbg-version')`. CUI
+// (refs/cui/index.js:1494-1501, функция getSelfData делает
+// `fetch('/api/self')` и читает заголовок из ответа) и EUI
+// (refs/eui/src/informer/index.js:8-11, тот же паттерн с /api/self)
+// поступают так же.
+//
+// Мы НЕ делаем отдельного запроса за версией: перехватываем window.fetch
+// в document-start (до загрузки игрового скрипта) и на первом ответе с
+// заголовком x-sbg-version запоминаем версию. Плюсы: нет лишнего /api/*
+// трафика; нет зависимости от конкретного endpoint-а. Раньше код делал
+// HEAD /api/version в надежде, что middleware всегда ставит заголовок —
+// оказалось, 404 от несуществующего endpoint-а приходит без x-sbg-version,
+// и детект всегда возвращал null.
 const VERSION_HEADER = 'x-sbg-version';
+const DEFAULT_DETECTION_TIMEOUT_MS = 5000;
 
 let cachedVersion: string | null | undefined;
+let detectionWaiters: Array<() => void> = [];
 
 function normalizeVersion(raw: string): string {
   // Сервер отдаёт форматы `0.6.0` (прод) и `0.6.1-beta` (бета) — для
@@ -20,19 +28,76 @@ function normalizeVersion(raw: string): string {
   return raw.split('-')[0];
 }
 
-export async function initGameVersionDetection(): Promise<void> {
-  try {
-    const response = await fetch(VERSION_ENDPOINT, { method: 'HEAD' });
-    const raw = response.headers.get(VERSION_HEADER);
-    cachedVersion = raw ? normalizeVersion(raw) : null;
-  } catch {
-    cachedVersion = null;
-  }
+function recordCapturedVersion(raw: string): void {
+  // Первый пойманный заголовок фиксируем. Повторы игнорируем: версия
+  // не должна меняться в середине сессии — если игра обновится на
+  // сервере, её собственный код покажет «требуется обновление», а нам
+  // важно знать версию на момент загрузки страницы.
+  if (cachedVersion) return;
+  cachedVersion = normalizeVersion(raw);
+  const resolved = detectionWaiters;
+  detectionWaiters = [];
+  for (const resolve of resolved) resolve();
 }
 
-/** Сбрасывает кэш. Только для тестов. */
+/**
+ * Ставит monkey-patch на `window.fetch`, чтобы подсматривать заголовок
+ * `x-sbg-version` в ответах на игровые /api/* запросы. Должна быть
+ * вызвана в document-start — до того как игровой скрипт начнёт слать
+ * запросы, иначе первые ответы пролетят мимо.
+ */
+export function installGameVersionCapture(): void {
+  const originalFetch = window.fetch;
+  window.fetch = function patchedFetch(
+    this: typeof window,
+    ...args: Parameters<typeof window.fetch>
+  ): Promise<Response> {
+    const responsePromise = originalFetch.apply(this, args);
+    void responsePromise.then(
+      (response) => {
+        const raw = response.headers.get(VERSION_HEADER);
+        if (raw) recordCapturedVersion(raw);
+      },
+      () => {
+        // Оригинальный fetch упал — версии нет, но rejection оригинала
+        // уже идёт наружу через возвращаемый responsePromise.
+      },
+    );
+    return responsePromise;
+  };
+}
+
+/**
+ * Ждёт, пока перехватчик поймает версию из /api/* ответа. Если за
+ * `timeoutMs` ни один ответ не принёс заголовок — фиксирует null
+ * (safe default: модули работают как на минимальной совместимой версии).
+ * Идемпотентна: повторные вызовы после первого захвата/таймаута
+ * резолвятся сразу.
+ */
+export function initGameVersionDetection(
+  timeoutMs: number = DEFAULT_DETECTION_TIMEOUT_MS,
+): Promise<void> {
+  if (cachedVersion !== undefined) return Promise.resolve();
+
+  return new Promise<void>((resolve) => {
+    const waiter = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      if (cachedVersion === undefined) cachedVersion = null;
+      const idx = detectionWaiters.indexOf(waiter);
+      if (idx !== -1) detectionWaiters.splice(idx, 1);
+      resolve();
+    }, timeoutMs);
+    detectionWaiters.push(waiter);
+  });
+}
+
+/** Сбрасывает кэш и ожидающих. Только для тестов. */
 export function resetDetectedVersionForTest(): void {
   cachedVersion = undefined;
+  detectionWaiters = [];
 }
 
 /** Переопределяет кэш напрямую. Только для тестов. */
@@ -42,7 +107,8 @@ export function setDetectedVersionForTest(version: string | null): void {
 
 /**
  * Возвращает обнаруженную версию игры. null — если детект не запускался,
- * сервер не ответил или заголовок отсутствовал. Синхронна: запускайте
+ * ни один ответ не принёс заголовок или истёк таймаут. Синхронна:
+ * `installGameVersionCapture()` в document-start + await
  * `initGameVersionDetection()` до первого вызова.
  */
 export function getDetectedVersion(): string | null {

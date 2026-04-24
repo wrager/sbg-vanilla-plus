@@ -2,6 +2,7 @@ import {
   compareVersions,
   getDetectedVersion,
   initGameVersionDetection,
+  installGameVersionCapture,
   isModuleConflictingWithCurrentGame,
   isModuleNativeInCurrentGame,
   isSbgAtLeast,
@@ -11,8 +12,8 @@ import {
 
 const originalFetch: typeof window.fetch | undefined = window.fetch;
 
-function installFetchMock(mock: jest.Mock): void {
-  Object.defineProperty(window, 'fetch', { value: mock, writable: true, configurable: true });
+function installFetchStub(stub: jest.Mock): void {
+  Object.defineProperty(window, 'fetch', { value: stub, writable: true, configurable: true });
 }
 
 function restoreFetch(): void {
@@ -28,51 +29,137 @@ function restoreFetch(): void {
   }
 }
 
-function mockFetchReturningVersion(rawVersionHeader: string | null): jest.Mock {
-  const mock = jest.fn().mockImplementation(() => {
+function fetchStubReturning(rawVersionHeader: string | null, status = 200): jest.Mock {
+  return jest.fn().mockImplementation(() => {
     const headers = new Headers();
     if (rawVersionHeader !== null) headers.set('x-sbg-version', rawVersionHeader);
-    return Promise.resolve(new Response(null, { status: 404, headers }));
+    return Promise.resolve(new Response(null, { status, headers }));
   });
-  installFetchMock(mock);
-  return mock;
 }
 
-describe('initGameVersionDetection', () => {
+describe('installGameVersionCapture', () => {
   afterEach(() => {
     resetDetectedVersionForTest();
     restoreFetch();
     jest.restoreAllMocks();
   });
 
-  test('извлекает версию из заголовка x-sbg-version', async () => {
-    mockFetchReturningVersion('0.6.0');
-    await initGameVersionDetection();
+  test('захватывает версию из заголовка первого /api/* ответа', async () => {
+    installFetchStub(fetchStubReturning('0.6.0'));
+    installGameVersionCapture();
+    await window.fetch('/api/self');
+    // Дожидаемся microtask .then() внутри перехватчика.
+    await Promise.resolve();
     expect(getDetectedVersion()).toBe('0.6.0');
   });
 
   test('нормализует pre-release суффикс: 0.6.1-beta → 0.6.1', async () => {
-    mockFetchReturningVersion('0.6.1-beta');
+    installFetchStub(fetchStubReturning('0.6.1-beta'));
+    installGameVersionCapture();
+    await window.fetch('/api/self');
+    await Promise.resolve();
+    expect(getDetectedVersion()).toBe('0.6.1');
+  });
+
+  test('если ответ без заголовка — ждём следующий /api/*', async () => {
+    let callIndex = 0;
+    const stub = jest.fn().mockImplementation(() => {
+      const headers = new Headers();
+      if (callIndex === 1) headers.set('x-sbg-version', '0.6.0');
+      callIndex += 1;
+      return Promise.resolve(new Response(null, { status: 200, headers }));
+    });
+    installFetchStub(stub);
+    installGameVersionCapture();
+
+    await window.fetch('/api/liveness');
+    await Promise.resolve();
+    // После первого ответа версия ещё не пойманная — кэш undefined.
+
+    await window.fetch('/api/self');
+    await Promise.resolve();
+    expect(getDetectedVersion()).toBe('0.6.0');
+  });
+
+  test('первый пойманный заголовок побеждает — повторы не затирают', async () => {
+    const versions = ['0.6.0', '0.7.0'];
+    let callIndex = 0;
+    const stub = jest.fn().mockImplementation(() => {
+      const headers = new Headers();
+      headers.set('x-sbg-version', versions[callIndex]);
+      callIndex += 1;
+      return Promise.resolve(new Response(null, { status: 200, headers }));
+    });
+    installFetchStub(stub);
+    installGameVersionCapture();
+
+    await window.fetch('/api/self');
+    await Promise.resolve();
+    await window.fetch('/api/inview');
+    await Promise.resolve();
+
+    expect(getDetectedVersion()).toBe('0.6.0');
+  });
+
+  test('оригинальный rejected fetch возвращает ошибку наружу, но не крашит перехватчик', async () => {
+    installFetchStub(jest.fn().mockRejectedValue(new Error('network down')));
+    installGameVersionCapture();
+    await expect(window.fetch('/api/self')).rejects.toThrow('network down');
+  });
+
+  test('прокидывает аргументы и возвращает исходный Response без подмены', async () => {
+    const stub = fetchStubReturning('0.6.0', 201);
+    installFetchStub(stub);
+    installGameVersionCapture();
+
+    const response = await window.fetch('/api/self', { method: 'POST' });
+    expect(stub).toHaveBeenCalledWith('/api/self', { method: 'POST' });
+    expect(response.status).toBe(201);
+  });
+});
+
+describe('initGameVersionDetection', () => {
+  afterEach(() => {
+    resetDetectedVersionForTest();
+    restoreFetch();
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  test('резолвится сразу, если версия уже захвачена', async () => {
+    setDetectedVersionForTest('0.6.1');
     await initGameVersionDetection();
     expect(getDetectedVersion()).toBe('0.6.1');
   });
 
-  test('если заголовка нет — версия null', async () => {
-    mockFetchReturningVersion(null);
-    await initGameVersionDetection();
+  test('резолвится, как только перехватчик ловит версию', async () => {
+    installFetchStub(fetchStubReturning('0.6.0'));
+    installGameVersionCapture();
+
+    const detectionPromise = initGameVersionDetection();
+    await window.fetch('/api/self');
+    await detectionPromise;
+
+    expect(getDetectedVersion()).toBe('0.6.0');
+  });
+
+  test('если за таймаут никто не принёс заголовок — фиксирует null', async () => {
+    jest.useFakeTimers();
+    const detectionPromise = initGameVersionDetection(5000);
+    jest.advanceTimersByTime(5000);
+    await detectionPromise;
     expect(getDetectedVersion()).toBeNull();
   });
 
-  test('если fetch падает — версия null', async () => {
-    installFetchMock(jest.fn().mockRejectedValue(new Error('network down')));
+  test('повторный вызов после таймаута резолвится сразу', async () => {
+    jest.useFakeTimers();
+    const first = initGameVersionDetection(5000);
+    jest.advanceTimersByTime(5000);
+    await first;
+    jest.useRealTimers();
+
     await initGameVersionDetection();
     expect(getDetectedVersion()).toBeNull();
-  });
-
-  test('использует HEAD /api/version — лёгкий запрос без тела', async () => {
-    const mock = mockFetchReturningVersion('0.6.0');
-    await initGameVersionDetection();
-    expect(mock).toHaveBeenCalledWith('/api/version', { method: 'HEAD' });
   });
 });
 

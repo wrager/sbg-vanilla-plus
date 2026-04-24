@@ -2,7 +2,7 @@ import { isDisabled } from './core/killswitch';
 import { installGameScriptPatcher } from './core/gameScriptPatcher';
 import { bootstrap } from './core/bootstrap';
 import { initErrorLog } from './core/errorLog';
-import { initGameVersionDetection } from './core/gameVersion';
+import { initGameVersionDetection, installGameVersionCapture } from './core/gameVersion';
 import { ensureSbgVersionSupported } from './core/gameVersionPrompt';
 import { initOlMapCapture } from './core/olMap';
 import { installSbgFlavor } from './core/sbgFlavor';
@@ -26,12 +26,16 @@ import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
 import { favoritedPoints } from './modules/favoritedPoints/favoritedPoints';
 
 if (!isDisabled()) {
-  // Перехваты, которые должны быть установлены ДО парсинга DOM:
+  // Перехваты, которые должны быть установлены ДО парсинга DOM и
+  // загрузки игрового скрипта:
   // - gameScriptPatcher: override Element.prototype.append до того как mobile-check
   //   скрипт создаст <script type="module" src="script@...">
   // - olMapCapture: defineProperty на window.ol до загрузки OL-скрипта
+  // - gameVersionCapture: monkey-patch window.fetch до первого /api/*
+  //   запроса игры, чтобы поймать заголовок x-sbg-version в ответе
   installGameScriptPatcher();
   initOlMapCapture();
+  installGameVersionCapture();
 
   // bootstrap() создаёт DOM-элементы (settings panel), для чего нужен document.head.
   // При document-start head ещё не существует — откладываем до DOMContentLoaded.
