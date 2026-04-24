@@ -92,6 +92,42 @@ function createLayersConfigPopup(savedBaselayer = 'osm'): HTMLElement {
   return popup;
 }
 
+// Разметка `.layers-config` popup в SBG 0.6.1 расширена: в `layers-config__list`
+// рядом с baselayer-radio появились секции Objects (checkbox'ы) и Highlighter
+// (select'ы). Наша injection-логика ищет `input[name="baselayer"][value="goo"]`
+// внутри popup и вставляет custom-опции после её `.layers-config__entry`-обёртки
+// — этот путь должен остаться устойчивым к новым секциям.
+function createLayersConfigPopupBeta(savedBaselayer = 'osm'): HTMLElement {
+  const popup = document.createElement('div');
+  popup.className = 'layers-config popup pp-center hidden';
+  popup.innerHTML = `
+    <h3 class="layers-config__header" data-i18n="layers.header">Map Config</h3>
+    <div class="layers-config__list">
+      <h4 class="layers-config__subheader" data-i18n="layers.baselayers.header">Baselayer</h4>
+      <label class="layers-config__entry"><input type="radio" name="baselayer" value="nil"> <span>Empty</span></label>
+      <label class="layers-config__entry"><input type="radio" name="baselayer" value="osm"${savedBaselayer === 'osm' ? ' checked' : ''}> <span>OSM</span></label>
+      <label class="layers-config__entry"><input type="radio" name="baselayer" value="cdb"> <span>Carto</span></label>
+      <label class="layers-config__entry"><input type="radio" name="baselayer" value="goo"> <span>Google Satellite</span></label>
+      <h4 class="layers-config__subheader" data-i18n="layers.objects.header">Objects</h4>
+      <label class="layers-config__entry"><input type="checkbox" data-setting="plrhid" data-invert=""> <span>Player</span></label>
+      <label class="layers-config__entry"><input type="checkbox" name="layer" value="0"> <span>Points</span></label>
+      <label class="layers-config__entry"><input type="checkbox" name="layer" value="1"> <span>Lines</span></label>
+      <label class="layers-config__entry"><input type="checkbox" name="layer" value="2"> <span>Regions</span></label>
+      <h4 class="layers-config__subheader" data-i18n="layers.lights.header">Highlighter</h4>
+      <label class="layers-config__entry" for="map-lights-top" data-i18n="layers.lights.subheader-top">Top</label>
+      <select class="layers-config__select" id="map-lights-top"><option value="0">None</option></select>
+      <label class="layers-config__entry" for="map-lights-bottom" data-i18n="layers.lights.subheader-bottom">Bottom</label>
+      <select class="layers-config__select" id="map-lights-bottom"><option value="0">None</option></select>
+      <label class="layers-config__entry" for="map-lights-text" data-i18n="layers.lights.subheader-text">Text</label>
+      <select class="layers-config__select" id="map-lights-text"><option value="0">None</option></select>
+    </div>
+    <div class="layers-config__buttons">
+      <button id="layers-config__save">Save</button>
+    </div>
+  `;
+  return popup;
+}
+
 // ── hasTileSource type guard ─────────────────────────────────────────────────
 
 describe('hasTileSource', () => {
@@ -389,6 +425,64 @@ describe('mapTileLayers popup injection', () => {
     );
     expect(customRadio).not.toBeNull();
     expect(darkRadio).not.toBeNull();
+  });
+
+  test('injects custom radio buttons into 0.6.1 popup with Objects/Highlighter sections', async () => {
+    await mapTileLayers.enable();
+
+    const popup = createLayersConfigPopupBeta();
+    document.body.appendChild(popup);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const customRadio = popup.querySelector<HTMLInputElement>(
+      'input[name="baselayer"][value="svp-custom"]',
+    );
+    const darkRadio = popup.querySelector<HTMLInputElement>(
+      'input[name="baselayer"][value="svp-custom-dark"]',
+    );
+    expect(customRadio).not.toBeNull();
+    expect(darkRadio).not.toBeNull();
+  });
+
+  test('0.6.1 injection размещает custom-опции между baselayer и Objects, не после Highlighter', async () => {
+    await mapTileLayers.enable();
+
+    const popup = createLayersConfigPopupBeta();
+    document.body.appendChild(popup);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Порядок внутри .layers-config__list: baselayer-radios → svp-custom* →
+    // <h4>Objects</h4> → checkboxes → <h4>Highlighter</h4> → selects.
+    // Проверяем, что наш svp-custom попадает ДО subheader'а Objects.
+    const list = popup.querySelector('.layers-config__list');
+    if (!list) throw new Error('layers-config__list not rendered');
+
+    const children = Array.from(list.children);
+    const customEntryIndex = children.findIndex((el) =>
+      el.querySelector('input[name="baselayer"][value="svp-custom"]'),
+    );
+    const objectsHeaderIndex = children.findIndex(
+      (el) => el.getAttribute('data-i18n') === 'layers.objects.header',
+    );
+
+    expect(customEntryIndex).toBeGreaterThan(-1);
+    expect(objectsHeaderIndex).toBeGreaterThan(-1);
+    expect(customEntryIndex).toBeLessThan(objectsHeaderIndex);
+  });
+
+  test('0.6.1 injection не ломает секции Objects и Highlighter', async () => {
+    await mapTileLayers.enable();
+
+    const popup = createLayersConfigPopupBeta();
+    document.body.appendChild(popup);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(popup.querySelector('input[name="layer"][value="0"]')).not.toBeNull();
+    expect(popup.querySelector('input[name="layer"][value="1"]')).not.toBeNull();
+    expect(popup.querySelector('input[name="layer"][value="2"]')).not.toBeNull();
+    expect(popup.querySelector('#map-lights-top')).not.toBeNull();
+    expect(popup.querySelector('#map-lights-bottom')).not.toBeNull();
+    expect(popup.querySelector('#map-lights-text')).not.toBeNull();
   });
 
   test('URL input is a textarea for multi-line display', async () => {
