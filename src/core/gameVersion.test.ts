@@ -1,7 +1,5 @@
 import {
   checkVersion,
-  getGameVersionWhereConflicts,
-  getGameVersionWhereNative,
   isModuleConflictingWithCurrentGame,
   isModuleNativeInCurrentGame,
   isSbg061Detected,
@@ -137,58 +135,5 @@ describe('isModuleConflictingWithCurrentGame', () => {
   test('модуль вне обоих множеств не конфликтует', () => {
     document.body.innerHTML = '<div class="navi-floater hidden"></div>';
     expect(isModuleConflictingWithCurrentGame('enhancedMainScreen')).toBe(false);
-  });
-});
-
-describe('getGameVersionWhereNative', () => {
-  test('для модуля вне списка возвращает null', () => {
-    expect(getGameVersionWhereNative('enhancedMainScreen')).toBeNull();
-    expect(getGameVersionWhereNative('keepScreenOn')).toBeNull();
-  });
-
-  test('для favoritedPoints возвращает 0.6.1', () => {
-    expect(getGameVersionWhereNative('favoritedPoints')).toBe('0.6.1');
-  });
-
-  test('для inventoryCleanup возвращает 0.6.1', () => {
-    expect(getGameVersionWhereNative('inventoryCleanup')).toBe('0.6.1');
-  });
-
-  test('для keyCountOnPoints возвращает 0.6.1', () => {
-    expect(getGameVersionWhereNative('keyCountOnPoints')).toBe('0.6.1');
-  });
-
-  test('для repairAtFullCharge возвращает 0.6.1', () => {
-    expect(getGameVersionWhereNative('repairAtFullCharge')).toBe('0.6.1');
-  });
-
-  test('для ngrsZoom возвращает 0.6.1', () => {
-    expect(getGameVersionWhereNative('ngrsZoom')).toBe('0.6.1');
-  });
-
-  test('для singleFingerRotation возвращает 0.6.1', () => {
-    expect(getGameVersionWhereNative('singleFingerRotation')).toBe('0.6.1');
-  });
-
-  test('для nextPointNavigation возвращает 0.6.1', () => {
-    expect(getGameVersionWhereNative('nextPointNavigation')).toBe('0.6.1');
-  });
-
-  test('для swipeToClosePopup возвращает null (он конфликтует, а не native)', () => {
-    expect(getGameVersionWhereNative('swipeToClosePopup')).toBeNull();
-  });
-});
-
-describe('getGameVersionWhereConflicts', () => {
-  test('для swipeToClosePopup возвращает 0.6.1', () => {
-    expect(getGameVersionWhereConflicts('swipeToClosePopup')).toBe('0.6.1');
-  });
-
-  test('для native-модуля возвращает null', () => {
-    expect(getGameVersionWhereConflicts('favoritedPoints')).toBeNull();
-  });
-
-  test('для модуля вне обоих множеств возвращает null', () => {
-    expect(getGameVersionWhereConflicts('enhancedMainScreen')).toBeNull();
   });
 });

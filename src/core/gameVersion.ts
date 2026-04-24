@@ -35,14 +35,6 @@ export function isModuleNativeInCurrentGame(moduleId: string): boolean {
   return isSbg061Detected() && DEPRECATED_SINCE_061.has(moduleId);
 }
 
-// Возвращает версию игры, в которой модуль стал нативным. Используется
-// только как описание причины — в UI подпись «Реализовано в игре»
-// не показывает версию, но функция оставлена для тестов и логов.
-export function getGameVersionWhereNative(moduleId: string): string | null {
-  if (DEPRECATED_SINCE_061.has(moduleId)) return '0.6.1';
-  return null;
-}
-
 // Модули, которые конфликтуют с новой версией SBG: use case у нашей
 // реализации не перекрыт нативом, но новая версия ввела жест/событие
 // на тех же DOM-элементах, что слушает наш модуль — одновременная
@@ -54,9 +46,4 @@ const CONFLICTS_WITH_061: ReadonlySet<string> = new Set<string>(['swipeToClosePo
 
 export function isModuleConflictingWithCurrentGame(moduleId: string): boolean {
   return isSbg061Detected() && CONFLICTS_WITH_061.has(moduleId);
-}
-
-export function getGameVersionWhereConflicts(moduleId: string): string | null {
-  if (CONFLICTS_WITH_061.has(moduleId)) return '0.6.1';
-  return null;
 }
