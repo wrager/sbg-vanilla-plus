@@ -3,6 +3,7 @@ import { installGameScriptPatcher } from './core/gameScriptPatcher';
 import { bootstrap } from './core/bootstrap';
 import { initErrorLog } from './core/errorLog';
 import { initGameVersionDetection } from './core/gameVersion';
+import { ensureSbgVersionSupported } from './core/gameVersionPrompt';
 import { initOlMapCapture } from './core/olMap';
 import { installSbgFlavor } from './core/sbgFlavor';
 import { enhancedMainScreen } from './modules/enhancedMainScreen/enhancedMainScreen';
@@ -41,6 +42,10 @@ if (!isDisabled()) {
     // на любой /api/* ответ, включая 404). Ждём ДО bootstrap, чтобы гейтинг
     // модулей в bootstrap видел кэшированную версию синхронно.
     await initGameVersionDetection();
+    // Если версия не поддерживается этой сборкой — confirm. При отмене
+    // пользователь выключает скрипт через kill switch, bootstrap мы не
+    // запускаем: модули на неизвестной версии игры могут её сломать.
+    if (!ensureSbgVersionSupported()) return;
     bootstrap([
       // ui
       enhancedMainScreen,
