@@ -37,7 +37,6 @@ function isDrawItem(value: unknown): value is IIitcDrawItem {
   if (value.latLngs.length < 2) return false;
   if (!value.latLngs.every(isLatLng)) return false;
   return !(value.color !== undefined && !isColor(value.color));
-
 }
 
 /**
@@ -70,4 +69,3 @@ export function parseIitcDrawItems(raw: string): IIitcDrawItem[] {
 export function stringifyIitcDrawItems(items: IIitcDrawItem[]): string {
   return JSON.stringify(items);
 }
-

@@ -58,4 +58,3 @@ describe('iitcFormat', () => {
     expect(Array.isArray(parsed)).toBe(true);
   });
 });
-

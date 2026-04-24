@@ -1,4 +1,11 @@
-import type { IOlFeature, IOlInteraction, IOlLayer, IOlMap, IOlView, IOlVectorSource } from '../../core/olMap';
+import type {
+  IOlFeature,
+  IOlInteraction,
+  IOlLayer,
+  IOlMap,
+  IOlView,
+  IOlVectorSource,
+} from '../../core/olMap';
 
 jest.mock('../../core/olMap', () => {
   const actual = jest.requireActual<typeof import('../../core/olMap')>('../../core/olMap');
@@ -234,12 +241,18 @@ describe('drawTools module', () => {
       },
       interaction: {
         Draw: drawCtor as unknown as new (opts: Record<string, unknown>) => IOlInteraction,
-        Modify: FakeModifyInteraction as unknown as new (opts: Record<string, unknown>) => IOlInteraction,
+        Modify: FakeModifyInteraction as unknown as new (
+          opts: Record<string, unknown>,
+        ) => IOlInteraction,
       },
       Feature: FakeFeature as unknown as new (opts?: Record<string, unknown>) => IOlFeature,
       geom: {
-        LineString: FakeLineString as unknown as new (coords: number[][]) => { getCoordinates(): number[][] },
-        Polygon: FakePolygon as unknown as new (coords: number[][][]) => { getCoordinates(): number[][][] },
+        LineString: FakeLineString as unknown as new (coords: number[][]) => {
+          getCoordinates(): number[][];
+        },
+        Polygon: FakePolygon as unknown as new (coords: number[][][]) => {
+          getCoordinates(): number[][][];
+        },
       },
       style: {
         Style: FakeStyle as unknown as new (opts: Record<string, unknown>) => unknown,
@@ -298,7 +311,9 @@ describe('drawTools module', () => {
   test('edit mode disables inserting new vertices on segments', async () => {
     await drawTools.enable();
 
-    const toolbarButtons = document.querySelectorAll<HTMLButtonElement>('.svp-draw-tools-tool-button');
+    const toolbarButtons = document.querySelectorAll<HTMLButtonElement>(
+      '.svp-draw-tools-tool-button',
+    );
     // Порядок: L, P, Edit, Delete, Snap, Copy, Paste, Reset, Close
     const editButton = toolbarButtons[2];
     editButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -315,7 +330,9 @@ describe('drawTools module', () => {
   test('Escape cancels unfinished drawing', async () => {
     await drawTools.enable();
 
-    const toolbarButtons = document.querySelectorAll<HTMLButtonElement>('.svp-draw-tools-tool-button');
+    const toolbarButtons = document.querySelectorAll<HTMLButtonElement>(
+      '.svp-draw-tools-tool-button',
+    );
     const lineButton = toolbarButtons[0];
     lineButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
@@ -330,7 +347,9 @@ describe('drawTools module', () => {
   test('right click does not cancel unfinished drawing', async () => {
     await drawTools.enable();
 
-    const toolbarButtons = document.querySelectorAll<HTMLButtonElement>('.svp-draw-tools-tool-button');
+    const toolbarButtons = document.querySelectorAll<HTMLButtonElement>(
+      '.svp-draw-tools-tool-button',
+    );
     const lineButton = toolbarButtons[0];
     lineButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
@@ -345,7 +364,9 @@ describe('drawTools module', () => {
   test('line mode creates Draw interaction with maxPoints=2', async () => {
     await drawTools.enable();
 
-    const toolbarButtons = document.querySelectorAll<HTMLButtonElement>('.svp-draw-tools-tool-button');
+    const toolbarButtons = document.querySelectorAll<HTMLButtonElement>(
+      '.svp-draw-tools-tool-button',
+    );
     const lineButton = toolbarButtons[0];
     lineButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
@@ -359,7 +380,9 @@ describe('drawTools module', () => {
   test('polygon mode creates Draw interaction with maxPoints=3', async () => {
     await drawTools.enable();
 
-    const toolbarButtons = document.querySelectorAll<HTMLButtonElement>('.svp-draw-tools-tool-button');
+    const toolbarButtons = document.querySelectorAll<HTMLButtonElement>(
+      '.svp-draw-tools-tool-button',
+    );
     const polygonButton = toolbarButtons[1];
     polygonButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
@@ -373,22 +396,35 @@ describe('drawTools module', () => {
   describe('snap behavior', () => {
     function clickSnapButton(): void {
       // Order: L(0), P(1), Edit(2), Delete(3), Snap(4), ...
-      const toolbarButtons = document.querySelectorAll<HTMLButtonElement>('.svp-draw-tools-tool-button');
+      const toolbarButtons = document.querySelectorAll<HTMLButtonElement>(
+        '.svp-draw-tools-tool-button',
+      );
       toolbarButtons[4].dispatchEvent(new MouseEvent('click', { bubbles: true }));
     }
 
     test('each line vertex snaps to its own nearest portal within 100px', async () => {
-      const olMap = makeMap([makePointsLayer([[10, 0], [220, 0]])]);
+      const olMap = makeMap([
+        makePointsLayer([
+          [10, 0],
+          [220, 0],
+        ]),
+      ]);
       mockGetOlMap.mockResolvedValue(olMap);
       await drawTools.enable();
 
-      const lineGeom = new FakeLineString([[0, 0], [200, 0]]);
+      const lineGeom = new FakeLineString([
+        [0, 0],
+        [200, 0],
+      ]);
       if (!capturedDrawSource) throw new Error('Draw source was not captured');
       capturedDrawSource.addFeature(new FakeFeature({ geometry: lineGeom }));
 
       clickSnapButton();
 
-      expect(lineGeom.getCoordinates()).toEqual([[10, 0], [220, 0]]);
+      expect(lineGeom.getCoordinates()).toEqual([
+        [10, 0],
+        [220, 0],
+      ]);
     });
 
     test('vertex outside 100px radius is not moved', async () => {
@@ -396,13 +432,19 @@ describe('drawTools module', () => {
       mockGetOlMap.mockResolvedValue(olMap);
       await drawTools.enable();
 
-      const lineGeom = new FakeLineString([[0, 0], [500, 0]]);
+      const lineGeom = new FakeLineString([
+        [0, 0],
+        [500, 0],
+      ]);
       if (!capturedDrawSource) throw new Error('Draw source was not captured');
       capturedDrawSource.addFeature(new FakeFeature({ geometry: lineGeom }));
 
       clickSnapButton();
 
-      expect(lineGeom.getCoordinates()).toEqual([[10, 0], [500, 0]]);
+      expect(lineGeom.getCoordinates()).toEqual([
+        [10, 0],
+        [500, 0],
+      ]);
     });
 
     test('vertex with smaller distance claims portal; other vertex uses second-nearest', async () => {
@@ -411,29 +453,50 @@ describe('drawTools module', () => {
       // Vertex [15,0]: distances -> [10,0]=5, [80,0]=65
       // [15,0] has best distance (5) -> claims [10,0]
       // [0,0] skips claimed [10,0] -> takes [80,0] (distance 80)
-      const olMap = makeMap([makePointsLayer([[10, 0], [80, 0]])]);
+      const olMap = makeMap([
+        makePointsLayer([
+          [10, 0],
+          [80, 0],
+        ]),
+      ]);
       mockGetOlMap.mockResolvedValue(olMap);
       await drawTools.enable();
 
-      const lineGeom = new FakeLineString([[0, 0], [15, 0]]);
+      const lineGeom = new FakeLineString([
+        [0, 0],
+        [15, 0],
+      ]);
       if (!capturedDrawSource) throw new Error('Draw source was not captured');
       capturedDrawSource.addFeature(new FakeFeature({ geometry: lineGeom }));
 
       clickSnapButton();
 
       const coords = lineGeom.getCoordinates();
-      expect(coords[0]).toEqual([80, 0]);  // [0,0] -> second-nearest portal
-      expect(coords[1]).toEqual([10, 0]);  // [15,0] -> nearest portal
+      expect(coords[0]).toEqual([80, 0]); // [0,0] -> second-nearest portal
+      expect(coords[1]).toEqual([10, 0]); // [15,0] -> nearest portal
     });
 
     test('polygon vertices snap to distinct portals without re-using claimed ones', async () => {
       // Closed triangle ring: [[0,0],[200,0],[100,170],[0,0]]
       // Portals at [10,0], [210,0], [110,170]
-      const olMap = makeMap([makePointsLayer([[10, 0], [210, 0], [110, 170]])]);
+      const olMap = makeMap([
+        makePointsLayer([
+          [10, 0],
+          [210, 0],
+          [110, 170],
+        ]),
+      ]);
       mockGetOlMap.mockResolvedValue(olMap);
       await drawTools.enable();
 
-      const polygonGeom = new FakePolygon([[[0, 0], [200, 0], [100, 170], [0, 0]]]);
+      const polygonGeom = new FakePolygon([
+        [
+          [0, 0],
+          [200, 0],
+          [100, 170],
+          [0, 0],
+        ],
+      ]);
       if (!capturedDrawSource) throw new Error('Draw source was not captured');
       capturedDrawSource.addFeature(new FakeFeature({ geometry: polygonGeom }));
 
@@ -449,11 +512,23 @@ describe('drawTools module', () => {
 
     test('polygon vertex with no unclaimed portal in radius stays in place', async () => {
       // Portals at [10,0] and [210,0]; third vertex at [1000,1000] is out of range
-      const olMap = makeMap([makePointsLayer([[10, 0], [210, 0]])]);
+      const olMap = makeMap([
+        makePointsLayer([
+          [10, 0],
+          [210, 0],
+        ]),
+      ]);
       mockGetOlMap.mockResolvedValue(olMap);
       await drawTools.enable();
 
-      const polygonGeom = new FakePolygon([[[0, 0], [200, 0], [1000, 1000], [0, 0]]]);
+      const polygonGeom = new FakePolygon([
+        [
+          [0, 0],
+          [200, 0],
+          [1000, 1000],
+          [0, 0],
+        ],
+      ]);
       if (!capturedDrawSource) throw new Error('Draw source was not captured');
       capturedDrawSource.addFeature(new FakeFeature({ geometry: polygonGeom }));
 
@@ -467,4 +542,3 @@ describe('drawTools module', () => {
     });
   });
 });
-

@@ -3,7 +3,14 @@ import { $, injectStyles, removeStyles, waitForElement } from '../../core/dom';
 import { t } from '../../core/l10n';
 import { showToast } from '../../core/toast';
 import { createDragPanControl, findLayerByName, getOlMap } from '../../core/olMap';
-import type { IDragPanControl, IOlFeature, IOlInteraction, IOlLayer, IOlMap, IOlVectorSource } from '../../core/olMap';
+import type {
+  IDragPanControl,
+  IOlFeature,
+  IOlInteraction,
+  IOlLayer,
+  IOlMap,
+  IOlVectorSource,
+} from '../../core/olMap';
 import { parseIitcDrawItems, stringifyIitcDrawItems } from './iitcFormat';
 import type { IIitcDrawItem, IIitcLatLng } from './iitcFormat';
 import styles from './styles.css?inline';
@@ -366,7 +373,14 @@ function clearInteractions(): void {
   }
 
   if (deleteClickHandler) {
-    map.un?.('click', deleteClickHandler as (event: { type: string; pixel: number[]; originalEvent: Record<string, unknown> }) => void);
+    map.un?.(
+      'click',
+      deleteClickHandler as (event: {
+        type: string;
+        pixel: number[];
+        originalEvent: Record<string, unknown>;
+      }) => void,
+    );
     deleteClickHandler = null;
   }
 
@@ -431,26 +445,30 @@ function setMode(mode: ToolMode, force = false): void {
   }
 
   deleteClickHandler = (event: Record<string, unknown>) => {
-      const pixelRaw = event.pixel;
-      if (!isNumberPair(pixelRaw) || !map?.forEachFeatureAtPixel || !drawSource) return;
-      const source = drawSource;
-      const pixel = [pixelRaw[0], pixelRaw[1]];
-      map.forEachFeatureAtPixel(
-        pixel,
-        (feature) => {
-          source.removeFeature?.(feature);
-        },
-        {
-          hitTolerance: 6,
-          layerFilter: (layer) => layer.get('name') === DRAW_LAYER_NAME,
-        },
-      );
-      saveDrawItems();
-    };
+    const pixelRaw = event.pixel;
+    if (!isNumberPair(pixelRaw) || !map?.forEachFeatureAtPixel || !drawSource) return;
+    const source = drawSource;
+    const pixel = [pixelRaw[0], pixelRaw[1]];
+    map.forEachFeatureAtPixel(
+      pixel,
+      (feature) => {
+        source.removeFeature?.(feature);
+      },
+      {
+        hitTolerance: 6,
+        layerFilter: (layer) => layer.get('name') === DRAW_LAYER_NAME,
+      },
+    );
+    saveDrawItems();
+  };
 
   map.on?.(
     'click',
-    deleteClickHandler as (event: { type: string; pixel: number[]; originalEvent: Record<string, unknown> }) => void,
+    deleteClickHandler as (event: {
+      type: string;
+      pixel: number[];
+      originalEvent: Record<string, unknown>;
+    }) => void,
   );
 }
 
@@ -760,10 +778,18 @@ function createToolbar(): HTMLDivElement {
   });
   applyGameIcon(copyButton, 'fas-share-nodes', 'C');
 
-  const pasteButton = createToolButton('V', t({ en: 'Paste JSON', ru: 'Вставить JSON' }), pasteDrawData);
+  const pasteButton = createToolButton(
+    'V',
+    t({ en: 'Paste JSON', ru: 'Вставить JSON' }),
+    pasteDrawData,
+  );
   applyGameIcon(pasteButton, 'fas-wand-magic-sparkles', 'V', '0 0 586 512');
 
-  const resetButton = createToolButton('R', t({ en: 'Clear all', ru: 'Очистить всё' }), resetDrawData);
+  const resetButton = createToolButton(
+    'R',
+    t({ en: 'Clear all', ru: 'Очистить всё' }),
+    resetDrawData,
+  );
   applyGameIcon(resetButton, 'fas-trash-can', 'R');
 
   const closeButton = createToolButton('[x]', t({ en: 'Close', ru: 'Закрыть' }), () => {
@@ -898,5 +924,3 @@ export const drawTools: IFeatureModule = {
     cleanup();
   },
 };
-
-
