@@ -1,3 +1,4 @@
+import { resetDetectedVersionForTest, setDetectedVersionForTest } from '../gameVersion';
 import type { IFeatureModule } from '../moduleRegistry';
 import type { ILocalizedString } from '../l10n';
 import { initSettingsUI } from './ui';
@@ -682,6 +683,10 @@ describe('initSettingsUI — модули, нативные в SBG 0.6.1', () =>
     });
   });
 
+  afterEach(() => {
+    resetDetectedVersionForTest();
+  });
+
   function getRowByModuleId(moduleId: string): HTMLElement {
     const panel = document.getElementById('svp-settings-panel');
     if (!panel) throw new Error('svp-settings-panel not rendered');
@@ -694,7 +699,7 @@ describe('initSettingsUI — модули, нативные в SBG 0.6.1', () =>
   }
 
   test('в 0.6.1 строка favoritedPoints рендерится без чекбокса', () => {
-    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    setDetectedVersionForTest('0.6.1');
     const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
 
     initSettingsUI([favoritedPoints], new Map());
@@ -704,7 +709,7 @@ describe('initSettingsUI — модули, нативные в SBG 0.6.1', () =>
   });
 
   test('в 0.6.1 строка favoritedPoints содержит подпись о нативной реализации', () => {
-    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    setDetectedVersionForTest('0.6.1');
     // Локаль берётся из localStorage['settings'].lang игры (см. l10n.getGameLocale).
     // Заряжаем RU чтобы проверить именно русскую подпись.
     localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
@@ -719,7 +724,7 @@ describe('initSettingsUI — модули, нативные в SBG 0.6.1', () =>
   });
 
   test('в 0.6.1 строка favoritedPoints имеет CSS-класс native-in-game (для серого цвета)', () => {
-    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    setDetectedVersionForTest('0.6.1');
     const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
 
     initSettingsUI([favoritedPoints], new Map());
@@ -729,7 +734,7 @@ describe('initSettingsUI — модули, нативные в SBG 0.6.1', () =>
   });
 
   test('в 0.6.0 favoritedPoints рендерится как обычный чекбокс', () => {
-    document.body.innerHTML = '';
+    setDetectedVersionForTest('0.6.0');
     localStorage.setItem(
       'svp_settings',
       JSON.stringify({ version: 4, modules: { favoritedPoints: true }, errors: {} }),
@@ -745,7 +750,7 @@ describe('initSettingsUI — модули, нативные в SBG 0.6.1', () =>
   });
 
   test('в 0.6.1 toggle-all не вызывает enable для favoritedPoints (строка без чекбокса)', async () => {
-    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    setDetectedVersionForTest('0.6.1');
     const favoritedPoints = createMockModule({
       id: 'favoritedPoints',
       defaultEnabled: true,
@@ -777,6 +782,10 @@ describe('initSettingsUI — модули, конфликтующие с SBG 0.6
     });
   });
 
+  afterEach(() => {
+    resetDetectedVersionForTest();
+  });
+
   function getRowByModuleId(moduleId: string): HTMLElement {
     const panel = document.getElementById('svp-settings-panel');
     if (!panel) throw new Error('svp-settings-panel not rendered');
@@ -789,7 +798,7 @@ describe('initSettingsUI — модули, конфликтующие с SBG 0.6
   }
 
   test('в 0.6.1 строка swipeToClosePopup рендерится без чекбокса', () => {
-    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    setDetectedVersionForTest('0.6.1');
     const swipeToClosePopup = createMockModule({
       id: 'swipeToClosePopup',
       defaultEnabled: true,
@@ -802,7 +811,7 @@ describe('initSettingsUI — модули, конфликтующие с SBG 0.6
   });
 
   test('в 0.6.1 строка swipeToClosePopup содержит подпись о конфликте', () => {
-    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    setDetectedVersionForTest('0.6.1');
     // Локаль берётся из localStorage['settings'].lang игры — заряжаем RU
     // чтобы проверить русскую подпись.
     localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
@@ -820,7 +829,7 @@ describe('initSettingsUI — модули, конфликтующие с SBG 0.6
   });
 
   test('в 0.6.1 строка swipeToClosePopup имеет CSS-класс conflicting-with-game', () => {
-    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    setDetectedVersionForTest('0.6.1');
     const swipeToClosePopup = createMockModule({
       id: 'swipeToClosePopup',
       defaultEnabled: true,
@@ -834,7 +843,7 @@ describe('initSettingsUI — модули, конфликтующие с SBG 0.6
   });
 
   test('в 0.6.0 swipeToClosePopup рендерится как обычный чекбокс', () => {
-    document.body.innerHTML = '';
+    setDetectedVersionForTest('0.6.0');
     localStorage.setItem(
       'svp_settings',
       JSON.stringify({ version: 4, modules: { swipeToClosePopup: true }, errors: {} }),
@@ -853,7 +862,7 @@ describe('initSettingsUI — модули, конфликтующие с SBG 0.6
   });
 
   test('в 0.6.1 toggle-all не вызывает enable для swipeToClosePopup', async () => {
-    document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    setDetectedVersionForTest('0.6.1');
     const swipeToClosePopup = createMockModule({
       id: 'swipeToClosePopup',
       defaultEnabled: true,

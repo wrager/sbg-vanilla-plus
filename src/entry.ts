@@ -2,6 +2,7 @@ import { isDisabled } from './core/killswitch';
 import { installGameScriptPatcher } from './core/gameScriptPatcher';
 import { bootstrap } from './core/bootstrap';
 import { initErrorLog } from './core/errorLog';
+import { initGameVersionDetection } from './core/gameVersion';
 import { initOlMapCapture } from './core/olMap';
 import { installSbgFlavor } from './core/sbgFlavor';
 import { enhancedMainScreen } from './modules/enhancedMainScreen/enhancedMainScreen';
@@ -33,9 +34,13 @@ if (!isDisabled()) {
 
   // bootstrap() создаёт DOM-элементы (settings panel), для чего нужен document.head.
   // При document-start head ещё не существует — откладываем до DOMContentLoaded.
-  function init(): void {
+  async function init(): Promise<void> {
     initErrorLog();
     installSbgFlavor();
+    // Детект версии игры через заголовок x-sbg-version (сервер ставит его
+    // на любой /api/* ответ, включая 404). Ждём ДО bootstrap, чтобы гейтинг
+    // модулей в bootstrap видел кэшированную версию синхронно.
+    await initGameVersionDetection();
     bootstrap([
       // ui
       enhancedMainScreen,
@@ -64,8 +69,8 @@ if (!isDisabled()) {
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', () => void init());
   } else {
-    init();
+    void init();
   }
 }

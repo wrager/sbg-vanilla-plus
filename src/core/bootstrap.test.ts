@@ -1,4 +1,5 @@
 import { bootstrap, resetBootstrapForTest } from './bootstrap';
+import { resetDetectedVersionForTest, setDetectedVersionForTest } from './gameVersion';
 import type { IFeatureModule } from './moduleRegistry';
 import type { ISvpSettings } from './settings/types';
 import * as storage from './settings/storage';
@@ -32,6 +33,7 @@ describe('bootstrap', () => {
     localStorage.clear();
     jest.restoreAllMocks();
     resetBootstrapForTest();
+    resetDetectedVersionForTest();
     setUserAgent(ORIGINAL_USER_AGENT);
   });
 
@@ -328,10 +330,10 @@ describe('bootstrap', () => {
   });
 
   describe('модули, нативные в SBG 0.6.1', () => {
-    test('в 0.6.1 (.navi-floater в DOM) favoritedPoints не enable-ится', () => {
-      // .navi-floater — статический маркер 0.6.1 из body.html. Наш модуль
-      // перекрывается нативным избранным и должен быть подавлен.
-      document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+    test('на 0.6.1 favoritedPoints не enable-ится', () => {
+      // Версия детектится из заголовка x-sbg-version; наш модуль перекрывается
+      // нативным избранным в 0.6.1 и должен быть подавлен.
+      setDetectedVersionForTest('0.6.1');
       jest.spyOn(storage, 'loadSettings').mockReturnValue({
         version: 2,
         modules: { favoritedPoints: true },
@@ -347,7 +349,7 @@ describe('bootstrap', () => {
     test('в 0.6.1 favoritedPoints не перезаписывает пользовательский true в settings', () => {
       // Runtime-блокировка по версии игры НЕ должна трогать persisted settings:
       // поведение симметрично host-гейту.
-      document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+      setDetectedVersionForTest('0.6.1');
       let lastSaved: ISvpSettings | undefined;
       jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
         lastSaved = s;
@@ -366,10 +368,9 @@ describe('bootstrap', () => {
       expect(lastSaved?.modules['favoritedPoints']).toBe(true);
     });
 
-    test('в 0.6.0 (без .navi-floater) favoritedPoints включается как обычно', () => {
-      // На проде (0.6.0) маркер отсутствует — гейт не срабатывает, модуль
-      // работает штатно.
-      document.body.innerHTML = '';
+    test('на 0.6.0 favoritedPoints включается как обычно', () => {
+      // На проде (0.6.0) гейт 0.6.1+ не срабатывает, модуль работает штатно.
+      setDetectedVersionForTest('0.6.0');
       jest.spyOn(storage, 'loadSettings').mockReturnValue({
         version: 2,
         modules: { favoritedPoints: true },
@@ -383,7 +384,7 @@ describe('bootstrap', () => {
     });
 
     test('в 0.6.1 другие (не-native) модули работают нормально', () => {
-      document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+      setDetectedVersionForTest('0.6.1');
       jest.spyOn(storage, 'loadSettings').mockReturnValue({
         version: 2,
         modules: { 'other-mod': true },
@@ -399,7 +400,7 @@ describe('bootstrap', () => {
 
   describe('модули, конфликтующие с SBG 0.6.1', () => {
     test('в 0.6.1 swipeToClosePopup не enable-ится (жест перехватывает игра)', () => {
-      document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+      setDetectedVersionForTest('0.6.1');
       jest.spyOn(storage, 'loadSettings').mockReturnValue({
         version: 2,
         modules: { swipeToClosePopup: true },
@@ -416,7 +417,7 @@ describe('bootstrap', () => {
     });
 
     test('в 0.6.1 swipeToClosePopup не перезаписывает пользовательский true в settings', () => {
-      document.body.innerHTML = '<div class="navi-floater hidden"></div>';
+      setDetectedVersionForTest('0.6.1');
       let lastSaved: ISvpSettings | undefined;
       jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
         lastSaved = s;
@@ -438,8 +439,8 @@ describe('bootstrap', () => {
       expect(lastSaved?.modules['swipeToClosePopup']).toBe(true);
     });
 
-    test('в 0.6.0 (без .navi-floater) swipeToClosePopup включается как обычно', () => {
-      document.body.innerHTML = '';
+    test('на 0.6.0 swipeToClosePopup включается как обычно', () => {
+      setDetectedVersionForTest('0.6.0');
       jest.spyOn(storage, 'loadSettings').mockReturnValue({
         version: 2,
         modules: { swipeToClosePopup: true },
