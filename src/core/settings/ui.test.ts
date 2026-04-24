@@ -885,6 +885,135 @@ describe('initSettingsUI — модули, конфликтующие с SBG 0.6
   });
 });
 
+describe('initSettingsUI — раздел «Недоступные» в конце экрана настроек', () => {
+  const SCOUT_UA = 'Mozilla/5.0 (Linux; Android 13) SbgScout/1.2.3';
+  const BROWSER_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0';
+  const ORIGINAL_USER_AGENT = navigator.userAgent;
+
+  function setUserAgent(value: string): void {
+    Object.defineProperty(navigator, 'userAgent', { value, configurable: true });
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('style[id^="svp-"]').forEach((node) => {
+      node.remove();
+    });
+    setUserAgent(BROWSER_UA);
+  });
+
+  afterEach(() => {
+    resetDetectedVersionForTest();
+    setUserAgent(ORIGINAL_USER_AGENT);
+  });
+
+  function getSectionOfRow(moduleId: string): HTMLElement {
+    const panel = document.getElementById('svp-settings-panel');
+    if (!panel) throw new Error('svp-settings-panel not rendered');
+    const rows = panel.querySelectorAll<HTMLElement>('.svp-module-row');
+    for (const row of rows) {
+      const id = row.querySelector('.svp-module-id')?.textContent;
+      if (id === moduleId) {
+        const section = row.closest<HTMLElement>('.svp-settings-section');
+        if (!section) throw new Error(`module "${moduleId}" row is not inside a section`);
+        return section;
+      }
+    }
+    throw new Error(`row for "${moduleId}" not found`);
+  }
+
+  test('если нет недоступных модулей — раздел «Недоступные» не создаётся', () => {
+    initSettingsUI([createMockModule({ id: 'alpha', category: 'ui' })], new Map());
+    const panel = document.getElementById('svp-settings-panel');
+    expect(panel?.querySelector('.svp-settings-section-deprecated')).toBeNull();
+  });
+
+  test('native-модуль 0.6.1 попадает в раздел «Недоступные», не в свою категорию', () => {
+    setDetectedVersionForTest('0.6.1');
+    const favoritedPoints = createMockModule({
+      id: 'favoritedPoints',
+      category: 'feature',
+      defaultEnabled: true,
+    });
+    const other = createMockModule({ id: 'other-feature', category: 'feature' });
+
+    initSettingsUI([favoritedPoints, other], new Map());
+
+    const favSection = getSectionOfRow('favoritedPoints');
+    const otherSection = getSectionOfRow('other-feature');
+    expect(favSection.classList.contains('svp-settings-section-deprecated')).toBe(true);
+    expect(otherSection.classList.contains('svp-settings-section-deprecated')).toBe(false);
+  });
+
+  test('conflicting-модуль попадает в тот же раздел «Недоступные»', () => {
+    setDetectedVersionForTest('0.6.1');
+    const swipeToClosePopup = createMockModule({
+      id: 'swipeToClosePopup',
+      category: 'ui',
+      defaultEnabled: true,
+    });
+
+    initSettingsUI([swipeToClosePopup], new Map());
+
+    const section = getSectionOfRow('swipeToClosePopup');
+    expect(section.classList.contains('svp-settings-section-deprecated')).toBe(true);
+  });
+
+  test('host-provided (keepScreenOn в Scout) тоже в разделе «Недоступные»', () => {
+    setUserAgent(SCOUT_UA);
+    const keepScreenOn = createMockModule({
+      id: 'keepScreenOn',
+      category: 'feature',
+      defaultEnabled: true,
+    });
+
+    initSettingsUI([keepScreenOn], new Map());
+
+    const section = getSectionOfRow('keepScreenOn');
+    expect(section.classList.contains('svp-settings-section-deprecated')).toBe(true);
+  });
+
+  test('раздел «Недоступные» рендерится ПОСЛЕ категорных секций', () => {
+    setDetectedVersionForTest('0.6.1');
+    const favoritedPoints = createMockModule({
+      id: 'favoritedPoints',
+      category: 'feature',
+      defaultEnabled: true,
+    });
+    const alpha = createMockModule({ id: 'alpha', category: 'ui' });
+    const beta = createMockModule({ id: 'beta', category: 'fix' });
+
+    initSettingsUI([favoritedPoints, alpha, beta], new Map());
+
+    const panel = document.getElementById('svp-settings-panel');
+    const sections = [...(panel?.querySelectorAll('.svp-settings-section') ?? [])];
+    const deprecatedIndex = sections.findIndex((s) =>
+      s.classList.contains('svp-settings-section-deprecated'),
+    );
+    expect(deprecatedIndex).toBe(sections.length - 1);
+  });
+
+  test('native + conflicting + host-provided уживаются в одном разделе', () => {
+    setUserAgent(SCOUT_UA);
+    setDetectedVersionForTest('0.6.1');
+
+    const favoritedPoints = createMockModule({ id: 'favoritedPoints', category: 'feature' });
+    const swipeToClosePopup = createMockModule({ id: 'swipeToClosePopup', category: 'ui' });
+    const keepScreenOn = createMockModule({ id: 'keepScreenOn', category: 'feature' });
+
+    initSettingsUI([favoritedPoints, swipeToClosePopup, keepScreenOn], new Map());
+
+    expect(getSectionOfRow('favoritedPoints').classList).toContain(
+      'svp-settings-section-deprecated',
+    );
+    expect(getSectionOfRow('swipeToClosePopup').classList).toContain(
+      'svp-settings-section-deprecated',
+    );
+    expect(getSectionOfRow('keepScreenOn').classList).toContain('svp-settings-section-deprecated');
+  });
+});
+
 describe('initSettingsUI — уведомление при отказе saveSettings', () => {
   beforeEach(() => {
     localStorage.clear();

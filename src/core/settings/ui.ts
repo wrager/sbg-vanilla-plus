@@ -272,6 +272,47 @@ const CATEGORY_LABELS: Record<Category, ILocalizedString> = {
   fix: { en: 'Bugfixes', ru: 'Багфиксы' },
 };
 
+const DEPRECATED_SECTION_LABEL: ILocalizedString = {
+  en: 'Unavailable',
+  ru: 'Недоступные',
+};
+
+/**
+ * Модуль «недоступен» = его функциональность даёт хост (keepScreenOn в
+ * Scout), либо перекрыта нативом текущей версии игры, либо конфликтует
+ * с игрой. Такие модули собираются в отдельную секцию в конце экрана
+ * настроек, чтобы не засорять основную часть, с которой пользователь
+ * реально работает.
+ */
+function isModuleDeprecated(moduleId: string): boolean {
+  return (
+    isModuleDisallowedInCurrentHost(moduleId) ||
+    isModuleNativeInCurrentGame(moduleId) ||
+    isModuleConflictingWithCurrentGame(moduleId)
+  );
+}
+
+/**
+ * Возвращает row-рендер для deprecated-модуля — выбор зависит от того,
+ * ПОЧЕМУ он недоступен. Для обычных (не-deprecated) модулей возвращает
+ * null: у них чекбокс-строка, которую строит createModuleRow.
+ */
+function createDeprecatedRow(
+  mod: IFeatureModule,
+  errorMessage: string | null,
+): HostProvidedRowResult | null {
+  if (isModuleDisallowedInCurrentHost(mod.id)) {
+    return createHostProvidedRow(mod, errorMessage);
+  }
+  if (isModuleNativeInCurrentGame(mod.id)) {
+    return createNativeInGameRow(mod, errorMessage);
+  }
+  if (isModuleConflictingWithCurrentGame(mod.id)) {
+    return createConflictingWithGameRow(mod, errorMessage);
+  }
+  return null;
+}
+
 function createCheckbox(checked: boolean, onChange: (enabled: boolean) => void): HTMLInputElement {
   const input = document.createElement('input');
   input.type = 'checkbox';
@@ -584,42 +625,7 @@ function fillSection(
 
   for (const mod of modules) {
     try {
-      // Модули, несовместимые с текущим хостом (например, keepScreenOn в SBG
-      // Scout), рендерятся без чекбокса вовсе: функциональность даёт сам хост,
-      // управлять ей пользователь не может. Подпись указывает хост.
-      const disallowed = isModuleDisallowedInCurrentHost(mod.id);
       const errorMessage = initialSettings.errors[mod.id] ?? null;
-
-      if (disallowed) {
-        const { row, setError } = createHostProvidedRow(mod, errorMessage);
-        errorDisplay.set(mod.id, setError);
-        section.appendChild(row);
-        continue;
-      }
-
-      // Модули, чья функциональность реализована нативно в текущей версии
-      // игры (SBG 0.6.1+), тоже рендерятся без чекбокса: игрок получит ту
-      // же самую фичу через штатный игровой UI, а параллельная работа
-      // нашего модуля привела бы к дублированию UI или двойному применению
-      // логики. Подпись указывает, что причина — сама игра.
-      if (isModuleNativeInCurrentGame(mod.id)) {
-        const { row, setError } = createNativeInGameRow(mod, errorMessage);
-        errorDisplay.set(mod.id, setError);
-        section.appendChild(row);
-        continue;
-      }
-
-      // Модули, которые конфликтуют с новой версией игры: нативной замены
-      // нет, но её новый жест/обработчик занял тот же DOM-элемент. Подпись
-      // другая — пользователь не должен думать, что получил функцию игры
-      // взамен нашей.
-      if (isModuleConflictingWithCurrentGame(mod.id)) {
-        const { row, setError } = createConflictingWithGameRow(mod, errorMessage);
-        errorDisplay.set(mod.id, setError);
-        section.appendChild(row);
-        continue;
-      }
-
       const enabled = isModuleEnabled(initialSettings, mod.id, mod.defaultEnabled);
 
       // checkboxRef — late-bound ссылка на чекбокс, которую получаем СРАЗУ
@@ -706,6 +712,38 @@ async function handleModuleToggle(
     setError(message);
   }
   onAnyToggle();
+}
+
+function fillDeprecatedSection(
+  section: HTMLElement,
+  modules: readonly IFeatureModule[],
+  errorDisplay: Map<string, (message: string | null) => void>,
+): void {
+  const title = document.createElement('div');
+  title.className = 'svp-settings-section-title';
+  title.textContent = t(DEPRECATED_SECTION_LABEL);
+  section.appendChild(title);
+
+  const initialSettings = loadSettings();
+
+  for (const mod of modules) {
+    try {
+      const errorMessage = initialSettings.errors[mod.id] ?? null;
+      const deprecatedRow = createDeprecatedRow(mod, errorMessage);
+      // Фильтр в initSettingsUI гарантирует, что сюда попадают только
+      // deprecated — null здесь означал бы баг фильтрации. Обрабатываем
+      // через error boundary ниже.
+      if (!deprecatedRow) {
+        throw new Error(`module "${mod.id}" classified as deprecated but no row renderer matched`);
+      }
+      errorDisplay.set(mod.id, deprecatedRow.setError);
+      section.appendChild(deprecatedRow.row);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[SVP] Ошибка рендера настроек модуля "${mod.id}":`, error);
+      section.appendChild(createRenderErrorRow(mod.id, message));
+    }
+  }
 }
 
 function createRenderErrorRow(moduleId: string, message: string): HTMLElement {
@@ -827,8 +865,21 @@ export function initSettingsUI(
     }
   }
 
-  const grouped = new Map<Category, IFeatureModule[]>();
+  // Разделяем обычные и deprecated модули: первые идут по категориям,
+  // deprecated собираются в отдельную секцию в конце (чтобы не мешать
+  // списку модулей, с которыми пользователь реально работает).
+  const regular: IFeatureModule[] = [];
+  const deprecated: IFeatureModule[] = [];
   for (const mod of modules) {
+    if (isModuleDeprecated(mod.id)) {
+      deprecated.push(mod);
+    } else {
+      regular.push(mod);
+    }
+  }
+
+  const grouped = new Map<Category, IFeatureModule[]>();
+  for (const mod of regular) {
     const list = grouped.get(mod.category) ?? [];
     list.push(mod);
     grouped.set(mod.category, list);
@@ -841,6 +892,13 @@ export function initSettingsUI(
     const section = document.createElement('div');
     section.className = 'svp-settings-section';
     fillSection(section, categoryModules, category, errorDisplay, checkboxMap, updateMasterState);
+    content.appendChild(section);
+  }
+
+  if (deprecated.length > 0) {
+    const section = document.createElement('div');
+    section.className = 'svp-settings-section svp-settings-section-deprecated';
+    fillDeprecatedSection(section, deprecated, errorDisplay);
     content.appendChild(section);
   }
 
