@@ -36,8 +36,8 @@ function isDrawItem(value: unknown): value is IIitcDrawItem {
   if (!Array.isArray(value.latLngs)) return false;
   if (value.latLngs.length < 2) return false;
   if (!value.latLngs.every(isLatLng)) return false;
-  if (value.color !== undefined && !isColor(value.color)) return false;
-  return true;
+  return !(value.color !== undefined && !isColor(value.color));
+
 }
 
 /**
