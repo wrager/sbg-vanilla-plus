@@ -20,6 +20,7 @@ import { refsOnMap } from './modules/refsOnMap/refsOnMap';
 import { repairAtFullCharge } from './modules/repairAtFullCharge/repairAtFullCharge';
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
 import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
+import { drawTools } from './modules/drawTools/drawTools';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
 import { favoritedPoints } from './modules/favoritedPoints/favoritedPoints';
 
@@ -55,6 +56,7 @@ if (!isDisabled()) {
       keyCountOnPoints,
       singleFingerRotation,
       mapTileLayers,
+      drawTools,
       // feature (map-зависимые)
       nextPointNavigation,
       refsOnMap,
