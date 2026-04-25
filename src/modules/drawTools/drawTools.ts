@@ -397,6 +397,7 @@ function setMode(mode: ToolMode, force = false): void {
     }) as IObservableInteraction;
 
     drawEndHandler = (event: Record<string, unknown>) => {
+      // OL Draw 'drawend' гарантирует event.feature: Feature
       setFeatureColor(event.feature as IOlFeature, currentColor);
       saveDrawItems();
     };
@@ -592,18 +593,18 @@ function snapAllToPortals(): void {
   );
 }
 
-async function copyDrawData(): Promise<void> {
+async function copyDrawPlan(): Promise<void> {
   const raw = stringifyIitcDrawItems(getDrawItems());
 
   try {
     await navigator.clipboard.writeText(raw);
-    showToast(t({ en: 'Copied draw data', ru: 'Схема скопирована' }));
+    showToast(t({ en: 'Copied draw plan', ru: 'Схема скопирована' }));
     return;
   } catch {
     // Fallback to prompt below
   }
 
-  window.prompt(t({ en: 'Copy draw data', ru: 'Скопируйте схему' }), raw);
+  window.prompt(t({ en: 'Copy draw plan', ru: 'Скопируйте схему' }), raw);
 }
 
 function formatValue(value: unknown): string {
@@ -664,7 +665,7 @@ function importErrorDetail(error: unknown): { en: string; ru: string } {
   }
 }
 
-function pasteDrawData(): void {
+function pasteDrawPlan(): void {
   const raw = window.prompt(
     t({
       en: 'Paste IITC draw-tools JSON',
@@ -688,7 +689,7 @@ function pasteDrawData(): void {
   if (hasData) {
     const ok = confirm(
       t({
-        en: 'Replace current draw data with imported data?',
+        en: 'Replace current draw plan with imported data?',
         ru: 'Заменить текущую схему импортированной?',
       }),
     );
@@ -701,7 +702,7 @@ function pasteDrawData(): void {
   showToast(t({ en: 'Import successful', ru: 'Импорт выполнен' }));
 }
 
-function resetDrawData(): void {
+function resetDrawPlan(): void {
   const hasData = (drawSource?.getFeatures().length ?? 0) > 0;
   if (!hasData) return;
 
@@ -715,7 +716,7 @@ function resetDrawData(): void {
 
   clearDrawLayer();
   saveDrawItems();
-  showToast(t({ en: 'Draw data cleared', ru: 'Схема очищена' }));
+  showToast(t({ en: 'Draw plan cleared', ru: 'Схема очищена' }));
 }
 
 function setToolbarOpen(open: boolean): void {
@@ -801,21 +802,21 @@ function createToolbar(): HTMLDivElement {
   applyGameIcon(snapButton, 'fas-location-dot', 'S');
 
   const copyButton = createToolButton('C', t({ en: 'Copy JSON', ru: 'Копировать JSON' }), () => {
-    void copyDrawData();
+    void copyDrawPlan();
   });
   applyGameIcon(copyButton, 'fas-share-nodes', 'C');
 
   const pasteButton = createToolButton(
     'V',
     t({ en: 'Paste JSON', ru: 'Вставить JSON' }),
-    pasteDrawData,
+    pasteDrawPlan,
   );
   applyGameIcon(pasteButton, 'fas-wand-magic-sparkles', 'V', '0 0 586 512');
 
   const resetButton = createToolButton(
     'R',
     t({ en: 'Clear all', ru: 'Очистить всё' }),
-    resetDrawData,
+    resetDrawPlan,
   );
   applyGameIcon(resetButton, 'fas-trash-can', 'R');
 
@@ -917,7 +918,7 @@ export const drawTools: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Draw tools', ru: 'Инструменты рисования' },
   description: {
-    en: 'Draw and edit schemes (2-point lines and 3-point triangles), snap to points, import/export between players',
+    en: 'Draw and edit plans (2-point lines and 3-point triangles), snap to points, import/export between players',
     ru: 'Рисование и редактирование схем (линии из 2 точек и треугольники из 3 точек), привязка к точкам, импорт/экспорт между игроками',
   },
   defaultEnabled: true,

@@ -975,9 +975,8 @@ describe('drawTools module', () => {
 
       clickCopyButton();
 
-      // Дать микротаскам прокрутиться: writeText resolves -> showToast
-      await Promise.resolve();
-      await Promise.resolve();
+      // Дождаться завершения copyDrawPlan (writeText resolves -> showToast)
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
       expect(writeText).toHaveBeenCalledTimes(1);
       const writeCalls = writeText.mock.calls as Array<[string]>;
@@ -1013,10 +1012,8 @@ describe('drawTools module', () => {
 
       clickCopyButton();
 
-      // writeText rejects -> catch -> prompt; даём микротаскам прокрутиться
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
+      // Дождаться завершения copyDrawPlan (writeText rejects -> catch -> prompt)
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
       expect(writeText).toHaveBeenCalledTimes(1);
       expect(promptSpy).toHaveBeenCalledTimes(1);
