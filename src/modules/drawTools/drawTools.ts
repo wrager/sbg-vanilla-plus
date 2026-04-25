@@ -2,16 +2,15 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 import { $, injectStyles, removeStyles, waitForElement } from '../../core/dom';
 import { t } from '../../core/l10n';
 import { showToast } from '../../core/toast';
-import { createDragPanControl, findLayerByName, getOlMap } from '../../core/olMap';
+import { findLayerByName, getOlMap } from '../../core/olMap';
 import type {
-  IDragPanControl,
   IOlFeature,
   IOlInteraction,
   IOlLayer,
   IOlMap,
   IOlVectorSource,
 } from '../../core/olMap';
-import { parseIitcDrawItems, stringifyIitcDrawItems } from './iitcFormat';
+import { IitcParseError, parseIitcDrawItems, stringifyIitcDrawItems } from './iitcFormat';
 import type { IIitcDrawItem, IIitcLatLng } from './iitcFormat';
 import styles from './styles.css?inline';
 
@@ -20,7 +19,7 @@ const STORAGE_KEY = 'svp_drawTools';
 const DRAW_LAYER_NAME = 'svp-draw-tools';
 const SNAP_THRESHOLD_PX = 100;
 const DEFAULT_COLOR = '#a24ac3';
-const MENU_ICON = '\u270E\uFE0E';
+const MENU_LABEL = 'DT';
 
 type ToolMode = 'none' | 'line' | 'polygon' | 'edit' | 'delete';
 
@@ -64,7 +63,6 @@ interface IVertexSnap {
 let map: IOlMap | null = null;
 let drawSource: IVectorSourceWithRemove | null = null;
 let drawLayer: IOlLayer | null = null;
-let dragPanControl: IDragPanControl | null = null;
 
 let menuButton: HTMLButtonElement | null = null;
 let toolbar: HTMLDivElement | null = null;
@@ -383,8 +381,6 @@ function clearInteractions(): void {
     );
     deleteClickHandler = null;
   }
-
-  dragPanControl?.restore();
 }
 
 function setMode(mode: ToolMode, force = false): void {
@@ -635,6 +631,64 @@ async function copyDrawData(): Promise<void> {
   window.prompt(t({ en: 'Copy draw data', ru: 'Скопируйте схему' }), raw);
 }
 
+function formatValue(value: unknown): string {
+  if (value === null) return 'null';
+  if (value === undefined) return 'undefined';
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '<unserializable>';
+  }
+}
+
+function importErrorDetail(error: unknown): { en: string; ru: string } {
+  if (!(error instanceof IitcParseError)) {
+    return { en: 'invalid data', ru: 'некорректные данные' };
+  }
+  const { reason, path, value } = error;
+  switch (reason) {
+    case 'invalid_json':
+      return { en: 'invalid JSON', ru: 'некорректный JSON' };
+    case 'not_array':
+      return { en: 'expected an array of items', ru: 'ожидается массив элементов' };
+    case 'not_object':
+      return {
+        en: `${path} — item must be an object`,
+        ru: `${path} — фигура должна быть объектом`,
+      };
+    case 'unsupported_type':
+      return {
+        en: `${path} — unsupported type ${formatValue(value)}`,
+        ru: `${path} — неподдерживаемый тип фигуры ${formatValue(value)}`,
+      };
+    case 'lat_lngs_not_array':
+      return {
+        en: `${path} — latLngs must be an array`,
+        ru: `${path} — координаты должны быть массивом`,
+      };
+    case 'polyline_too_few_points':
+      return {
+        en: `${path} — line needs at least 2 points, got ${String(value)}`,
+        ru: `${path} — для линии нужно минимум 2 точки, передано ${String(value)}`,
+      };
+    case 'polygon_too_few_points':
+      return {
+        en: `${path} — triangle needs at least 3 points, got ${String(value)}`,
+        ru: `${path} — для треугольника нужно минимум 3 точки, передано ${String(value)}`,
+      };
+    case 'invalid_coordinates':
+      return {
+        en: `${path} — invalid coordinate ${formatValue(value)}`,
+        ru: `${path} — некорректные координаты ${formatValue(value)}`,
+      };
+    case 'invalid_color':
+      return {
+        en: `${path} — invalid color ${formatValue(value)} (expected #RRGGBB)`,
+        ru: `${path} — некорректный цвет ${formatValue(value)} (требуется #RRGGBB)`,
+      };
+  }
+}
+
 function pasteDrawData(): void {
   const raw = window.prompt(
     t({
@@ -649,8 +703,9 @@ function pasteDrawData(): void {
   let items: IIitcDrawItem[];
   try {
     items = parseIitcDrawItems(raw.trim());
-  } catch {
-    showToast(t({ en: 'Import failed: invalid JSON', ru: 'Импорт не удался: некорректный JSON' }));
+  } catch (error) {
+    const detail = importErrorDetail(error);
+    showToast(t({ en: `Import failed: ${detail.en}`, ru: `Импорт не удался: ${detail.ru}` }));
     return;
   }
 
@@ -761,9 +816,6 @@ function createToolbar(): HTMLDivElement {
   colorInput.addEventListener('input', () => {
     if (!colorInput) return;
     currentColor = colorInput.value;
-    if (currentMode === 'line' || currentMode === 'polygon') {
-      setMode(currentMode, true);
-    }
   });
 
   const snapButton = createToolButton(
@@ -814,10 +866,14 @@ function createToolbar(): HTMLDivElement {
   return panel;
 }
 
-async function mountMenuButton(): Promise<void> {
+async function mountMenuButton(myToken: number): Promise<boolean> {
   let menu = $('.game-menu');
   if (!menu) {
     const found = await waitForElement('.game-menu');
+    // После await токен мог инвалидироваться (disable во время ожидания).
+    // Бросаем работу до любых записей в DOM/глобалы — иначе текущий enable
+    // перезапишет ресурсы более позднего enable, который уже отработал.
+    if (myToken !== enableToken) return false;
     if (!(found instanceof HTMLElement)) {
       throw new Error('Game menu not found');
     }
@@ -836,12 +892,13 @@ async function mountMenuButton(): Promise<void> {
   const button = document.createElement('button');
   button.id = 'svp-draw-tools-menu-button';
   button.className = 'svp-draw-tools-menu-button';
-  button.textContent = MENU_ICON;
+  button.textContent = MENU_LABEL;
   button.title = t({ en: 'Draw tools', ru: 'Инструменты рисования' });
   button.addEventListener('click', toggleToolbar);
 
   settingsButton.insertAdjacentElement('afterend', button);
   menuButton = button;
+  return true;
 }
 
 function unmountMenuButton(): void {
@@ -878,7 +935,6 @@ function cleanup(): void {
   unmountMenuButton();
   removeDrawLayer();
   removeStyles(MODULE_ID);
-  dragPanControl = null;
   map = null;
 }
 
@@ -886,10 +942,10 @@ export const drawTools: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Draw tools', ru: 'Инструменты рисования' },
   description: {
-    en: 'Draw and edit line schemes on map (IITC draw-tools JSON format)',
-    ru: 'Рисование и редактирование схем линий на карте (формат IITC draw-tools JSON)',
+    en: 'Draw and edit schemes (2-point lines and 3-point triangles), snap to points, import/export between players',
+    ru: 'Рисование и редактирование схем (линии из 2 точек и треугольники из 3 точек), привязка к точкам, импорт/экспорт между игроками',
   },
-  defaultEnabled: false,
+  defaultEnabled: true,
   category: 'map',
 
   init() {},
@@ -900,15 +956,17 @@ export const drawTools: IFeatureModule = {
 
     try {
       mountToolbar();
-      await mountMenuButton();
+      const mounted = await mountMenuButton(myToken);
+      // Если токен устарел во время mountMenuButton — текущий enable «осиротел»:
+      // disable, который инвалидировал нас, уже отработал cleanup() для
+      // ресурсов, смонтированных до await. Никаких дополнительных teardown
+      // здесь вызывать нельзя — иначе уроним ресурсы более позднего enable.
+      if (!mounted) return;
 
       const olMap = await getOlMap();
       if (myToken !== enableToken) return;
 
       map = olMap;
-      if (!dragPanControl) {
-        dragPanControl = createDragPanControl(olMap);
-      }
 
       createDrawLayer(olMap);
       loadFromStorage();

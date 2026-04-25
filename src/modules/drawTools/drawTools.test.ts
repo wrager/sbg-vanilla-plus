@@ -162,9 +162,15 @@ function makePointsLayer(portalCoordinates: number[][] = [[100, 100]]): IOlLayer
 
 describe('drawTools module', () => {
   let lastModifyOptions: Record<string, unknown> | null = null;
-  let lastDrawInteraction: { abortDrawing: jest.Mock } | null = null;
+  let lastDrawInteraction: {
+    on: jest.Mock;
+    un: jest.Mock;
+    abortDrawing: jest.Mock;
+  } | null = null;
+  let lastModifyInteraction: { on: jest.Mock; un: jest.Mock } | null = null;
   let lastDrawOptions: Record<string, unknown> | null = null;
   let capturedDrawSource: ReturnType<typeof makeVectorSource> | null = null;
+  let currentMap: IOlMap | null = null;
 
   beforeEach(() => {
     document.body.innerHTML = `
@@ -200,15 +206,17 @@ describe('drawTools module', () => {
       return interaction;
     });
 
-    class FakeModifyInteraction {
-      constructor(options: Record<string, unknown>) {
-        lastModifyOptions = options;
-      }
-      on = jest.fn();
-      un = jest.fn();
-      setActive = jest.fn();
-      getActive = jest.fn(() => true);
-    }
+    const modifyCtor = jest.fn().mockImplementation((options: Record<string, unknown>) => {
+      lastModifyOptions = options;
+      const interaction = {
+        on: jest.fn(),
+        un: jest.fn(),
+        setActive: jest.fn(),
+        getActive: jest.fn(() => true),
+      };
+      lastModifyInteraction = interaction;
+      return interaction;
+    });
 
     class FakeStyle {
       readonly options: Record<string, unknown>;
@@ -241,9 +249,7 @@ describe('drawTools module', () => {
       },
       interaction: {
         Draw: drawCtor as unknown as new (opts: Record<string, unknown>) => IOlInteraction,
-        Modify: FakeModifyInteraction as unknown as new (
-          opts: Record<string, unknown>,
-        ) => IOlInteraction,
+        Modify: modifyCtor as unknown as new (opts: Record<string, unknown>) => IOlInteraction,
       },
       Feature: FakeFeature as unknown as new (opts?: Record<string, unknown>) => IOlFeature,
       geom: {
@@ -265,10 +271,11 @@ describe('drawTools module', () => {
       },
     };
 
-    const olMap = makeMap([makePointsLayer()]);
-    mockGetOlMap.mockResolvedValue(olMap);
+    currentMap = makeMap([makePointsLayer()]);
+    mockGetOlMap.mockResolvedValue(currentMap);
     lastModifyOptions = null;
     lastDrawInteraction = null;
+    lastModifyInteraction = null;
     lastDrawOptions = null;
     capturedDrawSource = null;
   });
@@ -280,10 +287,10 @@ describe('drawTools module', () => {
     jest.clearAllMocks();
   });
 
-  test('has map metadata and disabled by default', () => {
+  test('has map metadata and enabled by default', () => {
     expect(drawTools.id).toBe('drawTools');
     expect(drawTools.category).toBe('map');
-    expect(drawTools.defaultEnabled).toBe(false);
+    expect(drawTools.defaultEnabled).toBe(true);
   });
 
   test('enable injects menu button and toolbar', async () => {
@@ -306,6 +313,208 @@ describe('drawTools module', () => {
     expect(document.getElementById('svp-draw-tools-menu-button')).toBeNull();
     expect(document.querySelector('.svp-draw-tools-toolbar')).toBeNull();
     expect(document.getElementById('svp-drawTools')).toBeNull();
+  });
+
+  test('disable while waitForElement is in flight cleans up mounted UI', async () => {
+    // game-menu отсутствует на момент enable() — mountMenuButton застрянет в waitForElement
+    document.body.innerHTML = '';
+
+    const enablePromise = drawTools.enable();
+    // Дать microtask'у прокрутиться, чтобы mountToolbar успел
+    await Promise.resolve();
+
+    expect(document.querySelector('.svp-draw-tools-toolbar')).not.toBeNull();
+    expect(document.getElementById('svp-draw-tools-menu-button')).toBeNull();
+
+    // disable во время ожидания .game-menu
+    void drawTools.disable();
+    expect(document.querySelector('.svp-draw-tools-toolbar')).toBeNull();
+
+    // Теперь возвращаем .game-menu — MutationObserver разрешит waitForElement
+    const menu = document.createElement('div');
+    menu.className = 'game-menu';
+    const settingsBtn = document.createElement('button');
+    settingsBtn.id = 'settings';
+    menu.appendChild(settingsBtn);
+    document.body.appendChild(menu);
+
+    await enablePromise;
+
+    // После резолюции: ни кнопки, ни toolbar в DOM не должно остаться
+    expect(document.getElementById('svp-draw-tools-menu-button')).toBeNull();
+    expect(document.querySelector('.svp-draw-tools-toolbar')).toBeNull();
+    expect(document.getElementById('svp-drawTools')).toBeNull();
+  });
+
+  test('rapid enable→disable→enable: stale enable does not duplicate or break newer mounts', async () => {
+    // game-menu отсутствует — оба enable застрянут в waitForElement
+    document.body.innerHTML = '';
+
+    const enable1 = drawTools.enable();
+    await Promise.resolve();
+
+    void drawTools.disable();
+    expect(document.querySelector('.svp-draw-tools-toolbar')).toBeNull();
+
+    const enable2 = drawTools.enable();
+    await Promise.resolve();
+
+    // После второго enable: ровно один toolbar, кнопки ещё нет
+    expect(document.querySelectorAll('.svp-draw-tools-toolbar')).toHaveLength(1);
+    expect(document.querySelectorAll('#svp-draw-tools-menu-button')).toHaveLength(0);
+
+    // Возвращаем .game-menu — оба waitForElement резолвятся
+    const menu = document.createElement('div');
+    menu.className = 'game-menu';
+    const settingsBtn = document.createElement('button');
+    settingsBtn.id = 'settings';
+    menu.appendChild(settingsBtn);
+    document.body.appendChild(menu);
+
+    await enable1;
+    await enable2;
+
+    // Только UI второго enable должен остаться: одна кнопка, один toolbar
+    expect(document.querySelectorAll('#svp-draw-tools-menu-button')).toHaveLength(1);
+    expect(document.querySelectorAll('.svp-draw-tools-toolbar')).toHaveLength(1);
+  });
+
+  describe('paste import error toasts', () => {
+    function clickPaste(): void {
+      const pasteButton = document.querySelectorAll<HTMLButtonElement>(
+        '.svp-draw-tools-tool-button',
+      )[6]; // L, P, Edit, Delete, Snap, Copy, Paste(6), Reset, Close
+      pasteButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+
+    function setupPrompt(returnValue: string | null): jest.SpyInstance {
+      return jest.spyOn(window, 'prompt').mockReturnValue(returnValue);
+    }
+
+    test('invalid color: toast shows path and offending value', async () => {
+      await drawTools.enable();
+      const promptSpy = setupPrompt(
+        JSON.stringify([
+          {
+            type: 'polyline',
+            latLngs: [
+              { lat: 55.75, lng: 37.61 },
+              { lat: 55.76, lng: 37.62 },
+            ],
+            color: '#zzz',
+          },
+        ]),
+      );
+
+      clickPaste();
+
+      const toast = document.querySelector('.svp-toast');
+      expect(toast).not.toBeNull();
+      expect(toast?.textContent).toContain('items[0]');
+      expect(toast?.textContent).toContain('"#zzz"');
+
+      promptSpy.mockRestore();
+    });
+
+    test('polygon too few points: toast shows path and the count', async () => {
+      await drawTools.enable();
+      const promptSpy = setupPrompt(
+        JSON.stringify([
+          {
+            type: 'polygon',
+            latLngs: [
+              { lat: 55.75, lng: 37.61 },
+              { lat: 55.76, lng: 37.62 },
+            ],
+          },
+        ]),
+      );
+
+      clickPaste();
+
+      const toast = document.querySelector('.svp-toast');
+      expect(toast?.textContent).toContain('items[0]');
+      expect(toast?.textContent).toContain(' 2');
+
+      promptSpy.mockRestore();
+    });
+
+    test('unsupported type: toast shows path and quoted type value', async () => {
+      await drawTools.enable();
+      const promptSpy = setupPrompt(
+        JSON.stringify([{ type: 'marker', latLng: { lat: 55.75, lng: 37.61 } }]),
+      );
+
+      clickPaste();
+
+      const toast = document.querySelector('.svp-toast');
+      expect(toast?.textContent).toContain('items[0]');
+      expect(toast?.textContent).toContain('"marker"');
+
+      promptSpy.mockRestore();
+    });
+
+    test('invalid coordinates: toast shows path and the bad coordinate object', async () => {
+      await drawTools.enable();
+      const promptSpy = setupPrompt(
+        JSON.stringify([
+          {
+            type: 'polyline',
+            latLngs: [
+              { lat: 55.75, lng: 37.61 },
+              { lat: 'oops', lng: 37.62 },
+            ],
+          },
+        ]),
+      );
+
+      clickPaste();
+
+      const toast = document.querySelector('.svp-toast');
+      expect(toast?.textContent).toContain('items[0]');
+      expect(toast?.textContent).toContain('"oops"');
+
+      promptSpy.mockRestore();
+    });
+
+    test('invalid JSON: toast does not crash and shows generic message', async () => {
+      await drawTools.enable();
+      const promptSpy = setupPrompt('{not json');
+
+      clickPaste();
+
+      const toast = document.querySelector('.svp-toast');
+      expect(toast).not.toBeNull();
+      expect((toast?.textContent ?? '').toLowerCase()).toContain('json');
+
+      promptSpy.mockRestore();
+    });
+
+    test('russian locale: toast contains russian text', async () => {
+      localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
+      await drawTools.enable();
+      const promptSpy = setupPrompt(
+        JSON.stringify([
+          {
+            type: 'polygon',
+            latLngs: [
+              { lat: 55.75, lng: 37.61 },
+              { lat: 55.76, lng: 37.62 },
+            ],
+          },
+        ]),
+      );
+
+      clickPaste();
+
+      const toast = document.querySelector('.svp-toast');
+      expect(toast?.textContent).toContain('Импорт не удался');
+      expect(toast?.textContent).toContain('треугольник');
+      expect(toast?.textContent).toContain('items[0]');
+
+      promptSpy.mockRestore();
+      localStorage.removeItem('settings');
+    });
   });
 
   test('edit mode disables inserting new vertices on segments', async () => {
@@ -391,6 +600,196 @@ describe('drawTools module', () => {
 
     expect(lastDrawOptions.type).toBe('Polygon');
     expect(lastDrawOptions.maxPoints).toBe(3);
+  });
+
+  describe('persistence and serialization', () => {
+    test('broken JSON in storage: enable does not throw, key is reset to []', async () => {
+      localStorage.setItem('svp_drawTools', '{not json');
+
+      await drawTools.enable();
+
+      expect(localStorage.getItem('svp_drawTools')).toBe('[]');
+      if (!capturedDrawSource) throw new Error('Draw source was not captured');
+      expect(capturedDrawSource.getFeatures()).toHaveLength(0);
+    });
+
+    test('validation error in storage (polygon with 2 points): key is reset to []', async () => {
+      localStorage.setItem(
+        'svp_drawTools',
+        JSON.stringify([
+          {
+            type: 'polygon',
+            latLngs: [
+              { lat: 0, lng: 0 },
+              { lat: 1, lng: 1 },
+            ],
+          },
+        ]),
+      );
+
+      await drawTools.enable();
+
+      expect(localStorage.getItem('svp_drawTools')).toBe('[]');
+      if (!capturedDrawSource) throw new Error('Draw source was not captured');
+      expect(capturedDrawSource.getFeatures()).toHaveLength(0);
+    });
+
+    test('polygon import: 3 latLngs become a 4-coordinate closed ring in OL', async () => {
+      localStorage.setItem(
+        'svp_drawTools',
+        JSON.stringify([
+          {
+            type: 'polygon',
+            latLngs: [
+              { lat: 0, lng: 0 },
+              { lat: 0, lng: 200 },
+              { lat: 170, lng: 100 },
+            ],
+            color: '#abcdef',
+          },
+        ]),
+      );
+
+      await drawTools.enable();
+
+      if (!capturedDrawSource) throw new Error('Draw source was not captured');
+      const features = capturedDrawSource.getFeatures();
+      expect(features).toHaveLength(1);
+
+      const geom = features[0].getGeometry() as unknown as FakePolygon;
+      const ring = geom.getCoordinates()[0];
+      expect(ring).toHaveLength(4);
+      expect(ring[3]).toEqual(ring[0]);
+      expect(features[0].get?.('color')).toBe('#abcdef');
+    });
+
+    test('save round-trip: polygon stored without closing vertex (modifyend → 3 latLngs)', async () => {
+      localStorage.setItem(
+        'svp_drawTools',
+        JSON.stringify([
+          {
+            type: 'polygon',
+            latLngs: [
+              { lat: 0, lng: 0 },
+              { lat: 0, lng: 200 },
+              { lat: 170, lng: 100 },
+            ],
+          },
+        ]),
+      );
+
+      await drawTools.enable();
+
+      // Активируем edit-режим — создастся Modify interaction
+      const editButton = document.querySelectorAll<HTMLButtonElement>(
+        '.svp-draw-tools-tool-button',
+      )[2];
+      editButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      if (!lastModifyInteraction) throw new Error('Modify interaction was not captured');
+      const modifyOnCalls = lastModifyInteraction.on.mock.calls as Array<[string, () => void]>;
+      const modifyEndCall = modifyOnCalls.find((call) => call[0] === 'modifyend');
+      expect(modifyEndCall).toBeDefined();
+      modifyEndCall?.[1]();
+
+      const stored = JSON.parse(localStorage.getItem('svp_drawTools') ?? '[]') as Array<{
+        type: string;
+        latLngs: unknown[];
+      }>;
+      expect(stored).toHaveLength(1);
+      expect(stored[0].type).toBe('polygon');
+      expect(stored[0].latLngs).toHaveLength(3);
+    });
+
+    test('drawend handler assigns currentColor to created feature and saves', async () => {
+      await drawTools.enable();
+
+      const lineButton = document.querySelectorAll<HTMLButtonElement>(
+        '.svp-draw-tools-tool-button',
+      )[0];
+      lineButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      if (!lastDrawInteraction) throw new Error('Draw interaction was not captured');
+      const drawOnCalls = lastDrawInteraction.on.mock.calls as Array<
+        [string, (event: Record<string, unknown>) => void]
+      >;
+      const drawEndCall = drawOnCalls.find((call) => call[0] === 'drawend');
+      expect(drawEndCall).toBeDefined();
+      const handler = drawEndCall?.[1];
+      if (!handler) throw new Error('drawend handler was not registered');
+
+      // Симулируем завершение рисования: фича без цвета
+      const lineGeom = new FakeLineString([
+        [0, 0],
+        [10, 0],
+      ]);
+      const feature = new FakeFeature({ geometry: lineGeom });
+      if (!capturedDrawSource) throw new Error('Draw source was not captured');
+      capturedDrawSource.addFeature(feature);
+      handler({ feature });
+
+      // currentColor по умолчанию — DEFAULT_COLOR (#a24ac3)
+      expect(feature.get('color')).toBe('#a24ac3');
+
+      const stored = JSON.parse(localStorage.getItem('svp_drawTools') ?? '[]') as Array<{
+        type: string;
+        color?: string;
+      }>;
+      expect(stored).toHaveLength(1);
+      expect(stored[0].type).toBe('polyline');
+      expect(stored[0].color).toBe('#a24ac3');
+    });
+  });
+
+  describe('delete mode', () => {
+    test('click on draw-layer feature removes it from source and saves', async () => {
+      localStorage.setItem(
+        'svp_drawTools',
+        JSON.stringify([
+          {
+            type: 'polyline',
+            latLngs: [
+              { lat: 0, lng: 0 },
+              { lat: 0, lng: 10 },
+            ],
+          },
+        ]),
+      );
+
+      await drawTools.enable();
+      if (!capturedDrawSource) throw new Error('Draw source was not captured');
+      expect(capturedDrawSource.getFeatures()).toHaveLength(1);
+      const feature = capturedDrawSource.getFeatures()[0];
+
+      // Включаем delete-mode — навешивается map.on('click', handler)
+      const deleteButton = document.querySelectorAll<HTMLButtonElement>(
+        '.svp-draw-tools-tool-button',
+      )[3];
+      deleteButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      if (!currentMap) throw new Error('Map was not captured');
+      const mapOn = currentMap.on as unknown as jest.Mock;
+      const mapOnCalls = mapOn.mock.calls as Array<
+        [string, (event: Record<string, unknown>) => void]
+      >;
+      const clickCall = mapOnCalls.find((call) => call[0] === 'click');
+      expect(clickCall).toBeDefined();
+      const clickHandler = clickCall?.[1];
+      if (!clickHandler) throw new Error('click handler was not registered');
+
+      // forEachFeatureAtPixel должен передать клик-обработчику нашу фичу
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      forEachMock.mockImplementation((pixel: number[], callback: (f: IOlFeature) => void) => {
+        void pixel;
+        callback(feature);
+      });
+
+      clickHandler({ pixel: [50, 50], originalEvent: {}, type: 'click' });
+
+      expect(capturedDrawSource.getFeatures()).toHaveLength(0);
+      const stored = JSON.parse(localStorage.getItem('svp_drawTools') ?? 'null') as unknown[];
+      expect(stored).toEqual([]);
+    });
   });
 
   describe('snap behavior', () => {

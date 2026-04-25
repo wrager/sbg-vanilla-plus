@@ -17,6 +17,28 @@ export interface IIitcPolygonItem {
 
 export type IIitcDrawItem = IIitcPolylineItem | IIitcPolygonItem;
 
+export type IitcParseReason =
+  | 'invalid_json'
+  | 'not_array'
+  | 'not_object'
+  | 'unsupported_type'
+  | 'lat_lngs_not_array'
+  | 'polyline_too_few_points'
+  | 'polygon_too_few_points'
+  | 'invalid_coordinates'
+  | 'invalid_color';
+
+export class IitcParseError extends Error {
+  constructor(
+    public readonly reason: IitcParseReason,
+    public readonly path: string,
+    public readonly value: unknown,
+  ) {
+    super(`${reason} at ${path}`);
+    this.name = 'IitcParseError';
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -30,40 +52,55 @@ function isColor(value: unknown): value is string {
   return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
 }
 
-function isDrawItem(value: unknown): value is IIitcDrawItem {
-  if (!isRecord(value)) return false;
-  if (value.type !== 'polyline' && value.type !== 'polygon') return false;
-  if (!Array.isArray(value.latLngs)) return false;
-  if (value.latLngs.length < 2) return false;
-  if (!value.latLngs.every(isLatLng)) return false;
-  return !(value.color !== undefined && !isColor(value.color));
+function validateDrawItem(item: unknown, index: number): IIitcDrawItem {
+  const path = `items[${index}]`;
+
+  if (!isRecord(item)) {
+    throw new IitcParseError('not_object', path, item);
+  }
+  if (item.type !== 'polyline' && item.type !== 'polygon') {
+    throw new IitcParseError('unsupported_type', path, item.type);
+  }
+  if (!Array.isArray(item.latLngs)) {
+    throw new IitcParseError('lat_lngs_not_array', path, item.latLngs);
+  }
+  if (item.type === 'polyline' && item.latLngs.length < 2) {
+    throw new IitcParseError('polyline_too_few_points', path, item.latLngs.length);
+  }
+  if (item.type === 'polygon' && item.latLngs.length < 3) {
+    throw new IitcParseError('polygon_too_few_points', path, item.latLngs.length);
+  }
+
+  const badIndex = item.latLngs.findIndex((coord: unknown) => !isLatLng(coord));
+  if (badIndex >= 0) {
+    throw new IitcParseError('invalid_coordinates', path, item.latLngs[badIndex]);
+  }
+
+  if (item.color !== undefined && !isColor(item.color)) {
+    throw new IitcParseError('invalid_color', path, item.color);
+  }
+
+  return item as unknown as IIitcDrawItem;
 }
 
 /**
  * Parses IITC draw-tools JSON (array of items).
  * Only polyline/polygon are accepted in SVP MVP.
+ * Throws IitcParseError with reason/path/value on validation failure.
  */
 export function parseIitcDrawItems(raw: string): IIitcDrawItem[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw) as unknown;
   } catch {
-    throw new Error('Invalid JSON');
+    throw new IitcParseError('invalid_json', 'root', raw);
   }
 
   if (!Array.isArray(parsed)) {
-    throw new Error('Draw data must be an array');
+    throw new IitcParseError('not_array', 'root', parsed);
   }
 
-  const items: IIitcDrawItem[] = [];
-  for (const item of parsed) {
-    if (!isDrawItem(item)) {
-      throw new Error('Unsupported or invalid draw item');
-    }
-    items.push(item);
-  }
-
-  return items;
+  return parsed.map(validateDrawItem);
 }
 
 export function stringifyIitcDrawItems(items: IIitcDrawItem[]): string {
