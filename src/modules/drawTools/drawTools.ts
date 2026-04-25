@@ -506,6 +506,12 @@ function addToolbarOutsideClickListener(): void {
     // остаётся открытым.
     const followButton = document.getElementById('toggle-follow-btn');
     if (followButton !== null && followButton.contains(target)) return;
+    // Клик/тап по нашему собственному тосту (`.svp-toast`): тосты модуля
+    // показывают результат действий («Схема скопирована», «Импорт выполнен»),
+    // и попадание тапом по ним при попытке прицелиться в тулбар не должно
+    // закрывать тулбар.
+    const toast = target instanceof Element ? target.closest('.svp-toast') : null;
+    if (toast !== null) return;
     setToolbarOpen(false);
     setMode('none');
   };

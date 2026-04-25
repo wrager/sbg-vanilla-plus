@@ -371,6 +371,18 @@ describe('drawTools module', () => {
       expect(isOpen()).toBe(false);
     });
 
+    test('click on .svp-toast keeps toolbar open', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      const toast = document.createElement('div');
+      toast.className = 'svp-toast';
+      document.body.appendChild(toast);
+      toast.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(true);
+    });
+
     test('click on FW (#toggle-follow-btn) keeps toolbar open', async () => {
       await openToolbar();
       expect(isOpen()).toBe(true);
