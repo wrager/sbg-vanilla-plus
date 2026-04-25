@@ -464,6 +464,26 @@ describe('drawTools module', () => {
       expect(isOpen()).toBe(true);
     });
 
+    test('click inside .info.popup keeps toolbar open', async () => {
+      await openToolbar();
+      const popup = document.querySelector('.info.popup');
+      const child = document.createElement('button');
+      popup?.appendChild(child);
+      child.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(true);
+    });
+
+    test('click on .popup-touch overlay keeps toolbar open', async () => {
+      await openToolbar();
+      const overlay = document.createElement('div');
+      overlay.className = 'popup-touch';
+      document.body.appendChild(overlay);
+      overlay.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(true);
+    });
+
     test('disable removes outside-click listener', async () => {
       await openToolbar();
       void drawTools.disable();

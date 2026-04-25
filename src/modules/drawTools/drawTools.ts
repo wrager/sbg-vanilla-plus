@@ -512,6 +512,13 @@ function addToolbarOutsideClickListener(): void {
     // закрывать тулбар.
     const toast = target instanceof Element ? target.closest('.svp-toast') : null;
     if (toast !== null) return;
+    // Любой игровой попап (`.info.popup`, `.settings.popup`, `.layers-config.popup`,
+    // и т.д.) и оверлей `.popup-touch` поверх него — пользователь работает с
+    // диалогом, а не уходит из режима рисования. Тулбар лежит под попапом по
+    // z-index, его всё равно не видно; закрытие при клике в попап только
+    // сломает состояние, ради которого пользователь и открывал инструмент.
+    const popup = target instanceof Element ? target.closest('.popup, .popup-touch') : null;
+    if (popup !== null) return;
     setToolbarOpen(false);
     setMode('none');
   };
