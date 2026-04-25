@@ -1,14 +1,49 @@
-.svp-draw-tools-menu-button {
-  min-width: 2.4em;
-  font-family: monospace;
+/* control живёт как OL-control под region-picker. Внутренняя button наследует
+   фон/border/cursor от игровых `.ol-control button` правил, мы задаём только
+   квадратный размер 32x32 (как у `.svp-star-center-clear-control button` в
+   drawing-restrictions) и нулевой padding.
+
+   Селектор именно `.svp-draw-tools-control button` (а не `.svp-draw-tools-control-button`):
+   specificity 0,1,1 (класс + element) — равен игровому `.ol-control button` и
+   побеждает source-order'ом. Прежний вариант с classом на самой button давал
+   specificity 0,1,0, проигрывал и кнопка визуально оказывалась мельче соседних
+   OL-controls. `min-height: auto` нужен, чтобы перебить min-height у
+   глобальных button-стилей игры. */
+.svp-draw-tools-control button {
+  width: 33px;
+  height: 33px;
+  min-height: auto;
+  padding: 0;
+}
+
+.svp-draw-tools-control button svg {
+  display: block;
+  margin: auto;
+}
+
+/* Не задаём `fill` на уровне CSS: правило перебивало бы inline `fill="none"`,
+   которое стоит на наших outline-иконках, и превращало бы их в залитые силуэты.
+   Outline-иконки полагаются на свой SVG-атрибут `fill="none"`, заполненные
+   (game wand) — на `fill="currentColor"` inline. */
+.svp-draw-tools-icon {
+  display: block;
 }
 
 .svp-draw-tools-toolbar {
   position: fixed;
-  top: 56px;
-  left: 8px;
-  z-index: 1002;
+  top: 122px;
+  left: 3px;
+  /* Игровой попап точки рендерится на `z-index: 3`. Чтобы тулбар не перекрывал
+     попап, он держится строго ниже (2). На copy-fallback модалку и тосты это
+     не влияет — у них собственные более высокие z-index'ы. */
+  z-index: 2;
   display: none;
+  /* На узком viewport (мобильник в портретной ориентации) 10 кнопок не влезают
+     в одну строку — даём toolbar переноситься. max-width ограничивает рост по
+     ширине вьюпортом за вычетом отступов слева и справа, чтобы toolbar не
+     уходил за правый край экрана. */
+  flex-wrap: wrap;
+  max-width: calc(100vw - 16px);
   align-items: center;
   gap: 4px;
   padding: 6px;
@@ -19,6 +54,15 @@
 
 .svp-draw-tools-toolbar.svp-draw-tools-toolbar-open {
   display: flex;
+}
+
+/* Когда enhancedMainScreen активен (`.topleft-container.svp-compact`),
+   self-info компактируется и занимает меньше вертикального места. Тулбар
+   поднимается выше и сдвигается правее, в позицию, где раньше стоял по
+   умолчанию (до того как мы подвинули его под полноразмерное self-info). */
+.svp-draw-tools-toolbar.svp-draw-tools-toolbar-compact-position {
+  top: 56px;
+  left: 8px;
 }
 
 .svp-draw-tools-tool-button {
@@ -40,11 +84,6 @@
   color: var(--accent);
 }
 
-.svp-draw-tools-icon {
-  display: block;
-  fill: currentColor;
-}
-
 .svp-draw-tools-color {
   width: 30px;
   height: 28px;
@@ -54,6 +93,61 @@
   background: transparent;
 }
 
-.svp-draw-tools-close-button {
-  margin-left: 4px;
+/* Класс `.svp-draw-tools-close-button` остаётся на самой кнопке (его навешивает
+   код при создании toolbar), но CSS-правила с `margin-left: 4px` больше нет:
+   при `flex-wrap: wrap` (на узком viewport) close-кнопка могла оказаться первой
+   в новой строке, и собственный margin-left создавал у неё лишний отступ слева
+   относительно остальных кнопок этой строки. Визуальный отступ от соседа
+   достаточно даёт `gap: 4px` контейнера. */
+
+.svp-draw-tools-copy-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1003;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.svp-draw-tools-copy-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(90vw, 600px);
+  max-height: 80vh;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--text);
+}
+
+.svp-draw-tools-copy-modal-heading {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.svp-draw-tools-copy-textarea {
+  width: 100%;
+  min-height: 200px;
+  flex: 1;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--background);
+  color: var(--text);
+  font-family: monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.svp-draw-tools-copy-modal-close {
+  align-self: flex-end;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
 }

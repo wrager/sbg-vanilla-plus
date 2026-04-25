@@ -174,11 +174,11 @@ describe('drawTools module', () => {
 
   beforeEach(() => {
     document.body.innerHTML = `
-      <div class="game-menu">
-        <button id="ops"></button>
-        <button id="score"></button>
-        <button id="leaderboard"></button>
-        <button id="settings"></button>
+      <div id="map"></div>
+      <div class="info popup hidden" data-guid=""></div>
+      <button id="toggle-follow-btn"></button>
+      <div class="region-picker ol-unselectable ol-control">
+        <button type="button">Δ</button>
       </div>
     `;
 
@@ -293,30 +293,222 @@ describe('drawTools module', () => {
     expect(drawTools.defaultEnabled).toBe(true);
   });
 
-  test('enable injects menu button and toolbar', async () => {
+  test('enable mounts OL-control after region-picker and opens toolbar on click', async () => {
     await drawTools.enable();
 
     const button = document.getElementById('svp-draw-tools-menu-button');
+    const control = document.querySelector('.svp-draw-tools-control');
+    const picker = document.querySelector('.region-picker');
     const toolbar = document.querySelector('.svp-draw-tools-toolbar');
 
     expect(button).not.toBeNull();
+    expect(control).not.toBeNull();
     expect(toolbar).not.toBeNull();
+    // Control должен стоять сразу после picker'а (стабильный порядок: наша
+    // кнопка первая среди svp-controls после region-picker).
+    expect(picker?.nextElementSibling).toBe(control);
 
     button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(toolbar?.classList.contains('svp-draw-tools-toolbar-open')).toBe(true);
   });
 
-  test('disable removes menu button and toolbar', async () => {
+  describe('toolbar position with enhancedMainScreen', () => {
+    test('without .topleft-container.svp-compact: toolbar has no compact-position class', async () => {
+      await drawTools.enable();
+      const tb = document.querySelector('.svp-draw-tools-toolbar');
+      expect(tb?.classList.contains('svp-draw-tools-toolbar-compact-position')).toBe(false);
+    });
+
+    test('with .topleft-container.svp-compact at mount time: toolbar gets compact-position class', async () => {
+      const container = document.createElement('div');
+      container.className = 'topleft-container svp-compact';
+      document.body.appendChild(container);
+
+      await drawTools.enable();
+
+      const tb = document.querySelector('.svp-draw-tools-toolbar');
+      expect(tb?.classList.contains('svp-draw-tools-toolbar-compact-position')).toBe(true);
+    });
+
+    test('svp-compact added later: observer applies compact-position class', async () => {
+      const container = document.createElement('div');
+      container.className = 'topleft-container';
+      document.body.appendChild(container);
+
+      await drawTools.enable();
+      const tb = document.querySelector('.svp-draw-tools-toolbar');
+      expect(tb?.classList.contains('svp-draw-tools-toolbar-compact-position')).toBe(false);
+
+      container.classList.add('svp-compact');
+      await Promise.resolve();
+      expect(tb?.classList.contains('svp-draw-tools-toolbar-compact-position')).toBe(true);
+    });
+
+    test('svp-compact removed later: observer drops compact-position class', async () => {
+      const container = document.createElement('div');
+      container.className = 'topleft-container svp-compact';
+      document.body.appendChild(container);
+
+      await drawTools.enable();
+      const tb = document.querySelector('.svp-draw-tools-toolbar');
+      expect(tb?.classList.contains('svp-draw-tools-toolbar-compact-position')).toBe(true);
+
+      container.classList.remove('svp-compact');
+      await Promise.resolve();
+      expect(tb?.classList.contains('svp-draw-tools-toolbar-compact-position')).toBe(false);
+    });
+  });
+
+  test('every toolbar button renders with an SVG icon', async () => {
+    await drawTools.enable();
+
+    const buttons = document.querySelectorAll<HTMLButtonElement>('.svp-draw-tools-tool-button');
+    expect(buttons).toHaveLength(9);
+    for (const button of buttons) {
+      expect(button.querySelector('svg')).not.toBeNull();
+      expect(button.textContent).toBe('');
+    }
+  });
+
+  describe('toolbar outside-click close', () => {
+    async function openToolbar(): Promise<void> {
+      await drawTools.enable();
+      const dtButton = document.getElementById('svp-draw-tools-menu-button');
+      dtButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+
+    function isOpen(): boolean {
+      return (
+        document
+          .querySelector('.svp-draw-tools-toolbar')
+          ?.classList.contains('svp-draw-tools-toolbar-open') === true
+      );
+    }
+
+    test('click on toolbar itself keeps it open', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      const lineButton = document.querySelectorAll<HTMLButtonElement>(
+        '.svp-draw-tools-tool-button',
+      )[0];
+      lineButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(true);
+    });
+
+    test('click on map keeps toolbar open (drawing/panning continues)', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      const map = document.getElementById('map');
+      map?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(true);
+    });
+
+    test('click outside toolbar and map closes toolbar', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      const stranger = document.createElement('div');
+      document.body.appendChild(stranger);
+      stranger.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(false);
+    });
+
+    test('click on .svp-toast keeps toolbar open', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      const toast = document.createElement('div');
+      toast.className = 'svp-toast';
+      document.body.appendChild(toast);
+      toast.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(true);
+    });
+
+    test('click on FW (#toggle-follow-btn) keeps toolbar open', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      const followButton = document.getElementById('toggle-follow-btn');
+      followButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(true);
+    });
+
+    test('click on DT button toggles toolbar (open → close)', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      const dtButton = document.getElementById('svp-draw-tools-menu-button');
+      dtButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(false);
+    });
+
+    test('opening point popup keeps toolbar open (popup overlays via z-index)', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      // Игра убирает hidden у `.info.popup`, чтобы показать попап точки.
+      // Тулбар не реагирует на этот переход — попап перекрывает его по z-index
+      // (попап игры рендерится на z-index 3, тулбар на 2).
+      const popup = document.querySelector('.info.popup');
+      popup?.classList.remove('hidden');
+      await Promise.resolve();
+
+      expect(isOpen()).toBe(true);
+    });
+
+    test('click inside .info.popup keeps toolbar open', async () => {
+      await openToolbar();
+      const popup = document.querySelector('.info.popup');
+      const child = document.createElement('button');
+      popup?.appendChild(child);
+      child.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(true);
+    });
+
+    test('click on .popup-touch overlay keeps toolbar open', async () => {
+      await openToolbar();
+      const overlay = document.createElement('div');
+      overlay.className = 'popup-touch';
+      document.body.appendChild(overlay);
+      overlay.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(true);
+    });
+
+    test('disable removes outside-click listener', async () => {
+      await openToolbar();
+      void drawTools.disable();
+
+      // Тулбара уже нет — но и наш document-listener не должен мешать другим.
+      // Проверка: после disable() click по document.body не падает с ошибкой
+      // (referenced toolbar/controlElement = null после cleanup).
+      expect(() =>
+        document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+      ).not.toThrow();
+    });
+  });
+
+  test('disable removes OL-control and toolbar', async () => {
     await drawTools.enable();
     void drawTools.disable();
 
     expect(document.getElementById('svp-draw-tools-menu-button')).toBeNull();
+    expect(document.querySelector('.svp-draw-tools-control')).toBeNull();
     expect(document.querySelector('.svp-draw-tools-toolbar')).toBeNull();
     expect(document.getElementById('svp-drawTools')).toBeNull();
   });
 
   test('disable while waitForElement is in flight cleans up mounted UI', async () => {
-    // game-menu отсутствует на момент enable() — mountMenuButton застрянет в waitForElement
+    // region-picker отсутствует на момент enable() — mountOlControl застрянет в waitForElement
     document.body.innerHTML = '';
 
     const enablePromise = drawTools.enable();
@@ -324,30 +516,29 @@ describe('drawTools module', () => {
     await Promise.resolve();
 
     expect(document.querySelector('.svp-draw-tools-toolbar')).not.toBeNull();
-    expect(document.getElementById('svp-draw-tools-menu-button')).toBeNull();
+    expect(document.querySelector('.svp-draw-tools-control')).toBeNull();
 
-    // disable во время ожидания .game-menu
+    // disable во время ожидания region-picker
     void drawTools.disable();
     expect(document.querySelector('.svp-draw-tools-toolbar')).toBeNull();
 
-    // Теперь возвращаем .game-menu — MutationObserver разрешит waitForElement
-    const menu = document.createElement('div');
-    menu.className = 'game-menu';
-    const settingsBtn = document.createElement('button');
-    settingsBtn.id = 'settings';
-    menu.appendChild(settingsBtn);
-    document.body.appendChild(menu);
+    // Теперь возвращаем region-picker — MutationObserver разрешит waitForElement
+    const picker = document.createElement('div');
+    picker.className = 'region-picker ol-unselectable ol-control';
+    const pickerBtn = document.createElement('button');
+    picker.appendChild(pickerBtn);
+    document.body.appendChild(picker);
 
     await enablePromise;
 
     // После резолюции: ни кнопки, ни toolbar в DOM не должно остаться
-    expect(document.getElementById('svp-draw-tools-menu-button')).toBeNull();
+    expect(document.querySelector('.svp-draw-tools-control')).toBeNull();
     expect(document.querySelector('.svp-draw-tools-toolbar')).toBeNull();
     expect(document.getElementById('svp-drawTools')).toBeNull();
   });
 
   test('rapid enable→disable→enable: stale enable does not duplicate or break newer mounts', async () => {
-    // game-menu отсутствует — оба enable застрянут в waitForElement
+    // region-picker отсутствует — оба enable застрянут в waitForElement
     document.body.innerHTML = '';
 
     const enable1 = drawTools.enable();
@@ -359,23 +550,22 @@ describe('drawTools module', () => {
     const enable2 = drawTools.enable();
     await Promise.resolve();
 
-    // После второго enable: ровно один toolbar, кнопки ещё нет
+    // После второго enable: ровно один toolbar, контрола ещё нет
     expect(document.querySelectorAll('.svp-draw-tools-toolbar')).toHaveLength(1);
-    expect(document.querySelectorAll('#svp-draw-tools-menu-button')).toHaveLength(0);
+    expect(document.querySelectorAll('.svp-draw-tools-control')).toHaveLength(0);
 
-    // Возвращаем .game-menu — оба waitForElement резолвятся
-    const menu = document.createElement('div');
-    menu.className = 'game-menu';
-    const settingsBtn = document.createElement('button');
-    settingsBtn.id = 'settings';
-    menu.appendChild(settingsBtn);
-    document.body.appendChild(menu);
+    // Возвращаем region-picker — оба waitForElement резолвятся
+    const picker = document.createElement('div');
+    picker.className = 'region-picker ol-unselectable ol-control';
+    const pickerBtn = document.createElement('button');
+    picker.appendChild(pickerBtn);
+    document.body.appendChild(picker);
 
     await enable1;
     await enable2;
 
-    // Только UI второго enable должен остаться: одна кнопка, один toolbar
-    expect(document.querySelectorAll('#svp-draw-tools-menu-button')).toHaveLength(1);
+    // Только UI второго enable должен остаться: один control, один toolbar
+    expect(document.querySelectorAll('.svp-draw-tools-control')).toHaveLength(1);
     expect(document.querySelectorAll('.svp-draw-tools-toolbar')).toHaveLength(1);
   });
 
@@ -988,7 +1178,7 @@ describe('drawTools module', () => {
       expect(toast?.textContent).toContain('Copied');
     });
 
-    test('falls back to prompt when clipboard rejects', async () => {
+    async function setupRejectedClipboard(): Promise<void> {
       localStorage.setItem(
         'svp_drawTools',
         JSON.stringify([
@@ -1008,20 +1198,84 @@ describe('drawTools module', () => {
         value: { writeText },
         configurable: true,
       });
-      const promptSpy = jest.spyOn(window, 'prompt').mockReturnValue('');
+    }
+
+    function getCopyModalTextarea(): HTMLTextAreaElement | null {
+      return document.querySelector<HTMLTextAreaElement>('.svp-draw-tools-copy-textarea');
+    }
+
+    test('falls back to modal with textarea when clipboard rejects', async () => {
+      await setupRejectedClipboard();
 
       clickCopyButton();
-
-      // Дождаться завершения copyDrawPlan (writeText rejects -> catch -> prompt)
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-      expect(writeText).toHaveBeenCalledTimes(1);
-      expect(promptSpy).toHaveBeenCalledTimes(1);
-      const promptCalls = promptSpy.mock.calls as Array<[string, string]>;
-      const parsed = JSON.parse(promptCalls[0][1]) as Array<{ type: string }>;
+      const overlay = document.querySelector('.svp-draw-tools-copy-modal-overlay');
+      expect(overlay).not.toBeNull();
+      const textarea = getCopyModalTextarea();
+      expect(textarea).not.toBeNull();
+      const parsed = JSON.parse(textarea?.value ?? 'null') as Array<{ type: string }>;
       expect(parsed[0].type).toBe('polyline');
+    });
 
-      promptSpy.mockRestore();
+    test('close button removes copy fallback modal', async () => {
+      await setupRejectedClipboard();
+
+      clickCopyButton();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      const closeButton = document.querySelector<HTMLButtonElement>(
+        '.svp-draw-tools-copy-modal-close',
+      );
+      expect(closeButton).not.toBeNull();
+      closeButton?.click();
+
+      expect(document.querySelector('.svp-draw-tools-copy-modal-overlay')).toBeNull();
+    });
+
+    test('overlay click outside modal removes copy fallback modal', async () => {
+      await setupRejectedClipboard();
+
+      clickCopyButton();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      const overlay = document.querySelector<HTMLDivElement>('.svp-draw-tools-copy-modal-overlay');
+      overlay?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(document.querySelector('.svp-draw-tools-copy-modal-overlay')).toBeNull();
+    });
+
+    test('Escape closes copy fallback modal', async () => {
+      await setupRejectedClipboard();
+
+      clickCopyButton();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+      expect(document.querySelector('.svp-draw-tools-copy-modal-overlay')).toBeNull();
+    });
+
+    test('repeat copy click while modal open keeps exactly one overlay', async () => {
+      await setupRejectedClipboard();
+
+      clickCopyButton();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      clickCopyButton();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      expect(document.querySelectorAll('.svp-draw-tools-copy-modal-overlay')).toHaveLength(1);
+    });
+
+    test('disable while modal open removes overlay', async () => {
+      await setupRejectedClipboard();
+
+      clickCopyButton();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      void drawTools.disable();
+
+      expect(document.querySelector('.svp-draw-tools-copy-modal-overlay')).toBeNull();
     });
   });
 });
