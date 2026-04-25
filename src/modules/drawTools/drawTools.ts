@@ -501,6 +501,11 @@ function addToolbarOutsideClickListener(): void {
     if (controlElement?.contains(target)) return;
     // Клик по карте — рисование, удаление по клику, панорамирование. Не закрывать.
     if (isInsideMap(target)) return;
+    // Клик по кнопке СЛ (`#toggle-follow-btn`): часто переключается во время
+    // рисования, чтобы карта следовала за игроком или нет; тулбар при этом
+    // остаётся открытым.
+    const followButton = document.getElementById('toggle-follow-btn');
+    if (followButton !== null && followButton.contains(target)) return;
     setToolbarOpen(false);
     setMode('none');
   };

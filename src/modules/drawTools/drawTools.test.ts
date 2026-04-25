@@ -176,6 +176,7 @@ describe('drawTools module', () => {
     document.body.innerHTML = `
       <div id="map"></div>
       <div class="info popup hidden" data-guid=""></div>
+      <button id="toggle-follow-btn"></button>
       <div class="region-picker ol-unselectable ol-control">
         <button type="button">Δ</button>
       </div>
@@ -368,6 +369,16 @@ describe('drawTools module', () => {
       stranger.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
       expect(isOpen()).toBe(false);
+    });
+
+    test('click on FW (#toggle-follow-btn) keeps toolbar open', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      const followButton = document.getElementById('toggle-follow-btn');
+      followButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(true);
     });
 
     test('click on DT button toggles toolbar (open → close)', async () => {
