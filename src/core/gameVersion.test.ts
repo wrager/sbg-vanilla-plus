@@ -256,9 +256,9 @@ describe('isModuleNativeInCurrentGame', () => {
     expect(isModuleNativeInCurrentGame('enhancedMainScreen')).toBe(false);
   });
 
-  test('на 0.6.1 все 7 deprecated-модулей маркированы', () => {
+  test('на 0.6.1 все 7 native-модулей маркированы', () => {
     setDetectedVersionForTest('0.6.1');
-    const deprecated = [
+    const native = [
       'favoritedPoints',
       'inventoryCleanup',
       'keyCountOnPoints',
@@ -267,7 +267,7 @@ describe('isModuleNativeInCurrentGame', () => {
       'singleFingerRotation',
       'nextPointNavigation',
     ];
-    for (const id of deprecated) {
+    for (const id of native) {
       expect(isModuleNativeInCurrentGame(id)).toBe(true);
     }
   });

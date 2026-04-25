@@ -926,7 +926,7 @@ describe('initSettingsUI — раздел «Недоступные» в конц
   test('если нет недоступных модулей — раздел «Недоступные» не создаётся', () => {
     initSettingsUI([createMockModule({ id: 'alpha', category: 'ui' })], new Map());
     const panel = document.getElementById('svp-settings-panel');
-    expect(panel?.querySelector('.svp-settings-section-deprecated')).toBeNull();
+    expect(panel?.querySelector('.svp-settings-section-unavailable')).toBeNull();
   });
 
   test('native-модуль 0.6.1 попадает в раздел «Недоступные», не в свою категорию', () => {
@@ -942,8 +942,8 @@ describe('initSettingsUI — раздел «Недоступные» в конц
 
     const favSection = getSectionOfRow('favoritedPoints');
     const otherSection = getSectionOfRow('other-feature');
-    expect(favSection.classList.contains('svp-settings-section-deprecated')).toBe(true);
-    expect(otherSection.classList.contains('svp-settings-section-deprecated')).toBe(false);
+    expect(favSection.classList.contains('svp-settings-section-unavailable')).toBe(true);
+    expect(otherSection.classList.contains('svp-settings-section-unavailable')).toBe(false);
   });
 
   test('conflicting-модуль попадает в тот же раздел «Недоступные»', () => {
@@ -957,7 +957,7 @@ describe('initSettingsUI — раздел «Недоступные» в конц
     initSettingsUI([swipeToClosePopup], new Map());
 
     const section = getSectionOfRow('swipeToClosePopup');
-    expect(section.classList.contains('svp-settings-section-deprecated')).toBe(true);
+    expect(section.classList.contains('svp-settings-section-unavailable')).toBe(true);
   });
 
   test('host-provided (keepScreenOn в Scout) тоже в разделе «Недоступные»', () => {
@@ -971,7 +971,7 @@ describe('initSettingsUI — раздел «Недоступные» в конц
     initSettingsUI([keepScreenOn], new Map());
 
     const section = getSectionOfRow('keepScreenOn');
-    expect(section.classList.contains('svp-settings-section-deprecated')).toBe(true);
+    expect(section.classList.contains('svp-settings-section-unavailable')).toBe(true);
   });
 
   test('раздел «Недоступные» рендерится ПОСЛЕ категорных секций', () => {
@@ -988,10 +988,10 @@ describe('initSettingsUI — раздел «Недоступные» в конц
 
     const panel = document.getElementById('svp-settings-panel');
     const sections = [...(panel?.querySelectorAll('.svp-settings-section') ?? [])];
-    const deprecatedIndex = sections.findIndex((s) =>
-      s.classList.contains('svp-settings-section-deprecated'),
+    const unavailableIndex = sections.findIndex((s) =>
+      s.classList.contains('svp-settings-section-unavailable'),
     );
-    expect(deprecatedIndex).toBe(sections.length - 1);
+    expect(unavailableIndex).toBe(sections.length - 1);
   });
 
   test('native + conflicting + host-provided уживаются в одном разделе', () => {
@@ -1005,12 +1005,12 @@ describe('initSettingsUI — раздел «Недоступные» в конц
     initSettingsUI([favoritedPoints, swipeToClosePopup, keepScreenOn], new Map());
 
     expect(getSectionOfRow('favoritedPoints').classList).toContain(
-      'svp-settings-section-deprecated',
+      'svp-settings-section-unavailable',
     );
     expect(getSectionOfRow('swipeToClosePopup').classList).toContain(
-      'svp-settings-section-deprecated',
+      'svp-settings-section-unavailable',
     );
-    expect(getSectionOfRow('keepScreenOn').classList).toContain('svp-settings-section-deprecated');
+    expect(getSectionOfRow('keepScreenOn').classList).toContain('svp-settings-section-unavailable');
   });
 });
 

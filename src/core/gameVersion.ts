@@ -142,7 +142,7 @@ export function isSbgAtLeast(minVersion: string): boolean {
 // Модули, чью функциональность игра реализовала нативно в SBG 0.6.1.
 // Множество заполняется по одному id за раз — каждый с обоснованием
 // перекрытия use case в commit message соответствующего коммита.
-const DEPRECATED_SINCE_061: ReadonlySet<string> = new Set<string>([
+const NATIVE_SINCE_061: ReadonlySet<string> = new Set<string>([
   'favoritedPoints',
   'inventoryCleanup',
   'keyCountOnPoints',
@@ -153,14 +153,14 @@ const DEPRECATED_SINCE_061: ReadonlySet<string> = new Set<string>([
 ]);
 
 export function isModuleNativeInCurrentGame(moduleId: string): boolean {
-  return isSbgAtLeast('0.6.1') && DEPRECATED_SINCE_061.has(moduleId);
+  return isSbgAtLeast('0.6.1') && NATIVE_SINCE_061.has(moduleId);
 }
 
 // Модули, которые конфликтуют с новой версией SBG: use case у нашей
 // реализации не перекрыт нативом, но новая версия ввела жест/событие
 // на тех же DOM-элементах, что слушает наш модуль — одновременная
 // работа даёт сломанный UX (двойное срабатывание, перехват жеста и т. п.).
-// Отличие от DEPRECATED_SINCE_061 принципиальное: там игра заменила
+// Отличие от NATIVE_SINCE_061 принципиальное: там игра заменила
 // нашу фичу — подпись «Реализовано в игре»; здесь наш функционал
 // пропадает без нативной замены — подпись «Конфликтует с новой версией игры».
 const CONFLICTS_WITH_061: ReadonlySet<string> = new Set<string>(['swipeToClosePopup']);

@@ -272,7 +272,7 @@ const CATEGORY_LABELS: Record<Category, ILocalizedString> = {
   fix: { en: 'Bugfixes', ru: 'Багфиксы' },
 };
 
-const DEPRECATED_SECTION_LABEL: ILocalizedString = {
+const UNAVAILABLE_SECTION_LABEL: ILocalizedString = {
   en: 'Unavailable',
   ru: 'Недоступные',
 };
@@ -282,9 +282,10 @@ const DEPRECATED_SECTION_LABEL: ILocalizedString = {
  * Scout), либо перекрыта нативом текущей версии игры, либо конфликтует
  * с игрой. Такие модули собираются в отдельную секцию в конце экрана
  * настроек, чтобы не засорять основную часть, с которой пользователь
- * реально работает.
+ * реально работает. Слово «недоступен» — собирательное: причины разные,
+ * не все из них «устаревание».
  */
-function isModuleDeprecated(moduleId: string): boolean {
+function isModuleUnavailable(moduleId: string): boolean {
   return (
     isModuleDisallowedInCurrentHost(moduleId) ||
     isModuleNativeInCurrentGame(moduleId) ||
@@ -293,11 +294,11 @@ function isModuleDeprecated(moduleId: string): boolean {
 }
 
 /**
- * Возвращает row-рендер для deprecated-модуля — выбор зависит от того,
- * ПОЧЕМУ он недоступен. Для обычных (не-deprecated) модулей возвращает
- * null: у них чекбокс-строка, которую строит createModuleRow.
+ * Возвращает row-рендер для недоступного модуля — выбор зависит от того,
+ * ПОЧЕМУ он недоступен. Для обычных (доступных) модулей возвращает null:
+ * у них чекбокс-строка, которую строит createModuleRow.
  */
-function createDeprecatedRow(
+function createUnavailableRow(
   mod: IFeatureModule,
   errorMessage: string | null,
 ): HostProvidedRowResult | null {
@@ -714,14 +715,14 @@ async function handleModuleToggle(
   onAnyToggle();
 }
 
-function fillDeprecatedSection(
+function fillUnavailableSection(
   section: HTMLElement,
   modules: readonly IFeatureModule[],
   errorDisplay: Map<string, (message: string | null) => void>,
 ): void {
   const title = document.createElement('div');
   title.className = 'svp-settings-section-title';
-  title.textContent = t(DEPRECATED_SECTION_LABEL);
+  title.textContent = t(UNAVAILABLE_SECTION_LABEL);
   section.appendChild(title);
 
   const initialSettings = loadSettings();
@@ -729,15 +730,15 @@ function fillDeprecatedSection(
   for (const mod of modules) {
     try {
       const errorMessage = initialSettings.errors[mod.id] ?? null;
-      const deprecatedRow = createDeprecatedRow(mod, errorMessage);
+      const unavailableRow = createUnavailableRow(mod, errorMessage);
       // Фильтр в initSettingsUI гарантирует, что сюда попадают только
-      // deprecated — null здесь означал бы баг фильтрации. Обрабатываем
+      // недоступные — null здесь означал бы баг фильтрации. Обрабатываем
       // через error boundary ниже.
-      if (!deprecatedRow) {
-        throw new Error(`module "${mod.id}" classified as deprecated but no row renderer matched`);
+      if (!unavailableRow) {
+        throw new Error(`module "${mod.id}" classified as unavailable but no row renderer matched`);
       }
-      errorDisplay.set(mod.id, deprecatedRow.setError);
-      section.appendChild(deprecatedRow.row);
+      errorDisplay.set(mod.id, unavailableRow.setError);
+      section.appendChild(unavailableRow.row);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`[SVP] Ошибка рендера настроек модуля "${mod.id}":`, error);
@@ -865,14 +866,16 @@ export function initSettingsUI(
     }
   }
 
-  // Разделяем обычные и deprecated модули: первые идут по категориям,
-  // deprecated собираются в отдельную секцию в конце (чтобы не мешать
-  // списку модулей, с которыми пользователь реально работает).
+  // Разделяем доступные и недоступные модули: первые идут по категориям,
+  // вторые собираются в отдельную секцию в конце (чтобы не мешать списку
+  // модулей, с которыми пользователь реально работает). Недоступность
+  // имеет разные причины — нативная реализация в игре, конфликт с игрой,
+  // покрытие хостом — все они попадают в секцию недоступных.
   const regular: IFeatureModule[] = [];
-  const deprecated: IFeatureModule[] = [];
+  const unavailable: IFeatureModule[] = [];
   for (const mod of modules) {
-    if (isModuleDeprecated(mod.id)) {
-      deprecated.push(mod);
+    if (isModuleUnavailable(mod.id)) {
+      unavailable.push(mod);
     } else {
       regular.push(mod);
     }
@@ -895,10 +898,10 @@ export function initSettingsUI(
     content.appendChild(section);
   }
 
-  if (deprecated.length > 0) {
+  if (unavailable.length > 0) {
     const section = document.createElement('div');
-    section.className = 'svp-settings-section svp-settings-section-deprecated';
-    fillDeprecatedSection(section, deprecated, errorDisplay);
+    section.className = 'svp-settings-section svp-settings-section-unavailable';
+    fillUnavailableSection(section, unavailable, errorDisplay);
     content.appendChild(section);
   }
 
