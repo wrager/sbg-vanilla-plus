@@ -6,6 +6,7 @@ import {
   isModuleConflictingWithCurrentGame,
   isModuleNativeInCurrentGame,
   isSbgAtLeast,
+  isSbgGreaterThan,
   resetDetectedVersionForTest,
   setDetectedVersionForTest,
 } from './gameVersion';
@@ -223,6 +224,42 @@ describe('isSbgAtLeast', () => {
   test('версия не определена → false (safe default: модули работают как на старой версии)', () => {
     setDetectedVersionForTest(null);
     expect(isSbgAtLeast('0.6.1')).toBe(false);
+  });
+});
+
+describe('isSbgGreaterThan', () => {
+  afterEach(() => {
+    resetDetectedVersionForTest();
+  });
+
+  test('0.6.1 > 0.6.0 → true', () => {
+    setDetectedVersionForTest('0.6.1');
+    expect(isSbgGreaterThan('0.6.0')).toBe(true);
+  });
+
+  test('будущая 0.6.2 > 0.6.0 → true', () => {
+    setDetectedVersionForTest('0.6.2');
+    expect(isSbgGreaterThan('0.6.0')).toBe(true);
+  });
+
+  test('0.7.0 > 0.6.0 → true', () => {
+    setDetectedVersionForTest('0.7.0');
+    expect(isSbgGreaterThan('0.6.0')).toBe(true);
+  });
+
+  test('0.6.0 не больше 0.6.0 → false (строгое неравенство)', () => {
+    setDetectedVersionForTest('0.6.0');
+    expect(isSbgGreaterThan('0.6.0')).toBe(false);
+  });
+
+  test('0.5.9 < 0.6.0 → false', () => {
+    setDetectedVersionForTest('0.5.9');
+    expect(isSbgGreaterThan('0.6.0')).toBe(false);
+  });
+
+  test('версия не определена → false (safe default: модули работают как на старой версии)', () => {
+    setDetectedVersionForTest(null);
+    expect(isSbgGreaterThan('0.6.0')).toBe(false);
   });
 });
 

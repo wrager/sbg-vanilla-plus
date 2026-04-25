@@ -139,6 +139,12 @@ export function isSbgAtLeast(minVersion: string): boolean {
   return compareVersions(detected, minVersion) >= 0;
 }
 
+export function isSbgGreaterThan(version: string): boolean {
+  const detected = getDetectedVersion();
+  if (detected === null) return false;
+  return compareVersions(detected, version) > 0;
+}
+
 // Модули, чью функциональность игра реализовала нативно в SBG 0.6.1.
 // Множество заполняется по одному id за раз — каждый с обоснованием
 // перекрытия use case в commit message соответствующего коммита.
@@ -153,7 +159,7 @@ const NATIVE_SINCE_061: ReadonlySet<string> = new Set<string>([
 ]);
 
 export function isModuleNativeInCurrentGame(moduleId: string): boolean {
-  return isSbgAtLeast('0.6.1') && NATIVE_SINCE_061.has(moduleId);
+  return isSbgGreaterThan('0.6.0') && NATIVE_SINCE_061.has(moduleId);
 }
 
 // Модули, которые конфликтуют с новой версией SBG: use case у нашей
@@ -166,5 +172,5 @@ export function isModuleNativeInCurrentGame(moduleId: string): boolean {
 const CONFLICTS_WITH_061: ReadonlySet<string> = new Set<string>(['swipeToClosePopup']);
 
 export function isModuleConflictingWithCurrentGame(moduleId: string): boolean {
-  return isSbgAtLeast('0.6.1') && CONFLICTS_WITH_061.has(moduleId);
+  return isSbgGreaterThan('0.6.0') && CONFLICTS_WITH_061.has(moduleId);
 }
