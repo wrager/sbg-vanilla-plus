@@ -84,6 +84,8 @@ export interface IOlMap {
   getInteractions(): { getArray(): IOlInteraction[] };
   addLayer(layer: IOlLayer): void;
   removeLayer(layer: IOlLayer): void;
+  addInteraction?(interaction: IOlInteraction): void;
+  removeInteraction?(interaction: IOlInteraction): void;
   updateSize(): void;
   getPixelFromCoordinate?(coordinate: number[]): number[];
   getCoordinateFromPixel?(pixel: number[]): number[];
@@ -119,12 +121,19 @@ interface IOlGlobal {
   geom?: {
     Point?: new (coords: number[]) => { getCoordinates(): number[] };
     LineString?: new (coords: number[][]) => { getCoordinates(): number[][] };
+    Polygon?: new (coords: number[][][]) => { getCoordinates(): number[][][] };
   };
   sphere?: { getLength(geometry: unknown): number };
-  proj?: { fromLonLat?(coordinate: number[]): number[] };
+  proj?: {
+    fromLonLat?(coordinate: number[]): number[];
+    toLonLat?(coordinate: number[]): number[];
+  };
   interaction?: {
     DoubleClickZoom?: new () => IOlInteraction;
     DragPan?: new () => IOlInteraction;
+    Draw?: new (opts: Record<string, unknown>) => IOlInteraction;
+    Modify?: new (opts: Record<string, unknown>) => IOlInteraction;
+    Snap?: new (opts: Record<string, unknown>) => IOlInteraction;
   };
 }
 

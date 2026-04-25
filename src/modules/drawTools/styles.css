@@ -1,0 +1,59 @@
+.svp-draw-tools-menu-button {
+  min-width: 2.4em;
+  font-family: monospace;
+}
+
+.svp-draw-tools-toolbar {
+  position: fixed;
+  top: 56px;
+  left: 8px;
+  z-index: 1002;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--background);
+}
+
+.svp-draw-tools-toolbar.svp-draw-tools-toolbar-open {
+  display: flex;
+}
+
+.svp-draw-tools-tool-button {
+  min-width: 30px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.svp-draw-tools-tool-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.svp-draw-tools-icon {
+  display: block;
+  fill: currentColor;
+}
+
+.svp-draw-tools-color {
+  width: 30px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+}
+
+.svp-draw-tools-close-button {
+  margin-left: 4px;
+}
