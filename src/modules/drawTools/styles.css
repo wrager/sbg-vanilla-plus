@@ -35,6 +35,12 @@
   left: 8px;
   z-index: 1002;
   display: none;
+  /* На узком viewport (мобильник в портретной ориентации) 10 кнопок не влезают
+     в одну строку — даём toolbar переноситься. max-width ограничивает рост по
+     ширине вьюпортом за вычетом отступов слева и справа, чтобы toolbar не
+     уходил за правый край экрана. */
+  flex-wrap: wrap;
+  max-width: calc(100vw - 16px);
   align-items: center;
   gap: 4px;
   padding: 6px;
@@ -75,9 +81,12 @@
   background: transparent;
 }
 
-.svp-draw-tools-close-button {
-  margin-left: 4px;
-}
+/* Класс `.svp-draw-tools-close-button` остаётся на самой кнопке (его навешивает
+   код при создании toolbar), но CSS-правила с `margin-left: 4px` больше нет:
+   при `flex-wrap: wrap` (на узком viewport) close-кнопка могла оказаться первой
+   в новой строке, и собственный margin-left создавал у неё лишний отступ слева
+   относительно остальных кнопок этой строки. Визуальный отступ от соседа
+   достаточно даёт `gap: 4px` контейнера. */
 
 .svp-draw-tools-copy-modal-overlay {
   position: fixed;
