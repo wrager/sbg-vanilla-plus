@@ -1,3 +1,4 @@
+import { resetDetectedVersionForTest, setDetectedVersionForTest } from '../gameVersion';
 import type { IFeatureModule } from '../moduleRegistry';
 import type { ILocalizedString } from '../l10n';
 import { initSettingsUI } from './ui';
@@ -670,6 +671,346 @@ describe('initSettingsUI — модули, несовместимые с хос�
     if (!toggleAll) throw new Error('toggle-all checkbox not rendered');
     expect(toggleAll.checked).toBe(true);
     expect(toggleAll.indeterminate).toBe(false);
+  });
+});
+
+describe('initSettingsUI — модули, нативные в SBG 0.6.1', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('style[id^="svp-"]').forEach((node) => {
+      node.remove();
+    });
+  });
+
+  afterEach(() => {
+    resetDetectedVersionForTest();
+  });
+
+  function getRowByModuleId(moduleId: string): HTMLElement {
+    const panel = document.getElementById('svp-settings-panel');
+    if (!panel) throw new Error('svp-settings-panel not rendered');
+    const rows = panel.querySelectorAll<HTMLElement>('.svp-module-row');
+    for (const row of rows) {
+      const id = row.querySelector('.svp-module-id')?.textContent;
+      if (id === moduleId) return row;
+    }
+    throw new Error(`row for ${moduleId} not found`);
+  }
+
+  test('в 0.6.1 строка favoritedPoints рендерится без чекбокса', () => {
+    setDetectedVersionForTest('0.6.1');
+    const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
+
+    initSettingsUI([favoritedPoints], new Map());
+
+    const row = getRowByModuleId('favoritedPoints');
+    expect(row.querySelector('.svp-module-checkbox')).toBeNull();
+  });
+
+  test('в 0.6.1 строка favoritedPoints содержит подпись о нативной реализации', () => {
+    setDetectedVersionForTest('0.6.1');
+    // Локаль берётся из localStorage['settings'].lang игры (см. l10n.getGameLocale).
+    // Заряжаем RU чтобы проверить именно русскую подпись.
+    localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
+    const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
+
+    initSettingsUI([favoritedPoints], new Map());
+
+    const row = getRowByModuleId('favoritedPoints');
+    const label = row.querySelector('.svp-module-row-native-in-game-label');
+    expect(label).not.toBeNull();
+    expect(label?.textContent).toContain('игре');
+  });
+
+  test('в 0.6.1 строка favoritedPoints имеет CSS-класс native-in-game (для серого цвета)', () => {
+    setDetectedVersionForTest('0.6.1');
+    const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
+
+    initSettingsUI([favoritedPoints], new Map());
+
+    const row = getRowByModuleId('favoritedPoints');
+    expect(row.classList.contains('svp-module-row-native-in-game')).toBe(true);
+  });
+
+  test('в 0.6.0 favoritedPoints рендерится как обычный чекбокс', () => {
+    setDetectedVersionForTest('0.6.0');
+    localStorage.setItem(
+      'svp_settings',
+      JSON.stringify({ version: 4, modules: { favoritedPoints: true }, errors: {} }),
+    );
+    const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
+
+    initSettingsUI([favoritedPoints], new Map());
+
+    const row = getRowByModuleId('favoritedPoints');
+    const checkbox = row.querySelector<HTMLInputElement>('.svp-module-checkbox');
+    expect(checkbox).not.toBeNull();
+    expect(checkbox?.checked).toBe(true);
+  });
+
+  test('в 0.6.1 toggle-all не вызывает enable для favoritedPoints (строка без чекбокса)', async () => {
+    setDetectedVersionForTest('0.6.1');
+    const favoritedPoints = createMockModule({
+      id: 'favoritedPoints',
+      defaultEnabled: true,
+      enable: jest.fn(),
+    });
+    const other = createMockModule({ id: 'other', defaultEnabled: true, enable: jest.fn() });
+
+    initSettingsUI([favoritedPoints, other], new Map());
+
+    const toggleAll = document.querySelector<HTMLInputElement>('.svp-toggle-all-checkbox');
+    if (!toggleAll) throw new Error('toggle-all checkbox not rendered');
+    toggleAll.checked = true;
+    toggleAll.dispatchEvent(new Event('change'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const row = getRowByModuleId('favoritedPoints');
+    expect(row.querySelector('.svp-module-checkbox')).toBeNull();
+    expect(favoritedPoints.enable).not.toHaveBeenCalled();
+  });
+});
+
+describe('initSettingsUI — модули, конфликтующие с SBG 0.6.1', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('style[id^="svp-"]').forEach((node) => {
+      node.remove();
+    });
+  });
+
+  afterEach(() => {
+    resetDetectedVersionForTest();
+  });
+
+  function getRowByModuleId(moduleId: string): HTMLElement {
+    const panel = document.getElementById('svp-settings-panel');
+    if (!panel) throw new Error('svp-settings-panel not rendered');
+    const rows = panel.querySelectorAll<HTMLElement>('.svp-module-row');
+    for (const row of rows) {
+      const id = row.querySelector('.svp-module-id')?.textContent;
+      if (id === moduleId) return row;
+    }
+    throw new Error(`row for ${moduleId} not found`);
+  }
+
+  test('в 0.6.1 строка swipeToClosePopup рендерится без чекбокса', () => {
+    setDetectedVersionForTest('0.6.1');
+    const swipeToClosePopup = createMockModule({
+      id: 'swipeToClosePopup',
+      defaultEnabled: true,
+    });
+
+    initSettingsUI([swipeToClosePopup], new Map());
+
+    const row = getRowByModuleId('swipeToClosePopup');
+    expect(row.querySelector('.svp-module-checkbox')).toBeNull();
+  });
+
+  test('в 0.6.1 строка swipeToClosePopup содержит подпись о конфликте', () => {
+    setDetectedVersionForTest('0.6.1');
+    // Локаль берётся из localStorage['settings'].lang игры — заряжаем RU
+    // чтобы проверить русскую подпись.
+    localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
+    const swipeToClosePopup = createMockModule({
+      id: 'swipeToClosePopup',
+      defaultEnabled: true,
+    });
+
+    initSettingsUI([swipeToClosePopup], new Map());
+
+    const row = getRowByModuleId('swipeToClosePopup');
+    const label = row.querySelector('.svp-module-row-conflicting-with-game-label');
+    expect(label).not.toBeNull();
+    expect(label?.textContent).toContain('Конфликтует');
+  });
+
+  test('в 0.6.1 строка swipeToClosePopup имеет CSS-класс conflicting-with-game', () => {
+    setDetectedVersionForTest('0.6.1');
+    const swipeToClosePopup = createMockModule({
+      id: 'swipeToClosePopup',
+      defaultEnabled: true,
+    });
+
+    initSettingsUI([swipeToClosePopup], new Map());
+
+    const row = getRowByModuleId('swipeToClosePopup');
+    expect(row.classList.contains('svp-module-row-conflicting-with-game')).toBe(true);
+    expect(row.classList.contains('svp-module-row-native-in-game')).toBe(false);
+  });
+
+  test('в 0.6.0 swipeToClosePopup рендерится как обычный чекбокс', () => {
+    setDetectedVersionForTest('0.6.0');
+    localStorage.setItem(
+      'svp_settings',
+      JSON.stringify({ version: 4, modules: { swipeToClosePopup: true }, errors: {} }),
+    );
+    const swipeToClosePopup = createMockModule({
+      id: 'swipeToClosePopup',
+      defaultEnabled: true,
+    });
+
+    initSettingsUI([swipeToClosePopup], new Map());
+
+    const row = getRowByModuleId('swipeToClosePopup');
+    const checkbox = row.querySelector<HTMLInputElement>('.svp-module-checkbox');
+    expect(checkbox).not.toBeNull();
+    expect(checkbox?.checked).toBe(true);
+  });
+
+  test('в 0.6.1 toggle-all не вызывает enable для swipeToClosePopup', async () => {
+    setDetectedVersionForTest('0.6.1');
+    const swipeToClosePopup = createMockModule({
+      id: 'swipeToClosePopup',
+      defaultEnabled: true,
+      enable: jest.fn(),
+    });
+    const other = createMockModule({ id: 'other', defaultEnabled: true, enable: jest.fn() });
+
+    initSettingsUI([swipeToClosePopup, other], new Map());
+
+    const toggleAll = document.querySelector<HTMLInputElement>('.svp-toggle-all-checkbox');
+    if (!toggleAll) throw new Error('toggle-all checkbox not rendered');
+    toggleAll.checked = true;
+    toggleAll.dispatchEvent(new Event('change'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const row = getRowByModuleId('swipeToClosePopup');
+    expect(row.querySelector('.svp-module-checkbox')).toBeNull();
+    expect(swipeToClosePopup.enable).not.toHaveBeenCalled();
+  });
+});
+
+describe('initSettingsUI — раздел «Недоступные» в конце экрана настроек', () => {
+  const SCOUT_UA = 'Mozilla/5.0 (Linux; Android 13) SbgScout/1.2.3';
+  const BROWSER_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0';
+  const ORIGINAL_USER_AGENT = navigator.userAgent;
+
+  function setUserAgent(value: string): void {
+    Object.defineProperty(navigator, 'userAgent', { value, configurable: true });
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('style[id^="svp-"]').forEach((node) => {
+      node.remove();
+    });
+    setUserAgent(BROWSER_UA);
+  });
+
+  afterEach(() => {
+    resetDetectedVersionForTest();
+    setUserAgent(ORIGINAL_USER_AGENT);
+  });
+
+  function getSectionOfRow(moduleId: string): HTMLElement {
+    const panel = document.getElementById('svp-settings-panel');
+    if (!panel) throw new Error('svp-settings-panel not rendered');
+    const rows = panel.querySelectorAll<HTMLElement>('.svp-module-row');
+    for (const row of rows) {
+      const id = row.querySelector('.svp-module-id')?.textContent;
+      if (id === moduleId) {
+        const section = row.closest<HTMLElement>('.svp-settings-section');
+        if (!section) throw new Error(`module "${moduleId}" row is not inside a section`);
+        return section;
+      }
+    }
+    throw new Error(`row for "${moduleId}" not found`);
+  }
+
+  test('если нет недоступных модулей — раздел «Недоступные» не создаётся', () => {
+    initSettingsUI([createMockModule({ id: 'alpha', category: 'ui' })], new Map());
+    const panel = document.getElementById('svp-settings-panel');
+    expect(panel?.querySelector('.svp-settings-section-unavailable')).toBeNull();
+  });
+
+  test('native-модуль 0.6.1 попадает в раздел «Недоступные», не в свою категорию', () => {
+    setDetectedVersionForTest('0.6.1');
+    const favoritedPoints = createMockModule({
+      id: 'favoritedPoints',
+      category: 'feature',
+      defaultEnabled: true,
+    });
+    const other = createMockModule({ id: 'other-feature', category: 'feature' });
+
+    initSettingsUI([favoritedPoints, other], new Map());
+
+    const favSection = getSectionOfRow('favoritedPoints');
+    const otherSection = getSectionOfRow('other-feature');
+    expect(favSection.classList.contains('svp-settings-section-unavailable')).toBe(true);
+    expect(otherSection.classList.contains('svp-settings-section-unavailable')).toBe(false);
+  });
+
+  test('conflicting-модуль попадает в тот же раздел «Недоступные»', () => {
+    setDetectedVersionForTest('0.6.1');
+    const swipeToClosePopup = createMockModule({
+      id: 'swipeToClosePopup',
+      category: 'ui',
+      defaultEnabled: true,
+    });
+
+    initSettingsUI([swipeToClosePopup], new Map());
+
+    const section = getSectionOfRow('swipeToClosePopup');
+    expect(section.classList.contains('svp-settings-section-unavailable')).toBe(true);
+  });
+
+  test('host-provided (keepScreenOn в Scout) тоже в разделе «Недоступные»', () => {
+    setUserAgent(SCOUT_UA);
+    const keepScreenOn = createMockModule({
+      id: 'keepScreenOn',
+      category: 'feature',
+      defaultEnabled: true,
+    });
+
+    initSettingsUI([keepScreenOn], new Map());
+
+    const section = getSectionOfRow('keepScreenOn');
+    expect(section.classList.contains('svp-settings-section-unavailable')).toBe(true);
+  });
+
+  test('раздел «Недоступные» рендерится ПОСЛЕ категорных секций', () => {
+    setDetectedVersionForTest('0.6.1');
+    const favoritedPoints = createMockModule({
+      id: 'favoritedPoints',
+      category: 'feature',
+      defaultEnabled: true,
+    });
+    const alpha = createMockModule({ id: 'alpha', category: 'ui' });
+    const beta = createMockModule({ id: 'beta', category: 'fix' });
+
+    initSettingsUI([favoritedPoints, alpha, beta], new Map());
+
+    const panel = document.getElementById('svp-settings-panel');
+    const sections = [...(panel?.querySelectorAll('.svp-settings-section') ?? [])];
+    const unavailableIndex = sections.findIndex((s) =>
+      s.classList.contains('svp-settings-section-unavailable'),
+    );
+    expect(unavailableIndex).toBe(sections.length - 1);
+  });
+
+  test('native + conflicting + host-provided уживаются в одном разделе', () => {
+    setUserAgent(SCOUT_UA);
+    setDetectedVersionForTest('0.6.1');
+
+    const favoritedPoints = createMockModule({ id: 'favoritedPoints', category: 'feature' });
+    const swipeToClosePopup = createMockModule({ id: 'swipeToClosePopup', category: 'ui' });
+    const keepScreenOn = createMockModule({ id: 'keepScreenOn', category: 'feature' });
+
+    initSettingsUI([favoritedPoints, swipeToClosePopup, keepScreenOn], new Map());
+
+    expect(getSectionOfRow('favoritedPoints').classList).toContain(
+      'svp-settings-section-unavailable',
+    );
+    expect(getSectionOfRow('swipeToClosePopup').classList).toContain(
+      'svp-settings-section-unavailable',
+    );
+    expect(getSectionOfRow('keepScreenOn').classList).toContain('svp-settings-section-unavailable');
   });
 });
 
