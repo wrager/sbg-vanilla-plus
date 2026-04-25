@@ -88,6 +88,7 @@ let windowResizeHandler: (() => void) | null = null;
 let toolbar: HTMLDivElement | null = null;
 let copyModalOverlay: HTMLDivElement | null = null;
 let copyModalKeydownHandler: ((event: KeyboardEvent) => void) | null = null;
+let documentClickHandler: ((event: MouseEvent) => void) | null = null;
 let lineButton: HTMLButtonElement | null = null;
 let polygonButton: HTMLButtonElement | null = null;
 let editButton: HTMLButtonElement | null = null;
@@ -476,6 +477,39 @@ function removeEscCancelListener(): void {
   if (!keydownHandler) return;
   document.removeEventListener('keydown', keydownHandler);
   keydownHandler = null;
+}
+
+function isInsideMap(target: Node): boolean {
+  // `#map` — корневой div игровой OL-карты (см. refs/game/dom/body.html).
+  // Любой клик по карте: на canvas, на overlay-стопэвент, на zoom-кнопках —
+  // считаем «по карте», тулбар не закрываем, чтобы не мешать рисованию/панорамированию.
+  const mapElement = document.getElementById('map');
+  return mapElement !== null && mapElement.contains(target);
+}
+
+function addToolbarOutsideClickListener(): void {
+  if (documentClickHandler) return;
+  documentClickHandler = (event: MouseEvent): void => {
+    if (!toolbar?.classList.contains('svp-draw-tools-toolbar-open')) return;
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    // Клик по тулбару (кнопки внутри) — пользователь продолжает работать с инструментами.
+    if (toolbar.contains(target)) return;
+    // Клик по DT-кнопке — её собственный handler делает toggle; чтобы наш
+    // handler не закрывал тулбар прежде, чем toggle снова откроет его, выходим.
+    if (controlElement?.contains(target)) return;
+    // Клик по карте — рисование, удаление по клику, панорамирование. Не закрывать.
+    if (isInsideMap(target)) return;
+    setToolbarOpen(false);
+    setMode('none');
+  };
+  document.addEventListener('click', documentClickHandler);
+}
+
+function removeToolbarOutsideClickListener(): void {
+  if (!documentClickHandler) return;
+  document.removeEventListener('click', documentClickHandler);
+  documentClickHandler = null;
 }
 
 function buildVertexSnaps(vertices: number[][], portalCoordinates: number[][]): IVertexSnap[] {
@@ -1030,6 +1064,7 @@ function unmountToolbar(): void {
 function cleanup(): void {
   enableToken++;
   removeEscCancelListener();
+  removeToolbarOutsideClickListener();
   closeCopyFallbackModal();
   setMode('none');
   clearInteractions();
@@ -1073,6 +1108,7 @@ export const drawTools: IFeatureModule = {
       createDrawLayer(olMap);
       loadFromStorage();
       addEscCancelListener();
+      addToolbarOutsideClickListener();
       updateModeButtons();
     } catch (error) {
       cleanup();

@@ -174,6 +174,7 @@ describe('drawTools module', () => {
 
   beforeEach(() => {
     document.body.innerHTML = `
+      <div id="map"></div>
       <div class="region-picker ol-unselectable ol-control">
         <button type="button">Δ</button>
       </div>
@@ -318,6 +319,77 @@ describe('drawTools module', () => {
       expect(button.querySelector('svg')).not.toBeNull();
       expect(button.textContent).toBe('');
     }
+  });
+
+  describe('toolbar outside-click close', () => {
+    async function openToolbar(): Promise<void> {
+      await drawTools.enable();
+      const dtButton = document.getElementById('svp-draw-tools-menu-button');
+      dtButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+
+    function isOpen(): boolean {
+      return (
+        document
+          .querySelector('.svp-draw-tools-toolbar')
+          ?.classList.contains('svp-draw-tools-toolbar-open') === true
+      );
+    }
+
+    test('click on toolbar itself keeps it open', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      const lineButton = document.querySelectorAll<HTMLButtonElement>(
+        '.svp-draw-tools-tool-button',
+      )[0];
+      lineButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(true);
+    });
+
+    test('click on map keeps toolbar open (drawing/panning continues)', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      const map = document.getElementById('map');
+      map?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(true);
+    });
+
+    test('click outside toolbar and map closes toolbar', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      const stranger = document.createElement('div');
+      document.body.appendChild(stranger);
+      stranger.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(false);
+    });
+
+    test('click on DT button toggles toolbar (open → close)', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      const dtButton = document.getElementById('svp-draw-tools-menu-button');
+      dtButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(isOpen()).toBe(false);
+    });
+
+    test('disable removes outside-click listener', async () => {
+      await openToolbar();
+      void drawTools.disable();
+
+      // Тулбара уже нет — но и наш document-listener не должен мешать другим.
+      // Проверка: после disable() click по document.body не падает с ошибкой
+      // (referenced toolbar/controlElement = null после cleanup).
+      expect(() =>
+        document.body.dispatchEvent(new MouseEvent('click', { bubbles: true })),
+      ).not.toThrow();
+    });
   });
 
   test('disable removes OL-control and toolbar', async () => {
