@@ -1,6 +1,32 @@
-.svp-draw-tools-menu-button {
-  min-width: 2.4em;
-  font-family: monospace;
+/* control живёт как OL-control под region-picker. Внутренняя button наследует
+   фон/border/cursor от игровых `.ol-control button` правил, мы задаём только
+   квадратный размер 32x32 (как у `.svp-star-center-clear-control button` в
+   drawing-restrictions) и нулевой padding.
+
+   Селектор именно `.svp-draw-tools-control button` (а не `.svp-draw-tools-control-button`):
+   specificity 0,1,1 (класс + element) — равен игровому `.ol-control button` и
+   побеждает source-order'ом. Прежний вариант с classом на самой button давал
+   specificity 0,1,0, проигрывал и кнопка визуально оказывалась мельче соседних
+   OL-controls. `min-height: auto` нужен, чтобы перебить min-height у
+   глобальных button-стилей игры. */
+.svp-draw-tools-control button {
+  width: 32px;
+  height: 32px;
+  min-height: auto;
+  padding: 0;
+}
+
+.svp-draw-tools-control button svg {
+  display: block;
+  margin: auto;
+}
+
+/* Не задаём `fill` на уровне CSS: правило перебивало бы inline `fill="none"`,
+   которое стоит на наших outline-иконках, и превращало бы их в залитые силуэты.
+   Outline-иконки полагаются на свой SVG-атрибут `fill="none"`, заполненные
+   (game wand) — на `fill="currentColor"` inline. */
+.svp-draw-tools-icon {
+  display: block;
 }
 
 .svp-draw-tools-toolbar {
@@ -38,11 +64,6 @@
 .svp-draw-tools-tool-active {
   border-color: var(--accent);
   color: var(--accent);
-}
-
-.svp-draw-tools-icon {
-  display: block;
-  fill: currentColor;
 }
 
 .svp-draw-tools-color {

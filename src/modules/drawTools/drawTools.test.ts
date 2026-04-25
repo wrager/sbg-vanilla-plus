@@ -174,11 +174,8 @@ describe('drawTools module', () => {
 
   beforeEach(() => {
     document.body.innerHTML = `
-      <div class="game-menu">
-        <button id="ops"></button>
-        <button id="score"></button>
-        <button id="leaderboard"></button>
-        <button id="settings"></button>
+      <div class="region-picker ol-unselectable ol-control">
+        <button type="button">Δ</button>
       </div>
     `;
 
@@ -293,30 +290,48 @@ describe('drawTools module', () => {
     expect(drawTools.defaultEnabled).toBe(true);
   });
 
-  test('enable injects menu button and toolbar', async () => {
+  test('enable mounts OL-control after region-picker and opens toolbar on click', async () => {
     await drawTools.enable();
 
     const button = document.getElementById('svp-draw-tools-menu-button');
+    const control = document.querySelector('.svp-draw-tools-control');
+    const picker = document.querySelector('.region-picker');
     const toolbar = document.querySelector('.svp-draw-tools-toolbar');
 
     expect(button).not.toBeNull();
+    expect(control).not.toBeNull();
     expect(toolbar).not.toBeNull();
+    // Control должен стоять сразу после picker'а (стабильный порядок: наша
+    // кнопка первая среди svp-controls после region-picker).
+    expect(picker?.nextElementSibling).toBe(control);
 
     button?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(toolbar?.classList.contains('svp-draw-tools-toolbar-open')).toBe(true);
   });
 
-  test('disable removes menu button and toolbar', async () => {
+  test('every toolbar button renders with an SVG icon', async () => {
+    await drawTools.enable();
+
+    const buttons = document.querySelectorAll<HTMLButtonElement>('.svp-draw-tools-tool-button');
+    expect(buttons).toHaveLength(9);
+    for (const button of buttons) {
+      expect(button.querySelector('svg')).not.toBeNull();
+      expect(button.textContent).toBe('');
+    }
+  });
+
+  test('disable removes OL-control and toolbar', async () => {
     await drawTools.enable();
     void drawTools.disable();
 
     expect(document.getElementById('svp-draw-tools-menu-button')).toBeNull();
+    expect(document.querySelector('.svp-draw-tools-control')).toBeNull();
     expect(document.querySelector('.svp-draw-tools-toolbar')).toBeNull();
     expect(document.getElementById('svp-drawTools')).toBeNull();
   });
 
   test('disable while waitForElement is in flight cleans up mounted UI', async () => {
-    // game-menu отсутствует на момент enable() — mountMenuButton застрянет в waitForElement
+    // region-picker отсутствует на момент enable() — mountOlControl застрянет в waitForElement
     document.body.innerHTML = '';
 
     const enablePromise = drawTools.enable();
@@ -324,30 +339,29 @@ describe('drawTools module', () => {
     await Promise.resolve();
 
     expect(document.querySelector('.svp-draw-tools-toolbar')).not.toBeNull();
-    expect(document.getElementById('svp-draw-tools-menu-button')).toBeNull();
+    expect(document.querySelector('.svp-draw-tools-control')).toBeNull();
 
-    // disable во время ожидания .game-menu
+    // disable во время ожидания region-picker
     void drawTools.disable();
     expect(document.querySelector('.svp-draw-tools-toolbar')).toBeNull();
 
-    // Теперь возвращаем .game-menu — MutationObserver разрешит waitForElement
-    const menu = document.createElement('div');
-    menu.className = 'game-menu';
-    const settingsBtn = document.createElement('button');
-    settingsBtn.id = 'settings';
-    menu.appendChild(settingsBtn);
-    document.body.appendChild(menu);
+    // Теперь возвращаем region-picker — MutationObserver разрешит waitForElement
+    const picker = document.createElement('div');
+    picker.className = 'region-picker ol-unselectable ol-control';
+    const pickerBtn = document.createElement('button');
+    picker.appendChild(pickerBtn);
+    document.body.appendChild(picker);
 
     await enablePromise;
 
     // После резолюции: ни кнопки, ни toolbar в DOM не должно остаться
-    expect(document.getElementById('svp-draw-tools-menu-button')).toBeNull();
+    expect(document.querySelector('.svp-draw-tools-control')).toBeNull();
     expect(document.querySelector('.svp-draw-tools-toolbar')).toBeNull();
     expect(document.getElementById('svp-drawTools')).toBeNull();
   });
 
   test('rapid enable→disable→enable: stale enable does not duplicate or break newer mounts', async () => {
-    // game-menu отсутствует — оба enable застрянут в waitForElement
+    // region-picker отсутствует — оба enable застрянут в waitForElement
     document.body.innerHTML = '';
 
     const enable1 = drawTools.enable();
@@ -359,23 +373,22 @@ describe('drawTools module', () => {
     const enable2 = drawTools.enable();
     await Promise.resolve();
 
-    // После второго enable: ровно один toolbar, кнопки ещё нет
+    // После второго enable: ровно один toolbar, контрола ещё нет
     expect(document.querySelectorAll('.svp-draw-tools-toolbar')).toHaveLength(1);
-    expect(document.querySelectorAll('#svp-draw-tools-menu-button')).toHaveLength(0);
+    expect(document.querySelectorAll('.svp-draw-tools-control')).toHaveLength(0);
 
-    // Возвращаем .game-menu — оба waitForElement резолвятся
-    const menu = document.createElement('div');
-    menu.className = 'game-menu';
-    const settingsBtn = document.createElement('button');
-    settingsBtn.id = 'settings';
-    menu.appendChild(settingsBtn);
-    document.body.appendChild(menu);
+    // Возвращаем region-picker — оба waitForElement резолвятся
+    const picker = document.createElement('div');
+    picker.className = 'region-picker ol-unselectable ol-control';
+    const pickerBtn = document.createElement('button');
+    picker.appendChild(pickerBtn);
+    document.body.appendChild(picker);
 
     await enable1;
     await enable2;
 
-    // Только UI второго enable должен остаться: одна кнопка, один toolbar
-    expect(document.querySelectorAll('#svp-draw-tools-menu-button')).toHaveLength(1);
+    // Только UI второго enable должен остаться: один control, один toolbar
+    expect(document.querySelectorAll('.svp-draw-tools-control')).toHaveLength(1);
     expect(document.querySelectorAll('.svp-draw-tools-toolbar')).toHaveLength(1);
   });
 

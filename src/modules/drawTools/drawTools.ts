@@ -1,5 +1,5 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { $, injectStyles, removeStyles, waitForElement } from '../../core/dom';
+import { injectStyles, removeStyles, waitForElement } from '../../core/dom';
 import { t } from '../../core/l10n';
 import { showToast } from '../../core/toast';
 import { findLayerByName, getOlMap } from '../../core/olMap';
@@ -13,6 +13,18 @@ import type {
 } from '../../core/olMap';
 import { IitcParseError, parseIitcDrawItems, stringifyIitcDrawItems } from './iitcFormat';
 import type { IIitcDrawItem, IIitcLatLng } from './iitcFormat';
+import {
+  ICON_CLOSE_X,
+  ICON_COPY,
+  ICON_DELETE,
+  ICON_DRAW_TOOLS,
+  ICON_EDIT,
+  ICON_LINE,
+  ICON_RESET,
+  ICON_TRIANGLE,
+  ICON_UPLOAD,
+  ICON_WAND,
+} from './drawToolsIcons';
 import styles from './styles.css?inline';
 
 const MODULE_ID = 'drawTools';
@@ -22,7 +34,8 @@ const DRAW_LAYER_NAME = 'svp-draw-tools';
 const DRAW_LAYER_Z_INDEX = 9;
 const SNAP_THRESHOLD_PX = 100;
 const DEFAULT_COLOR = '#a24ac3';
-const MENU_LABEL = 'DT';
+const REGION_PICKER_SELECTOR = '.region-picker.ol-unselectable.ol-control';
+const CONTROL_BUTTON_ID = 'svp-draw-tools-menu-button';
 
 type ToolMode = 'none' | 'line' | 'polygon' | 'edit' | 'delete';
 
@@ -67,7 +80,11 @@ let map: IOlMap | null = null;
 let drawSource: IVectorSourceWithRemove | null = null;
 let drawLayer: IOlLayer | null = null;
 
-let menuButton: HTMLButtonElement | null = null;
+let controlElement: HTMLDivElement | null = null;
+let pickerElement: HTMLElement | null = null;
+let controlMutationObserver: MutationObserver | null = null;
+let controlResizeObserver: ResizeObserver | null = null;
+let windowResizeHandler: (() => void) | null = null;
 let toolbar: HTMLDivElement | null = null;
 let lineButton: HTMLButtonElement | null = null;
 let polygonButton: HTMLButtonElement | null = null;
@@ -729,60 +746,45 @@ function toggleToolbar(): void {
   setToolbarOpen(!toolbar.classList.contains('svp-draw-tools-toolbar-open'));
 }
 
-function createToolButton(label: string, title: string, onClick: () => void): HTMLButtonElement {
+function applySvgIcon(button: HTMLElement, svgString: string): void {
+  // DOMParser сохраняет SVG-namespace при парсинге, в отличие от innerHTML
+  // в HTML-контексте. importNode копирует ноду в текущий документ, чтобы
+  // appendChild не работал с deatched-документом DOMParser'а.
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(svgString, 'image/svg+xml');
+  const root = doc.documentElement;
+  if (root.tagName.toLowerCase() !== 'svg') return;
+  button.textContent = '';
+  button.appendChild(document.importNode(root, true));
+}
+
+function createToolButton(iconSvg: string, title: string, onClick: () => void): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'svp-draw-tools-tool-button';
-  button.textContent = label;
   button.title = title;
   button.addEventListener('click', onClick);
+  applySvgIcon(button, iconSvg);
   return button;
-}
-
-function applyGameIcon(
-  button: HTMLButtonElement,
-  iconId: string,
-  fallbackLabel: string,
-  viewBox = '0 0 512 512',
-): void {
-  const iconSource = document.getElementById(iconId);
-  if (!iconSource) {
-    button.textContent = fallbackLabel;
-    return;
-  }
-
-  button.textContent = '';
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', viewBox);
-  svg.setAttribute('width', '16');
-  svg.setAttribute('height', '16');
-  svg.classList.add('svp-draw-tools-icon');
-
-  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-  use.setAttribute('href', `#${iconId}`);
-  svg.appendChild(use);
-  button.appendChild(svg);
 }
 
 function createToolbar(): HTMLDivElement {
   const panel = document.createElement('div');
   panel.className = 'svp-draw-tools-toolbar';
 
-  lineButton = createToolButton('L', t({ en: 'Line', ru: 'Линия' }), () => {
+  lineButton = createToolButton(ICON_LINE, t({ en: 'Line', ru: 'Линия' }), () => {
     setMode('line');
   });
-  polygonButton = createToolButton('P', t({ en: 'Polygon', ru: 'Полигон' }), () => {
+  polygonButton = createToolButton(ICON_TRIANGLE, t({ en: 'Triangle', ru: 'Треугольник' }), () => {
     setMode('polygon');
   });
-  editButton = createToolButton('E', t({ en: 'Edit', ru: 'Редактирование' }), () => {
+  editButton = createToolButton(ICON_EDIT, t({ en: 'Edit', ru: 'Редактирование' }), () => {
     setMode('edit');
   });
-  applyGameIcon(editButton, 'fas-wrench', 'E');
 
-  deleteButton = createToolButton('D', t({ en: 'Delete mode', ru: 'Удаление' }), () => {
+  deleteButton = createToolButton(ICON_DELETE, t({ en: 'Delete mode', ru: 'Удаление' }), () => {
     setMode('delete');
   });
-  applyGameIcon(deleteButton, 'fas-trash-can', 'D');
 
   colorInput = document.createElement('input');
   colorInput.type = 'color';
@@ -795,32 +797,32 @@ function createToolbar(): HTMLDivElement {
   });
 
   const snapButton = createToolButton(
-    'S',
+    ICON_WAND,
     t({ en: 'Snap all to nearest portals (100px)', ru: 'Привязать к ближайшим точкам (100px)' }),
     snapAllToPortals,
   );
-  applyGameIcon(snapButton, 'fas-location-dot', 'S');
 
-  const copyButton = createToolButton('C', t({ en: 'Copy JSON', ru: 'Копировать JSON' }), () => {
-    void copyDrawPlan();
-  });
-  applyGameIcon(copyButton, 'fas-share-nodes', 'C');
+  const copyButton = createToolButton(
+    ICON_COPY,
+    t({ en: 'Copy JSON', ru: 'Копировать JSON' }),
+    () => {
+      void copyDrawPlan();
+    },
+  );
 
   const pasteButton = createToolButton(
-    'V',
+    ICON_UPLOAD,
     t({ en: 'Paste JSON', ru: 'Вставить JSON' }),
     pasteDrawPlan,
   );
-  applyGameIcon(pasteButton, 'fas-wand-magic-sparkles', 'V', '0 0 586 512');
 
   const resetButton = createToolButton(
-    'R',
+    ICON_RESET,
     t({ en: 'Clear all', ru: 'Очистить всё' }),
     resetDrawPlan,
   );
-  applyGameIcon(resetButton, 'fas-trash-can', 'R');
 
-  const closeButton = createToolButton('[x]', t({ en: 'Close', ru: 'Закрыть' }), () => {
+  const closeButton = createToolButton(ICON_CLOSE_X, t({ en: 'Close', ru: 'Закрыть' }), () => {
     setToolbarOpen(false);
     setMode('none');
   });
@@ -842,47 +844,105 @@ function createToolbar(): HTMLDivElement {
   return panel;
 }
 
-async function mountMenuButton(myToken: number): Promise<boolean> {
-  let menu = $('.game-menu');
-  if (!menu) {
-    const found = await waitForElement('.game-menu');
+function syncControlPosition(): void {
+  if (!controlElement || !pickerElement) return;
+  const rect = pickerElement.getBoundingClientRect();
+  // Если picker скрыт (rect нулевой) — не двигаем control, оставляем последнюю
+  // валидную позицию. Иначе при кратком re-render игрой control мигнул бы в
+  // верхний левый угол.
+  if (rect.width === 0 && rect.height === 0) return;
+  // OL-controls в игре выстроены вертикально вплотную (zoom-in / zoom-out /
+  // region-picker / ...) — ставим наш control сразу под region-picker, чтобы
+  // визуально продолжить колонку.
+  controlElement.style.top = `${rect.bottom}px`;
+  controlElement.style.right = `${window.innerWidth - rect.right}px`;
+  controlElement.style.left = 'auto';
+  controlElement.style.bottom = 'auto';
+}
+
+function createControlElement(): HTMLDivElement {
+  // Структура повторяет .region-picker (div.ol-unselectable.ol-control > button),
+  // чтобы наследовать игровые стили OL-кнопок. Класс region-picker НЕ
+  // навешиваем: игра через jQuery делегирует на все .region-picker свой
+  // toggle регионов, наш control не должен туда попасть.
+  const element = document.createElement('div');
+  element.className = 'svp-draw-tools-control ol-unselectable ol-control';
+  element.style.position = 'fixed';
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.id = CONTROL_BUTTON_ID;
+  button.className = 'svp-draw-tools-control-button';
+  button.title = t({ en: 'Draw tools', ru: 'Инструменты рисования' });
+  button.addEventListener('click', toggleToolbar);
+  applySvgIcon(button, ICON_DRAW_TOOLS);
+
+  element.appendChild(button);
+  return element;
+}
+
+async function mountOlControl(myToken: number): Promise<boolean> {
+  let picker = document.querySelector<HTMLElement>(REGION_PICKER_SELECTOR);
+  if (!picker) {
+    const found = await waitForElement(REGION_PICKER_SELECTOR);
     // После await токен мог инвалидироваться (disable во время ожидания).
     // Бросаем работу до любых записей в DOM/глобалы — иначе текущий enable
     // перезапишет ресурсы более позднего enable, который уже отработал.
     if (myToken !== enableToken) return false;
     if (!(found instanceof HTMLElement)) {
-      throw new Error('Game menu not found');
+      throw new Error('Region picker not found');
     }
-    menu = found;
+    picker = found;
   }
 
-  if (!(menu instanceof HTMLElement)) {
-    throw new Error('Game menu not found');
+  pickerElement = picker;
+  controlElement = createControlElement();
+  picker.after(controlElement);
+  syncControlPosition();
+
+  // Игра может пересоздавать DOM вокруг карты (например, при смене размера
+  // viewport). Если control оторвался от документа — снова приклеиваем после
+  // picker'а. Если остался — синхронизируем позицию (picker мог переехать).
+  controlMutationObserver = new MutationObserver(() => {
+    if (!controlElement || !pickerElement) return;
+    if (!controlElement.isConnected) {
+      pickerElement.after(controlElement);
+    }
+    syncControlPosition();
+  });
+  controlMutationObserver.observe(document.body, { childList: true, subtree: true });
+
+  if (typeof ResizeObserver !== 'undefined') {
+    controlResizeObserver = new ResizeObserver(() => {
+      syncControlPosition();
+    });
+    controlResizeObserver.observe(picker);
   }
 
-  const settingsButton = $('#settings', menu);
-  if (!(settingsButton instanceof HTMLButtonElement)) {
-    throw new Error('Settings button not found');
-  }
+  windowResizeHandler = (): void => {
+    syncControlPosition();
+  };
+  window.addEventListener('resize', windowResizeHandler);
 
-  const button = document.createElement('button');
-  button.id = 'svp-draw-tools-menu-button';
-  button.className = 'svp-draw-tools-menu-button';
-  button.textContent = MENU_LABEL;
-  button.title = t({ en: 'Draw tools', ru: 'Инструменты рисования' });
-  button.addEventListener('click', toggleToolbar);
-
-  settingsButton.insertAdjacentElement('afterend', button);
-  menuButton = button;
   return true;
 }
 
-function unmountMenuButton(): void {
-  if (menuButton) {
-    menuButton.removeEventListener('click', toggleToolbar);
-    menuButton.remove();
-    menuButton = null;
+function unmountOlControl(): void {
+  controlMutationObserver?.disconnect();
+  controlMutationObserver = null;
+  controlResizeObserver?.disconnect();
+  controlResizeObserver = null;
+  if (windowResizeHandler) {
+    window.removeEventListener('resize', windowResizeHandler);
+    windowResizeHandler = null;
   }
+  if (controlElement) {
+    const button = controlElement.querySelector('button');
+    button?.removeEventListener('click', toggleToolbar);
+    controlElement.remove();
+    controlElement = null;
+  }
+  pickerElement = null;
 }
 
 function mountToolbar(): void {
@@ -908,7 +968,7 @@ function cleanup(): void {
   setMode('none');
   clearInteractions();
   unmountToolbar();
-  unmountMenuButton();
+  unmountOlControl();
   removeDrawLayer();
   removeStyles(MODULE_ID);
   map = null;
@@ -932,8 +992,8 @@ export const drawTools: IFeatureModule = {
 
     try {
       mountToolbar();
-      const mounted = await mountMenuButton(myToken);
-      // Если токен устарел во время mountMenuButton — текущий enable «осиротел»:
+      const mounted = await mountOlControl(myToken);
+      // Если токен устарел во время mountOlControl — текущий enable «осиротел»:
       // disable, который инвалидировал нас, уже отработал cleanup() для
       // ресурсов, смонтированных до await. Никаких дополнительных teardown
       // здесь вызывать нельзя — иначе уроним ресурсы более позднего enable.
