@@ -89,6 +89,7 @@ let toolbar: HTMLDivElement | null = null;
 let copyModalOverlay: HTMLDivElement | null = null;
 let copyModalKeydownHandler: ((event: KeyboardEvent) => void) | null = null;
 let documentClickHandler: ((event: MouseEvent) => void) | null = null;
+let pointPopupObserver: MutationObserver | null = null;
 let lineButton: HTMLButtonElement | null = null;
 let polygonButton: HTMLButtonElement | null = null;
 let editButton: HTMLButtonElement | null = null;
@@ -510,6 +511,35 @@ function removeToolbarOutsideClickListener(): void {
   if (!documentClickHandler) return;
   document.removeEventListener('click', documentClickHandler);
   documentClickHandler = null;
+}
+
+function addPointPopupOpenListener(): void {
+  if (pointPopupObserver) return;
+  const popup = document.querySelector('.info.popup');
+  if (!(popup instanceof HTMLElement)) return;
+
+  // Игра скрывает/показывает попап точки переключением класса `hidden` на
+  // `.info.popup` (см. `popup.classList.remove('hidden')` в game/script.js).
+  // Клик по точке на карте сначала пройдёт через наш map-exempt в outside-click
+  // handler'е (тулбар не закроется), а затем игра откроет попап — наблюдатель
+  // ловит этот переход и закрывает тулбар, чтобы не перекрывать попап.
+  let wasHidden = popup.classList.contains('hidden');
+  pointPopupObserver = new MutationObserver(() => {
+    const isHidden = popup.classList.contains('hidden');
+    if (wasHidden && !isHidden) {
+      if (toolbar?.classList.contains('svp-draw-tools-toolbar-open')) {
+        setToolbarOpen(false);
+        setMode('none');
+      }
+    }
+    wasHidden = isHidden;
+  });
+  pointPopupObserver.observe(popup, { attributes: true, attributeFilter: ['class'] });
+}
+
+function removePointPopupOpenListener(): void {
+  pointPopupObserver?.disconnect();
+  pointPopupObserver = null;
 }
 
 function buildVertexSnaps(vertices: number[][], portalCoordinates: number[][]): IVertexSnap[] {
@@ -1065,6 +1095,7 @@ function cleanup(): void {
   enableToken++;
   removeEscCancelListener();
   removeToolbarOutsideClickListener();
+  removePointPopupOpenListener();
   closeCopyFallbackModal();
   setMode('none');
   clearInteractions();
@@ -1109,6 +1140,7 @@ export const drawTools: IFeatureModule = {
       loadFromStorage();
       addEscCancelListener();
       addToolbarOutsideClickListener();
+      addPointPopupOpenListener();
       updateModeButtons();
     } catch (error) {
       cleanup();

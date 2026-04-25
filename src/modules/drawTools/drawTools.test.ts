@@ -175,6 +175,7 @@ describe('drawTools module', () => {
   beforeEach(() => {
     document.body.innerHTML = `
       <div id="map"></div>
+      <div class="info popup hidden" data-guid=""></div>
       <div class="region-picker ol-unselectable ol-control">
         <button type="button">Δ</button>
       </div>
@@ -376,6 +377,38 @@ describe('drawTools module', () => {
       const dtButton = document.getElementById('svp-draw-tools-menu-button');
       dtButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
+      expect(isOpen()).toBe(false);
+    });
+
+    test('opening point popup closes toolbar (game removes hidden from .info.popup)', async () => {
+      await openToolbar();
+      expect(isOpen()).toBe(true);
+
+      // Имитируем поведение игры: клик по точке на карте, затем игра убирает
+      // hidden у .info.popup, чтобы показать попап. MutationObserver должен
+      // поймать переход и закрыть тулбар.
+      const map = document.getElementById('map');
+      map?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(isOpen()).toBe(true); // map-click сам по себе не закрывает
+
+      const popup = document.querySelector('.info.popup');
+      popup?.classList.remove('hidden');
+
+      // MutationObserver работает асинхронно — дать microtask'у прокрутиться
+      await Promise.resolve();
+      expect(isOpen()).toBe(false);
+    });
+
+    test('closing popup back does not reopen toolbar', async () => {
+      await openToolbar();
+      const popup = document.querySelector('.info.popup');
+      popup?.classList.remove('hidden');
+      await Promise.resolve();
+      expect(isOpen()).toBe(false);
+
+      // Закрытие попапа (hidden обратно) — тулбар не должен сам открыться
+      popup?.classList.add('hidden');
+      await Promise.resolve();
       expect(isOpen()).toBe(false);
     });
 
