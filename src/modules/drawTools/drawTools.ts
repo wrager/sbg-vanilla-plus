@@ -90,6 +90,7 @@ let copyModalOverlay: HTMLDivElement | null = null;
 let copyModalKeydownHandler: ((event: KeyboardEvent) => void) | null = null;
 let documentClickHandler: ((event: MouseEvent) => void) | null = null;
 let pointPopupObserver: MutationObserver | null = null;
+let compactContainerObserver: MutationObserver | null = null;
 let lineButton: HTMLButtonElement | null = null;
 let polygonButton: HTMLButtonElement | null = null;
 let editButton: HTMLButtonElement | null = null;
@@ -1085,10 +1086,41 @@ function unmountOlControl(): void {
   pickerElement = null;
 }
 
+function applyToolbarPositionClass(): void {
+  if (!toolbar) return;
+  // enhancedMainScreen помечает `.topleft-container` классом `svp-compact`
+  // (см. `enhancedMainScreen.ts: container.classList.add('svp-compact')`),
+  // что компактирует self-info и сдвигает занятые верхние пиксели. Тулбар
+  // переезжает на `top: 122px; left: 3px`, чтобы не попадать под компактный
+  // блок и встать под region-picker по левой кромке.
+  const compact = document.querySelector('.topleft-container.svp-compact');
+  toolbar.classList.toggle('svp-draw-tools-toolbar-compact-position', compact !== null);
+}
+
+function watchCompactContainer(): void {
+  if (compactContainerObserver) return;
+  const container = document.querySelector('.topleft-container');
+  if (!(container instanceof HTMLElement)) return;
+  // enhancedMainScreen может включаться/выключаться по ходу сессии — следим за
+  // изменением класса контейнера, чтобы позиция тулбара успевала за этим.
+  compactContainerObserver = new MutationObserver(applyToolbarPositionClass);
+  compactContainerObserver.observe(container, {
+    attributes: true,
+    attributeFilter: ['class'],
+  });
+}
+
+function unwatchCompactContainer(): void {
+  compactContainerObserver?.disconnect();
+  compactContainerObserver = null;
+}
+
 function mountToolbar(): void {
   if (toolbar) return;
   toolbar = createToolbar();
   document.body.appendChild(toolbar);
+  applyToolbarPositionClass();
+  watchCompactContainer();
 }
 
 function unmountToolbar(): void {
@@ -1107,6 +1139,7 @@ function cleanup(): void {
   removeEscCancelListener();
   removeToolbarOutsideClickListener();
   removePointPopupOpenListener();
+  unwatchCompactContainer();
   closeCopyFallbackModal();
   setMode('none');
   clearInteractions();

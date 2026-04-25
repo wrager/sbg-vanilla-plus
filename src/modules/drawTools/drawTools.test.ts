@@ -312,6 +312,53 @@ describe('drawTools module', () => {
     expect(toolbar?.classList.contains('svp-draw-tools-toolbar-open')).toBe(true);
   });
 
+  describe('toolbar position with enhancedMainScreen', () => {
+    test('without .topleft-container.svp-compact: toolbar has no compact-position class', async () => {
+      await drawTools.enable();
+      const tb = document.querySelector('.svp-draw-tools-toolbar');
+      expect(tb?.classList.contains('svp-draw-tools-toolbar-compact-position')).toBe(false);
+    });
+
+    test('with .topleft-container.svp-compact at mount time: toolbar gets compact-position class', async () => {
+      const container = document.createElement('div');
+      container.className = 'topleft-container svp-compact';
+      document.body.appendChild(container);
+
+      await drawTools.enable();
+
+      const tb = document.querySelector('.svp-draw-tools-toolbar');
+      expect(tb?.classList.contains('svp-draw-tools-toolbar-compact-position')).toBe(true);
+    });
+
+    test('svp-compact added later: observer applies compact-position class', async () => {
+      const container = document.createElement('div');
+      container.className = 'topleft-container';
+      document.body.appendChild(container);
+
+      await drawTools.enable();
+      const tb = document.querySelector('.svp-draw-tools-toolbar');
+      expect(tb?.classList.contains('svp-draw-tools-toolbar-compact-position')).toBe(false);
+
+      container.classList.add('svp-compact');
+      await Promise.resolve();
+      expect(tb?.classList.contains('svp-draw-tools-toolbar-compact-position')).toBe(true);
+    });
+
+    test('svp-compact removed later: observer drops compact-position class', async () => {
+      const container = document.createElement('div');
+      container.className = 'topleft-container svp-compact';
+      document.body.appendChild(container);
+
+      await drawTools.enable();
+      const tb = document.querySelector('.svp-draw-tools-toolbar');
+      expect(tb?.classList.contains('svp-draw-tools-toolbar-compact-position')).toBe(true);
+
+      container.classList.remove('svp-compact');
+      await Promise.resolve();
+      expect(tb?.classList.contains('svp-draw-tools-toolbar-compact-position')).toBe(false);
+    });
+  });
+
   test('every toolbar button renders with an SVG icon', async () => {
     await drawTools.enable();
 

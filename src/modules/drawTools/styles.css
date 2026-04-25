@@ -31,8 +31,8 @@
 
 .svp-draw-tools-toolbar {
   position: fixed;
-  top: 56px;
-  left: 8px;
+  top: 122px;
+  left: 3px;
   z-index: 1002;
   display: none;
   /* На узком viewport (мобильник в портретной ориентации) 10 кнопок не влезают
@@ -51,6 +51,15 @@
 
 .svp-draw-tools-toolbar.svp-draw-tools-toolbar-open {
   display: flex;
+}
+
+/* Когда enhancedMainScreen активен (`.topleft-container.svp-compact`),
+   self-info компактируется и занимает меньше вертикального места. Тулбар
+   поднимается выше и сдвигается правее, в позицию, где раньше стоял по
+   умолчанию (до того как мы подвинули его под полноразмерное self-info). */
+.svp-draw-tools-toolbar.svp-draw-tools-toolbar-compact-position {
+  top: 56px;
+  left: 8px;
 }
 
 .svp-draw-tools-tool-button {
