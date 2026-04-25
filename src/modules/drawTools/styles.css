@@ -78,3 +78,55 @@
 .svp-draw-tools-close-button {
   margin-left: 4px;
 }
+
+.svp-draw-tools-copy-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1003;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.svp-draw-tools-copy-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(90vw, 600px);
+  max-height: 80vh;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--text);
+}
+
+.svp-draw-tools-copy-modal-heading {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.svp-draw-tools-copy-textarea {
+  width: 100%;
+  min-height: 200px;
+  flex: 1;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--background);
+  color: var(--text);
+  font-family: monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.svp-draw-tools-copy-modal-close {
+  align-self: flex-end;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}

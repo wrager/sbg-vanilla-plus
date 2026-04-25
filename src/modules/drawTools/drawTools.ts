@@ -86,6 +86,8 @@ let controlMutationObserver: MutationObserver | null = null;
 let controlResizeObserver: ResizeObserver | null = null;
 let windowResizeHandler: (() => void) | null = null;
 let toolbar: HTMLDivElement | null = null;
+let copyModalOverlay: HTMLDivElement | null = null;
+let copyModalKeydownHandler: ((event: KeyboardEvent) => void) | null = null;
 let lineButton: HTMLButtonElement | null = null;
 let polygonButton: HTMLButtonElement | null = null;
 let editButton: HTMLButtonElement | null = null;
@@ -610,6 +612,69 @@ function snapAllToPortals(): void {
   );
 }
 
+function closeCopyFallbackModal(): void {
+  if (copyModalKeydownHandler) {
+    document.removeEventListener('keydown', copyModalKeydownHandler);
+    copyModalKeydownHandler = null;
+  }
+  if (copyModalOverlay) {
+    copyModalOverlay.remove();
+    copyModalOverlay = null;
+  }
+}
+
+function showCopyFallbackModal(text: string): void {
+  // Повторный клик при уже открытой модалке закрывает старую и открывает
+  // новую — иначе в DOM накапливались бы дубликаты overlay'ев.
+  closeCopyFallbackModal();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'svp-draw-tools-copy-modal-overlay';
+
+  const modal = document.createElement('div');
+  modal.className = 'svp-draw-tools-copy-modal';
+
+  const heading = document.createElement('div');
+  heading.className = 'svp-draw-tools-copy-modal-heading';
+  heading.textContent = t({
+    en: 'Copy this JSON',
+    ru: 'Скопируйте JSON',
+  });
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'svp-draw-tools-copy-textarea';
+  textarea.readOnly = true;
+  textarea.value = text;
+
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'svp-draw-tools-copy-modal-close';
+  closeButton.textContent = t({ en: 'Close', ru: 'Закрыть' });
+  closeButton.addEventListener('click', closeCopyFallbackModal);
+
+  modal.append(heading, textarea, closeButton);
+  overlay.appendChild(modal);
+
+  // Клик на оверлей (но не на сам modal) закрывает.
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) closeCopyFallbackModal();
+  });
+
+  copyModalKeydownHandler = (event: KeyboardEvent): void => {
+    if (event.key !== 'Escape') return;
+    closeCopyFallbackModal();
+  };
+  document.addEventListener('keydown', copyModalKeydownHandler);
+
+  document.body.appendChild(overlay);
+  copyModalOverlay = overlay;
+
+  // Автовыделение всего содержимого: пользователю остаётся только Ctrl+C
+  // (или long-press copy на мобильном).
+  textarea.focus();
+  textarea.select();
+}
+
 async function copyDrawPlan(): Promise<void> {
   const raw = stringifyIitcDrawItems(getDrawItems());
 
@@ -618,10 +683,10 @@ async function copyDrawPlan(): Promise<void> {
     showToast(t({ en: 'Copied draw plan', ru: 'Схема скопирована' }));
     return;
   } catch {
-    // Fallback to prompt below
+    // Clipboard API недоступен (HTTP-контекст, отозванное разрешение): даём
+    // ручной путь — модалка с textarea и автовыделением.
+    showCopyFallbackModal(raw);
   }
-
-  window.prompt(t({ en: 'Copy draw plan', ru: 'Скопируйте схему' }), raw);
 }
 
 function formatValue(value: unknown): string {
@@ -965,6 +1030,7 @@ function unmountToolbar(): void {
 function cleanup(): void {
   enableToken++;
   removeEscCancelListener();
+  closeCopyFallbackModal();
   setMode('none');
   clearInteractions();
   unmountToolbar();

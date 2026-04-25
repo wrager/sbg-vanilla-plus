@@ -1001,7 +1001,7 @@ describe('drawTools module', () => {
       expect(toast?.textContent).toContain('Copied');
     });
 
-    test('falls back to prompt when clipboard rejects', async () => {
+    async function setupRejectedClipboard(): Promise<void> {
       localStorage.setItem(
         'svp_drawTools',
         JSON.stringify([
@@ -1021,20 +1021,84 @@ describe('drawTools module', () => {
         value: { writeText },
         configurable: true,
       });
-      const promptSpy = jest.spyOn(window, 'prompt').mockReturnValue('');
+    }
+
+    function getCopyModalTextarea(): HTMLTextAreaElement | null {
+      return document.querySelector<HTMLTextAreaElement>('.svp-draw-tools-copy-textarea');
+    }
+
+    test('falls back to modal with textarea when clipboard rejects', async () => {
+      await setupRejectedClipboard();
 
       clickCopyButton();
-
-      // Дождаться завершения copyDrawPlan (writeText rejects -> catch -> prompt)
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-      expect(writeText).toHaveBeenCalledTimes(1);
-      expect(promptSpy).toHaveBeenCalledTimes(1);
-      const promptCalls = promptSpy.mock.calls as Array<[string, string]>;
-      const parsed = JSON.parse(promptCalls[0][1]) as Array<{ type: string }>;
+      const overlay = document.querySelector('.svp-draw-tools-copy-modal-overlay');
+      expect(overlay).not.toBeNull();
+      const textarea = getCopyModalTextarea();
+      expect(textarea).not.toBeNull();
+      const parsed = JSON.parse(textarea?.value ?? 'null') as Array<{ type: string }>;
       expect(parsed[0].type).toBe('polyline');
+    });
 
-      promptSpy.mockRestore();
+    test('close button removes copy fallback modal', async () => {
+      await setupRejectedClipboard();
+
+      clickCopyButton();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      const closeButton = document.querySelector<HTMLButtonElement>(
+        '.svp-draw-tools-copy-modal-close',
+      );
+      expect(closeButton).not.toBeNull();
+      closeButton?.click();
+
+      expect(document.querySelector('.svp-draw-tools-copy-modal-overlay')).toBeNull();
+    });
+
+    test('overlay click outside modal removes copy fallback modal', async () => {
+      await setupRejectedClipboard();
+
+      clickCopyButton();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      const overlay = document.querySelector<HTMLDivElement>('.svp-draw-tools-copy-modal-overlay');
+      overlay?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      expect(document.querySelector('.svp-draw-tools-copy-modal-overlay')).toBeNull();
+    });
+
+    test('Escape closes copy fallback modal', async () => {
+      await setupRejectedClipboard();
+
+      clickCopyButton();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+      expect(document.querySelector('.svp-draw-tools-copy-modal-overlay')).toBeNull();
+    });
+
+    test('repeat copy click while modal open keeps exactly one overlay', async () => {
+      await setupRejectedClipboard();
+
+      clickCopyButton();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      clickCopyButton();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      expect(document.querySelectorAll('.svp-draw-tools-copy-modal-overlay')).toHaveLength(1);
+    });
+
+    test('disable while modal open removes overlay', async () => {
+      await setupRejectedClipboard();
+
+      clickCopyButton();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      void drawTools.disable();
+
+      expect(document.querySelector('.svp-draw-tools-copy-modal-overlay')).toBeNull();
     });
   });
 });
