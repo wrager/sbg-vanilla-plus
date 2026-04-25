@@ -450,36 +450,18 @@ describe('drawTools module', () => {
       expect(isOpen()).toBe(false);
     });
 
-    test('opening point popup closes toolbar (game removes hidden from .info.popup)', async () => {
+    test('opening point popup keeps toolbar open (popup overlays via z-index)', async () => {
       await openToolbar();
       expect(isOpen()).toBe(true);
 
-      // Имитируем поведение игры: клик по точке на карте, затем игра убирает
-      // hidden у .info.popup, чтобы показать попап. MutationObserver должен
-      // поймать переход и закрыть тулбар.
-      const map = document.getElementById('map');
-      map?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      expect(isOpen()).toBe(true); // map-click сам по себе не закрывает
-
-      const popup = document.querySelector('.info.popup');
-      popup?.classList.remove('hidden');
-
-      // MutationObserver работает асинхронно — дать microtask'у прокрутиться
-      await Promise.resolve();
-      expect(isOpen()).toBe(false);
-    });
-
-    test('closing popup back does not reopen toolbar', async () => {
-      await openToolbar();
+      // Игра убирает hidden у `.info.popup`, чтобы показать попап точки.
+      // Тулбар не реагирует на этот переход — попап перекрывает его по z-index
+      // (попап игры рендерится на z-index 3, тулбар на 2).
       const popup = document.querySelector('.info.popup');
       popup?.classList.remove('hidden');
       await Promise.resolve();
-      expect(isOpen()).toBe(false);
 
-      // Закрытие попапа (hidden обратно) — тулбар не должен сам открыться
-      popup?.classList.add('hidden');
-      await Promise.resolve();
-      expect(isOpen()).toBe(false);
+      expect(isOpen()).toBe(true);
     });
 
     test('disable removes outside-click listener', async () => {
