@@ -41,15 +41,16 @@ if (!isDisabled()) {
   // При document-start head ещё не существует — откладываем до DOMContentLoaded.
   async function init(): Promise<void> {
     initErrorLog();
-    installSbgFlavor();
     // Детект версии игры через заголовок x-sbg-version (сервер ставит его
     // на любой /api/* ответ, включая 404). Ждём ДО bootstrap, чтобы гейтинг
     // модулей в bootstrap видел кэшированную версию синхронно.
     await initGameVersionDetection();
     // Если версия не поддерживается этой сборкой — confirm. При отмене
-    // пользователь выключает скрипт через kill switch, bootstrap мы не
-    // запускаем: модули на неизвестной версии игры могут её сломать.
+    // bootstrap не запускаем И flavor-заголовок не выставляем: мы не
+    // должны модифицировать запросы к серверу, если пользователь отказался
+    // от работы скрипта на этой версии.
     if (!ensureSbgVersionSupported()) return;
+    installSbgFlavor();
     bootstrap([
       // ui
       enhancedMainScreen,
