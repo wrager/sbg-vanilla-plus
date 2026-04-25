@@ -8,6 +8,7 @@ import type {
   IOlInteraction,
   IOlLayer,
   IOlMap,
+  IOlMapEvent,
   IOlVectorSource,
 } from '../../core/olMap';
 import { IitcParseError, parseIitcDrawItems, stringifyIitcDrawItems } from './iitcFormat';
@@ -17,6 +18,8 @@ import styles from './styles.css?inline';
 const MODULE_ID = 'drawTools';
 const STORAGE_KEY = 'svp_drawTools';
 const DRAW_LAYER_NAME = 'svp-draw-tools';
+// Поверх всех игровых и SVP-слоёв (refsOnMap топовый = 8, keyCountOnPoints = 5).
+const DRAW_LAYER_Z_INDEX = 9;
 const SNAP_THRESHOLD_PX = 100;
 const DEFAULT_COLOR = '#a24ac3';
 const MENU_LABEL = 'DT';
@@ -77,7 +80,7 @@ let currentColor = DEFAULT_COLOR;
 
 let drawInteraction: IObservableInteraction | null = null;
 let modifyInteraction: IObservableInteraction | null = null;
-let deleteClickHandler: ((event: Record<string, unknown>) => void) | null = null;
+let deleteClickHandler: ((event: IOlMapEvent) => void) | null = null;
 let drawEndHandler: ((event: Record<string, unknown>) => void) | null = null;
 let modifyEndHandler: ((event: Record<string, unknown>) => void) | null = null;
 let enableToken = 0;
@@ -131,16 +134,6 @@ function getFeatureColor(feature: IOlFeature): string {
   const withProps = feature as FeatureWithProps;
   const value = withProps.get?.('color');
   return typeof value === 'string' ? value : DEFAULT_COLOR;
-}
-
-function isFeature(value: unknown): value is IOlFeature {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.getGeometry === 'function' &&
-    typeof value.getId === 'function' &&
-    typeof value.setId === 'function' &&
-    typeof value.setStyle === 'function'
-  );
 }
 
 function getLatLngFromCoordinate(coordinate: number[]): IIitcLatLng {
@@ -205,7 +198,6 @@ function clearDrawLayer(): void {
 }
 
 function ensurePolygonClosed(latLngs: IIitcLatLng[]): IIitcLatLng[] {
-  if (latLngs.length < 3) return latLngs;
   const first = latLngs[0];
   const last = latLngs[latLngs.length - 1];
   if (equalLatLng(first, last)) return latLngs;
@@ -244,7 +236,9 @@ function loadFromStorage(): void {
     clearDrawLayer();
     importDrawItems(items);
   } catch {
-    // Keep module usable even with broken storage.
+    // Сторадж испорчен (ручная правка / несовместимая миграция / посторонний writer).
+    // Сбрасываем в []: модуль остаётся рабочим, а saveDrawItems() при первом же
+    // действии пользователя всё равно перезапишет его текущим состоянием.
     clearDrawLayer();
     localStorage.setItem(STORAGE_KEY, '[]');
   }
@@ -307,7 +301,7 @@ function createDrawLayer(olMap: IOlMap): void {
   drawLayer = new OlVectorLayer({
     source,
     name: DRAW_LAYER_NAME,
-    zIndex: 9,
+    zIndex: DRAW_LAYER_Z_INDEX,
     style: style ?? undefined,
   });
 
@@ -371,14 +365,7 @@ function clearInteractions(): void {
   }
 
   if (deleteClickHandler) {
-    map.un?.(
-      'click',
-      deleteClickHandler as (event: {
-        type: string;
-        pixel: number[];
-        originalEvent: Record<string, unknown>;
-      }) => void,
-    );
+    map.un?.('click', deleteClickHandler);
     deleteClickHandler = null;
   }
 }
@@ -410,10 +397,7 @@ function setMode(mode: ToolMode, force = false): void {
     }) as IObservableInteraction;
 
     drawEndHandler = (event: Record<string, unknown>) => {
-      const feature = event.feature;
-      if (isFeature(feature)) {
-        setFeatureColor(feature, currentColor);
-      }
+      setFeatureColor(event.feature as IOlFeature, currentColor);
       saveDrawItems();
     };
 
@@ -440,13 +424,11 @@ function setMode(mode: ToolMode, force = false): void {
     return;
   }
 
-  deleteClickHandler = (event: Record<string, unknown>) => {
-    const pixelRaw = event.pixel;
-    if (!isNumberPair(pixelRaw) || !map?.forEachFeatureAtPixel || !drawSource) return;
+  deleteClickHandler = (event: IOlMapEvent) => {
+    if (!map?.forEachFeatureAtPixel || !drawSource) return;
     const source = drawSource;
-    const pixel = [pixelRaw[0], pixelRaw[1]];
     map.forEachFeatureAtPixel(
-      pixel,
+      event.pixel,
       (feature) => {
         source.removeFeature?.(feature);
       },
@@ -458,14 +440,7 @@ function setMode(mode: ToolMode, force = false): void {
     saveDrawItems();
   };
 
-  map.on?.(
-    'click',
-    deleteClickHandler as (event: {
-      type: string;
-      pixel: number[];
-      originalEvent: Record<string, unknown>;
-    }) => void,
-  );
+  map.on?.('click', deleteClickHandler);
 }
 
 function addEscCancelListener(): void {
@@ -611,8 +586,8 @@ function snapAllToPortals(): void {
 
   showToast(
     t({
-      en: `Snap complete: moved ${moved} point(s)`,
-      ru: `Привязка завершена: перемещено ${moved} точек`,
+      en: `Snap complete: vertices moved — ${moved}`,
+      ru: `Привязка завершена: перемещено вершин — ${moved}`,
     }),
   );
 }
@@ -683,8 +658,8 @@ function importErrorDetail(error: unknown): { en: string; ru: string } {
       };
     case 'invalid_color':
       return {
-        en: `${path} — invalid color ${formatValue(value)} (expected #RRGGBB)`,
-        ru: `${path} — некорректный цвет ${formatValue(value)} (требуется #RRGGBB)`,
+        en: `${path} — invalid color ${formatValue(value)} (expected #RRGGBB or #RGB)`,
+        ru: `${path} — некорректный цвет ${formatValue(value)} (требуется #RRGGBB или #RGB)`,
       };
   }
 }

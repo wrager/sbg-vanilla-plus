@@ -940,4 +940,91 @@ describe('drawTools module', () => {
       expect(ring[3]).toEqual(ring[0]);
     });
   });
+
+  describe('copy', () => {
+    function clickCopyButton(): void {
+      // Order: L(0), P(1), Edit(2), Delete(3), Snap(4), Copy(5), Paste(6), Reset(7), Close(8)
+      const buttons = document.querySelectorAll<HTMLButtonElement>('.svp-draw-tools-tool-button');
+      buttons[5].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+
+    afterEach(() => {
+      Reflect.deleteProperty(navigator, 'clipboard');
+    });
+
+    test('writes IITC JSON to clipboard and shows success toast', async () => {
+      localStorage.setItem(
+        'svp_drawTools',
+        JSON.stringify([
+          {
+            type: 'polyline',
+            latLngs: [
+              { lat: 0, lng: 0 },
+              { lat: 0, lng: 10 },
+            ],
+          },
+        ]),
+      );
+      await drawTools.enable();
+
+      const writeText = jest.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      });
+
+      clickCopyButton();
+
+      // Дать микротаскам прокрутиться: writeText resolves -> showToast
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(writeText).toHaveBeenCalledTimes(1);
+      const writeCalls = writeText.mock.calls as Array<[string]>;
+      const parsed = JSON.parse(writeCalls[0][0]) as Array<{ type: string }>;
+      expect(parsed).toHaveLength(1);
+      expect(parsed[0].type).toBe('polyline');
+
+      const toast = document.querySelector('.svp-toast');
+      expect(toast?.textContent).toContain('Copied');
+    });
+
+    test('falls back to prompt when clipboard rejects', async () => {
+      localStorage.setItem(
+        'svp_drawTools',
+        JSON.stringify([
+          {
+            type: 'polyline',
+            latLngs: [
+              { lat: 0, lng: 0 },
+              { lat: 0, lng: 10 },
+            ],
+          },
+        ]),
+      );
+      await drawTools.enable();
+
+      const writeText = jest.fn().mockRejectedValue(new Error('denied'));
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText },
+        configurable: true,
+      });
+      const promptSpy = jest.spyOn(window, 'prompt').mockReturnValue('');
+
+      clickCopyButton();
+
+      // writeText rejects -> catch -> prompt; даём микротаскам прокрутиться
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(promptSpy).toHaveBeenCalledTimes(1);
+      const promptCalls = promptSpy.mock.calls as Array<[string, string]>;
+      const parsed = JSON.parse(promptCalls[0][1]) as Array<{ type: string }>;
+      expect(parsed[0].type).toBe('polyline');
+
+      promptSpy.mockRestore();
+    });
+  });
 });

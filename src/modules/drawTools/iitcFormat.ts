@@ -48,8 +48,16 @@ function isLatLng(value: unknown): value is IIitcLatLng {
   return typeof value.lat === 'number' && typeof value.lng === 'number';
 }
 
-function isColor(value: unknown): value is string {
-  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
+function normalizeColor(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  if (/^#[0-9a-fA-F]{6}$/.test(value)) return value;
+  if (/^#[0-9a-fA-F]{3}$/.test(value)) {
+    const r = value[1];
+    const g = value[2];
+    const b = value[3];
+    return `#${r}${r}${g}${g}${b}${b}`;
+  }
+  return null;
 }
 
 function validateDrawItem(item: unknown, index: number): IIitcDrawItem {
@@ -76,11 +84,20 @@ function validateDrawItem(item: unknown, index: number): IIitcDrawItem {
     throw new IitcParseError('invalid_coordinates', path, item.latLngs[badIndex]);
   }
 
-  if (item.color !== undefined && !isColor(item.color)) {
-    throw new IitcParseError('invalid_color', path, item.color);
+  let color: string | undefined;
+  if (item.color !== undefined) {
+    const normalized = normalizeColor(item.color);
+    if (normalized === null) {
+      throw new IitcParseError('invalid_color', path, item.color);
+    }
+    color = normalized;
   }
 
-  return item as unknown as IIitcDrawItem;
+  return {
+    type: item.type,
+    latLngs: item.latLngs as IIitcLatLng[],
+    ...(color !== undefined ? { color } : {}),
+  } as IIitcDrawItem;
 }
 
 /**

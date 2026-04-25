@@ -131,6 +131,59 @@ describe('iitcFormat', () => {
     });
   });
 
+  test('accepts short hex color and normalizes to long form', () => {
+    const raw = JSON.stringify([
+      {
+        type: 'polyline',
+        latLngs: [
+          { lat: 55.75, lng: 37.61 },
+          { lat: 55.76, lng: 37.62 },
+        ],
+        color: '#abc',
+      },
+    ]);
+
+    const parsed = parseIitcDrawItems(raw);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].color).toBe('#aabbcc');
+  });
+
+  test('rejects 4-character hex color', () => {
+    const raw = JSON.stringify([
+      {
+        type: 'polyline',
+        latLngs: [
+          { lat: 55.75, lng: 37.61 },
+          { lat: 55.76, lng: 37.62 },
+        ],
+        color: '#abcd',
+      },
+    ]);
+    expectParseError(raw, {
+      reason: 'invalid_color',
+      path: 'items[0]',
+      value: '#abcd',
+    });
+  });
+
+  test('rejects 8-character hex color (with alpha)', () => {
+    const raw = JSON.stringify([
+      {
+        type: 'polyline',
+        latLngs: [
+          { lat: 55.75, lng: 37.61 },
+          { lat: 55.76, lng: 37.62 },
+        ],
+        color: '#abcdef12',
+      },
+    ]);
+    expectParseError(raw, {
+      reason: 'invalid_color',
+      path: 'items[0]',
+      value: '#abcdef12',
+    });
+  });
+
   test('path uses index of the failing item, not first item', () => {
     const raw = JSON.stringify([
       {
