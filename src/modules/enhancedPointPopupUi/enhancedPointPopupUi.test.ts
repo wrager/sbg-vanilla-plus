@@ -85,9 +85,9 @@ describe('enhancedPointPopupUi — изоляция от новых блоков
     const popup = createInfoPopupBeta();
     document.body.appendChild(popup);
 
-    const matched = popup.querySelectorAll('.info.popup .i-buttons button');
+    const matched = popup.querySelectorAll<HTMLElement>('.info.popup .i-buttons button');
     expect(matched.length).toBe(3);
-    const ids = Array.from(matched).map((el) => (el as HTMLElement).id);
+    const ids = Array.from(matched).map((el) => el.id);
     expect(ids).toEqual(['deploy', 'repair', 'draw']);
   });
 
