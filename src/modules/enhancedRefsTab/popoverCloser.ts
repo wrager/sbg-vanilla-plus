@@ -49,6 +49,10 @@ let originalCreatePopper: IPopperGlobal['createPopper'] | null = null;
 let installGeneration = 0;
 
 function getPopperGlobal(): IPopperGlobal | undefined {
+  // window.Popper - глобал, который игра подгружает с npm-пакетом
+  // @popperjs/core. Расширять глобальный Window declare можно было бы,
+  // но у нас нет своих типов для Popper API; локальный as-cast здесь
+  // ограничивает область знания о Popper одним вызовом.
   return (window as unknown as { Popper?: IPopperGlobal }).Popper;
 }
 
