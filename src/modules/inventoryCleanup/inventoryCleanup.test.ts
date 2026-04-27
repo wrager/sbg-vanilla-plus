@@ -776,6 +776,17 @@ describe('inventoryCleanup module', () => {
     }
   }
 
+  /**
+   * Возвращает только вызовы fetch к `/api/inventory` (DELETE), отбрасывая
+   * `/api/settings` (POST), который шлёт `nativeGarbageGuard` на enable.
+   * Эти тесты проверяют логику cleanup и не должны падать из-за побочного
+   * defence-вызова.
+   */
+  function inventoryDeleteCalls(): unknown[][] {
+    const calls = fetchMock.mock.calls as unknown[][];
+    return calls.filter((call) => call[0] === '/api/inventory');
+  }
+
   /** Симулирует запись игрой в inventory-cache после ответа discover */
   function simulateDiscoverResponse(): void {
     const cache = localStorage.getItem('inventory-cache') ?? '[]';
@@ -908,7 +919,7 @@ describe('inventoryCleanup module', () => {
     await flushPromises();
 
     expect(consoleSpy).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(inventoryDeleteCalls()).toHaveLength(0);
 
     void inventoryCleanup.disable();
     invElement.remove();
@@ -1156,7 +1167,7 @@ describe('inventoryCleanup module', () => {
     await flushPromises();
 
     expect(consoleSpy).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(inventoryDeleteCalls()).toHaveLength(0);
 
     void inventoryCleanup.disable();
     invElement.remove();
@@ -1200,7 +1211,7 @@ describe('inventoryCleanup module', () => {
 
     await flushPromises();
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(inventoryDeleteCalls()).toHaveLength(1);
 
     void inventoryCleanup.disable();
     invElement.remove();

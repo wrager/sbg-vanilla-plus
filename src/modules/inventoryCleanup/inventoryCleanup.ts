@@ -9,6 +9,7 @@ import { parseInventoryCache } from './inventoryParser';
 import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
 import { initCleanupSettingsUi, destroyCleanupSettingsUi } from './cleanupSettingsUi';
+import { installNativeGarbageGuard, uninstallNativeGarbageGuard } from './nativeGarbageGuard';
 import {
   deleteInventoryItems,
   updateInventoryCache,
@@ -198,6 +199,7 @@ export const inventoryCleanup: IFeatureModule = {
     installSetItemInterceptor();
     initCleanupSettingsUi();
     installSlowRefsDelete();
+    installNativeGarbageGuard();
   },
 
   disable() {
@@ -206,5 +208,6 @@ export const inventoryCleanup: IFeatureModule = {
     discoverPending = false;
     destroyCleanupSettingsUi();
     uninstallSlowRefsDelete();
+    uninstallNativeGarbageGuard();
   },
 };
