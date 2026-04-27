@@ -22,6 +22,7 @@ import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { drawTools } from './modules/drawTools/drawTools';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
 import { favoritesMigration } from './modules/favoritesMigration/favoritesMigration';
+import { nextPointNavigation } from './modules/nextPointNavigation/nextPointNavigation';
 
 if (!isDisabled()) {
   // Перехваты, которые должны быть установлены ДО парсинга DOM и
@@ -68,6 +69,7 @@ if (!isDisabled()) {
       drawTools,
       // feature (map-зависимые)
       refsOnMap,
+      nextPointNavigation,
       // utility
       favoritesMigration,
       // fix

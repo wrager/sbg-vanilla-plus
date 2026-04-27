@@ -1,0 +1,8 @@
+.info.popup .i-buttons .svp-next-point-button {
+  position: fixed;
+  bottom: 5px;
+  right: 5px;
+  width: 32px;
+  height: 32px;
+  min-height: auto;
+}

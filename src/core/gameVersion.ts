@@ -151,7 +151,6 @@ export function isSbgGreaterThan(version: string): boolean {
 // favoritedPoints, inventoryCleanup, keyCountOnPoints (переименован в
 // keyCountFix), singleFingerRotation — после полноценной адаптации модули
 // возвращены (с переосмыслением и/или runtime-детекцией native), сет очищен.
-// nextPointNavigation удалён физически после реализации в игре.
 const DEPRECATED_MODULES_NATIVE: ReadonlySet<string> = new Set<string>([]);
 
 export function isModuleNativeInCurrentGame(moduleId: string): boolean {
