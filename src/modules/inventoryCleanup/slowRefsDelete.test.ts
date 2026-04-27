@@ -258,26 +258,12 @@ describe('регрессия: calculateDeletions с empty favorites и snapshotR
     };
   }
 
-  test('referencesEnabled=true + empty favoritedGuids + snapshotReady=true: ключи НЕ удаляются (защита от потери IDB)', () => {
+  test('кэш без поля f во всех стопках: ключи НЕ удаляются (lock недоступен)', () => {
     const items = [
       { g: 'r1', t: 3 as const, l: 'p1', a: 5 },
       { g: 'r2', t: 3 as const, l: 'p2', a: 1 },
     ];
-    const result = calculateDeletions(items, unlimitedLimits(), {
-      favoritedGuids: new Set<string>(),
-      referencesEnabled: true,
-      favoritesSnapshotReady: true,
-    });
-    expect(result).toEqual([]);
-  });
-
-  test('referencesEnabled=true + empty favoritedGuids + snapshotReady=false: ключи НЕ удаляются', () => {
-    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 100 }];
-    const result = calculateDeletions(items, unlimitedLimits(), {
-      favoritedGuids: new Set<string>(),
-      referencesEnabled: true,
-      favoritesSnapshotReady: false,
-    });
+    const result = calculateDeletions(items, unlimitedLimits());
     expect(result).toEqual([]);
   });
 });

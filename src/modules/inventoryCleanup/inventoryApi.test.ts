@@ -3,8 +3,6 @@ import { deleteInventoryItems, updateInventoryCache, updatePointRefCount } from 
 
 const AUTH_TOKEN = 'test-token-123';
 
-const noFavs = { favoritedGuids: new Set<string>(), favoritedPointsActive: true };
-
 let originalFetch: typeof window.fetch;
 let mockFetch: jest.Mock;
 
@@ -43,7 +41,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'bbb', type: 1, level: 5, amount: 2 },
     ];
 
-    await deleteInventoryItems(deletions, noFavs);
+    await deleteInventoryItems(deletions);
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(mockFetch).toHaveBeenCalledWith('/api/inventory', {
@@ -65,7 +63,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'core2', type: 1, level: 5, amount: 2 },
     ];
 
-    await deleteInventoryItems(deletions, noFavs);
+    await deleteInventoryItems(deletions);
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
 
@@ -99,7 +97,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'b', type: 2, level: 1, amount: 1 },
     ];
 
-    const result = await deleteInventoryItems(deletions, noFavs);
+    const result = await deleteInventoryItems(deletions);
     expect(result.total).toBe(85);
   });
 
@@ -108,7 +106,7 @@ describe('deleteInventoryItems', () => {
 
     const deletions: IDeletionEntry[] = [{ guid: 'a', type: 1, level: 1, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow('Inventory locked');
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow('Inventory locked');
   });
 
   test('throws when auth token is missing', async () => {
@@ -116,7 +114,7 @@ describe('deleteInventoryItems', () => {
 
     const deletions: IDeletionEntry[] = [{ guid: 'a', type: 1, level: 1, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow('Auth token not found');
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow('Auth token not found');
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -128,7 +126,7 @@ describe('deleteInventoryItems', () => {
 
     const deletions: IDeletionEntry[] = [{ guid: 'a', type: 1, level: 1, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow('HTTP 500');
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow('HTTP 500');
   });
 
   test('throws on non-JSON response', async () => {
@@ -139,9 +137,7 @@ describe('deleteInventoryItems', () => {
 
     const deletions: IDeletionEntry[] = [{ guid: 'a', type: 1, level: 1, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow(
-      'Invalid response from server',
-    );
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow('Invalid response from server');
   });
 
   test('throws when response missing count field', async () => {
@@ -152,94 +148,107 @@ describe('deleteInventoryItems', () => {
 
     const deletions: IDeletionEntry[] = [{ guid: 'a', type: 1, level: 1, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow(
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
       'Response missing inventory count',
     );
   });
 
   test('ключи (type 3) реально удаляются через fetch', async () => {
+    // Кэш с f=0 даёт lockSupportAvailable=true → guard разрешает удаление.
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 5, f: 0 }]),
+    );
     mockFetchSuccess(90);
     const deletions: IDeletionEntry[] = [
       { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
-    const result = await deleteInventoryItems(deletions, noFavs);
+    const result = await deleteInventoryItems(deletions);
     expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(result.total).toBe(90);
   });
 
   test('смешанный батч — cores и ключи отправляются отдельными запросами', async () => {
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 5, f: 0 }]),
+    );
     mockFetchSuccess(85);
     const deletions: IDeletionEntry[] = [
       { guid: 'c1', type: 1, level: 5, amount: 3 },
       { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
-    const result = await deleteInventoryItems(deletions, noFavs);
+    const result = await deleteInventoryItems(deletions);
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(result.total).toBe(85);
   });
 
   test('guard: бросает если ключ без pointGuid', async () => {
+    // Кэш с lockSupportAvailable=true, чтобы пройти первый guard.
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ g: 'r-other', t: 3, l: 'p-other', a: 1, f: 0 }]),
+    );
     const deletions: IDeletionEntry[] = [{ guid: 'r1', type: 3, level: null, amount: 5 }];
-    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow(
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
       'без pointGuid не может быть удалён',
     );
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  test('guard: бросает если pointGuid в избранных', async () => {
-    const deletions: IDeletionEntry[] = [
-      { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'fav-point' },
-    ];
-    await expect(
-      deleteInventoryItems(deletions, {
-        favoritedGuids: new Set(['fav-point']),
-        favoritedPointsActive: true,
-      }),
-    ).rejects.toThrow('Ключ от избранной точки fav-point не может быть удалён');
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  test('guard: смешанный батч с избранным ключом блокирует весь запрос', async () => {
-    const deletions: IDeletionEntry[] = [
-      { guid: 'c1', type: 1, level: 5, amount: 3 },
-      { guid: 'r1', type: 3, level: null, amount: 1, pointGuid: 'fav' },
-    ];
-    await expect(
-      deleteInventoryItems(deletions, {
-        favoritedGuids: new Set(['fav']),
-        favoritedPointsActive: true,
-      }),
-    ).rejects.toThrow('Ключ от избранной точки');
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  test('guard: бросает если есть ключи и favoritedPointsActive=false', async () => {
+  test('guard: бросает если есть ключи и lock-поддержка недоступна', async () => {
+    // Кэш без поля `f` ни у одной стопки → сервер не отдаёт lock-семантику →
+    // удаление ключей вслепую запрещено (legacy SVP/CUI больше не учитывается).
+    localStorage.setItem('inventory-cache', JSON.stringify([]));
     const deletions: IDeletionEntry[] = [
       { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
-    await expect(
-      deleteInventoryItems(deletions, {
-        favoritedGuids: new Set<string>(),
-        favoritedPointsActive: false,
-      }),
-    ).rejects.toThrow('модуль favoritedPoints не активен');
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+      'Удаление ключей запрещено: нативный lock недоступен',
+    );
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  test('cores удаляются даже при favoritedPointsActive=false', async () => {
+  test('guard: кэш с f-полем разрешает удаление (lockSupportAvailable=true)', async () => {
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ g: 'r1', t: 3, l: 'p-other', a: 1, f: 0 }]),
+    );
+    mockFetchSuccess(80);
+    const deletions: IDeletionEntry[] = [
+      { guid: 'r1', type: 3, level: null, amount: 1, pointGuid: 'p-other' },
+    ];
+    await deleteInventoryItems(deletions);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('guard: lock-точка из свежего кэша блокирует удаление', async () => {
+    // Симуляция race: пользователь нажал замок ПОСЛЕ расчёта deletions.
+    // В deletions точка ещё не помечена locked, но в свежем cache — уже.
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 5, f: 0b10 }]),
+    );
+    const deletions: IDeletionEntry[] = [
+      { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
+    ];
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+      'Ключ от заблокированной точки p1 не может быть удалён',
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('cores удаляются без проверки lock-поддержки (lock-guard только для рефов)', async () => {
     mockFetchSuccess(90);
     const deletions: IDeletionEntry[] = [{ guid: 'c1', type: 1, level: 5, amount: 3 }];
-    await deleteInventoryItems(deletions, {
-      favoritedGuids: new Set<string>(),
-      favoritedPointsActive: false,
-    });
+    await deleteInventoryItems(deletions);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   test('rejects deletion of brooms (type 4)', async () => {
     const deletions: IDeletionEntry[] = [{ guid: 'b1', type: 4, level: 0, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow(
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
       'Удаление предметов типа 4 запрещено',
     );
     expect(mockFetch).not.toHaveBeenCalled();
@@ -248,7 +257,7 @@ describe('deleteInventoryItems', () => {
   test('rejects deletion of erasers (type 5)', async () => {
     const deletions: IDeletionEntry[] = [{ guid: 'e1', type: 5, level: 1, amount: 1 }];
 
-    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow(
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
       'Удаление предметов типа 5 запрещено',
     );
     expect(mockFetch).not.toHaveBeenCalled();
@@ -260,7 +269,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'e1', type: 5, level: 1, amount: 1 },
     ];
 
-    await expect(deleteInventoryItems(deletions, noFavs)).rejects.toThrow(
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
       'Удаление предметов типа 5 запрещено',
     );
     expect(mockFetch).not.toHaveBeenCalled();
@@ -281,17 +290,17 @@ describe('deleteInventoryItems', () => {
       return Promise.resolve({ ok: false, status: 500 });
     });
 
+    // f=0 в кэше даёт lockSupportAvailable=true → guard пропускает удаление.
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 5, f: 0 }]),
+    );
     const deletions: IDeletionEntry[] = [
       { guid: 'c1', type: 1, level: 5, amount: 3 },
       { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
 
-    await expect(
-      deleteInventoryItems(deletions, {
-        favoritedGuids: new Set<string>(),
-        favoritedPointsActive: true,
-      }),
-    ).rejects.toThrow('HTTP 500');
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow('HTTP 500');
     // Cores DELETE уже отправлен (первый вызов fetch), refs — нет (второй упал).
     // Документирует поведение: при каскадном сбое первый батч удалён безвозвратно.
     expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -305,7 +314,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'aaa', type: 1, level: 5, amount: 2 },
     ];
 
-    await deleteInventoryItems(deletions, noFavs);
+    await deleteInventoryItems(deletions);
 
     const calls = mockFetch.mock.calls as [string, { body: string }][];
     const body = JSON.parse(calls[0][1].body) as {

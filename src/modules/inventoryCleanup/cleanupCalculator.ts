@@ -20,23 +20,6 @@ export interface IDeletionEntry {
   pointGuid?: string;
 }
 
-export interface ICalculateDeletionsOptions {
-  /** GUID избранных точек — ключи от них никогда не попадают в deletions. */
-  favoritedGuids: ReadonlySet<string>;
-  /**
-   * true, если модуль favoritedPoints загружен и готов (status=ready).
-   * false — автоочистка не трогает ключи независимо от referencesMode.
-   */
-  referencesEnabled: boolean;
-  /**
-   * true — снимок избранных из IDB достоверен (loadFavorites() прошёл успешно
-   * И count seal не обнаружил потерю данных). false — IDB не читалась, чтение
-   * упало, или обнаружено расхождение с seal (возможный Android IDB wipe).
-   * Работает в паре с size > 0 как двойная защита.
-   */
-  favoritesSnapshotReady: boolean;
-}
-
 export function shouldRunCleanup(
   currentCount: number,
   inventoryLimit: number,
@@ -48,7 +31,6 @@ export function shouldRunCleanup(
 export function calculateDeletions(
   items: readonly IInventoryItem[],
   limits: ICleanupLimits,
-  options: ICalculateDeletionsOptions,
 ): IDeletionEntry[] {
   const deletions: IDeletionEntry[] = [];
 
@@ -58,26 +40,46 @@ export function calculateDeletions(
   const catalysersByLevel = groupByLevel(items, ITEM_TYPE_CATALYSER);
   addLevelDeletions(catalysersByLevel, limits.catalysers, ITEM_TYPE_CATALYSER, deletions);
 
-  // Ключи удаляются ТОЛЬКО при одновременном выполнении ВСЕХ условий:
-  // 1. referencesEnabled — модуль favoritedPoints включён И готов (isModuleActive)
-  // 2. referencesMode === 'fast' — пользователь явно выбрал быстрый режим
-  // 3. referencesFastLimit !== -1 — пользователь задал конкретный лимит
-  // 4. favoritesSnapshotReady — loadFavorites() прошёл успешно И count seal
-  //    не обнаружил потерю данных IDB (Android wipe)
-  // 5. favoritedGuids.size > 0 — есть хотя бы одна избранная точка (defence-in-depth:
-  //    дополнительная защита на случай если seal не записался)
-  // Если хоть одно условие не выполнено — ключи не трогаются.
-  if (
-    options.referencesEnabled &&
-    limits.referencesMode === 'fast' &&
-    limits.referencesFastLimit !== -1 &&
-    options.favoritesSnapshotReady &&
-    options.favoritedGuids.size > 0
-  ) {
-    addReferenceDeletions(items, limits.referencesFastLimit, options.favoritedGuids, deletions);
+  // Ключи удаляются при выполнении базовых условий выбора режима И наличии
+  // нативной поддержки lock-флагов в кэше: хотя бы одна реф-запись имеет
+  // поле `f`. Это сигнал, что сервер уже отдаёт lock-семантику (0.6.1+); без
+  // него защита по locked невозможна — не трогаем ключи, чтобы не удалить
+  // их вслепую (например, на старом 0.6.0).
+  // Legacy SVP/CUI-избранные в логике удаления НЕ участвуют — они только
+  // источник миграции в favoritesMigration. Сама автоочистка блокируется
+  // на уровне runCleanup (см. inventoryCleanup.ts), пока миграция не сделана.
+  if (limits.referencesMode === 'fast' && limits.referencesFastLimit !== -1) {
+    const lockSupportAvailable = items.some(
+      (item) => isInventoryReference(item) && item.f !== undefined,
+    );
+    if (lockSupportAvailable) {
+      addReferenceDeletions(items, limits.referencesFastLimit, deletions);
+    }
   }
 
   return deletions;
+}
+
+/**
+ * Возвращает GUID'ы точек, у которых хотя бы одна стопка ключей помечена
+ * флагом `lock` (бит 1 поля `f`, refs/game-beta/script.js:3405).
+ * Стопки — деталь хранения; в UI игрок видит точку, и lock-семантика
+ * пользователю «защитить ключи этой точки от удаления». Поэтому агрегируем
+ * per-point: одна locked-стопка ⇒ вся точка под защитой.
+ *
+ * Принимает `unknown[]` — позволяет передавать сырой `inventory-cache` без
+ * предварительной фильтрации; внутренний `isInventoryReference` отсеивает
+ * не-рефы.
+ */
+export function buildLockedPointGuids(items: readonly unknown[]): Set<string> {
+  const locked = new Set<string>();
+  for (const item of items) {
+    if (!isInventoryReference(item)) continue;
+    if (item.f === undefined) continue;
+    if ((item.f & 0b10) === 0) continue;
+    locked.add(item.l);
+  }
+  return locked;
 }
 
 interface IItemEntry {
@@ -126,20 +128,25 @@ function addLevelDeletions(
 /**
  * Лимит ключей — НА ТОЧКУ: для каждой уникальной точки оставляет не более limit
  * ключей. Аналогично cores/catalysers, где лимит задаётся на уровень.
- * Ключи избранных точек полностью исключены из расчёта.
+ * Из расчёта исключаются точки, у которых в инвентаре есть хотя бы одна стопка
+ * с нативным lock-флагом (бит 1 в `item.f`) — пользователь явно защитил их в
+ * UI игры 0.6.1. Favorite-флаг (бит 0) НЕ защищает от удаления: пользователь
+ * подтвердил это в постановке («избранные ключи не защищаются от удаления,
+ * заблокированные — не удаляются автоочисткой»).
  */
 function addReferenceDeletions(
   items: readonly IInventoryItem[],
   limit: number,
-  favoritedGuids: ReadonlySet<string>,
   deletions: IDeletionEntry[],
 ): void {
   if (limit === -1) return;
 
-  // Отфильтровать ключи избранных точек ПЕРЕД расчётом лимита.
+  const lockedPointGuids = buildLockedPointGuids(items);
+
+  // Отфильтровать ключи заблокированных точек ПЕРЕД расчётом лимита.
   const matching: IInventoryReference[] = items.filter(
     (item): item is IInventoryReference =>
-      isInventoryReference(item) && item.a > 0 && !favoritedGuids.has(item.l),
+      isInventoryReference(item) && item.a > 0 && !lockedPointGuids.has(item.l),
   );
 
   // Группировка по pointGuid (item.l для ключей = GUID точки).

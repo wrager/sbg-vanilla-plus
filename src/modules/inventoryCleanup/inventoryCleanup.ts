@@ -2,6 +2,9 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 import { isModuleActive } from '../../core/moduleRegistry';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 import { getFavoritedGuids, isFavoritesSnapshotReady } from '../../core/favoritesStore';
+// favoritesStore импортируется только для определения migrationPending — сам
+// legacy список SVP/CUI участвует только в favoritesMigration. inventoryCleanup
+// здесь использует список только как сигнал «миграция ещё не сделана».
 import { parseInventoryCache } from './inventoryParser';
 import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
@@ -72,16 +75,19 @@ async function runCleanupImpl(): Promise<void> {
   const items = parseInventoryCache();
   if (items.length === 0) return;
 
-  // Ключи удаляются только если модуль favoritedPoints активен (включён + готов).
-  // Если модуль выключен — защита избранных не гарантирована, автоочистка ключи
-  // не трогает, даже если memory cache избранных загружен (init() всегда выполняется).
-  const referencesEnabled = isModuleActive('favoritedPoints');
-  const favoritedGuids = referencesEnabled ? getFavoritedGuids() : new Set<string>();
-  const deletions = calculateDeletions(items, settings.limits, {
-    favoritedGuids,
-    referencesEnabled,
-    favoritesSnapshotReady: isFavoritesSnapshotReady(),
-  });
+  // Защита ключей: ТОЛЬКО нативные locked точки (item.f & 0b10), без legacy
+  // SVP/CUI-избранных. Однако если у пользователя есть непустой legacy список
+  // и модуль миграции активен — миграция ещё не сделана, и автоочистка ключей
+  // удалила бы то, что пользователь защищал в SVP/CUI. Блокируем удаление
+  // ключей до завершения миграции; cores/cats удаляются как обычно.
+  const migrationPending =
+    isModuleActive('favoritesMigration') &&
+    isFavoritesSnapshotReady() &&
+    getFavoritedGuids().size > 0;
+  const limitsForRun = migrationPending
+    ? { ...settings.limits, referencesMode: 'off' as const }
+    : settings.limits;
+  const deletions = calculateDeletions(items, limitsForRun);
   if (deletions.length === 0) return;
 
   const totalAmount = deletions.reduce((sum, entry) => sum + entry.amount, 0);
@@ -93,12 +99,9 @@ async function runCleanupImpl(): Promise<void> {
   );
 
   try {
-    // Финальный guard: перечитываем избранные из memory cache ПЕРЕД отправкой
-    // DELETE-запроса, чтобы учесть изменения с момента calculateDeletions.
-    const result = await deleteInventoryItems(deletions, {
-      favoritedGuids: getFavoritedGuids(),
-      favoritedPointsActive: isModuleActive('favoritedPoints'),
-    });
+    // Финальный guard: deleteInventoryItems перечитает свежий inventory-cache
+    // и проверит, что все удаляемые ключи всё ещё не locked (бит 0b10 поля f).
+    const result = await deleteInventoryItems(deletions);
     updateInventoryCache(deletions);
     updatePointRefCount();
     if (result.total > 0) {

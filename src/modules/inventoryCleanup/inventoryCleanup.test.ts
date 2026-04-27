@@ -184,14 +184,6 @@ describe('shouldRunCleanup', () => {
 
 // --- calculateDeletions ---
 
-// Дефолтные опции для calculateDeletions: без избранных, режим ссылок выключен.
-// Включить можно локально в тестах через { ...noFavs, referencesEnabled: true }.
-const noFavs = {
-  favoritedGuids: new Set<string>(),
-  referencesEnabled: false,
-  favoritesSnapshotReady: false,
-};
-
 function unlimitedLimits(): ICleanupLimits {
   const levelLimits: Record<number, number> = {};
   for (let i = 1; i <= 10; i++) levelLimits[i] = -1;
@@ -207,7 +199,7 @@ function unlimitedLimits(): ICleanupLimits {
 
 describe('calculateDeletions', () => {
   test('returns empty for empty items array', () => {
-    expect(calculateDeletions([], unlimitedLimits(), noFavs)).toEqual([]);
+    expect(calculateDeletions([], unlimitedLimits())).toEqual([]);
   });
 
   test('returns empty when all limits unlimited', () => {
@@ -217,21 +209,21 @@ describe('calculateDeletions', () => {
       { g: 'r1', t: 3 as const, l: 'point', a: 200 },
       { g: 'b1', t: 4 as const, l: 0, a: 10 },
     ];
-    expect(calculateDeletions(items, unlimitedLimits(), noFavs)).toEqual([]);
+    expect(calculateDeletions(items, unlimitedLimits())).toEqual([]);
   });
 
   test('returns empty when within limits', () => {
     const limits = unlimitedLimits();
     limits.cores[5] = 100;
     const items = [{ g: 'c1', t: 1 as const, l: 5, a: 50 }];
-    expect(calculateDeletions(items, limits, noFavs)).toEqual([]);
+    expect(calculateDeletions(items, limits)).toEqual([]);
   });
 
   test('returns empty when count exactly equals limit', () => {
     const limits = unlimitedLimits();
     limits.cores[5] = 10;
     const items = [{ g: 'c1', t: 1 as const, l: 5, a: 10 }];
-    expect(calculateDeletions(items, limits, noFavs)).toEqual([]);
+    expect(calculateDeletions(items, limits)).toEqual([]);
   });
 
   // --- cores ---
@@ -240,7 +232,7 @@ describe('calculateDeletions', () => {
     const limits = unlimitedLimits();
     limits.cores[5] = 10;
     const items = [{ g: 'c1', t: 1 as const, l: 5, a: 25 }];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([{ guid: 'c1', type: 1, level: 5, amount: 15 }]);
   });
 
@@ -251,7 +243,7 @@ describe('calculateDeletions', () => {
       { g: 'c1', t: 1 as const, l: 3, a: 4 },
       { g: 'c2', t: 1 as const, l: 3, a: 6 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([
       { guid: 'c1', type: 1, level: 3, amount: 4 },
       { guid: 'c2', type: 1, level: 3, amount: 1 },
@@ -265,7 +257,7 @@ describe('calculateDeletions', () => {
       { g: 'c1', t: 1 as const, l: 3, a: 10 },
       { g: 'c2', t: 1 as const, l: 5, a: 10 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([{ guid: 'c1', type: 1, level: 3, amount: 10 }]);
   });
 
@@ -273,7 +265,7 @@ describe('calculateDeletions', () => {
     const limits = unlimitedLimits();
     limits.cores[1] = 0;
     const items = [{ g: 'c1', t: 1 as const, l: 1, a: 20 }];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([{ guid: 'c1', type: 1, level: 1, amount: 20 }]);
   });
 
@@ -287,7 +279,7 @@ describe('calculateDeletions', () => {
       { g: 'c5', t: 1 as const, l: 5, a: 7 },
       { g: 'c10', t: 1 as const, l: 10, a: 2 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([
       { guid: 'c1', type: 1, level: 1, amount: 5 },
       { guid: 'c5', type: 1, level: 5, amount: 4 },
@@ -303,7 +295,7 @@ describe('calculateDeletions', () => {
       { g: 'c2', t: 1 as const, l: 2, a: 5 },
       { g: 'c3', t: 1 as const, l: 2, a: 5 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([
       { guid: 'c1', type: 1, level: 2, amount: 5 },
       { guid: 'c2', type: 1, level: 2, amount: 5 },
@@ -317,7 +309,7 @@ describe('calculateDeletions', () => {
     const limits = unlimitedLimits();
     limits.catalysers[7] = 3;
     const items = [{ g: 'k1', t: 2 as const, l: 7, a: 8 }];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([{ guid: 'k1', type: 2, level: 7, amount: 5 }]);
   });
 
@@ -328,7 +320,7 @@ describe('calculateDeletions', () => {
       { g: 'c1', t: 1 as const, l: 5, a: 10 },
       { g: 'k1', t: 2 as const, l: 5, a: 10 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([{ guid: 'k1', type: 2, level: 5, amount: 10 }]);
   });
 
@@ -339,7 +331,7 @@ describe('calculateDeletions', () => {
       { g: 'k1', t: 2 as const, l: 3, a: 3 },
       { g: 'k2', t: 2 as const, l: 3, a: 4 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([
       { guid: 'k1', type: 2, level: 3, amount: 3 },
       { guid: 'k2', type: 2, level: 3, amount: 2 },
@@ -355,7 +347,7 @@ describe('calculateDeletions', () => {
       { g: 'r1', t: 3 as const, l: 'p1', a: 30 },
       { g: 'r2', t: 3 as const, l: 'p2', a: 40 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     const refDeletions = result.filter((entry) => entry.type === 3);
     expect(refDeletions).toEqual([]);
   });
@@ -368,7 +360,7 @@ describe('calculateDeletions', () => {
       { g: 'r2', t: 3 as const, l: 'p2', a: 10 },
       { g: 'r3', t: 3 as const, l: 'p3', a: 10 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     const refDeletions = result.filter((entry) => entry.type === 3);
     expect(refDeletions).toEqual([]);
   });
@@ -385,7 +377,7 @@ describe('calculateDeletions', () => {
       { g: 'k1', t: 2 as const, l: 5, a: 10 },
       { g: 'r1', t: 3 as const, l: 'p1', a: 3 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([{ guid: 'c1', type: 1, level: 1, amount: 5 }]);
   });
 
@@ -399,7 +391,7 @@ describe('calculateDeletions', () => {
       { g: 'k1', t: 2 as const, l: 1, a: 6 },
       { g: 'r1', t: 3 as const, l: 'p1', a: 4 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([
       { guid: 'c1', type: 1, level: 1, amount: 3 },
       { guid: 'k1', type: 2, level: 1, amount: 3 },
@@ -414,7 +406,7 @@ describe('calculateDeletions', () => {
       { g: 'c3', t: 1 as const, l: 3, a: 5 },
       { g: 'c7', t: 1 as const, l: 7, a: 5 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([
       { guid: 'c3', type: 1, level: 3, amount: 4 },
       { guid: 'c7', type: 1, level: 7, amount: 3 },
@@ -425,7 +417,7 @@ describe('calculateDeletions', () => {
     const limits = unlimitedLimits();
     limits.referencesFastLimit = 0;
     const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 1 }];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([]);
   });
 
@@ -442,7 +434,7 @@ describe('calculateDeletions', () => {
       { g: 'c1', t: 1 as const, l: 5, a: 0 },
       { g: 'c2', t: 1 as const, l: 5, a: 3 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([{ guid: 'c2', type: 1, level: 5, amount: 3 }]);
   });
 
@@ -459,7 +451,7 @@ describe('calculateDeletions', () => {
       { g: 'c1', t: 1 as const, l: 5, a: -5 },
       { g: 'c2', t: 1 as const, l: 5, a: 3 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([{ guid: 'c2', type: 1, level: 5, amount: 3 }]);
   });
 
@@ -477,13 +469,15 @@ describe('calculateDeletions', () => {
       { g: 'r2', t: 3 as const, l: 'p2', a: -1 },
       { g: 'r3', t: 3 as const, l: 'p3', a: 5 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([]);
   });
 
   // --- references fast mode ---
 
-  test('fast mode: не трогает ключи если referencesEnabled=false', () => {
+  test('fast mode: ключи не удаляются, если в кэше нет ни одной стопки с полем f (нет lock-поддержки)', () => {
+    // На 0.6.0 сервер не отдаёт `f` в инвентаре — нативная защита недоступна,
+    // удаление ключей вслепую запрещено. В кэше у всех стопок item.f === undefined.
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = 2;
@@ -491,66 +485,51 @@ describe('calculateDeletions', () => {
       { g: 'r1', t: 3 as const, l: 'p1', a: 5 },
       { g: 'r2', t: 3 as const, l: 'p2', a: 3 },
     ];
-    const result = calculateDeletions(items, limits, {
-      favoritedGuids: new Set<string>(),
-      referencesEnabled: false,
-      favoritesSnapshotReady: false,
-    });
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([]);
   });
 
-  test('fast mode: удаляет лишние ключи от каждой точки отдельно', () => {
+  test('fast mode: удаляет лишние ключи от каждой точки отдельно (защита по locked)', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = 2;
+    // f=0 — стопка известна серверу как not-locked. Lock-поддержка доступна.
     const items = [
-      { g: 'r1', t: 3 as const, l: 'p1', a: 5 }, // 5 ключей от p1, лимит 2 → удалить 3
-      { g: 'r2', t: 3 as const, l: 'p2', a: 1 }, // 1 ключ от p2, лимит 2 → не трогаем
-      { g: 'r3', t: 3 as const, l: 'p3', a: 3 }, // 3 ключа от p3, лимит 2 → удалить 1
+      { g: 'r1', t: 3 as const, l: 'p1', a: 5, f: 0 }, // 5 ключей от p1, лимит 2 → удалить 3
+      { g: 'r2', t: 3 as const, l: 'p2', a: 1, f: 0 }, // 1 ключ от p2, лимит 2 → не трогаем
+      { g: 'r3', t: 3 as const, l: 'p3', a: 3, f: 0 }, // 3 ключа от p3, лимит 2 → удалить 1
     ];
-    const result = calculateDeletions(items, limits, {
-      favoritedGuids: new Set(['sentinel-not-in-items']),
-      referencesEnabled: true,
-      favoritesSnapshotReady: true,
-    });
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([
       { guid: 'r1', type: 3, level: null, amount: 3, pointGuid: 'p1' },
       { guid: 'r3', type: 3, level: null, amount: 1, pointGuid: 'p3' },
     ]);
   });
 
-  test('fast mode: лимит 0 удаляет все не-избранные ключи', () => {
+  test('fast mode: лимит 0 удаляет все не-locked ключи', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = 0;
     const items = [
-      { g: 'r1', t: 3 as const, l: 'p1', a: 3 },
-      { g: 'r2', t: 3 as const, l: 'p2', a: 2 },
+      { g: 'r1', t: 3 as const, l: 'p1', a: 3, f: 0 },
+      { g: 'r2', t: 3 as const, l: 'p2', a: 2, f: 0 },
     ];
-    const result = calculateDeletions(items, limits, {
-      favoritedGuids: new Set(['sentinel-not-in-items']),
-      referencesEnabled: true,
-      favoritesSnapshotReady: true,
-    });
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([
       { guid: 'r1', type: 3, level: null, amount: 3, pointGuid: 'p1' },
       { guid: 'r2', type: 3, level: null, amount: 2, pointGuid: 'p2' },
     ]);
   });
 
-  test('fast mode: несколько стеков от одной точки — FIFO внутри группы', () => {
+  test('fast mode: несколько стопок от одной точки — FIFO внутри группы', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = 2;
     const items = [
-      { g: 'r1', t: 3 as const, l: 'p1', a: 3 }, // стек 1 от p1
-      { g: 'r2', t: 3 as const, l: 'p1', a: 4 }, // стек 2 от p1, всего 7, удалить 5
+      { g: 'r1', t: 3 as const, l: 'p1', a: 3, f: 0 }, // стек 1 от p1
+      { g: 'r2', t: 3 as const, l: 'p1', a: 4, f: 0 }, // стек 2 от p1, всего 7, удалить 5
     ];
-    const result = calculateDeletions(items, limits, {
-      favoritedGuids: new Set(['sentinel-not-in-items']),
-      referencesEnabled: true,
-      favoritesSnapshotReady: true,
-    });
+    const result = calculateDeletions(items, limits);
     // FIFO: 3 из r1, потом 2 из r2.
     expect(result).toEqual([
       { guid: 'r1', type: 3, level: null, amount: 3, pointGuid: 'p1' },
@@ -558,51 +537,48 @@ describe('calculateDeletions', () => {
     ]);
   });
 
-  test('fast mode: НИКОГДА не удаляет ключи избранных точек', () => {
+  test('fast mode: НИКОГДА не удаляет ключи locked-точек (бит 0b10 поля f)', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = 0;
     const items = [
-      { g: 'r1', t: 3 as const, l: 'p1', a: 5 },
-      { g: 'r2', t: 3 as const, l: 'p2', a: 3 },
+      { g: 'r1', t: 3 as const, l: 'p1', a: 5, f: 0b10 }, // locked
+      { g: 'r2', t: 3 as const, l: 'p2', a: 3, f: 0 },
     ];
-    const result = calculateDeletions(items, limits, {
-      favoritedGuids: new Set(['p1']),
-      referencesEnabled: true,
-      favoritesSnapshotReady: true,
-    });
-    // p1 избранная — не трогаем. p2 превышает лимит 0, удаляем всё.
+    const result = calculateDeletions(items, limits);
+    // p1 locked — не трогаем. p2 превышает лимит 0, удаляем всё.
     expect(result).toEqual([{ guid: 'r2', type: 3, level: null, amount: 3, pointGuid: 'p2' }]);
   });
 
-  test('fast mode: избранные точки полностью исключены из расчёта лимита', () => {
+  test('fast mode: locked-агрегация per-point — одна locked-стопка защищает все стопки точки', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
-    limits.referencesFastLimit = 2;
+    limits.referencesFastLimit = 0;
     const items = [
-      { g: 'r1', t: 3 as const, l: 'fav1', a: 50 }, // избранная — не трогаем
-      { g: 'r2', t: 3 as const, l: 'p2', a: 5 }, // не избранная, лимит 2 → удалить 3
-      { g: 'r3', t: 3 as const, l: 'p3', a: 1 }, // не избранная, лимит 2 → не трогаем
+      { g: 'r1', t: 3 as const, l: 'p1', a: 5, f: 0b10 }, // locked-стопка точки p1
+      { g: 'r2', t: 3 as const, l: 'p1', a: 3, f: 0 }, // вторая стопка той же точки — тоже под защитой
     ];
-    const result = calculateDeletions(items, limits, {
-      favoritedGuids: new Set(['fav1']),
-      referencesEnabled: true,
-      favoritesSnapshotReady: true,
-    });
-    // fav1 исключена. p2: 5-2=3 к удалению. p3: 1<2, ок.
-    expect(result).toEqual([{ guid: 'r2', type: 3, level: null, amount: 3, pointGuid: 'p2' }]);
+    const result = calculateDeletions(items, limits);
+    expect(result).toEqual([]);
   });
 
-  test('off mode: не трогает ключи даже если referencesEnabled=true', () => {
+  test('fast mode: favorite-флаг (бит 0b01) НЕ защищает от удаления', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 0;
+    const items = [
+      { g: 'r1', t: 3 as const, l: 'p1', a: 5, f: 0b01 }, // favorite, но не locked
+    ];
+    const result = calculateDeletions(items, limits);
+    expect(result).toEqual([{ guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' }]);
+  });
+
+  test('off mode: не трогает ключи даже при доступной lock-поддержке', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'off';
     limits.referencesFastLimit = 0;
-    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 5 }];
-    const result = calculateDeletions(items, limits, {
-      favoritedGuids: new Set<string>(),
-      referencesEnabled: true,
-      favoritesSnapshotReady: true,
-    });
+    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 5, f: 0 }];
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([]);
   });
 
@@ -611,12 +587,8 @@ describe('calculateDeletions', () => {
     limits.referencesMode = 'slow';
     limits.referencesAlliedLimit = 0;
     limits.referencesNotAlliedLimit = 0;
-    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 5 }];
-    const result = calculateDeletions(items, limits, {
-      favoritedGuids: new Set<string>(),
-      referencesEnabled: true,
-      favoritesSnapshotReady: true,
-    });
+    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 5, f: 0 }];
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([]);
   });
 
@@ -624,12 +596,8 @@ describe('calculateDeletions', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = -1;
-    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 100 }];
-    const result = calculateDeletions(items, limits, {
-      favoritedGuids: new Set<string>(),
-      referencesEnabled: true,
-      favoritesSnapshotReady: true,
-    });
+    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 100, f: 0 }];
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([]);
   });
 
@@ -643,67 +611,27 @@ describe('calculateDeletions', () => {
     const items = [
       { g: 'c1', t: 1 as const, l: 5, a: 10 },
       { g: 'k1', t: 2 as const, l: 3, a: 5 },
-      { g: 'r1', t: 3 as const, l: 'p1', a: 50 },
+      { g: 'r1', t: 3 as const, l: 'p1', a: 50, f: 0 },
     ];
-    const favs = {
-      favoritedGuids: new Set(['fav']),
-      referencesEnabled: true,
-      favoritesSnapshotReady: true,
-    };
-    const result = calculateDeletions(items, limits, favs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([
       { guid: 'c1', type: 1, level: 5, amount: 8 },
       { guid: 'k1', type: 2, level: 3, amount: 4 },
     ]);
   });
 
-  test('fast mode + empty favoritedGuids: cores/catalysers удаляются, ключи нет', () => {
+  test('fast mode без lock-поддержки: cores/catalysers удаляются, ключи нет', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = 0;
     limits.cores[1] = 3;
     const items = [
       { g: 'c1', t: 1 as const, l: 1, a: 10 },
-      { g: 'r1', t: 3 as const, l: 'p1', a: 20 },
+      { g: 'r1', t: 3 as const, l: 'p1', a: 20 }, // f отсутствует
     ];
-    const favs = {
-      favoritedGuids: new Set<string>(),
-      referencesEnabled: true,
-      favoritesSnapshotReady: true,
-    };
-    const result = calculateDeletions(items, limits, favs);
-    // Ключи не удаляются (favoritedGuids пуст), cores удаляются.
+    const result = calculateDeletions(items, limits);
+    // Ключи не удаляются (нет ни одной стопки с f), cores удаляются.
     expect(result).toEqual([{ guid: 'c1', type: 1, level: 1, amount: 7 }]);
-  });
-
-  test('snapshotReady=false + empty favoritedGuids: ключи не удаляются', () => {
-    const limits = unlimitedLimits();
-    limits.referencesMode = 'fast';
-    limits.referencesFastLimit = 0;
-    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 20 }];
-    const result = calculateDeletions(items, limits, {
-      favoritedGuids: new Set<string>(),
-      referencesEnabled: true,
-      favoritesSnapshotReady: false,
-    });
-    expect(result).toEqual([]);
-  });
-
-  test('snapshotReady=false + non-empty favoritedGuids: ключи не удаляются', () => {
-    const limits = unlimitedLimits();
-    limits.referencesMode = 'fast';
-    limits.referencesFastLimit = 0;
-    const items = [
-      { g: 'r1', t: 3 as const, l: 'p1', a: 20 },
-      { g: 'r2', t: 3 as const, l: 'p2', a: 5 },
-    ];
-    const result = calculateDeletions(items, limits, {
-      favoritedGuids: new Set(['p1']),
-      referencesEnabled: true,
-      favoritesSnapshotReady: false,
-    });
-    // snapshotReady=false блокирует ВСЕ удаления ключей, даже нефаворитных.
-    expect(result).toEqual([]);
   });
 
   test('off mode: cores/catalysers удаляются, ключи нет', () => {
@@ -714,7 +642,7 @@ describe('calculateDeletions', () => {
       { g: 'c1', t: 1 as const, l: 5, a: 3 },
       { g: 'r1', t: 3 as const, l: 'p1', a: 10 },
     ];
-    const result = calculateDeletions(items, limits, noFavs);
+    const result = calculateDeletions(items, limits);
     expect(result).toEqual([{ guid: 'c1', type: 1, level: 5, amount: 3 }]);
   });
 });

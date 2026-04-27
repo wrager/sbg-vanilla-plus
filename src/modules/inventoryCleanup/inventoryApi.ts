@@ -1,6 +1,8 @@
 import type { IDeletionEntry } from './cleanupCalculator';
+import { buildLockedPointGuids } from './cleanupCalculator';
 import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
-import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
+import { INVENTORY_CACHE_KEY, readInventoryCache } from '../../core/inventoryCache';
+import { isInventoryReference } from '../../core/inventoryTypes';
 
 export interface IDeleteResult {
   total: number;
@@ -38,31 +40,30 @@ function groupByType(deletions: readonly IDeletionEntry[]): Map<number, Record<s
 /** Типы предметов, удаление которых разрешено. Спецпредметы (вёники) защищены. */
 const DELETABLE_TYPES = new Set([ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE]);
 
-export interface IDeleteInventoryOptions {
-  /**
-   * Снимок GUID избранных точек на момент вызова — финальный guard перед DELETE.
-   * Даже если ключ прошёл фильтрацию в calculateDeletions, перед отправкой
-   * запроса мы ещё раз проверяем, что его pointGuid нет в этом наборе.
-   */
-  favoritedGuids: ReadonlySet<string>;
-  /**
-   * true, если модуль favoritedPoints включён И готов. Передаётся вызывающим кодом
-   * (inventoryCleanup, slowRefsDelete) через isModuleActive('favoritedPoints').
-   * Если false и в батче есть ключи — бросается ошибка, удаление не происходит.
-   */
-  favoritedPointsActive: boolean;
-}
-
 export async function deleteInventoryItems(
   deletions: readonly IDeletionEntry[],
-  options: IDeleteInventoryOptions,
 ): Promise<IDeleteResult> {
-  // Финальный guard: ключи могут удаляться ТОЛЬКО если модуль favoritedPoints
-  // активен (включён + готов). Проверяем непосредственно перед DELETE, чтобы
-  // ни один баг в цепочке выше не мог обойти эту защиту.
   const hasReferences = deletions.some((entry) => entry.type === ITEM_TYPE_REFERENCE);
-  if (hasReferences && !options.favoritedPointsActive) {
-    throw new Error('Удаление ключей запрещено: модуль favoritedPoints не активен (guard)');
+
+  // Финальный guard для lock-флагов: перечитываем СВЕЖИЙ inventory-cache (он
+  // мог обновиться между расчётом deletions и этим вызовом — пользователь
+  // нажал замок прямо во время cleanup'а, или сервер вернул новые `f` в
+  // ответе на discover). Если точка теперь locked — удаление её ключей
+  // блокируется.
+  const freshCache = hasReferences ? readInventoryCache() : [];
+  const freshLockedPointGuids = hasReferences
+    ? buildLockedPointGuids(freshCache)
+    : new Set<string>();
+  const lockSupportAvailable = freshCache.some(
+    (item) => isInventoryReference(item) && item.f !== undefined,
+  );
+
+  // Удаление ключей разрешено только при наличии нативной поддержки lock-флагов
+  // (хотя бы одна стопка с полем `f` в свежем кэше). Без этого сервер не отдаёт
+  // lock-семантику — удаление вслепую запрещено, чтобы не задеть ключи, которые
+  // пользователь защитил замочком.
+  if (hasReferences && !lockSupportAvailable) {
+    throw new Error('Удаление ключей запрещено: нативный lock недоступен (guard)');
   }
 
   for (const entry of deletions) {
@@ -71,11 +72,11 @@ export async function deleteInventoryItems(
     }
     if (entry.type === ITEM_TYPE_REFERENCE) {
       if (entry.pointGuid === undefined) {
-        throw new Error(`Ключ ${entry.guid} без pointGuid не может быть удалён (guard избранных)`);
+        throw new Error(`Ключ ${entry.guid} без pointGuid не может быть удалён (guard lock)`);
       }
-      if (options.favoritedGuids.has(entry.pointGuid)) {
+      if (freshLockedPointGuids.has(entry.pointGuid)) {
         throw new Error(
-          `Ключ от избранной точки ${entry.pointGuid} не может быть удалён (guard избранных)`,
+          `Ключ от заблокированной точки ${entry.pointGuid} не может быть удалён (guard lock)`,
         );
       }
     }

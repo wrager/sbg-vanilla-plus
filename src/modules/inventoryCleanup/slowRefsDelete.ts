@@ -1,9 +1,10 @@
-import { getFavoritedGuids } from '../../core/favoritesStore';
+import { getFavoritedGuids, isFavoritesSnapshotReady } from '../../core/favoritesStore';
 import { t } from '../../core/l10n';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
-import { readInventoryReferences } from '../../core/inventoryCache';
+import { readInventoryCache, readInventoryReferences } from '../../core/inventoryCache';
 import { isModuleActive } from '../../core/moduleRegistry';
 import type { IDeletionEntry } from './cleanupCalculator';
+import { buildLockedPointGuids } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
 import {
   deleteInventoryItems,
@@ -14,7 +15,7 @@ import {
 
 const BUTTON_CLASS = 'svp-cleanup-slow-refs-button';
 const MODAL_CLASS = 'svp-cleanup-slow-modal';
-// Кнопка монтируется внутрь .svp-fav-filter-bar (создаётся модулем favoritedPoints),
+// Кнопка монтируется внутрь .svp-fav-filter-bar (создавалась модулем favoritedPoints,
 // чтобы чекбокс «Только избранные» и кнопка «Очистить ключи» были в одной строке.
 // Это DOM-зависимость от элемента другого модуля, но не TS-импорт.
 const FILTER_BAR_SELECTOR = '.svp-fav-filter-bar';
@@ -232,29 +233,44 @@ async function runSlowDelete(): Promise<void> {
     return;
   }
 
-  const favoritedGuids = getFavoritedGuids();
-  if (favoritedGuids.size === 0) {
+  // Защитный слой: только нативные lock-флаги в `inventory-cache` (0.6.1+).
+  // Legacy SVP/CUI-список в логике защиты не участвует — он только источник
+  // миграции. Если у пользователя есть непустой legacy список и миграция не
+  // сделана — кнопка slow cleanup скрыта (см. shouldShowButton).
+  const cache = readInventoryCache();
+  const lockedPointGuids = buildLockedPointGuids(cache);
+  const lockSupportAvailable = cache.some(
+    (item) =>
+      typeof item === 'object' &&
+      item !== null &&
+      (item as Record<string, unknown>).t === ITEM_TYPE_REFERENCE &&
+      typeof (item as Record<string, unknown>).f === 'number',
+  );
+  if (!lockSupportAvailable) {
     showSlowToast(
       t({
-        en: 'Add at least one favorited point before cleaning keys',
-        ru: 'Добавьте хотя бы одну избранную точку перед очисткой ключей',
+        en: 'Native lock support unavailable: server returned no f-flags. Cleanup blocked.',
+        ru: 'Нативный lock недоступен (сервер не отдал поле f). Очистка заблокирована.',
       }),
     );
     return;
   }
   const invRefs = readInventoryReferences();
-  const nonFavRefs: IRefByGuid[] = invRefs
-    .filter((ref) => ref.a > 0 && !favoritedGuids.has(ref.l))
+  const protectedRefs: IRefByGuid[] = invRefs
+    .filter((ref) => ref.a > 0 && !lockedPointGuids.has(ref.l))
     .map((ref) => ({ itemGuid: ref.g, pointGuid: ref.l, amount: ref.a }));
 
-  if (nonFavRefs.length === 0) {
+  if (protectedRefs.length === 0) {
     showSlowToast(
-      t({ en: 'No non-favorited keys to process', ru: 'Нет не-избранных ключей для обработки' }),
+      t({
+        en: 'No unprotected keys to process',
+        ru: 'Нет незащищённых ключей для обработки',
+      }),
     );
     return;
   }
 
-  const uniquePointGuids = Array.from(new Set(nonFavRefs.map((ref) => ref.pointGuid)));
+  const uniquePointGuids = Array.from(new Set(protectedRefs.map((ref) => ref.pointGuid)));
 
   const confirmed = confirm(
     t({
@@ -283,7 +299,7 @@ async function runSlowDelete(): Promise<void> {
   progress.setStatus(t({ en: 'Calculating deletions…', ru: 'Расчёт удаления…' }));
 
   const deletions = calculateSlowDeletions(
-    nonFavRefs,
+    protectedRefs,
     teams,
     playerTeam,
     referencesAlliedLimit,
@@ -321,10 +337,7 @@ async function runSlowDelete(): Promise<void> {
   progress.setStatus(t({ en: 'Deleting: ', ru: 'Удаление: ' }) + summaryText);
 
   try {
-    const result = await deleteInventoryItems(deletions, {
-      favoritedGuids: getFavoritedGuids(),
-      favoritedPointsActive: isModuleActive('favoritedPoints'),
-    });
+    const result = await deleteInventoryItems(deletions);
     updateInventoryCache(deletions);
     updatePointRefCount();
     if (result.total > 0) {
@@ -361,7 +374,14 @@ function updateButtonLabel(button: HTMLButtonElement): void {
 
 function shouldShowButton(): boolean {
   const settings = loadCleanupSettings();
-  return settings.limits.referencesMode === 'slow' && isModuleActive('favoritedPoints');
+  if (settings.limits.referencesMode !== 'slow') return false;
+  // Кнопка скрыта, пока legacy SVP/CUI-список непуст и активен модуль миграции —
+  // удаление ключей блокируется до завершения переноса в нативные locked.
+  const migrationPending =
+    isModuleActive('favoritesMigration') &&
+    isFavoritesSnapshotReady() &&
+    getFavoritedGuids().size > 0;
+  return !migrationPending;
 }
 
 function ensureButton(bar: Element): void {
