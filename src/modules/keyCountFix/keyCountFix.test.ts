@@ -1,4 +1,4 @@
-import { buildRefCounts, keyCountFix } from './keyCountFix';
+import { buildRefCounts, fontSizeForZoom, keyCountFix } from './keyCountFix';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -222,6 +222,9 @@ describe('keyCountFix enable/disable', () => {
 
   beforeEach(() => {
     localStorage.removeItem('inventory-cache');
+    // Тесты enable/disable проверяют поток для уже включённого References-слоя.
+    // Условный no-op при выключенном References — отдельный describe ниже.
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x070000 }));
     pointsSrc = makeSource();
     view = makeView(16);
     const pointsLayer = makeLayer('points', pointsSrc);
@@ -233,6 +236,7 @@ describe('keyCountFix enable/disable', () => {
   afterEach(async () => {
     await keyCountFix.disable();
     delete window.ol;
+    localStorage.removeItem('map-config');
   });
 
   test('adds layer to map on enable', async () => {
@@ -268,5 +272,139 @@ describe('keyCountFix enable/disable', () => {
     mockGetOlMap.mockResolvedValue(makeMap([otherLayer], view));
     await keyCountFix.enable();
     expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
+  });
+});
+
+// ── adaptive font size ────────────────────────────────────────────────────────
+
+describe('fontSizeForZoom', () => {
+  // На MIN_ZOOM (13) шрифт прижат к нижней границе 10px — этого достаточно для
+  // чтения, не перекрывает соседние точки. Нативный игровой рендер фиксирован
+  // на 32px и при zoom 13-14 разрастается во весь экран — это и есть проблема,
+  // которую модуль чинит.
+  test('on min zoom 13 returns 10px', () => {
+    expect(fontSizeForZoom(13)).toBe(10);
+  });
+
+  test('on zoom 16 returns 13px (linear interpolation)', () => {
+    expect(fontSizeForZoom(16)).toBe(13);
+  });
+
+  test('on zoom 18 saturates at 16px (upper clamp)', () => {
+    expect(fontSizeForZoom(18)).toBe(15);
+  });
+
+  test('on zoom 20+ does not exceed 16px', () => {
+    expect(fontSizeForZoom(20)).toBe(16);
+    expect(fontSizeForZoom(25)).toBe(16);
+  });
+
+  test('on extra-low zoom (< 13) clamps to 10px', () => {
+    expect(fontSizeForZoom(5)).toBe(10);
+    expect(fontSizeForZoom(0)).toBe(10);
+  });
+});
+
+// ── localStorage hook (suppresses native References mode) ────────────────────
+
+describe('keyCountFix localStorage hook for map-config', () => {
+  // Перехват `localStorage.getItem('map-config')` маскирует байт 2 (текстовый
+  // канал) в 0, если он = 7 (References). Это подавляет нативный 32px-рендер
+  // text-канала; наш слой ниже отрисует те же числа адаптивно.
+
+  beforeEach(() => {
+    localStorage.removeItem('map-config');
+    const view = makeView(16);
+    const pointsLayer = makeLayer('points', makeSource());
+    const olMap = makeMap([pointsLayer], view);
+    mockGetOlMap.mockResolvedValue(olMap);
+    mockOl();
+  });
+
+  afterEach(async () => {
+    await keyCountFix.disable();
+    delete window.ol;
+    localStorage.removeItem('map-config');
+  });
+
+  test('text-channel === 7: после enable getItem возвращает h с обнулённым байтом 2', async () => {
+    // h = 0x070101 — top=1 (visited), bottom=1, text=7 (References)
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x070101 }));
+    await keyCountFix.enable();
+
+    const raw = localStorage.getItem('map-config');
+    if (raw === null) throw new Error('map-config missing');
+    const parsed = JSON.parse(raw) as { h: number };
+    expect((parsed.h >> 16) & 0xff).toBe(0);
+    // нижние байты не тронуты
+    expect(parsed.h & 0xff).toBe(1);
+    expect((parsed.h >> 8) & 0xff).toBe(1);
+  });
+
+  test('text-channel !== 7: модуль не активируется, hook не установлен', async () => {
+    // h = 0x050202 — top=2, bottom=2, text=5 (Levels) — References не выбран,
+    // нативного 32px-рендера нет, фиксить нечего.
+    const original = 0x050202;
+    localStorage.setItem('map-config', JSON.stringify({ h: original }));
+    const view = makeView(16);
+    const pointsLayer = makeLayer('points', makeSource());
+    const olMap = makeMap([pointsLayer], view);
+    mockGetOlMap.mockResolvedValue(olMap);
+
+    await keyCountFix.enable();
+
+    // Слой не добавлен на карту.
+    expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
+    // Хук не установлен — getItem возвращает оригинал без маскирования.
+    const raw = localStorage.getItem('map-config');
+    if (raw === null) throw new Error('map-config missing');
+    const parsed = JSON.parse(raw) as { h: number };
+    expect(parsed.h).toBe(original);
+  });
+
+  test('map-config отсутствует: модуль не активируется', async () => {
+    localStorage.removeItem('map-config');
+    const view = makeView(16);
+    const pointsLayer = makeLayer('points', makeSource());
+    const olMap = makeMap([pointsLayer], view);
+    mockGetOlMap.mockResolvedValue(olMap);
+
+    await keyCountFix.enable();
+
+    expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
+  });
+
+  test('невалидный JSON в map-config: модуль не активируется', async () => {
+    localStorage.setItem('map-config', '{not-json');
+    const view = makeView(16);
+    const pointsLayer = makeLayer('points', makeSource());
+    const olMap = makeMap([pointsLayer], view);
+    mockGetOlMap.mockResolvedValue(olMap);
+
+    await keyCountFix.enable();
+
+    expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
+    // map-config возвращается как был — наш хук не вмешивается.
+    expect(localStorage.getItem('map-config')).toBe('{not-json');
+  });
+
+  test('после disable getItem возвращает оригинальное значение', async () => {
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x070101 }));
+    await keyCountFix.enable();
+    await keyCountFix.disable();
+
+    const raw = localStorage.getItem('map-config');
+    if (raw === null) throw new Error('map-config missing');
+    const parsed = JSON.parse(raw) as { h: number };
+    // disable восстанавливает Storage.prototype.getItem — байт 2 снова виден
+    expect((parsed.h >> 16) & 0xff).toBe(7);
+  });
+
+  test('хук не трогает другие ключи localStorage', async () => {
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x070000 }));
+    localStorage.setItem('inventory-cache', JSON.stringify([{ g: 'x', t: 3 }]));
+    await keyCountFix.enable();
+
+    expect(localStorage.getItem('inventory-cache')).toBe(JSON.stringify([{ g: 'x', t: 3 }]));
   });
 });

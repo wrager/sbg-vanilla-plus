@@ -5,8 +5,34 @@ import { readInventoryReferences } from '../../core/inventoryCache';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 
 const MODULE_ID = 'keyCountFix';
-const MIN_ZOOM = 15;
+const MIN_ZOOM = 13;
 const DEBOUNCE_MS = 100;
+// SBG 0.6.1 layers-config: байт 2 поля map-config.h задаёт «текстовый канал»
+// для FeatureStyles.LIGHT (refs/game-beta/script.js:556 далее). Значение 7 =
+// References — нативно рисует количество ключей текстом 32px поверх кольца
+// точки. Маскируем байт 2 в 0 (None), пока модуль активен — наш слой ниже
+// показывает те же числа адаптивным шрифтом.
+const TEXT_CHANNEL_SHIFT = 16;
+const TEXT_CHANNEL_MASK = 0xff << TEXT_CHANNEL_SHIFT;
+const REFERENCES_MODE_VALUE = 7;
+const MAP_CONFIG_KEY = 'map-config';
+
+/** clamp(low, value, high) — возвращает value, ограниченный диапазоном [low, high]. */
+function clamp(low: number, value: number, high: number): number {
+  return Math.max(low, Math.min(high, value));
+}
+
+/**
+ * Адаптивный размер шрифта в зависимости от зума. На MIN_ZOOM (13) — мелкий
+ * 10px, на zoom 18+ — 16px. Линейная интерполяция в диапазоне.
+ *
+ * Нативный рендер игры (refs/game-beta/script.js:570 — `bold 32px Manrope`)
+ * слишком крупный на низких зумах (числа закрывают сами точки и соседние
+ * подписи); наш более мелкий и масштабируемый шрифт остаётся читаемым.
+ */
+export function fontSizeForZoom(zoom: number): number {
+  return Math.round(clamp(10, zoom - 3, 16));
+}
 
 export function buildRefCounts(): Map<string, number> {
   const refs = readInventoryReferences();
@@ -25,6 +51,68 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let mutationObserver: MutationObserver | null = null;
 let onPointsChange: (() => void) | null = null;
 let onZoomChange: (() => void) | null = null;
+
+// Оригинальная localStorage.getItem, сохраняется на enable и восстанавливается
+// на disable. Хук маскирует текстовый канал в map-config.h, чтобы нативный
+// LIGHT-renderer не рисовал свой 32px-текст параллельно с нашим слоем.
+let originalGetItem: typeof Storage.prototype.getItem | null = null;
+
+function maskReferencesInMapConfig(rawValue: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawValue) as unknown;
+  } catch {
+    return rawValue;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return rawValue;
+  const config = parsed as Record<string, unknown>;
+  if (typeof config.h !== 'number') return rawValue;
+  const textChannel = (config.h & TEXT_CHANNEL_MASK) >> TEXT_CHANNEL_SHIFT;
+  if (textChannel !== REFERENCES_MODE_VALUE) return rawValue;
+  config.h = config.h & ~TEXT_CHANNEL_MASK;
+  return JSON.stringify(config);
+}
+
+/**
+ * Читает `map-config` напрямую (минуя любые наши патчи) и проверяет, выбран ли
+ * пользователем нативный канал References для текстового слоя. Используется
+ * на enable, чтобы решить, активировать ли наш слой и подавление нативного
+ * рендера: если игрок выключил References в layers-config, нативный 32px-текст
+ * не рисуется, наш фикс ему не нужен — модуль уходит в no-op.
+ */
+function isReferencesEnabledInMapConfig(): boolean {
+  const raw = localStorage.getItem(MAP_CONFIG_KEY);
+  if (raw === null) return false;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return false;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return false;
+  const config = parsed as Record<string, unknown>;
+  if (typeof config.h !== 'number') return false;
+  const textChannel = (config.h & TEXT_CHANNEL_MASK) >> TEXT_CHANNEL_SHIFT;
+  return textChannel === REFERENCES_MODE_VALUE;
+}
+
+function installMapConfigGetItemHook(): void {
+  if (originalGetItem !== null) return;
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- мы перенесём bind через call внутри patchedGetItem
+  const original = Storage.prototype.getItem;
+  originalGetItem = original;
+  Storage.prototype.getItem = function patchedGetItem(key: string): string | null {
+    const value = original.call(this, key);
+    if (this !== localStorage || key !== MAP_CONFIG_KEY || value === null) return value;
+    return maskReferencesInMapConfig(value);
+  };
+}
+
+function uninstallMapConfigGetItemHook(): void {
+  if (originalGetItem === null) return;
+  Storage.prototype.getItem = originalGetItem;
+  originalGetItem = null;
+}
 
 function renderLabels(): void {
   if (!labelsSource || !map || !pointsSource) return;
@@ -48,6 +136,7 @@ function renderLabels(): void {
 
   const textColor = getTextColor();
   const bgColor = getBackgroundColor();
+  const fontSize = fontSizeForZoom(zoom);
 
   for (const feature of pointsSource.getFeatures()) {
     const id = feature.getId();
@@ -61,7 +150,7 @@ function renderLabels(): void {
     label.setStyle(
       new OlStyle({
         text: new OlText({
-          font: '12px Manrope',
+          font: `${fontSize}px Manrope`,
           text: String(count),
           fill: new OlFill({ color: textColor }),
           stroke: new OlStroke({ color: bgColor, width: 3 }),
@@ -82,8 +171,8 @@ export const keyCountFix: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Key count on points', ru: 'Количество ключей на точках' },
   description: {
-    en: 'Shows the number of reference keys for each visible point on the map',
-    ru: 'Показывает число ключей (refs) для каждой видимой точки на карте',
+    en: 'When the native References layer is on, replaces it with adaptive-size labels that stay readable at low zoom and do not rotate with the map. Inactive when References is off.',
+    ru: 'Когда у игрока включён слой References, заменяет нативную подсветку адаптивными подписями: читаемый размер на любом зуме, числа не вращаются вместе с картой. Если References выключен — модуль ничего не делает.',
   },
   defaultEnabled: true,
   category: 'map',
@@ -91,6 +180,15 @@ export const keyCountFix: IFeatureModule = {
   init() {},
 
   enable() {
+    // Если игрок не выбрал References в layers-config (refs/game-beta/script.js
+    // FeatureStyles.LIGHT case 7), нативный 32px-текст не рисуется, и нашему
+    // слою нечего фиксить. Не вешаем хук и не создаём слой — модуль становится
+    // полностью пассивным до перезагрузки страницы (смена настройки слоёв в
+    // игре требует reload, поэтому динамическая реакция на change не нужна).
+    if (!isReferencesEnabledInMapConfig()) return;
+
+    installMapConfigGetItemHook();
+
     return getOlMap().then((olMap) => {
       const ol = window.ol;
       const OlVectorSource = ol?.source?.Vector;
@@ -160,5 +258,7 @@ export const keyCountFix: IFeatureModule = {
     pointsSource = null;
     labelsSource = null;
     labelsLayer = null;
+
+    uninstallMapConfigGetItemHook();
   },
 };
