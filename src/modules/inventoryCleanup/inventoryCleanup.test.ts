@@ -1489,6 +1489,97 @@ describe('inventoryCleanup module', () => {
       localStorage.removeItem('svp_inventoryCleanup');
       consoleSpy.mockRestore();
     });
+
+    test('lock-migration-done выставлен: native lock-флаг ВСЁ РАВНО защищает стопку от удаления', async () => {
+      // Документированная семантика lock-migration-done: после миграции
+      // защита переходит на нативный lock-флаг; legacy-список становится
+      // архивом. Это значит, что для конкретной стопки с f=0b10 защита
+      // обеспечивается через buildLockedPointGuids в calculateDeletions
+      // (отфильтровывается до подсчёта) и через final guard в
+      // deleteInventoryItems (блокирует, если что-то прошло).
+      //
+      // Без этого теста инвариант "флаг lock-migration-done не подавляет
+      // нативную защиту" формализован только в комментариях. Если кто-то
+      // изменит calculateDeletions так, чтобы при флаге=true пропускать
+      // фильтр по lockedPointGuids, тесты выше (про unblock) останутся
+      // зелёными - там точка не locked в кэше.
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+      registerModules([
+        {
+          id: 'favoritesMigration',
+          name: { en: '', ru: '' },
+          description: { en: '', ru: '' },
+          defaultEnabled: true,
+          category: 'utility',
+          status: 'ready',
+          init() {},
+          enable() {},
+          disable() {},
+        },
+      ]);
+      resetFavoritesStoreForTests();
+      await loadFavorites();
+      setLockMigrationDone();
+
+      const invElement = document.createElement('span');
+      invElement.id = 'self-info__inv';
+      invElement.textContent = '2950';
+      document.body.appendChild(invElement);
+
+      const limElement = document.createElement('span');
+      limElement.id = 'self-info__inv-lim';
+      limElement.textContent = '3000';
+      document.body.appendChild(limElement);
+
+      const settings = defaultCleanupSettings();
+      settings.limits.referencesMode = 'fast';
+      settings.limits.referencesFastLimit = 1;
+      saveCleanupSettings(settings);
+
+      // Точка p-locked: locked в нативе (f=0b10), 5 ключей. Должна остаться.
+      // Точка p-free: НЕ locked (f=0), 5 ключей. Лимит=1 -> 4 уйдут в deletions.
+      localStorage.setItem(
+        'inventory-cache',
+        JSON.stringify([
+          { g: 'r-locked', t: 3, l: 'p-locked', a: 5, f: 0b10 },
+          { g: 'r-free', t: 3, l: 'p-free', a: 5, f: 0 },
+        ]),
+      );
+
+      void inventoryCleanup.enable();
+
+      const button = document.createElement('button');
+      button.id = 'discover';
+      document.body.appendChild(button);
+      button.click();
+      simulateDiscoverResponse();
+
+      await flushPromises();
+
+      // Удаление должно пройти, но ТОЛЬКО для p-free.
+      const calls = inventoryDeleteCalls();
+      expect(calls.length).toBeGreaterThan(0);
+      // Тело каждого fetch'а DELETE содержит selection с guid'ами стопок.
+      // r-locked в selection быть не должно ни в одном вызове.
+      for (const call of calls) {
+        const init = call[1];
+        if (typeof init !== 'object' || init === null) continue;
+        const body = (init as { body?: unknown }).body;
+        if (typeof body !== 'string') continue;
+        expect(body).not.toContain('r-locked');
+      }
+
+      void inventoryCleanup.disable();
+      registerModules([]);
+      resetFavoritesStoreForTests();
+      invElement.remove();
+      limElement.remove();
+      button.remove();
+      localStorage.removeItem('inventory-cache');
+      localStorage.removeItem('svp_inventoryCleanup');
+      consoleSpy.mockRestore();
+    });
   });
 });
 
