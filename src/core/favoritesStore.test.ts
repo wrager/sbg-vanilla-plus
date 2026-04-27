@@ -1,7 +1,9 @@
 import {
+  exportFavoritesToJson,
   loadFavorites,
   isFavorited,
   isFavoritesSnapshotReady,
+  importFavoritesFromJson,
   getFavoritedGuids,
   getFavoritesCount,
   isLockMigrationDone,
@@ -197,5 +199,99 @@ describe('lock-migration-done flag', () => {
     expect(isLockMigrationDone()).toBe(false);
     localStorage.setItem(LOCK_MIGRATION_DONE_KEY, 'true');
     expect(isLockMigrationDone()).toBe(false);
+  });
+});
+
+describe('экспорт/импорт legacy-избранных', () => {
+  beforeEach(async () => {
+    await resetIdb();
+  });
+
+  test('exportFavoritesToJson возвращает отсортированный массив GUID', async () => {
+    await seedRecords([
+      { guid: 'g-bbb', cooldown: null },
+      { guid: 'g-aaa', cooldown: 12345 },
+      { guid: 'g-ccc', cooldown: null },
+    ]);
+    const json = await exportFavoritesToJson();
+    expect(JSON.parse(json)).toEqual(['g-aaa', 'g-bbb', 'g-ccc']);
+  });
+
+  test('exportFavoritesToJson на пустой IDB возвращает []', async () => {
+    await loadFavorites();
+    const json = await exportFavoritesToJson();
+    expect(JSON.parse(json)).toEqual([]);
+  });
+
+  test('importFavoritesFromJson REPLACE: затирает существующие, вставляет новые', async () => {
+    await seedRecords([
+      { guid: 'old-1', cooldown: 100 },
+      { guid: 'old-2', cooldown: null },
+    ]);
+    await loadFavorites();
+    expect(getFavoritesCount()).toBe(2);
+
+    const count = await importFavoritesFromJson(JSON.stringify(['new-1', 'new-2', 'new-3']));
+    expect(count).toBe(3);
+    expect([...getFavoritedGuids()].sort()).toEqual(['new-1', 'new-2', 'new-3']);
+    expect(isFavorited('old-1')).toBe(false);
+  });
+
+  test('importFavoritesFromJson обновляет seal', async () => {
+    await loadFavorites();
+    await importFavoritesFromJson(JSON.stringify(['g1', 'g2']));
+    expect(localStorage.getItem(SEAL_KEY)).toBe('2');
+  });
+
+  test('importFavoritesFromJson сбрасывает lock-migration-done', async () => {
+    setLockMigrationDone();
+    expect(isLockMigrationDone()).toBe(true);
+
+    await loadFavorites();
+    await importFavoritesFromJson(JSON.stringify(['g1']));
+
+    // Импортированные точки ещё не помечены нативным замочком - блокировка
+    // должна вернуться, иначе свежий legacy остался бы без защиты.
+    expect(isLockMigrationDone()).toBe(false);
+  });
+
+  test('importFavoritesFromJson выставляет snapshotLoaded=true', async () => {
+    expect(isFavoritesSnapshotReady()).toBe(false);
+    await importFavoritesFromJson(JSON.stringify(['g1']));
+    expect(isFavoritesSnapshotReady()).toBe(true);
+  });
+
+  test('importFavoritesFromJson бросает на не-массиве', async () => {
+    await loadFavorites();
+    await expect(importFavoritesFromJson(JSON.stringify({ foo: 'bar' }))).rejects.toThrow(
+      /массив GUID/i,
+    );
+  });
+
+  test('importFavoritesFromJson бросает на массиве не-строк', async () => {
+    await loadFavorites();
+    await expect(importFavoritesFromJson(JSON.stringify([1, 2, 3]))).rejects.toThrow(
+      /массив GUID/i,
+    );
+  });
+
+  test('importFavoritesFromJson на пустом массиве чистит IDB', async () => {
+    await seedRecords([{ guid: 'old', cooldown: null }]);
+    await loadFavorites();
+    const count = await importFavoritesFromJson(JSON.stringify([]));
+    expect(count).toBe(0);
+    expect(getFavoritesCount()).toBe(0);
+  });
+
+  test('round-trip: export -> import -> export даёт тот же JSON', async () => {
+    await seedRecords([
+      { guid: 'g-2', cooldown: null },
+      { guid: 'g-1', cooldown: 5 },
+    ]);
+    await loadFavorites();
+    const json1 = await exportFavoritesToJson();
+    await importFavoritesFromJson(json1);
+    const json2 = await exportFavoritesToJson();
+    expect(json2).toBe(json1);
   });
 });

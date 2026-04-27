@@ -73,6 +73,20 @@ function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
+function waitForTransaction(tx: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = (): void => {
+      resolve();
+    };
+    tx.onerror = (): void => {
+      reject(tx.error ?? new Error('IDB transaction failed'));
+    };
+    tx.onabort = (): void => {
+      reject(tx.error ?? new Error('IDB transaction aborted'));
+    };
+  });
+}
+
 /**
  * Полная инициализация БД CUI v26.4.1: stores + дефолтные данные.
  * Портировано из refs/cui/index.js initializeDB() (строки 147-179).
@@ -288,6 +302,70 @@ export function isFavoritesSnapshotReady(): boolean {
 
 export function getFavoritesCount(): number {
   return memoryGuids.size;
+}
+
+/**
+ * Экспорт legacy-списка SVP/CUI-избранных в JSON. Формат - массив GUID-строк,
+ * отсортированный для стабильного diff'а и хранения в репозитории/бэкапе.
+ * Совместим с прежней (до ребрандинга в favoritesMigration) версией скрипта,
+ * чтобы файлы из старых установок продолжали импортироваться без миграции
+ * формата.
+ *
+ * Cooldown в экспорт не попадает: его пишет CUI как кэш таймера остывания,
+ * между устройствами он не имеет смысла. При импорте новые записи создаются
+ * с `cooldown=null`, CUI заполнит при следующем взаимодействии с точкой.
+ */
+export async function exportFavoritesToJson(): Promise<string> {
+  const db = await openDb();
+  const tx = db.transaction(STORE_NAME, 'readonly');
+  const store = tx.objectStore(STORE_NAME);
+  const records: unknown[] = await promisifyRequest(store.getAll());
+  const guids = records
+    .filter(isFavoriteRecord)
+    .map((record) => record.guid)
+    .sort();
+  return JSON.stringify(guids, null, 2);
+}
+
+function isGuidArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+/**
+ * Импорт в режиме REPLACE: удаляет ВСЕ существующие записи, затем вставляет
+ * GUID'ы из JSON. Cooldown существующих теряется (формат хранит только GUID),
+ * новые записи создаются с `cooldown=null`. Возвращает количество
+ * импортированных GUID.
+ *
+ * Сбрасывает флаг lock-migration-done: импорт - это новые legacy-точки,
+ * которые ещё не помечены нативным замочком. До их явной миграции автоочистка
+ * ключей должна снова блокироваться, иначе свежеимпортированные ключи могут
+ * быть удалены до того как пользователь нажмёт "Сделать заблокированными".
+ */
+export async function importFavoritesFromJson(json: string): Promise<number> {
+  const parsed: unknown = JSON.parse(json);
+  if (!isGuidArray(parsed)) {
+    throw new Error('Некорректный формат JSON: ожидается массив GUID-строк');
+  }
+  const db = await openDb();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  const store = tx.objectStore(STORE_NAME);
+  const committed = waitForTransaction(tx);
+  await promisifyRequest(store.clear());
+  for (const guid of parsed) {
+    const record: IFavoriteRecord = { guid, cooldown: null };
+    await promisifyRequest(store.put(record));
+  }
+  await committed;
+  memoryGuids = new Set(parsed);
+  snapshotLoaded = true;
+  updateSeal();
+  try {
+    localStorage.removeItem(LOCK_MIGRATION_DONE_KEY);
+  } catch {
+    // localStorage недоступен - флаг и так нельзя было выставить, no-op.
+  }
+  return parsed.length;
 }
 
 /** Только для тестов: сбрасывает кеш и закрывает БД. */

@@ -4,10 +4,12 @@
 
 ## Возможности для игрока
 
-В настройках модуля доступны две кнопки:
+В настройках модуля доступны:
 
+- **⬆️ Импорт из JSON** — загружает локальный список SVP/CUI-избранных из ранее экспортированного JSON. **REPLACE-семантика**: текущий список в IDB полностью заменяется. Используется при переносе на новое устройство или восстановлении после wipe. После импорта флаг `lock-migration-done` сбрасывается — свежие легаси-точки требуют повторной миграции в нативные замочки.
+- **⬇️ Скачать JSON** — выгружает текущий список в файл `svp-favorites-YYYY-MM-DD.json`. Формат — массив GUID-строк, отсортированный.
 - **Сделать их избранными** — для каждой точки из локального списка SVP/CUI с ключами в инвентаре отправляется `POST /api/marks { guid, flag: 'favorite' }`. Это нативная «звёздочка» SBG 0.6.1: визуальное маркирование, не защищает от удаления автоочисткой.
-- **Сделать их заблокированными** — то же, но с `flag: 'locked'`. Нативный замочек: ключи не участвуют в рисовании и не удаляются автоочисткой `inventoryCleanup`.
+- **Сделать их заблокированными** — то же, но с `flag: 'locked'`. Нативный замочек: ключи не участвуют в рисовании и не удаляются автоочисткой `inventoryCleanup`. После успешной миграции выставляется флаг `svp_lock_migration_done`, и `inventoryCleanup` перестаёт блокировать удаление ключей по факту непустого legacy-списка.
 
 После миграции локальный список SVP/CUI **не очищается**: миграцию можно повторить при необходимости (например, после случайного снятия флага в инвентаре игры).
 
@@ -34,7 +36,7 @@
 
 Source данных миграции — IndexedDB `CUI/favorites` (тот же store, что у CUI). На init модуль вызывает `loadFavorites()` из `core/favoritesStore`, который заполняет in-memory `Set<string>` GUID'ов точек.
 
-После переименования из `favoritedPoints` в `favoritesMigration` write-методы хранилища (addFavorite, removeFavorite, exportToJson, importFromJson) удалены: миграция только читает, а нативные звёздочки/замочки игра пишет напрямую в свой формат `inventory-cache[i].f`.
+После переименования из `favoritedPoints` в `favoritesMigration` точечные write-методы (addFavorite, removeFavorite) удалены: модуль не редактирует список по-точкам, нативные звёздочки/замочки игра пишет в свой формат `inventory-cache[i].f`. REPLACE-методы `exportFavoritesToJson` / `importFavoritesFromJson` сохранены в `core/favoritesStore` — нужны для переноса легаси-списка между устройствами и восстановления после wipe.
 
 ### Count seal (защита от потери IDB)
 
@@ -42,13 +44,14 @@ Source данных миграции — IndexedDB `CUI/favorites` (тот же 
 
 ## Файловая структура
 
-| Файл                    | Назначение                                                                   |
-| ----------------------- | ---------------------------------------------------------------------------- |
-| `favoritesMigration.ts` | Определение модуля: init (loadFavorites), enable/disable (install UI)        |
-| `migrationApi.ts`       | `buildCandidates`, `postMark`, `runMigration` — чистая логика без DOM        |
-| `migrationApi.test.ts`  | Тесты buildCandidates / postMark / runMigration retry-механизма              |
-| `migrationUi.ts`        | Кнопка «Настроить» в строке модуля + модалка с двумя кнопками + прогресс-бар |
-| `styles.css`            | Стили модалки, кнопок, прогресс-бара                                         |
+| Файл                    | Назначение                                                                                               |
+| ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| `favoritesMigration.ts` | Определение модуля: init (loadFavorites + inferAndPersistLockMigrationDone), enable/disable (install UI) |
+| `migrationApi.ts`       | `buildCandidates`, `postMark`, `runMigration`, `inferAndPersistLockMigrationDone`                        |
+| `migrationApi.test.ts`  | Тесты buildCandidates / postMark / runMigration retry-механизма / lock-migration-done инфера             |
+| `migrationUi.ts`        | Кнопка «Настроить» в строке модуля + модалка с IO-кнопками, миграцией и прогресс-баром                   |
+| `migrationUi.test.ts`   | Тесты IO-секции: рендеринг кнопок, экспорт пустого списка, импорт обновляет счётчик                      |
+| `styles.css`            | Стили модалки, кнопок, прогресс-бара, IO-секции                                                          |
 
 ## Эндпоинт `POST /api/marks`
 

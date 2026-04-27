@@ -1,7 +1,12 @@
 import { t } from '../../core/l10n';
 import type { ILocalizedString } from '../../core/l10n';
 import { showToast } from '../../core/toast';
-import { getFavoritesCount, setLockMigrationDone } from '../../core/favoritesStore';
+import {
+  exportFavoritesToJson,
+  getFavoritesCount,
+  importFavoritesFromJson,
+  setLockMigrationDone,
+} from '../../core/favoritesStore';
 import {
   buildCandidates,
   runMigration,
@@ -42,6 +47,19 @@ const EXPLANATION: ILocalizedString = {
 
 const CLOSE_LABEL: ILocalizedString = { en: 'Close', ru: 'Закрыть' };
 
+const EXPORT_LABEL: ILocalizedString = {
+  en: '⬇️ Download JSON',
+  ru: '⬇️ Скачать JSON',
+};
+const IMPORT_LABEL: ILocalizedString = {
+  en: '⬆️ Import from JSON',
+  ru: '⬆️ Импорт из JSON',
+};
+const IMPORT_WARNING_LABEL: ILocalizedString = {
+  en: '⚠️ Current favorites list will be completely replaced',
+  ru: '⚠️ Текущий список избранного будет полностью перезаписан',
+};
+
 // Подписи фаз прогресс-бара. Каждая фаза перезапускает бар с 0/N, чтобы
 // пользователь видел независимый прогресс retry, а не «скачок» суммарного total.
 const PHASE_INITIAL_LABEL: ILocalizedString = { en: 'Migrating…', ru: 'Миграция…' };
@@ -81,6 +99,84 @@ let configureButton: HTMLElement | null = null;
 let moduleRowObserver: MutationObserver | null = null;
 let rafId: number | null = null;
 let migrationInProgress = false;
+
+// IO (импорт/экспорт legacy IDB) - буквально из удалённого модуля
+// favoritedPoints/settingsUi.ts (до коммита 3574c6c). label+input для импорта,
+// button для экспорта, warning между ними, alert для подтверждения и ошибок,
+// прямая mutation counterElement.textContent.
+async function downloadExport(): Promise<void> {
+  try {
+    const json = await exportFavoritesToJson();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const date = new Date().toISOString().slice(0, 10);
+    link.download = `svp-favorites-${date}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+    alert(t({ en: 'Export error: ', ru: 'Ошибка экспорта: ' }) + message);
+  }
+}
+
+async function doImport(file: File, counterElement: HTMLElement): Promise<void> {
+  try {
+    const text = await file.text();
+    const added = await importFavoritesFromJson(text);
+    counterElement.textContent = `${t(COUNTER_LABEL)} ${getFavoritesCount()}`;
+    alert(t({ en: 'Records imported: ', ru: 'Импортировано записей: ' }) + String(added));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+    alert(t({ en: 'Import error: ', ru: 'Ошибка импорта: ' }) + message);
+  }
+}
+
+function buildIoSection(counterElement: HTMLElement): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'svp-migration-io';
+
+  const importWrapper = document.createElement('div');
+  importWrapper.className = 'svp-migration-io-import-wrapper';
+  const importLabel = document.createElement('label');
+  importLabel.className = 'svp-migration-io-button';
+  importLabel.dataset.io = 'import';
+  importLabel.textContent = t(IMPORT_LABEL);
+  const importInput = document.createElement('input');
+  importInput.type = 'file';
+  importInput.accept = 'application/json,.json';
+  importInput.style.display = 'none';
+  importInput.addEventListener('change', () => {
+    const file = importInput.files?.[0];
+    if (file) {
+      void doImport(file, counterElement);
+    }
+    importInput.value = '';
+  });
+  importLabel.appendChild(importInput);
+  importWrapper.appendChild(importLabel);
+  wrap.appendChild(importWrapper);
+
+  const importWarning = document.createElement('div');
+  importWarning.className = 'svp-migration-io-warning';
+  importWarning.textContent = t(IMPORT_WARNING_LABEL);
+  wrap.appendChild(importWarning);
+
+  const exportButton = document.createElement('button');
+  exportButton.type = 'button';
+  exportButton.className = 'svp-migration-io-button';
+  exportButton.dataset.io = 'export';
+  exportButton.textContent = t(EXPORT_LABEL);
+  exportButton.addEventListener('click', () => {
+    void downloadExport();
+  });
+  wrap.appendChild(exportButton);
+
+  return wrap;
+}
 
 /**
  * Заполняет кнопку действия SVG-иконкой из игрового sprite + текстовой подписью.
@@ -150,9 +246,14 @@ function buildPanel(): HTMLElement {
   const content = document.createElement('div');
   content.className = 'svp-migration-content';
 
+  // Counter создаётся до IO-секции, чтобы передать прямую ссылку в doImport
+  // (после импорта counter.textContent обновляется). В DOM counter
+  // вставляется после IO-секции - порядок отображения IO -> counter.
   const counter = document.createElement('div');
   counter.className = 'svp-migration-counter';
   counter.textContent = `${t(COUNTER_LABEL)} ${getFavoritesCount()}`;
+
+  content.appendChild(buildIoSection(counter));
   content.appendChild(counter);
 
   const actions = document.createElement('div');
