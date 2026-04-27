@@ -56,6 +56,7 @@ let onZoomChange: (() => void) | null = null;
 // на disable. Хук маскирует текстовый канал в map-config.h, чтобы нативный
 // LIGHT-renderer не рисовал свой 32px-текст параллельно с нашим слоем.
 let originalGetItem: typeof Storage.prototype.getItem | null = null;
+let getItemPatchTarget: 'instance' | 'prototype' | null = null;
 
 function maskReferencesInMapConfig(rawValue: string): string {
   let parsed: unknown;
@@ -98,20 +99,41 @@ function isReferencesEnabledInMapConfig(): boolean {
 
 function installMapConfigGetItemHook(): void {
   if (originalGetItem !== null) return;
-  // eslint-disable-next-line @typescript-eslint/unbound-method -- мы перенесём bind через call внутри patchedGetItem
-  const original = Storage.prototype.getItem;
-  originalGetItem = original;
-  Storage.prototype.getItem = function patchedGetItem(key: string): string | null {
-    const value = original.call(this, key);
+
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- bind переносится через call внутри patchedGetItem
+  const nativeGetItem = localStorage.getItem;
+  originalGetItem = nativeGetItem;
+
+  const wrapper = function patchedGetItem(this: Storage, key: string): string | null {
+    const value = nativeGetItem.call(this, key);
     if (this !== localStorage || key !== MAP_CONFIG_KEY || value === null) return value;
     return maskReferencesInMapConfig(value);
   };
+
+  // В современных WebView (Android 16+ / Chrome 146+) `localStorage.getItem` -
+  // own-свойство объекта, а не унаследованное от Storage.prototype. Патч
+  // прототипа в этом случае НЕ перехватывает вызовы `localStorage.getItem(...)`,
+  // и игра видит сырой map-config с text channel = 7. Сначала пробуем патчить
+  // localStorage напрямую; если среда не позволяет (jsdom возвращает то же
+  // дескрипторное наследование), откатываемся на прототип.
+  localStorage.getItem = wrapper;
+  if (localStorage.getItem === wrapper) {
+    getItemPatchTarget = 'instance';
+  } else {
+    Storage.prototype.getItem = wrapper;
+    getItemPatchTarget = 'prototype';
+  }
 }
 
 function uninstallMapConfigGetItemHook(): void {
-  if (originalGetItem === null) return;
-  Storage.prototype.getItem = originalGetItem;
+  if (originalGetItem === null || getItemPatchTarget === null) return;
+  if (getItemPatchTarget === 'instance') {
+    localStorage.getItem = originalGetItem;
+  } else {
+    Storage.prototype.getItem = originalGetItem;
+  }
   originalGetItem = null;
+  getItemPatchTarget = null;
 }
 
 function renderLabels(): void {
