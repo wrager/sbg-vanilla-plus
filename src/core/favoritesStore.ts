@@ -122,7 +122,8 @@ function initializeCuiDb(database: IDBDatabase, transaction: IDBTransaction): vo
     isDarkMode =
       typeof settings === 'object' &&
       settings !== null &&
-      (settings as Record<string, unknown>).theme === 'dark';
+      'theme' in settings &&
+      settings.theme === 'dark';
   } catch {
     // Невалидный JSON — используем светлую тему по умолчанию.
   }
@@ -218,8 +219,11 @@ function openDb(): Promise<IDBDatabase> {
       const targetVersion = Math.max(db.version + 1, CUI_DB_VERSION);
       db.close();
       const upgrade = indexedDB.open(DB_NAME, targetVersion);
-      upgrade.onupgradeneeded = (event): void => {
-        const upgradeTransaction = (event.target as IDBOpenDBRequest).transaction;
+      upgrade.onupgradeneeded = (): void => {
+        // upgrade - локальный IDBOpenDBRequest, transaction в event.target тот же,
+        // что и upgrade.transaction; используем именованную ссылку, чтобы не
+        // кастовать event.target из EventTarget в IDBOpenDBRequest.
+        const upgradeTransaction = upgrade.transaction;
         if (!upgradeTransaction) {
           reject(new Error('IDB upgrade transaction is null'));
           return;
@@ -247,9 +251,9 @@ function openDb(): Promise<IDBDatabase> {
 
 function isFavoriteRecord(value: unknown): value is IFavoriteRecord {
   if (typeof value !== 'object' || value === null) return false;
-  const record = value as Record<string, unknown>;
-  if (typeof record.guid !== 'string') return false;
-  return record.cooldown === null || typeof record.cooldown === 'number';
+  if (!('guid' in value) || typeof value.guid !== 'string') return false;
+  if (!('cooldown' in value)) return false;
+  return value.cooldown === null || typeof value.cooldown === 'number';
 }
 
 /** Загружает все записи из IDB в memory cache. Вызывается один раз в `init()`. */
