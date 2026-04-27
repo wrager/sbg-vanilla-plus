@@ -16,7 +16,6 @@ import { removeAttackCloseButton } from './modules/removeAttackCloseButton/remov
 import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
 import { keyCountFix } from './modules/keyCountFix/keyCountFix';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
-import { nextPointNavigation } from './modules/nextPointNavigation/nextPointNavigation';
 import { refsOnMap } from './modules/refsOnMap/refsOnMap';
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
 import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
@@ -68,7 +67,6 @@ if (!isDisabled()) {
       mapTileLayers,
       drawTools,
       // feature (map-зависимые)
-      nextPointNavigation,
       refsOnMap,
       // utility
       favoritesMigration,
