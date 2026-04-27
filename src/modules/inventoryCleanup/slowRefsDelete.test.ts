@@ -384,3 +384,106 @@ describe('fetchTeamsForGuids', () => {
     expect(mockFetchFunction).not.toHaveBeenCalled();
   });
 });
+
+// --- кнопка «Очистить ключи»: disabled при лимитах -1/-1 ---
+
+import { installSlowRefsDelete, uninstallSlowRefsDelete } from './slowRefsDelete';
+
+describe('кнопка «Очистить ключи»: disabled при -1/-1', () => {
+  function fullLevelLimits(): Record<number, number> {
+    // type guard isLevelLimits требует поля 1..10 типа number — иначе loadCleanupSettings
+    // возвращает дефолт (mode='off') и кнопка не показывается, ломая тест.
+    const limits: Record<number, number> = {};
+    for (let level = 1; level <= 10; level++) limits[level] = -1;
+    return limits;
+  }
+
+  function setSettings(opts: { allied: number; notAllied: number }): void {
+    localStorage.setItem(
+      'svp_inventoryCleanup',
+      JSON.stringify({
+        version: 2,
+        limits: {
+          cores: fullLevelLimits(),
+          catalysers: fullLevelLimits(),
+          referencesMode: 'slow',
+          referencesFastLimit: -1,
+          referencesAlliedLimit: opts.allied,
+          referencesNotAlliedLimit: opts.notAllied,
+        },
+        minFreeSlots: 100,
+      }),
+    );
+  }
+
+  function makeBar(): HTMLElement {
+    // Кнопка инжектируется в `.svp-fav-filter-bar` — DOM-зависимость от
+    // favoritedPoints UI (см. slowRefsDelete.ts:21).
+    const bar = document.createElement('div');
+    bar.className = 'svp-fav-filter-bar';
+    document.body.appendChild(bar);
+    return bar;
+  }
+
+  function getButton(): HTMLButtonElement | null {
+    return document.querySelector<HTMLButtonElement>('.svp-cleanup-slow-refs-button');
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+  });
+
+  afterEach(() => {
+    uninstallSlowRefsDelete();
+    document.body.innerHTML = '';
+    localStorage.clear();
+  });
+
+  test('лимиты -1/-1: кнопка disabled', () => {
+    setSettings({ allied: -1, notAllied: -1 });
+    makeBar();
+
+    installSlowRefsDelete();
+    const button = getButton();
+    expect(button).not.toBeNull();
+    expect(button?.disabled).toBe(true);
+    expect(button?.title).toMatch(/-1.*allied|allied.*-1|союзные/i);
+  });
+
+  test('хотя бы один лимит задан (allied=5, notAllied=-1): кнопка активна', () => {
+    setSettings({ allied: 5, notAllied: -1 });
+    makeBar();
+
+    installSlowRefsDelete();
+    const button = getButton();
+    expect(button?.disabled).toBe(false);
+    expect(button?.title).toBe('');
+  });
+
+  test('хотя бы один лимит задан (allied=-1, notAllied=10): кнопка активна', () => {
+    setSettings({ allied: -1, notAllied: 10 });
+    makeBar();
+
+    installSlowRefsDelete();
+    const button = getButton();
+    expect(button?.disabled).toBe(false);
+  });
+
+  test('клик по disabled кнопке не запускает runSlowDelete', () => {
+    setSettings({ allied: -1, notAllied: -1 });
+    makeBar();
+
+    installSlowRefsDelete();
+    const button = getButton();
+    if (!button) throw new Error('button missing');
+
+    // confirm() вызывается внутри runSlowDelete (если бы он запустился).
+    // Подменяем глобальный confirm на счётчик — он не должен дёрнуться.
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    button.click();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+});

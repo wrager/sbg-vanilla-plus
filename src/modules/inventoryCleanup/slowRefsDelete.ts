@@ -384,6 +384,28 @@ function shouldShowButton(): boolean {
   return !migrationPending;
 }
 
+/**
+ * Кнопка disabled, если оба лимита -1 (allied/notAllied) — slow-режим в этом
+ * случае ничего не удалит, клик бессмысленен. Пользователь видит причину через
+ * tooltip.
+ */
+function shouldDisableButton(): boolean {
+  const { referencesAlliedLimit, referencesNotAlliedLimit } = loadCleanupSettings().limits;
+  return referencesAlliedLimit === -1 && referencesNotAlliedLimit === -1;
+}
+
+function syncDisabledState(button: HTMLButtonElement): void {
+  const disabled = shouldDisableButton();
+  if (button.disabled !== disabled) button.disabled = disabled;
+  const title = disabled
+    ? t({
+        en: 'Both limits are -1 (allied/not allied) — set at least one limit to enable cleanup',
+        ru: 'Оба лимита -1 (союзные/несоюзные) — задайте хотя бы один лимит, чтобы включить очистку',
+      })
+    : '';
+  if (button.title !== title) button.title = title;
+}
+
 function ensureButton(bar: Element): void {
   if (!shouldShowButton()) {
     bar.querySelector(`.${BUTTON_CLASS}`)?.remove();
@@ -392,6 +414,7 @@ function ensureButton(bar: Element): void {
   const existing = bar.querySelector<HTMLButtonElement>(`.${BUTTON_CLASS}`);
   if (existing) {
     updateButtonLabel(existing);
+    syncDisabledState(existing);
     return;
   }
 
@@ -399,8 +422,10 @@ function ensureButton(bar: Element): void {
   button.type = 'button';
   button.className = BUTTON_CLASS;
   updateButtonLabel(button);
+  syncDisabledState(button);
   button.addEventListener('click', (event) => {
     event.preventDefault();
+    if (button.disabled) return;
     void runSlowDelete();
   });
   bar.appendChild(button);
