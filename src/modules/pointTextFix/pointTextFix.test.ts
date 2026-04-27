@@ -649,6 +649,27 @@ describe('pointTextFix.enable / disable', () => {
       void pointTextFix.disable();
     }).not.toThrow();
   });
+
+  test('disable во время await getOlMap не оставляет вечную подписку addfeature', async () => {
+    // Race-disable: enable стартует, getOlMap в процессе резолва. До того как
+    // он зарезолвится, успевает отработать disable. После резолва enable не
+    // должен подписаться на addfeature - иначе подписка остаётся вечно.
+    let resolveGetOlMap: ((value: IOlMap) => void) | undefined;
+    const pendingMap = new Promise<IOlMap>((resolve) => {
+      resolveGetOlMap = resolve;
+    });
+    mockGetOlMap.mockReturnValueOnce(pendingMap);
+
+    const enablePromise = pointTextFix.enable();
+    // disable отрабатывает, пока enable ещё ждёт getOlMap.
+    void pointTextFix.disable();
+    // Теперь резолвим getOlMap - продолжается тело enable.
+    resolveGetOlMap?.(olMap);
+    await enablePromise;
+
+    // Подписки на addfeature быть не должно.
+    expect(pointsSrc._listeners.get('addfeature')?.length ?? 0).toBe(0);
+  });
 });
 
 // ── module metadata ───────────────────────────────────────────────────────────

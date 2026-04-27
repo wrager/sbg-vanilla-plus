@@ -40,6 +40,12 @@ const featureChangeListeners = new WeakMap<IOlFeature, () => void>();
 let map: IOlMap | null = null;
 let pointsSource: IOlVectorSource | null = null;
 let onAddFeature: ((e: IAddFeatureEvent) => void) | null = null;
+// installGeneration защищает от race условий между async enable и быстрым
+// disable. enable содержит await getOlMap() - если disable отработал во время
+// await, мы должны выйти из enable до записи map/pointsSource и подписки на
+// addfeature, иначе подписка остаётся вечно. См. тот же паттерн в popoverCloser
+// и nativeGarbageGuard.
+let installGeneration = 0;
 
 function clamp(low: number, value: number, high: number): number {
   return Math.max(low, Math.min(high, value));
@@ -232,7 +238,12 @@ export const pointTextFix: IFeatureModule = {
   init() {},
 
   async enable(): Promise<void> {
+    installGeneration++;
+    const myGeneration = installGeneration;
     const olMap = await getOlMap();
+    // disable отработал между стартом enable и резолвом getOlMap - выходим до
+    // подписки на addfeature, чтобы не оставить вечный обработчик.
+    if (myGeneration !== installGeneration) return;
     const pointsLayer = findLayerByName(olMap, 'points');
     if (!pointsLayer) return;
     const source = pointsLayer.getSource();
@@ -253,6 +264,7 @@ export const pointTextFix: IFeatureModule = {
   },
 
   disable(): void {
+    installGeneration++;
     if (pointsSource && onAddFeature) {
       pointsSource.un('addfeature', onAddFeature as unknown as () => void);
       for (const feature of pointsSource.getFeatures()) {
