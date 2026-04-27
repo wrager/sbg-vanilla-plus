@@ -279,6 +279,28 @@ describe('deleteInventoryItems', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  test('guard: per-point агрегация - locked стопка той же точки защищает все её стопки', async () => {
+    // Кэш одной точки p1 с двумя стопками: одна locked (f=0b10), вторая - нет
+    // (f=0). buildLockedPointGuids агрегирует per-point: одной locked стопки
+    // достаточно, чтобы вся точка попала в lockedPointGuids. Если refactor
+    // случайно превратит buildLockedPointGuids в per-stack-проверку, удаление
+    // стопки r2 (f=0) пройдёт мимо guard'а - тест зафиксирует регрессию.
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { g: 'r1', t: 3, l: 'p1', a: 1, f: 0b10 },
+        { g: 'r2', t: 3, l: 'p1', a: 5, f: 0 },
+      ]),
+    );
+    const deletions: IDeletionEntry[] = [
+      { guid: 'r2', type: 3, level: null, amount: 5, pointGuid: 'p1' },
+    ];
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+      'Ключ от заблокированной точки p1 не может быть удалён',
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   test('cores удаляются без проверки lock-поддержки (lock-guard только для рефов)', async () => {
     mockFetchSuccess(90);
     const deletions: IDeletionEntry[] = [{ guid: 'c1', type: 1, level: 5, amount: 3 }];
