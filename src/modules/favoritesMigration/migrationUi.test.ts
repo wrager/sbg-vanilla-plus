@@ -310,3 +310,98 @@ describe('migrationUi: runFlow lock-migration-done при пустом toSend', 
     expect(isLockMigrationDone()).toBe(false);
   });
 });
+
+// e2e сценарий полного успеха миграции: легаси-точка с непомеченной стопкой,
+// успешный POST /api/marks с {result:true}, runFlow ждёт runMigration, по
+// завершении выставляет lock-migration-done. Полный путь "клик кнопки -> сеть
+// -> флаг -> разблокировка inventoryCleanup" не покрывался ни одним тестом до
+// этого: migrationApi unit-тестировался через runMigration напрямую без UI,
+// migrationUi проверял только UI без реального fetch.
+describe('migrationUi: e2e успешная миграция в locked выставляет lock-migration-done', () => {
+  function setInventoryCache(items: unknown[]): void {
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+  }
+
+  let mockFetch: jest.Mock;
+  let originalFetch: typeof window.fetch;
+
+  beforeEach(() => {
+    localStorage.setItem('auth', 'test-token');
+    mockFetch = jest.fn();
+    originalFetch = window.fetch;
+    Object.defineProperty(window, 'fetch', { value: mockFetch, writable: true });
+  });
+
+  afterEach(() => {
+    window.fetch = originalFetch;
+  });
+
+  test('одна стопка, fetch -> {result:true} -> runFlow завершается success -> lock-migration-done выставлен', async () => {
+    await seedFavorites([{ guid: 'p1', cooldown: null }]);
+    await loadFavorites();
+    // Стопка без бита locked - попадёт в toSend.
+    setInventoryCache([{ g: 's1', t: 3, l: 'p1', a: 5, f: 0 }]);
+    expect(isLockMigrationDone()).toBe(false);
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ result: true }),
+    });
+
+    const panel = openMigrationPanel();
+    const lockButton = panel.querySelector<HTMLButtonElement>(
+      '.svp-migration-action[data-flag="locked"]',
+    );
+    if (!lockButton) throw new Error('locked button missing');
+    lockButton.click();
+
+    // runFlow -> runMigration -> postMark -> applyFlagToCache -> markProgressTerminal.
+    // Ждём пока кнопка не окажется снова enabled (finally в runFlow).
+    for (let i = 0; i < 50; i++) {
+      if (!lockButton.disabled) break;
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    }
+    expect(lockButton.disabled).toBe(false);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(isLockMigrationDone()).toBe(true);
+
+    // Бит 0b10 должен быть проставлен в кэше через applyFlagToCache.
+    const cacheRaw = localStorage.getItem('inventory-cache');
+    if (!cacheRaw) throw new Error('inventory-cache missing after migration');
+    const cache = JSON.parse(cacheRaw) as { g: string; f?: number }[];
+    const stack = cache.find((item) => item.g === 's1');
+    expect(stack?.f).toBe(0b10);
+  });
+
+  test('одна стопка, fetch -> {result:true}, flag=favorite -> lock-migration-done НЕ выставляется', async () => {
+    await seedFavorites([{ guid: 'p1', cooldown: null }]);
+    await loadFavorites();
+    setInventoryCache([{ g: 's1', t: 3, l: 'p1', a: 5, f: 0 }]);
+    expect(isLockMigrationDone()).toBe(false);
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ result: true }),
+    });
+
+    const panel = openMigrationPanel();
+    const favButton = panel.querySelector<HTMLButtonElement>(
+      '.svp-migration-action[data-flag="favorite"]',
+    );
+    if (!favButton) throw new Error('favorite button missing');
+    favButton.click();
+
+    for (let i = 0; i < 50; i++) {
+      if (!favButton.disabled) break;
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    }
+    expect(favButton.disabled).toBe(false);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    // favorite не защищает от удаления, флаг не выставляется.
+    expect(isLockMigrationDone()).toBe(false);
+  });
+});
