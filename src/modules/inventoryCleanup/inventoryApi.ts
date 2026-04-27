@@ -5,7 +5,7 @@ import {
   buildLockedPointGuids,
   readInventoryCache,
 } from '../../core/inventoryCache';
-import { isInventoryReference } from '../../core/inventoryTypes';
+import { isInventoryItem, isInventoryReference } from '../../core/inventoryTypes';
 
 export interface IDeleteResult {
   total: number;
@@ -175,15 +175,8 @@ export function updatePointRefCount(): void {
     return;
   }
 
-  const ref = cache.find(
-    (item) =>
-      typeof item === 'object' &&
-      item !== null &&
-      (item as Record<string, unknown>).t === ITEM_TYPE_REFERENCE &&
-      (item as Record<string, unknown>).l === pointGuid,
-  ) as { a: number } | undefined;
-
-  const count = ref?.a ?? 0;
+  const ref = cache.find((item) => isInventoryReference(item) && item.l === pointGuid);
+  const count = isInventoryReference(ref) ? ref.a : 0;
 
   // Формат #i-ref: "КЛЮЧ N/100" (ru) или "REF N/100" (en) — число перед "/" всегда
   // совпадает с количеством. Заменяем через regex, чтобы не зависеть от i18next.
@@ -204,7 +197,7 @@ export function updateInventoryCache(deletions: readonly IDeletionEntry[]): void
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = JSON.parse(raw);
   } catch {
     console.warn('[SVP inventoryCleanup] inventory-cache содержит невалидный JSON');
     return;
@@ -214,17 +207,20 @@ export function updateInventoryCache(deletions: readonly IDeletionEntry[]): void
     console.warn('[SVP inventoryCleanup] inventory-cache не является массивом');
     return;
   }
-  // as — после Array.isArray; TS сужает до unknown[], но не до конкретного типа
-  // элемента. Структура элементов (g, a) проверяется неявно: find по g, мутация a.
-  let cache = parsed as { g: string; a: number; [key: string]: unknown }[];
+
+  // Фильтруем валидные предметы через тайпгард - даёт типизированный массив
+  // без cast'а. Потенциально не-IInventoryItem записи (которых в реальном
+  // кэше игры быть не должно) дропаются здесь же; прежняя реализация дропала
+  // их позже, через item.a > 0 на undefined - результат тот же, путь чище.
+  const items = parsed.filter(isInventoryItem);
 
   for (const entry of deletions) {
-    const cached = cache.find((item) => item.g === entry.guid);
+    const cached = items.find((item) => item.g === entry.guid);
     if (cached) {
       cached.a -= entry.amount;
     }
   }
 
-  cache = cache.filter((item) => item.a > 0);
-  localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(cache));
+  const remaining = items.filter((item) => item.a > 0);
+  localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(remaining));
 }
