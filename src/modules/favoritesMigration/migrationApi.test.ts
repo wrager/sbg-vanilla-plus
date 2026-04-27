@@ -42,7 +42,7 @@ function setInventory(items: { g: string; t: number; l: string; a: number; f?: n
 function ok(result: boolean): void {
   mockFetch.mockResolvedValueOnce({
     ok: true,
-    json: () => Promise.resolve({ response: { result } }),
+    json: () => Promise.resolve({ result }),
   });
 }
 

@@ -226,7 +226,15 @@ function setProgress(panelElement: HTMLElement, p: IMigrationProgress | null): v
     bar.style.width = `${percent}%`;
   }
   const counterEl = wrap.querySelector<HTMLElement>('.svp-migration-progress-counter');
-  if (counterEl) counterEl.textContent = `${p.succeeded} / ${p.total}`;
+  if (counterEl) {
+    // Показываем `done/total` — сколько запросов прогнано из общего числа.
+    // Раньше показывали `succeeded/total`, но при ответах с `result: false`
+    // (toggle off) бар двигался, а счётчик стоял на 0 — пользователь видел
+    // «прогресс есть, а число не растёт». Дополнительно выводим количество
+    // успешных, если оно отличается от done.
+    counterEl.textContent =
+      p.succeeded < p.done ? `${p.done} / ${p.total} (✓ ${p.succeeded})` : `${p.done} / ${p.total}`;
+  }
 }
 
 function setProgressStatus(panelElement: HTMLElement, text: string): void {

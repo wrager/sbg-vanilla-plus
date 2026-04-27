@@ -105,7 +105,13 @@ export function buildCandidates(flag: MigrationFlag): IMigrationCandidates {
 }
 
 interface IApiMarksResponse {
-  response?: { result?: boolean };
+  /**
+   * `true` = флаг УСТАНОВЛЕН (поставлен) после toggle, `false` = снят. Сервер
+   * отдаёт ответ напрямую, без вложения в `response` (несмотря на запись в
+   * release-notes 4.A — там приведён формат, который было предположен,
+   * фактический подтверждён ручным fetch'ем в DevTools).
+   */
+  result?: boolean;
 }
 
 export interface IMarkOutcome {
@@ -175,7 +181,7 @@ export async function postMark(itemGuid: string, flag: MigrationFlag): Promise<I
     });
     if (!response.ok) return { networkOk: false, result: false };
     const json = (await response.json()) as IApiMarksResponse;
-    const result = json.response?.result === true;
+    const result = json.result === true;
     // Сервер сообщил итоговое состояние флага после toggle: true = поставлен,
     // false = снят. В обоих случаях обновляем кэш под актуальный сервером state.
     applyFlagToCache(itemGuid, flag, result);
