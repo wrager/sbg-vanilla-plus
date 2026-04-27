@@ -237,7 +237,7 @@
   background: none;
   border: 1px solid var(--border-transp);
   color: var(--text);
-  padding: 4px 8px;
+  padding: 4px 7px 4px 3px;
   font-size: 14px;
   cursor: pointer;
 }
