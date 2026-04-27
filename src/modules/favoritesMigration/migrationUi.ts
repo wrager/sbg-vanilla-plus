@@ -31,18 +31,38 @@ const COUNTER_LABEL: ILocalizedString = {
 };
 
 const ACTION_FAVORITE_LABEL: ILocalizedString = {
-  en: 'Mark as favorites',
-  ru: 'Сделать их избранными',
+  en: 'Migrate the old list to favorites',
+  ru: 'Перенести старый список в избранное',
 };
 
 const ACTION_LOCKED_LABEL: ILocalizedString = {
-  en: 'Mark as locked',
-  ru: 'Сделать их заблокированными',
+  en: 'Migrate the old list to locked',
+  ru: 'Перенести старый список в заблокированное',
 };
 
-const EXPLANATION: ILocalizedString = {
-  en: 'Favorited keys: visual marker only, not protected from cleanup. Locked keys: not used for drawing and not deleted by auto-cleanup.',
-  ru: 'Избранные ключи: визуальное маркирование, не защищаются от удаления. Заблокированные ключи: не участвуют в рисовании и не удаляются автоочисткой.',
+const LEGACY_TEXT_INTRO: ILocalizedString = {
+  en: 'Migrate the CUI / Vanilla+ favorites list from or to this browser.',
+  ru: 'Миграция списка избранного CUI / Vanilla+ из этого браузера или в этот браузер.',
+};
+
+const LEGACY_TEXT_WARNING: ILocalizedString = {
+  en: '⚠️ Note: this favorites list is no longer used; it is only useful for migration into the game native functionality via the buttons below.',
+  ru: '⚠️ Внимание: этот список избранного больше не используется и полезен только для миграции в стандартный функционал игры с помощью кнопок ниже.',
+};
+
+const NATIVE_TEXT_INTRO: ILocalizedString = {
+  en: 'Favorited keys: visual marker only, not protected from cleanup. Locked keys: not used for drawing. Locked keys will also not be deleted by the Vanilla+ auto-cleanup.',
+  ru: 'Избранные ключи: визуальное маркирование, не защищаются от удаления. Заблокированные ключи: не участвуют в рисовании. Также заблокированные ключи не будут удаляться автоочисткой скрипта Vanilla+.',
+};
+
+const NATIVE_TEXT_USE: ILocalizedString = {
+  en: 'Use this migration to transfer the old favorites list into the game native list.',
+  ru: 'Используйте эту миграцию, если нужно перетащить старый список избранного в стандартный список игры.',
+};
+
+const NATIVE_TEXT_DURATION: ILocalizedString = {
+  en: 'These operations may take some time.',
+  ru: 'Эти операции займут некоторое время.',
 };
 
 const CLOSE_LABEL: ILocalizedString = { en: 'Close', ru: 'Закрыть' };
@@ -54,10 +74,6 @@ const EXPORT_LABEL: ILocalizedString = {
 const IMPORT_LABEL: ILocalizedString = {
   en: '⬆️ Import from JSON',
   ru: '⬆️ Импорт из JSON',
-};
-const IMPORT_WARNING_LABEL: ILocalizedString = {
-  en: '⚠️ Current favorites list will be completely replaced',
-  ru: '⚠️ Текущий список избранного будет полностью перезаписан',
 };
 
 const SECTION_LEGACY_LABEL: ILocalizedString = {
@@ -148,8 +164,6 @@ function buildIoSection(counterElement: HTMLElement): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'svp-migration-io';
 
-  const importWrapper = document.createElement('div');
-  importWrapper.className = 'svp-migration-io-import-wrapper';
   const importLabel = document.createElement('label');
   importLabel.className = 'svp-migration-io-button';
   importLabel.dataset.io = 'import';
@@ -166,13 +180,7 @@ function buildIoSection(counterElement: HTMLElement): HTMLElement {
     importInput.value = '';
   });
   importLabel.appendChild(importInput);
-  importWrapper.appendChild(importLabel);
-  wrap.appendChild(importWrapper);
-
-  const importWarning = document.createElement('div');
-  importWarning.className = 'svp-migration-io-warning';
-  importWarning.textContent = t(IMPORT_WARNING_LABEL);
-  wrap.appendChild(importWarning);
+  wrap.appendChild(importLabel);
 
   const exportButton = document.createElement('button');
   exportButton.type = 'button';
@@ -204,7 +212,7 @@ function appendActionContent(button: HTMLElement, spriteId: string, label: strin
   svg.appendChild(use);
   const text = document.createElement('span');
   text.textContent = label;
-  button.replaceChildren(svg, text);
+  button.replaceChildren(text, svg);
 }
 
 function injectConfigureButton(): void {
@@ -263,6 +271,16 @@ function buildPanel(): HTMLElement {
   legacyHeader.textContent = t(SECTION_LEGACY_LABEL);
   legacySection.appendChild(legacyHeader);
 
+  const legacyIntro = document.createElement('p');
+  legacyIntro.className = 'svp-migration-section-text';
+  legacyIntro.textContent = t(LEGACY_TEXT_INTRO);
+  legacySection.appendChild(legacyIntro);
+
+  const legacyWarning = document.createElement('p');
+  legacyWarning.className = 'svp-migration-section-text svp-migration-section-text-warning';
+  legacyWarning.textContent = t(LEGACY_TEXT_WARNING);
+  legacySection.appendChild(legacyWarning);
+
   // Counter создаётся до IO-секции, чтобы передать прямую ссылку в doImport
   // (после импорта counter.textContent обновляется). В DOM counter
   // вставляется после IO-секции - порядок отображения IO -> counter.
@@ -281,6 +299,16 @@ function buildPanel(): HTMLElement {
   nativeHeader.className = 'svp-migration-section-header';
   nativeHeader.textContent = t(SECTION_NATIVE_LABEL);
   nativeSection.appendChild(nativeHeader);
+
+  const nativeIntro = document.createElement('p');
+  nativeIntro.className = 'svp-migration-section-text';
+  nativeIntro.textContent = t(NATIVE_TEXT_INTRO);
+  nativeSection.appendChild(nativeIntro);
+
+  const nativeUse = document.createElement('p');
+  nativeUse.className = 'svp-migration-section-text';
+  nativeUse.textContent = t(NATIVE_TEXT_USE);
+  nativeSection.appendChild(nativeUse);
 
   const actions = document.createElement('div');
   actions.className = 'svp-migration-actions';
@@ -308,10 +336,10 @@ function buildPanel(): HTMLElement {
 
   nativeSection.appendChild(actions);
 
-  const explanation = document.createElement('div');
-  explanation.className = 'svp-migration-explanation';
-  explanation.textContent = t(EXPLANATION);
-  nativeSection.appendChild(explanation);
+  const nativeDuration = document.createElement('p');
+  nativeDuration.className = 'svp-migration-section-text';
+  nativeDuration.textContent = t(NATIVE_TEXT_DURATION);
+  nativeSection.appendChild(nativeDuration);
 
   // Прогресс-бар: скрыт до начала миграции.
   const progress = document.createElement('div');

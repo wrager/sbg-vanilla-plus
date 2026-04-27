@@ -130,6 +130,84 @@ describe('migrationUi: секции legacy / native', () => {
     expect(importLabel?.querySelector('input[type="file"]')).not.toBeNull();
   });
 
+  test('legacy-секция содержит два абзаца пояснений (intro + warning)', () => {
+    const panel = openMigrationPanel();
+    const legacy = panel.querySelector<HTMLElement>('.svp-migration-section-legacy');
+    if (!legacy) throw new Error('legacy section missing');
+
+    const texts = legacy.querySelectorAll<HTMLElement>('.svp-migration-section-text');
+    expect(texts.length).toBe(2);
+    expect(texts[0].textContent).toMatch(/из этого браузера|from or to this browser/i);
+    expect(texts[1].textContent).toMatch(/больше не используется|no longer used/i);
+    expect(texts[1].classList.contains('svp-migration-section-text-warning')).toBe(true);
+  });
+
+  test('IO-кнопки импорта и экспорта - сиблинги в .svp-migration-io (горизонтальный лейаут)', () => {
+    const panel = openMigrationPanel();
+    const io = panel.querySelector<HTMLElement>('.svp-migration-io');
+    if (!io) throw new Error('io missing');
+
+    const ioChildren = Array.from(io.children);
+    expect(ioChildren).toHaveLength(2);
+    expect(ioChildren[0].matches('label.svp-migration-io-button[data-io="import"]')).toBe(true);
+    expect(ioChildren[1].matches('button.svp-migration-io-button[data-io="export"]')).toBe(true);
+    // Подсказка о перезаписи удалена.
+    expect(panel.querySelector('.svp-migration-io-warning')).toBeNull();
+  });
+
+  test('native-секция: intro+use перед actions, duration после actions', () => {
+    const panel = openMigrationPanel();
+    const native = panel.querySelector<HTMLElement>('.svp-migration-section-native');
+    if (!native) throw new Error('native section missing');
+
+    const children = Array.from(native.children);
+    const actionsIndex = children.findIndex((el) => el.classList.contains('svp-migration-actions'));
+    expect(actionsIndex).toBeGreaterThan(0);
+
+    const beforeActions = children
+      .slice(0, actionsIndex)
+      .filter((el) => el.classList.contains('svp-migration-section-text'));
+    const afterActions = children
+      .slice(actionsIndex + 1)
+      .filter((el) => el.classList.contains('svp-migration-section-text'));
+
+    // intro + use идут до actions; duration - после.
+    expect(beforeActions).toHaveLength(2);
+    expect(beforeActions[0].textContent).toMatch(/избранн|favorite/i);
+    expect(beforeActions[1].textContent).toMatch(/перетащить|transfer/i);
+    expect(afterActions).toHaveLength(1);
+    expect(afterActions[0].textContent).toMatch(/некоторое время|may take some time/i);
+  });
+
+  test('кнопки миграции: иконка после текста (не перед)', () => {
+    const panel = openMigrationPanel();
+    const favButton = panel.querySelector<HTMLButtonElement>(
+      '.svp-migration-action[data-flag="favorite"]',
+    );
+    if (!favButton) throw new Error('fav button missing');
+
+    // Структура: <span>label</span><svg>...</svg> - текст первым ребёнком.
+    expect(favButton.firstElementChild?.tagName.toLowerCase()).toBe('span');
+    expect(favButton.lastElementChild?.tagName.toLowerCase()).toBe('svg');
+  });
+
+  test('кнопки миграции переименованы: "перенести старый список в избранное / в заблокированное"', () => {
+    const panel = openMigrationPanel();
+    const favButton = panel.querySelector<HTMLButtonElement>(
+      '.svp-migration-action[data-flag="favorite"]',
+    );
+    const lockButton = panel.querySelector<HTMLButtonElement>(
+      '.svp-migration-action[data-flag="locked"]',
+    );
+    expect(favButton?.textContent).toMatch(/перенести.*избранное|migrate.*favorites/i);
+    expect(lockButton?.textContent).toMatch(/перенести.*заблокированное|migrate.*locked/i);
+  });
+
+  test('explanation удалён', () => {
+    const panel = openMigrationPanel();
+    expect(panel.querySelector('.svp-migration-explanation')).toBeNull();
+  });
+
   test('импорт через File: записывает GUIDы в IDB, обновляет счётчик, показывает alert', async () => {
     await seedFavorites([{ guid: 'old-1', cooldown: null }]);
     await loadFavorites();
