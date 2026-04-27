@@ -635,3 +635,149 @@ describe('кнопка «Очистить ключи»: snapshot guard', () => {
     expect(getButton()).not.toBeNull();
   });
 });
+
+// --- Регрессия: runSlowDelete блокирует удаление при lockSupportAvailable=false ---
+//
+// Логика every(item.f !== undefined) в runSlowDelete дублирует ту же проверку
+// в cleanupCalculator. Если в каком-то рефакторинге slowRefsDelete её ослабят
+// (например, заменят every на some), unit-тесты cleanupCalculator останутся
+// зелёными - там покрытие fast-режима. e2e-тест на сам runSlowDelete нужен,
+// чтобы рассинхронизация лок-чек-логики между fast и slow была поймана сразу.
+
+describe('runSlowDelete: lockSupportAvailable=false блокирует удаление', () => {
+  function fullLevelLimits(): Record<number, number> {
+    const limits: Record<number, number> = {};
+    for (let level = 1; level <= 10; level++) limits[level] = -1;
+    return limits;
+  }
+
+  function setSlowSettings(): void {
+    localStorage.setItem(
+      'svp_inventoryCleanup',
+      JSON.stringify({
+        version: 2,
+        limits: {
+          cores: fullLevelLimits(),
+          catalysers: fullLevelLimits(),
+          referencesMode: 'slow',
+          referencesFastLimit: -1,
+          referencesAlliedLimit: 5,
+          referencesNotAlliedLimit: 5,
+        },
+        minFreeSlots: 100,
+      }),
+    );
+  }
+
+  function makeBar(): HTMLElement {
+    const controls = document.createElement('div');
+    controls.className = 'inventory__controls';
+    const deleteSlot = document.createElement('div');
+    const deleteButton = document.createElement('button');
+    deleteButton.id = 'inventory-delete';
+    deleteSlot.appendChild(deleteButton);
+    controls.appendChild(deleteSlot);
+    document.body.appendChild(controls);
+    return controls;
+  }
+
+  function setPlayerTeam(team: number): void {
+    // getPlayerTeam парсит var(--team-N) из inline-стиля #self-info__name.
+    const nameElement = document.createElement('div');
+    nameElement.id = 'self-info__name';
+    nameElement.style.color = `var(--team-${team})`;
+    document.body.appendChild(nameElement);
+  }
+
+  function getButton(): HTMLButtonElement | null {
+    return document.querySelector<HTMLButtonElement>('.svp-cleanup-slow-refs-button');
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    resetFavoritesStoreForTests();
+  });
+
+  afterEach(() => {
+    uninstallSlowRefsDelete();
+    document.body.innerHTML = '';
+    localStorage.clear();
+    registerModulesForTest([]);
+    resetFavoritesStoreForTests();
+  });
+
+  test('mix-кэш (часть стопок без f): кнопка кликается, но runSlowDelete отбивается до confirm', async () => {
+    // Все предусловия для запуска runSlowDelete присутствуют: режим slow,
+    // лимиты ненулевые, команда игрока известна, snapshot загружен. Только
+    // mix-кэш должен блокировать - покрываем именно эту ветку, а не любую
+    // другую раннюю остановку.
+    setSlowSettings();
+    setPlayerTeam(1);
+    setLockMigrationDone();
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { g: 'r1', t: 3, l: 'p1', a: 1, f: 0 },
+        { g: 'r2', t: 3, l: 'p2', a: 1 }, // без f
+      ]),
+    );
+    makeBar();
+    await loadFavoritesForTest();
+
+    const fetchSpy = jest.spyOn(window, 'fetch');
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    installSlowRefsDelete();
+    const button = getButton();
+    if (!button) throw new Error('button missing');
+    expect(button.disabled).toBe(false);
+    button.click();
+
+    // Микротаски для async runSlowDelete.
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+    fetchSpy.mockRestore();
+  });
+
+  test('пустой кэш ключей: lockSupportAvailable=false (refStacks.length=0), runSlowDelete отбивается до confirm', async () => {
+    // length=0 ветка проверки `refStacks.length > 0 && every(...)` - тоже
+    // считается lockSupportAvailable=false. Без теста замена condition'а на
+    // голый every прошла бы мимо, потому что every на пустом массиве вернёт true.
+    setSlowSettings();
+    setPlayerTeam(1);
+    setLockMigrationDone();
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { g: 'c1', t: 1, l: 5, a: 3 }, // только cores, без рефов
+      ]),
+    );
+    makeBar();
+    await loadFavoritesForTest();
+
+    const fetchSpy = jest.spyOn(window, 'fetch');
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    installSlowRefsDelete();
+    const button = getButton();
+    if (!button) throw new Error('button missing');
+    button.click();
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+    fetchSpy.mockRestore();
+  });
+});
