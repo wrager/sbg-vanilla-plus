@@ -56,8 +56,24 @@
   padding: 12px 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
   font-size: 13px;
+}
+
+/* Секции legacy (импорт/экспорт + счётчик) и native (миграция в нативные
+   звёздочки/замочки + прогресс). Заголовки разделяют функции на устаревшие
+   и новые, чтобы пользователь понимал что чем управляет. */
+.svp-migration-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.svp-migration-section-header {
+  font-size: 13px;
+  font-weight: bold;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border, #444);
 }
 
 .svp-migration-counter {

@@ -83,18 +83,45 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('migrationUi: IO-секция', () => {
-  test('label импорт + кнопка экспорт рендерятся в начале content', () => {
+describe('migrationUi: секции legacy / native', () => {
+  test('content разделён на секции legacy (импорт/экспорт + счётчик) и native (миграция)', () => {
     const panel = openMigrationPanel();
     const content = panel.querySelector<HTMLElement>('.svp-migration-content');
     if (!content) throw new Error('content missing');
-    const firstChild = content.firstElementChild;
-    expect(firstChild?.classList.contains('svp-migration-io')).toBe(true);
 
-    const importLabel = panel.querySelector<HTMLLabelElement>(
+    const sections = content.querySelectorAll<HTMLElement>('.svp-migration-section');
+    expect(sections.length).toBe(2);
+
+    const legacy = content.querySelector<HTMLElement>('.svp-migration-section-legacy');
+    const native = content.querySelector<HTMLElement>('.svp-migration-section-native');
+    if (!legacy || !native) throw new Error('sections missing');
+
+    // legacy идёт первой в DOM-порядке.
+    expect(content.firstElementChild).toBe(legacy);
+
+    // Заголовки на русском (locale по умолчанию в jsdom-окружении проекта).
+    const legacyHeader = legacy.querySelector<HTMLElement>('.svp-migration-section-header');
+    const nativeHeader = native.querySelector<HTMLElement>('.svp-migration-section-header');
+    expect(legacyHeader?.textContent).toContain('CUI');
+    expect(legacyHeader?.textContent).toMatch(/устаревшее|legacy/i);
+    expect(nativeHeader?.textContent).toMatch(/новое|new/i);
+
+    // legacy содержит IO + counter; native содержит actions + progress.
+    expect(legacy.querySelector('.svp-migration-io')).not.toBeNull();
+    expect(legacy.querySelector('.svp-migration-counter')).not.toBeNull();
+    expect(native.querySelector('.svp-migration-actions')).not.toBeNull();
+    expect(native.querySelector('.svp-migration-progress')).not.toBeNull();
+  });
+
+  test('label импорт + кнопка экспорт рендерятся в legacy-секции', () => {
+    const panel = openMigrationPanel();
+    const legacy = panel.querySelector<HTMLElement>('.svp-migration-section-legacy');
+    if (!legacy) throw new Error('legacy section missing');
+
+    const importLabel = legacy.querySelector<HTMLLabelElement>(
       'label.svp-migration-io-button[data-io="import"]',
     );
-    const exportButton = panel.querySelector<HTMLButtonElement>(
+    const exportButton = legacy.querySelector<HTMLButtonElement>(
       'button.svp-migration-io-button[data-io="export"]',
     );
     expect(importLabel).not.toBeNull();

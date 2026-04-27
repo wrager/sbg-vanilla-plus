@@ -60,6 +60,15 @@ const IMPORT_WARNING_LABEL: ILocalizedString = {
   ru: '⚠️ Текущий список избранного будет полностью перезаписан',
 };
 
+const SECTION_LEGACY_LABEL: ILocalizedString = {
+  en: 'CUI / Vanilla+ favorites (legacy)',
+  ru: 'Избранное CUI / Vanilla+ (устаревшее)',
+};
+const SECTION_NATIVE_LABEL: ILocalizedString = {
+  en: 'Game favorites and locks (new)',
+  ru: 'Избранное и заблокированное игры (новое)',
+};
+
 // Подписи фаз прогресс-бара. Каждая фаза перезапускает бар с 0/N, чтобы
 // пользователь видел независимый прогресс retry, а не «скачок» суммарного total.
 const PHASE_INITIAL_LABEL: ILocalizedString = { en: 'Migrating…', ru: 'Миграция…' };
@@ -246,6 +255,14 @@ function buildPanel(): HTMLElement {
   const content = document.createElement('div');
   content.className = 'svp-migration-content';
 
+  // Секция legacy: импорт/экспорт списка SVP/CUI и счётчик количества записей.
+  const legacySection = document.createElement('div');
+  legacySection.className = 'svp-migration-section svp-migration-section-legacy';
+  const legacyHeader = document.createElement('div');
+  legacyHeader.className = 'svp-migration-section-header';
+  legacyHeader.textContent = t(SECTION_LEGACY_LABEL);
+  legacySection.appendChild(legacyHeader);
+
   // Counter создаётся до IO-секции, чтобы передать прямую ссылку в doImport
   // (после импорта counter.textContent обновляется). В DOM counter
   // вставляется после IO-секции - порядок отображения IO -> counter.
@@ -253,8 +270,17 @@ function buildPanel(): HTMLElement {
   counter.className = 'svp-migration-counter';
   counter.textContent = `${t(COUNTER_LABEL)} ${getFavoritesCount()}`;
 
-  content.appendChild(buildIoSection(counter));
-  content.appendChild(counter);
+  legacySection.appendChild(buildIoSection(counter));
+  legacySection.appendChild(counter);
+  content.appendChild(legacySection);
+
+  // Секция native: миграция в нативные звёздочки/замочки игры.
+  const nativeSection = document.createElement('div');
+  nativeSection.className = 'svp-migration-section svp-migration-section-native';
+  const nativeHeader = document.createElement('div');
+  nativeHeader.className = 'svp-migration-section-header';
+  nativeHeader.textContent = t(SECTION_NATIVE_LABEL);
+  nativeSection.appendChild(nativeHeader);
 
   const actions = document.createElement('div');
   actions.className = 'svp-migration-actions';
@@ -280,12 +306,12 @@ function buildPanel(): HTMLElement {
   });
   actions.appendChild(lockButton);
 
-  content.appendChild(actions);
+  nativeSection.appendChild(actions);
 
   const explanation = document.createElement('div');
   explanation.className = 'svp-migration-explanation';
   explanation.textContent = t(EXPLANATION);
-  content.appendChild(explanation);
+  nativeSection.appendChild(explanation);
 
   // Прогресс-бар: скрыт до начала миграции.
   const progress = document.createElement('div');
@@ -302,7 +328,9 @@ function buildPanel(): HTMLElement {
   const counterEl = document.createElement('div');
   counterEl.className = 'svp-migration-progress-counter';
   progress.appendChild(counterEl);
-  content.appendChild(progress);
+  nativeSection.appendChild(progress);
+
+  content.appendChild(nativeSection);
 
   element.appendChild(content);
   return element;
