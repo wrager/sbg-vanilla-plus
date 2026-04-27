@@ -557,16 +557,18 @@ export const refsOnMap: IFeatureModule = {
           });
           map.addLayer(refsLayer);
 
-          // "On map" button in inventory controls
+          // "On map" button - вставляется после нативной кнопки #inventory-sort
+          // (рядом, чтобы две инвентарные операции жили в одном слоте). Слот
+          // около #inventory-delete освобождается под кнопку медленной очистки.
           showButton = document.createElement('button');
           showButton.className = 'svp-refs-on-map-button';
           showButton.textContent = t({ en: 'On map', ru: 'На карте' });
           showButton.addEventListener('click', showViewer);
           showButton.style.display = 'none';
 
-          const inventoryDelete = $('#inventory-delete');
-          if (inventoryDelete?.parentElement) {
-            inventoryDelete.parentElement.insertBefore(showButton, inventoryDelete);
+          const inventorySort = $('#inventory-sort');
+          if (inventorySort?.parentElement) {
+            inventorySort.parentElement.insertBefore(showButton, inventorySort.nextSibling);
           }
 
           // Track active tab
