@@ -440,11 +440,18 @@ async function runFlow(flag: MigrationFlag, panelElement: HTMLElement): Promise<
     const candidates = buildCandidates(flag);
 
     if (candidates.toSend.length === 0) {
-      // Все стопки уже помечены нужным флагом. Для locked это означает что
-      // защита уже полная - ставим lock-migration-done, чтобы inventoryCleanup
-      // перестал блокировать удаление ключей. Для favorite ничего не ставим:
-      // favorite не защищает от удаления.
-      if (flag === 'locked' && candidates.alreadyApplied > 0) {
+      // Для locked: если у всех легаси-точек либо стопки уже помечены, либо
+      // стопок ключей вовсе нет - защита фактически полная (нечего блокировать
+      // или всё уже locked). Ставим lock-migration-done, чтобы inventoryCleanup
+      // перестал блокировать удаление ключей. Без условия `withoutKeys > 0`
+      // пользователь, у которого все легаси-точки без ключей в инвентаре, нажал
+      // бы "Перенести в заблокированное", получил toast "нечего мигрировать", и
+      // блок остался бы до перезагрузки страницы (когда inferAndPersist в init
+      // выставит флаг автоматически).
+      // Для favorite ничего не ставим: favorite не защищает от удаления.
+      const lockComplete =
+        flag === 'locked' && (candidates.alreadyApplied > 0 || candidates.withoutKeys > 0);
+      if (lockComplete) {
         setLockMigrationDone();
       }
       const message = candidates.alreadyApplied > 0 ? t(ALREADY_APPLIED_TOAST) : t(NO_KEYS_TOAST);

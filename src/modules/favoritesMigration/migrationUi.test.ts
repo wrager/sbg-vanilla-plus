@@ -248,3 +248,65 @@ describe('migrationUi: секции legacy / native', () => {
     alertSpy.mockRestore();
   });
 });
+
+// Сценарии runFlow с пустым toSend - проверяют, что lock-migration-done
+// выставляется по любому из условий "защита фактически полная": либо все стопки
+// уже locked (alreadyApplied > 0), либо у легаси-точек нет ключей в инвентаре
+// (withoutKeys > 0). Без покрытия второго случая пользователь, у которого все
+// легаси-точки без ключей в инвентаре, нажал бы "Перенести в заблокированное",
+// получил toast и остался бы с заблокированной автоочисткой до перезагрузки.
+describe('migrationUi: runFlow lock-migration-done при пустом toSend', () => {
+  function setInventoryCache(items: unknown[]): void {
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+  }
+
+  function clickLockedMigration(panel: HTMLElement): void {
+    const lockButton = panel.querySelector<HTMLButtonElement>(
+      '.svp-migration-action[data-flag="locked"]',
+    );
+    if (!lockButton) throw new Error('locked button missing');
+    lockButton.click();
+  }
+
+  test('withoutKeys > 0 (легаси без стопок), alreadyApplied = 0: флаг ставится', async () => {
+    await seedFavorites([{ guid: 'legacy-no-stacks', cooldown: null }]);
+    await loadFavorites();
+    setInventoryCache([]);
+    expect(isLockMigrationDone()).toBe(false);
+
+    const showToastSpy = jest.spyOn(window, 'alert').mockImplementation();
+    const panel = openMigrationPanel();
+    clickLockedMigration(panel);
+
+    expect(isLockMigrationDone()).toBe(true);
+    showToastSpy.mockRestore();
+  });
+
+  test('alreadyApplied > 0, withoutKeys = 0: флаг ставится (старая ветка)', async () => {
+    await seedFavorites([{ guid: 'p1', cooldown: null }]);
+    await loadFavorites();
+    setInventoryCache([{ g: 's1', t: 3, l: 'p1', a: 5, f: 0b10 }]);
+    expect(isLockMigrationDone()).toBe(false);
+
+    const panel = openMigrationPanel();
+    clickLockedMigration(panel);
+
+    expect(isLockMigrationDone()).toBe(true);
+  });
+
+  test('flag = favorite + alreadyApplied > 0: флаг НЕ ставится (favorite не защищает)', async () => {
+    await seedFavorites([{ guid: 'p1', cooldown: null }]);
+    await loadFavorites();
+    setInventoryCache([{ g: 's1', t: 3, l: 'p1', a: 5, f: 0b01 }]);
+    expect(isLockMigrationDone()).toBe(false);
+
+    const panel = openMigrationPanel();
+    const favButton = panel.querySelector<HTMLButtonElement>(
+      '.svp-migration-action[data-flag="favorite"]',
+    );
+    if (!favButton) throw new Error('favorite button missing');
+    favButton.click();
+
+    expect(isLockMigrationDone()).toBe(false);
+  });
+});
