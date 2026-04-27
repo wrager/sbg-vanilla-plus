@@ -8,6 +8,7 @@ import { initOlMapCapture } from './core/olMap';
 import { installSbgFlavor } from './core/sbgFlavor';
 import { enhancedMainScreen } from './modules/enhancedMainScreen/enhancedMainScreen';
 import { enhancedPointPopupUi } from './modules/enhancedPointPopupUi/enhancedPointPopupUi';
+import { enhancedRefsTab } from './modules/enhancedRefsTab/enhancedRefsTab';
 import { shiftMapCenterDown } from './modules/shiftMapCenterDown/shiftMapCenterDown';
 import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
 import { groupErrorToasts } from './modules/groupErrorToasts/groupErrorToasts';
@@ -53,6 +54,7 @@ if (!isDisabled()) {
       // ui
       enhancedMainScreen,
       enhancedPointPopupUi,
+      enhancedRefsTab,
       groupErrorToasts,
       removeAttackCloseButton,
       // feature (favoritedPoints ПЕРЕД inventoryCleanup — зависимость init)

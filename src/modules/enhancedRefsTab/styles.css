@@ -1,0 +1,34 @@
+/*
+ * Принудительно разносим содержимое карточки ключа в инвентаре на 3 строки.
+ *
+ * В SBG 0.6.1 (refs/game-beta/script.js:3537-3566) `inventory__item-descr`
+ * для ключа собирается как inline flex-контейнер из 3-4 spans:
+ *   span[1] — иконка fas-user + имя владельца,
+ *   span[2] — иконка fas-bolt + строка «<percent>% @ <cores>»,
+ *   span[3] — иконка fas-location-dot + расстояние,
+ *   span[4] — иконка fas-flag + дни владения (опционально, только для своих).
+ *
+ * Native CSS оставляет всё в одну строку — высота карточки скачет в
+ * зависимости от длины имени владельца. Делаем три фиксированные строки:
+ *   строка 1 — `.inventory__item-title` (поверх descr, всегда отдельно),
+ *   строка 2 — owner + cores/energy + days (1, 2, 4 spans дескриптора),
+ *   строка 3 — distance (3 span дескриптора).
+ *
+ * Distance переносится в строку 3 через `order: 99` + `flex-basis: 100%` —
+ * он становится последним и единственным в своей строке, остальные spans
+ * остаются в строке 2. Числовое значение order'а задано с запасом, чтобы
+ * пережить добавление новых spans в будущей версии игры.
+ */
+
+.inventory__item[data-ref] .inventory__item-descr {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  row-gap: 2px;
+}
+
+.inventory__item[data-ref] .inventory__item-descr > span:nth-child(3) {
+  order: 99;
+  flex-basis: 100%;
+}
