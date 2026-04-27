@@ -14,7 +14,7 @@ import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
 import { groupErrorToasts } from './modules/groupErrorToasts/groupErrorToasts';
 import { removeAttackCloseButton } from './modules/removeAttackCloseButton/removeAttackCloseButton';
 import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
-import { keyCountFix } from './modules/keyCountFix/keyCountFix';
+import { pointTextFix } from './modules/pointTextFix/pointTextFix';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
 import { refsOnMap } from './modules/refsOnMap/refsOnMap';
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
@@ -62,7 +62,7 @@ if (!isDisabled()) {
       // map
       shiftMapCenterDown,
       largerPointTapArea,
-      keyCountFix,
+      pointTextFix,
       singleFingerRotation,
       mapTileLayers,
       drawTools,
