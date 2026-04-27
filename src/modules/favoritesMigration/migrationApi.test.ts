@@ -169,6 +169,37 @@ describe('postMark', () => {
     expect(outcome).toEqual({ networkOk: false, result: false });
     expect(mockFetch).not.toHaveBeenCalled();
   });
+
+  // Сервер возвращает {result: boolean}. Раньше код cast'ил ответ в IApiMarksResponse
+  // без runtime-проверки - любой неподходящий формат тихо превращался в result=false
+  // через сравнение `undefined === true`. После замены на parseMarksResult сценарии
+  // те же, но через явный type guard - покрываем чтобы регрессия не прошла мимо тестов.
+  test('ответ без поля result → result=false (deafult-safe)', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
+    const outcome = await postMark('s1', 'favorite');
+    expect(outcome).toEqual({ networkOk: true, result: false });
+  });
+
+  test('ответ result не boolean (например, строка) → result=false', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ result: 'true' }),
+    });
+    const outcome = await postMark('s1', 'favorite');
+    expect(outcome).toEqual({ networkOk: true, result: false });
+  });
+
+  test('ответ null → result=false', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(null) });
+    const outcome = await postMark('s1', 'favorite');
+    expect(outcome).toEqual({ networkOk: true, result: false });
+  });
+
+  test('ответ массив вместо объекта → result=false', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([true]) });
+    const outcome = await postMark('s1', 'favorite');
+    expect(outcome).toEqual({ networkOk: true, result: false });
+  });
 });
 
 function items(...guids: string[]): IMigrationItem[] {

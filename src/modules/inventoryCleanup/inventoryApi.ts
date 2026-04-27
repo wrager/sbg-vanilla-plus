@@ -11,9 +11,25 @@ export interface IDeleteResult {
   total: number;
 }
 
-interface IApiResponse {
-  count?: { total?: number };
-  error?: string;
+/**
+ * Сервер возвращает либо `{ error: string }`, либо `{ count: { total: number } }`.
+ * Парсер игнорирует посторонние поля и валидирует структуру в runtime - тип
+ * хранения в `unknown` плюс проверки `in`/`typeof` дешевле чем кастовать в
+ * интерфейс без проверки и узнавать о расхождении в проде.
+ */
+function readApiError(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return null;
+  if (!('error' in value) || typeof value.error !== 'string') return null;
+  return value.error;
+}
+
+function readApiCountTotal(value: unknown): number | null {
+  if (typeof value !== 'object' || value === null) return null;
+  if (!('count' in value)) return null;
+  const count = value.count;
+  if (typeof count !== 'object' || count === null) return null;
+  if (!('total' in count) || typeof count.total !== 'number') return null;
+  return count.total;
 }
 
 function buildAuthHeaders(): Record<string, string> {
@@ -102,22 +118,24 @@ export async function deleteInventoryItems(
       throw new Error(`HTTP ${response.status}`);
     }
 
-    let parsed: IApiResponse;
+    let parsed: unknown;
     try {
-      parsed = (await response.json()) as IApiResponse;
+      parsed = await response.json();
     } catch {
       throw new Error('Invalid response from server');
     }
 
-    if (parsed.error) {
-      throw new Error(parsed.error);
+    const errorMessage = readApiError(parsed);
+    if (errorMessage !== null) {
+      throw new Error(errorMessage);
     }
 
-    if (!parsed.count || typeof parsed.count.total !== 'number') {
+    const total = readApiCountTotal(parsed);
+    if (total === null) {
       throw new Error('Response missing inventory count');
     }
 
-    lastTotal = parsed.count.total;
+    lastTotal = total;
   }
 
   return { total: lastTotal };

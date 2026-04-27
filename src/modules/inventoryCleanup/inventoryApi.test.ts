@@ -153,6 +153,28 @@ describe('deleteInventoryItems', () => {
     );
   });
 
+  // Помимо отсутствия count, runtime-валидация должна отбивать и нестандартные
+  // формы ответа: null, массив, count с не-числовым total. Без проверки они
+  // просочились бы в lastTotal и выдались бы updateDomInventoryCount как NaN/string.
+  test('throws on null response', async () => {
+    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(null) });
+    const deletions: IDeletionEntry[] = [{ guid: 'a', type: 1, level: 1, amount: 1 }];
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+      'Response missing inventory count',
+    );
+  });
+
+  test('throws when count.total is not a number', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ count: { total: 'lots' } }),
+    });
+    const deletions: IDeletionEntry[] = [{ guid: 'a', type: 1, level: 1, amount: 1 }];
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+      'Response missing inventory count',
+    );
+  });
+
   test('ключи (type 3) реально удаляются через fetch', async () => {
     // Кэш с f=0 даёт lockSupportAvailable=true → guard разрешает удаление.
     localStorage.setItem(
