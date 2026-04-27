@@ -2,9 +2,9 @@
 
 Модуль автоматически удаляет лишние предметы из инвентаря перед изучением точки. Поддерживает два режима удаления ключей: быстрый (автоматический) и медленный (ручной с определением фракции).
 
-## Отключён в SBG 0.6.1+
+## Адаптация к SBG 0.6.1+
 
-В игре появился собственный «Сборщик мусора» с серверной чисткой инвентаря по лимитам. Код модуля остаётся в скрипте ради совместимости со старыми версиями SBG и будет удалён в одной из ближайших версий.
+В SBG 0.6.1 появился нативный «Сборщик мусора» с серверной чисткой инвентаря по лимитам. Модуль адаптирован: пока он активен, нативный сборщик принудительно отключается через `nativeGarbageGuard` (POST `/api/settings { usegrb: false }` плюс DOM-disable инпутов «Сборщика мусора» в нативных настройках), и активной остаётся только наша автоочистка. Защита ключей перешла на нативный lock-флаг (бит 0b10 поля `f` стопки в `inventory-cache`), при отсутствии lock-поддержки в кэше удаление ключей блокируется. Дополнительно: пока локальный список SVP/CUI-избранных не перенесён в нативные замочки через `favoritesMigration`, удаление ключей блокируется до завершения миграции.
 
 ## Для игрока
 
@@ -88,13 +88,14 @@
 
 ### Файловая структура
 
-| Файл                   | Назначение                                                                  |
-| ---------------------- | --------------------------------------------------------------------------- |
-| `inventoryCleanup.ts`  | Модуль: lifecycle, перехват кликов, оркестрация fast mode                   |
-| `cleanupCalculator.ts` | Чистые функции: shouldRunCleanup, calculateDeletions, formatDeletionSummary |
-| `cleanupSettings.ts`   | Настройки: load/save, type guards, миграция v1→v2                           |
-| `cleanupSettingsUi.ts` | UI настроек: панель, кнопка «Настроить»                                     |
-| `inventoryApi.ts`      | HTTP DELETE, финальный guard, обновление кеша                               |
-| `inventoryParser.ts`   | Парсинг inventory-cache из localStorage                                     |
-| `slowRefsDelete.ts`    | Slow mode: кнопка, fetchPointTeam, calculateSlowDeletions                   |
-| `styles.css`           | Стили панели настроек, прогресс-бара slow mode                              |
+| Файл                    | Назначение                                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| `inventoryCleanup.ts`   | Модуль: lifecycle, перехват кликов, оркестрация fast mode                                  |
+| `cleanupCalculator.ts`  | Чистые функции: shouldRunCleanup, calculateDeletions, formatDeletionSummary                |
+| `cleanupSettings.ts`    | Настройки: load/save, type guards, миграция v1→v2                                          |
+| `cleanupSettingsUi.ts`  | UI настроек: панель, кнопка «Настроить»                                                    |
+| `inventoryApi.ts`       | HTTP DELETE, финальный guard, обновление кеша                                              |
+| `inventoryParser.ts`    | Парсинг inventory-cache из localStorage                                                    |
+| `slowRefsDelete.ts`     | Slow mode: кнопка, fetchPointTeam, calculateSlowDeletions                                  |
+| `nativeGarbageGuard.ts` | Принудительное отключение нативного «Сборщика мусора» SBG 0.6.1 (POST /api/settings + DOM) |
+| `styles.css`            | Стили панели настроек, прогресс-бара slow mode                                             |
