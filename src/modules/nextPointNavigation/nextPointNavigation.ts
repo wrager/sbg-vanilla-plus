@@ -412,8 +412,8 @@ export const nextPointNavigation: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Next point navigation', ru: 'Переход к следующей точке' },
   description: {
-    en: 'Cycle through points in interaction range',
-    ru: 'Зацикленная навигация по точкам в радиусе взаимодействия',
+    en: 'Button in point popup — jump to the closest unvisited point in interaction range. Auto-zoom to 17 if current zoom is below 16. Complements the native swipe between adjacent points: this module walks only points in interaction range, native — all visible points',
+    ru: 'Кнопка в попапе точки — переход к ближайшей не посещённой точке в радиусе действия. После клика автоматический зум до 17, если текущий зум меньше 16. Дополняет нативный свайп между соседними точками: наш модуль ходит только по точкам в радиусе действия, нативный — по всем точкам в зоне видимости карты',
   },
   defaultEnabled: true,
   category: 'feature',

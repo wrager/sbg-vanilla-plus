@@ -269,8 +269,8 @@ export const mapTileLayers: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Custom map tiles', ru: 'Свои тайлы карты' },
   description: {
-    en: 'Adds custom tile layers to the map layer switcher',
-    ru: 'Добавляет свои тайлы карты в переключатель слоёв',
+    en: 'Adds custom tile layers to the map layer switcher (light and dark variants)',
+    ru: 'Добавляет свои тайлы карты в переключатель слоёв (светлые и тёмные варианты)',
   },
   defaultEnabled: true,
   category: 'map',

@@ -208,8 +208,8 @@ export const inventoryCleanup: IFeatureModule = {
     ru: 'Автоочистка инвентаря',
   },
   description: {
-    en: 'Automatically removes excess items when discovering points. Slow cleanup runs manually from the references OPS tab',
-    ru: 'Автоматически удаляет лишние предметы при изучении точек. Медленная очистка запускается вручную через кнопку во вкладке ключей в ОРПЦ',
+    en: 'Automatically removes excess items when discovering points. Protects keys of points marked with native lock (SBG 0.6.1+). Key deletion is blocked until the local SVP/CUI favorites list is migrated via the favoritesMigration module. Forces native "Garbage collector" off — its settings are disabled while the module is active',
+    ru: 'Автоматически удаляет лишние предметы при изучении точек. Защищает ключи точек, помеченных нативным замочком (SBG 0.6.1+). Удаление ключей блокируется, пока локальный список избранного SVP/CUI не перенесён через модуль favoritesMigration. Принудительно отключает нативный «Сборщик мусора» — пока модуль активен, нативные настройки задизейблены',
   },
   defaultEnabled: true,
   category: 'feature',
