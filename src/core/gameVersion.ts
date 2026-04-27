@@ -145,16 +145,13 @@ export function isSbgGreaterThan(version: string): boolean {
   return compareVersions(detected, version) > 0;
 }
 
-// Модули, чью функциональность игра реализовала нативно в SBG 0.6.1.
-// Множество заполняется по одному id за раз — каждый с обоснованием
-// перекрытия use case в commit message соответствующего коммита.
-const DEPRECATED_MODULES_NATIVE: ReadonlySet<string> = new Set<string>([
-  'favoritedPoints',
-  'inventoryCleanup',
-  'keyCountOnPoints',
-  'singleFingerRotation',
-  'nextPointNavigation',
-]);
+// Модули, чью функциональность игра реализовала нативно. Множество заполняется
+// по одному id за раз — каждый с обоснованием перекрытия use case в commit
+// message соответствующего коммита. На 0.6.1 список изначально содержал
+// favoritedPoints, inventoryCleanup, keyCountOnPoints, singleFingerRotation,
+// nextPointNavigation — после полноценной адаптации модули возвращены
+// (с переосмыслением и/или runtime-детекцией native), сет очищен.
+const DEPRECATED_MODULES_NATIVE: ReadonlySet<string> = new Set<string>([]);
 
 export function isModuleNativeInCurrentGame(moduleId: string): boolean {
   return isSbgGreaterThan('0.6.0') && DEPRECATED_MODULES_NATIVE.has(moduleId);

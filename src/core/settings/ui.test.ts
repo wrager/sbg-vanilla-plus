@@ -698,78 +698,26 @@ describe('initSettingsUI — модули, нативные в SBG 0.6.1', () =>
     throw new Error(`row for ${moduleId} not found`);
   }
 
-  test('в 0.6.1 строка favoritedPoints рендерится без чекбокса', () => {
-    setDetectedVersionForTest('0.6.1');
-    const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
+  // DEPRECATED_MODULES_NATIVE пуст (см. gameVersion.ts) — после полноценной адаптации
+  // 0.6.1 ни один модуль не помечен как «native-in-game». UI-инфраструктура
+  // рендеринга строки native-модуля (CSS-класс svp-module-row-native-in-game,
+  // лейбл, отсутствие чекбокса) остаётся в коде ui.ts: тесты добавим заново,
+  // когда в DEPRECATED_MODULES_NATIVE появится новый id.
 
-    initSettingsUI([favoritedPoints], new Map());
-
-    const row = getRowByModuleId('favoritedPoints');
-    expect(row.querySelector('.svp-module-checkbox')).toBeNull();
-  });
-
-  test('в 0.6.1 строка favoritedPoints содержит подпись о нативной реализации', () => {
-    setDetectedVersionForTest('0.6.1');
-    // Локаль берётся из localStorage['settings'].lang игры (см. l10n.getGameLocale).
-    // Заряжаем RU чтобы проверить именно русскую подпись.
-    localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
-    const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
-
-    initSettingsUI([favoritedPoints], new Map());
-
-    const row = getRowByModuleId('favoritedPoints');
-    const label = row.querySelector('.svp-module-row-native-in-game-label');
-    expect(label).not.toBeNull();
-    expect(label?.textContent).toContain('игре');
-  });
-
-  test('в 0.6.1 строка favoritedPoints имеет CSS-класс native-in-game (для серого цвета)', () => {
-    setDetectedVersionForTest('0.6.1');
-    const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
-
-    initSettingsUI([favoritedPoints], new Map());
-
-    const row = getRowByModuleId('favoritedPoints');
-    expect(row.classList.contains('svp-module-row-native-in-game')).toBe(true);
-  });
-
-  test('в 0.6.0 favoritedPoints рендерится как обычный чекбокс', () => {
+  test('в 0.6.0 произвольный модуль рендерится с чекбоксом', () => {
     setDetectedVersionForTest('0.6.0');
     localStorage.setItem(
       'svp_settings',
-      JSON.stringify({ version: 4, modules: { favoritedPoints: true }, errors: {} }),
+      JSON.stringify({ version: 4, modules: { 'arbitrary-mod': true }, errors: {} }),
     );
-    const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
+    const mod = createMockModule({ id: 'arbitrary-mod', defaultEnabled: true });
 
-    initSettingsUI([favoritedPoints], new Map());
+    initSettingsUI([mod], new Map());
 
-    const row = getRowByModuleId('favoritedPoints');
+    const row = getRowByModuleId('arbitrary-mod');
     const checkbox = row.querySelector<HTMLInputElement>('.svp-module-checkbox');
     expect(checkbox).not.toBeNull();
     expect(checkbox?.checked).toBe(true);
-  });
-
-  test('в 0.6.1 toggle-all не вызывает enable для favoritedPoints (строка без чекбокса)', async () => {
-    setDetectedVersionForTest('0.6.1');
-    const favoritedPoints = createMockModule({
-      id: 'favoritedPoints',
-      defaultEnabled: true,
-      enable: jest.fn(),
-    });
-    const other = createMockModule({ id: 'other', defaultEnabled: true, enable: jest.fn() });
-
-    initSettingsUI([favoritedPoints, other], new Map());
-
-    const toggleAll = document.querySelector<HTMLInputElement>('.svp-toggle-all-checkbox');
-    if (!toggleAll) throw new Error('toggle-all checkbox not rendered');
-    toggleAll.checked = true;
-    toggleAll.dispatchEvent(new Event('change'));
-    await Promise.resolve();
-    await Promise.resolve();
-
-    const row = getRowByModuleId('favoritedPoints');
-    expect(row.querySelector('.svp-module-checkbox')).toBeNull();
-    expect(favoritedPoints.enable).not.toHaveBeenCalled();
   });
 });
 
@@ -817,24 +765,7 @@ describe('initSettingsUI — раздел «Недоступные» в конц
     expect(panel?.querySelector('.svp-settings-section-unavailable')).toBeNull();
   });
 
-  test('native-модуль 0.6.1 попадает в раздел «Недоступные», не в свою категорию', () => {
-    setDetectedVersionForTest('0.6.1');
-    const favoritedPoints = createMockModule({
-      id: 'favoritedPoints',
-      category: 'feature',
-      defaultEnabled: true,
-    });
-    const other = createMockModule({ id: 'other-feature', category: 'feature' });
-
-    initSettingsUI([favoritedPoints, other], new Map());
-
-    const favSection = getSectionOfRow('favoritedPoints');
-    const otherSection = getSectionOfRow('other-feature');
-    expect(favSection.classList.contains('svp-settings-section-unavailable')).toBe(true);
-    expect(otherSection.classList.contains('svp-settings-section-unavailable')).toBe(false);
-  });
-
-  test('host-provided (keepScreenOn в Scout) тоже в разделе «Недоступные»', () => {
+  test('host-provided (keepScreenOn в Scout) попадает в раздел «Недоступные», не в свою категорию', () => {
     setUserAgent(SCOUT_UA);
     const keepScreenOn = createMockModule({
       id: 'keepScreenOn',
@@ -849,16 +780,16 @@ describe('initSettingsUI — раздел «Недоступные» в конц
   });
 
   test('раздел «Недоступные» рендерится ПОСЛЕ категорных секций', () => {
-    setDetectedVersionForTest('0.6.1');
-    const favoritedPoints = createMockModule({
-      id: 'favoritedPoints',
+    setUserAgent(SCOUT_UA);
+    const keepScreenOn = createMockModule({
+      id: 'keepScreenOn',
       category: 'feature',
       defaultEnabled: true,
     });
     const alpha = createMockModule({ id: 'alpha', category: 'ui' });
     const beta = createMockModule({ id: 'beta', category: 'fix' });
 
-    initSettingsUI([favoritedPoints, alpha, beta], new Map());
+    initSettingsUI([keepScreenOn, alpha, beta], new Map());
 
     const panel = document.getElementById('svp-settings-panel');
     const sections = [...(panel?.querySelectorAll('.svp-settings-section') ?? [])];
@@ -866,21 +797,6 @@ describe('initSettingsUI — раздел «Недоступные» в конц
       s.classList.contains('svp-settings-section-unavailable'),
     );
     expect(unavailableIndex).toBe(sections.length - 1);
-  });
-
-  test('native-модули и host-provided уживаются в одном разделе', () => {
-    setUserAgent(SCOUT_UA);
-    setDetectedVersionForTest('0.6.1');
-
-    const favoritedPoints = createMockModule({ id: 'favoritedPoints', category: 'feature' });
-    const keepScreenOn = createMockModule({ id: 'keepScreenOn', category: 'feature' });
-
-    initSettingsUI([favoritedPoints, keepScreenOn], new Map());
-
-    expect(getSectionOfRow('favoritedPoints').classList).toContain(
-      'svp-settings-section-unavailable',
-    );
-    expect(getSectionOfRow('keepScreenOn').classList).toContain('svp-settings-section-unavailable');
   });
 });
 

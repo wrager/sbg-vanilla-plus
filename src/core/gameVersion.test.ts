@@ -270,37 +270,28 @@ describe('isModuleNativeInCurrentGame', () => {
 
   test('без детекта любой модуль считается нативно не реализованным', () => {
     setDetectedVersionForTest(null);
-    expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(false);
+    expect(isModuleNativeInCurrentGame('any-module-id')).toBe(false);
   });
 
   test('на 0.6.0 native-модули не подавляются', () => {
     setDetectedVersionForTest('0.6.0');
+    expect(isModuleNativeInCurrentGame('any-module-id')).toBe(false);
+  });
+
+  test('на 0.6.1 пустое множество NATIVE_SINCE_061: ни один модуль не помечен как нативный', () => {
+    // Сет изначально содержал id модулей, которые в 0.6.1 минимальной адаптации
+    // подавлялись (favoritedPoints, inventoryCleanup, keyCountOnPoints,
+    // singleFingerRotation, nextPointNavigation, repairAtFullCharge, ngrsZoom).
+    // После полноценной адаптации одни модули возвращены (с переосмыслением /
+    // runtime-детекцией native), другие удалены физически — сет пуст.
+    setDetectedVersionForTest('0.6.1');
     expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(false);
-  });
-
-  test('на 0.6.1 favoritedPoints считается нативно реализованным', () => {
-    setDetectedVersionForTest('0.6.1');
-    expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(true);
-  });
-
-  test('на будущей 0.6.2 тоже считается нативно реализованным', () => {
-    setDetectedVersionForTest('0.6.2');
-    expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(true);
-  });
-
-  test('на 0.6.1 модуль вне списка не подавляется', () => {
-    setDetectedVersionForTest('0.6.1');
-    expect(isModuleNativeInCurrentGame('enhancedMainScreen')).toBe(false);
-  });
-
-  test('на 0.6.1 удалённые модули (repairAtFullCharge, ngrsZoom, swipeToClosePopup) не маркированы', () => {
-    setDetectedVersionForTest('0.6.1');
-    // Эти модули удалены физически из кодовой базы — они не должны числиться
-    // ни в native, ни в conflicts. Если кто-то восстановит их, тест упадёт
-    // и заставит решить проблему сразу, а не отложить на future debugging.
+    expect(isModuleNativeInCurrentGame('inventoryCleanup')).toBe(false);
+    expect(isModuleNativeInCurrentGame('keyCountOnPoints')).toBe(false);
+    expect(isModuleNativeInCurrentGame('singleFingerRotation')).toBe(false);
+    expect(isModuleNativeInCurrentGame('nextPointNavigation')).toBe(false);
     expect(isModuleNativeInCurrentGame('repairAtFullCharge')).toBe(false);
     expect(isModuleNativeInCurrentGame('ngrsZoom')).toBe(false);
-    expect(isModuleNativeInCurrentGame('swipeToClosePopup')).toBe(false);
   });
 });
 
