@@ -9,15 +9,9 @@ const MODULE_ID = 'singleFingerRotation';
 // после которого second-touchstart считается началом нативного жеста ngrsZoom
 // (в SBG 0.6.1 — `ol.interaction.DblClickDragZoom`, refs/game-beta/script.js:782).
 // Значения совпадают с теми, что использовала наша прошлая реализация ngrsZoom
-// (см. удалённый коммит a086ca6) — там подавление singleFingerRotation шло
-// через capture-фазу + stopPropagation; теперь логика встроена сюда же.
+// (см. удалённый коммит a086ca6).
 const NGRS_DOUBLE_TAP_GAP_MS = 300;
 const NGRS_DOUBLE_TAP_DISTANCE_PX = 30;
-// Минимальное смещение пальца (px), после которого second-tap считается
-// движением (а не отпусканием на месте). Если сначала пошёл вертикальный
-// drag, превышающий горизонтальный — это ngrsZoom; иначе late-активация
-// rotation с координат начала второго тапа.
-const NGRS_DRAG_THRESHOLD_PX = 5;
 
 let viewport: HTMLElement | null = null;
 let map: IOlMap | null = null;
@@ -26,18 +20,19 @@ let latestPoint: [number, number] | null = null;
 let pendingDelta = 0;
 let frameRequestId: number | null = null;
 // State machine для подавления rotation во время нативного жеста ngrsZoom:
-// `lastTapEndTime`/`lastTapEndX/Y` — момент и координата последнего touchend
-// (любого), на котором базируется проверка double-tap. Когда новый touchstart
-// попадает в окно double-tap, ставим `pendingNgrsDecision = true` и НЕ
-// активируем rotation сразу — ждём первого touchmove. Если он вертикальный —
-// игнорируем серию (это ngrsZoom); если горизонтальный/круговой — late-старт
-// rotation с координат `pendingTapStartX/Y`.
+// `lastTapEndTime`/`lastTapEndX/Y` — момент и координата последнего touchend.
+// Когда новый touchstart попадает в окно double-tap (и близко к месту), ставим
+// `suppressedAfterDoubleTap = true` — вся последующая серия touch до touchend
+// игнорируется: ни rotation, ни DragPan-disable. Это повторяет поведение нашей
+// прошлой реализации (ngrsZoom + singleFingerRotation), где после двойного тапа
+// карту нельзя было поворачивать в принципе. Анализ направления первого move
+// (вертикаль/горизонталь) ненадёжен: пользовательский drag для зума может
+// начинаться с лёгкого горизонтального дрейфа пальца, и late-активация rotation
+// тогда срабатывает ошибочно.
 let lastTapEndTime = 0;
 let lastTapEndX = 0;
 let lastTapEndY = 0;
-let pendingNgrsDecision = false;
-let pendingTapStartX = 0;
-let pendingTapStartY = 0;
+let suppressedAfterDoubleTap = false;
 // Сохранённая ссылка на оригинальный view.calculateExtent, чтобы корректно
 // восстановить его в disable(). null, когда обёртка не установлена.
 let originalCalculateExtent: IOlView['calculateExtent'] | null = null;
@@ -135,7 +130,7 @@ function activateRotationFromPoint(x: number, y: number): void {
 function onTouchStart(event: TouchEvent): void {
   if (event.targetTouches.length > 1) {
     resetGesture();
-    pendingNgrsDecision = false;
+    suppressedAfterDoubleTap = false;
     return;
   }
   if (!isFollowActive()) return;
@@ -148,39 +143,25 @@ function onTouchStart(event: TouchEvent): void {
   const distance = Math.hypot(touch.clientX - lastTapEndX, touch.clientY - lastTapEndY);
 
   if (dt <= NGRS_DOUBLE_TAP_GAP_MS && distance <= NGRS_DOUBLE_TAP_DISTANCE_PX) {
-    // Возможный второй тап ngrsZoom-жеста. Не активируем rotation сразу —
-    // ждём первого touchmove, чтобы определить направление: вертикаль = зум,
-    // горизонталь/круг = pан-rotation.
-    pendingNgrsDecision = true;
-    pendingTapStartX = touch.clientX;
-    pendingTapStartY = touch.clientY;
+    // Второй тап в окне double-tap: вся последующая серия touch — это
+    // нативный ngrsZoom (или одиночный двойной тап без drag). Rotation НЕ
+    // активируется ни в каком сценарии. Ранее была попытка late-активации
+    // при горизонтальном drag, но первый ход пальца при зуме часто имеет
+    // лёгкий горизонтальный дрейф — late-rotation срабатывала ошибочно.
+    // Прошлая реализация (ngrsZoom + singleFingerRotation) подавляла серию
+    // целиком, и пользователю это было ожидаемо.
+    suppressedAfterDoubleTap = true;
     return;
   }
 
-  pendingNgrsDecision = false;
+  suppressedAfterDoubleTap = false;
   activateRotationFromPoint(touch.clientX, touch.clientY);
 }
 
 function onTouchMove(event: TouchEvent): void {
-  if (pendingNgrsDecision) {
-    const touch = event.targetTouches[0];
-    const dx = touch.clientX - pendingTapStartX;
-    const dy = touch.clientY - pendingTapStartY;
-    if (Math.abs(dy) >= NGRS_DRAG_THRESHOLD_PX && Math.abs(dy) > Math.abs(dx)) {
-      // Вертикальный drag после double-tap → нативный ngrsZoom. Игнорируем
-      // оставшуюся часть серии: pendingNgrsDecision сбросится в touchend.
-      event.preventDefault();
-      return;
-    }
-    if (Math.abs(dx) >= NGRS_DRAG_THRESHOLD_PX || Math.abs(dy) >= NGRS_DRAG_THRESHOLD_PX) {
-      // Не вертикальный drag после double-tap → late-старт rotation с
-      // координат начала второго тапа, чтобы первый delta был непрерывным.
-      pendingNgrsDecision = false;
-      activateRotationFromPoint(pendingTapStartX, pendingTapStartY);
-      // fall through к расчёту угла ниже
-    } else {
-      return; // ещё не достигли threshold — продолжаем ждать
-    }
+  if (suppressedAfterDoubleTap) {
+    // Серия после double-tap — отдаём управление нативному жесту полностью.
+    return;
   }
 
   if (!latestPoint) return;
@@ -198,15 +179,16 @@ function onTouchMove(event: TouchEvent): void {
 }
 
 function onTouchEnd(): void {
-  // Запоминаем момент и координаты последнего touchend для следующего
-  // double-tap-detection — независимо от того, активировался ли rotation.
   // Date.now() вместо event.timeStamp — см. комментарий в onTouchStart.
-  if (pendingNgrsDecision) {
-    lastTapEndTime = Date.now();
-    lastTapEndX = pendingTapStartX;
-    lastTapEndY = pendingTapStartY;
-    pendingNgrsDecision = false;
+  if (suppressedAfterDoubleTap) {
+    // Двойной тап завершён — цепочка double-tap-detection «использована».
+    // Сбрасываем lastTapEndTime в 0, чтобы следующий touchstart НЕ попал в
+    // double-tap-окно как «третий тап» от того же события.
+    suppressedAfterDoubleTap = false;
+    lastTapEndTime = 0;
   } else if (latestPoint) {
+    // Одиночный тап (с rotation или без) — запоминаем для следующего
+    // double-tap detection на новом touchstart.
     lastTapEndTime = Date.now();
     lastTapEndX = latestPoint[0];
     lastTapEndY = latestPoint[1];
@@ -325,7 +307,7 @@ export const singleFingerRotation: IFeatureModule = {
     // Сбрасываем state-machine ngrsZoom detection: при повторном enable первый
     // touchstart должен активировать rotation без задержки на «возможный
     // double-tap», чьё первое касание было до disable.
-    pendingNgrsDecision = false;
+    suppressedAfterDoubleTap = false;
     lastTapEndTime = 0;
     lastTapEndX = 0;
     lastTapEndY = 0;
