@@ -249,31 +249,9 @@ jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
 }));
 
-jest.mock('../../core/settings/storage', () => ({
-  loadSettings: jest.fn(() => ({ version: 3, modules: {}, errors: {} })),
-  isModuleEnabled: jest.fn(() => true),
-}));
-
-const mockNgrsZoomModule = {
-  id: 'ngrsZoom',
-  defaultEnabled: true,
-  enable: jest.fn(() => Promise.resolve()),
-  disable: jest.fn(),
-};
-
-jest.mock('../../core/moduleRegistry', () => {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- jest.requireActual returns any
-  return {
-    ...jest.requireActual('../../core/moduleRegistry'),
-    getModuleById: jest.fn((id: string) => (id === 'ngrsZoom' ? mockNgrsZoomModule : undefined)),
-  };
-});
-
 import { getOlMap } from '../../core/olMap';
-import { isModuleEnabled } from '../../core/settings/storage';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
-const mockIsModuleEnabled = isModuleEnabled as jest.MockedFunction<typeof isModuleEnabled>;
 
 describe('refsOnMap enable/disable', () => {
   let view: ReturnType<typeof makeView>;
@@ -453,9 +431,6 @@ describe('refsOnMap viewer', () => {
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('follow');
     document.body.innerHTML = '';
-    mockNgrsZoomModule.disable.mockClear();
-    mockNgrsZoomModule.enable.mockClear();
-    mockIsModuleEnabled.mockReturnValue(true);
   });
 
   test('disables follow mode when opening viewer', () => {
@@ -530,41 +505,5 @@ describe('refsOnMap viewer', () => {
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     expect(trash.style.display).toBe('none');
-  });
-
-  test('disables ngrsZoom when opening viewer', () => {
-    mockIsModuleEnabled.mockReturnValue(true);
-    setInventoryCache();
-    clickShowButton();
-
-    expect(mockNgrsZoomModule.disable).toHaveBeenCalled();
-  });
-
-  test('restores ngrsZoom when closing viewer', () => {
-    mockIsModuleEnabled.mockReturnValue(true);
-    setInventoryCache();
-    clickShowButton();
-    clickCloseButton();
-
-    expect(mockNgrsZoomModule.enable).toHaveBeenCalled();
-  });
-
-  test('does not disable ngrsZoom when it is not enabled', () => {
-    mockIsModuleEnabled.mockReturnValue(false);
-    mockNgrsZoomModule.disable.mockClear();
-    setInventoryCache();
-    clickShowButton();
-
-    expect(mockNgrsZoomModule.disable).not.toHaveBeenCalled();
-  });
-
-  test('does not restore ngrsZoom if it was not disabled by viewer', () => {
-    mockIsModuleEnabled.mockReturnValue(false);
-    (mockNgrsZoomModule.enable as jest.Mock).mockClear();
-    setInventoryCache();
-    clickShowButton();
-    clickCloseButton();
-
-    expect(mockNgrsZoomModule.enable).not.toHaveBeenCalled();
   });
 });

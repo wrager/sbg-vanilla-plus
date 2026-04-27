@@ -8,9 +8,7 @@ import { initOlMapCapture } from './core/olMap';
 import { installSbgFlavor } from './core/sbgFlavor';
 import { enhancedMainScreen } from './modules/enhancedMainScreen/enhancedMainScreen';
 import { enhancedPointPopupUi } from './modules/enhancedPointPopupUi/enhancedPointPopupUi';
-import { swipeToClosePopup } from './modules/swipeToClosePopup/swipeToClosePopup';
 import { shiftMapCenterDown } from './modules/shiftMapCenterDown/shiftMapCenterDown';
-import { ngrsZoom } from './modules/ngrsZoom/ngrsZoom';
 import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
 import { groupErrorToasts } from './modules/groupErrorToasts/groupErrorToasts';
 import { removeAttackCloseButton } from './modules/removeAttackCloseButton/removeAttackCloseButton';
@@ -19,7 +17,6 @@ import { keyCountOnPoints } from './modules/keyCountOnPoints/keyCountOnPoints';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
 import { nextPointNavigation } from './modules/nextPointNavigation/nextPointNavigation';
 import { refsOnMap } from './modules/refsOnMap/refsOnMap';
-import { repairAtFullCharge } from './modules/repairAtFullCharge/repairAtFullCharge';
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
 import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { drawTools } from './modules/drawTools/drawTools';
@@ -56,18 +53,15 @@ if (!isDisabled()) {
       // ui
       enhancedMainScreen,
       enhancedPointPopupUi,
-      swipeToClosePopup,
       groupErrorToasts,
       removeAttackCloseButton,
       // feature (favoritedPoints ПЕРЕД inventoryCleanup — зависимость init)
       favoritedPoints,
       inventoryCleanup,
       keepScreenOn,
-      repairAtFullCharge,
       // map
       shiftMapCenterDown,
       largerPointTapArea,
-      ngrsZoom,
       keyCountOnPoints,
       singleFingerRotation,
       mapTileLayers,

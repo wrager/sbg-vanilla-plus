@@ -773,118 +773,6 @@ describe('initSettingsUI — модули, нативные в SBG 0.6.1', () =>
   });
 });
 
-describe('initSettingsUI — модули, конфликтующие с SBG 0.6.1', () => {
-  beforeEach(() => {
-    localStorage.clear();
-    document.body.innerHTML = '';
-    document.head.querySelectorAll('style[id^="svp-"]').forEach((node) => {
-      node.remove();
-    });
-  });
-
-  afterEach(() => {
-    resetDetectedVersionForTest();
-  });
-
-  function getRowByModuleId(moduleId: string): HTMLElement {
-    const panel = document.getElementById('svp-settings-panel');
-    if (!panel) throw new Error('svp-settings-panel not rendered');
-    const rows = panel.querySelectorAll<HTMLElement>('.svp-module-row');
-    for (const row of rows) {
-      const id = row.querySelector('.svp-module-id')?.textContent;
-      if (id === moduleId) return row;
-    }
-    throw new Error(`row for ${moduleId} not found`);
-  }
-
-  test('в 0.6.1 строка swipeToClosePopup рендерится без чекбокса', () => {
-    setDetectedVersionForTest('0.6.1');
-    const swipeToClosePopup = createMockModule({
-      id: 'swipeToClosePopup',
-      defaultEnabled: true,
-    });
-
-    initSettingsUI([swipeToClosePopup], new Map());
-
-    const row = getRowByModuleId('swipeToClosePopup');
-    expect(row.querySelector('.svp-module-checkbox')).toBeNull();
-  });
-
-  test('в 0.6.1 строка swipeToClosePopup содержит подпись о конфликте', () => {
-    setDetectedVersionForTest('0.6.1');
-    // Локаль берётся из localStorage['settings'].lang игры — заряжаем RU
-    // чтобы проверить русскую подпись.
-    localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
-    const swipeToClosePopup = createMockModule({
-      id: 'swipeToClosePopup',
-      defaultEnabled: true,
-    });
-
-    initSettingsUI([swipeToClosePopup], new Map());
-
-    const row = getRowByModuleId('swipeToClosePopup');
-    const label = row.querySelector('.svp-module-row-conflicting-with-game-label');
-    expect(label).not.toBeNull();
-    expect(label?.textContent).toContain('Конфликтует');
-  });
-
-  test('в 0.6.1 строка swipeToClosePopup имеет CSS-класс conflicting-with-game', () => {
-    setDetectedVersionForTest('0.6.1');
-    const swipeToClosePopup = createMockModule({
-      id: 'swipeToClosePopup',
-      defaultEnabled: true,
-    });
-
-    initSettingsUI([swipeToClosePopup], new Map());
-
-    const row = getRowByModuleId('swipeToClosePopup');
-    expect(row.classList.contains('svp-module-row-conflicting-with-game')).toBe(true);
-    expect(row.classList.contains('svp-module-row-native-in-game')).toBe(false);
-  });
-
-  test('в 0.6.0 swipeToClosePopup рендерится как обычный чекбокс', () => {
-    setDetectedVersionForTest('0.6.0');
-    localStorage.setItem(
-      'svp_settings',
-      JSON.stringify({ version: 4, modules: { swipeToClosePopup: true }, errors: {} }),
-    );
-    const swipeToClosePopup = createMockModule({
-      id: 'swipeToClosePopup',
-      defaultEnabled: true,
-    });
-
-    initSettingsUI([swipeToClosePopup], new Map());
-
-    const row = getRowByModuleId('swipeToClosePopup');
-    const checkbox = row.querySelector<HTMLInputElement>('.svp-module-checkbox');
-    expect(checkbox).not.toBeNull();
-    expect(checkbox?.checked).toBe(true);
-  });
-
-  test('в 0.6.1 toggle-all не вызывает enable для swipeToClosePopup', async () => {
-    setDetectedVersionForTest('0.6.1');
-    const swipeToClosePopup = createMockModule({
-      id: 'swipeToClosePopup',
-      defaultEnabled: true,
-      enable: jest.fn(),
-    });
-    const other = createMockModule({ id: 'other', defaultEnabled: true, enable: jest.fn() });
-
-    initSettingsUI([swipeToClosePopup, other], new Map());
-
-    const toggleAll = document.querySelector<HTMLInputElement>('.svp-toggle-all-checkbox');
-    if (!toggleAll) throw new Error('toggle-all checkbox not rendered');
-    toggleAll.checked = true;
-    toggleAll.dispatchEvent(new Event('change'));
-    await Promise.resolve();
-    await Promise.resolve();
-
-    const row = getRowByModuleId('swipeToClosePopup');
-    expect(row.querySelector('.svp-module-checkbox')).toBeNull();
-    expect(swipeToClosePopup.enable).not.toHaveBeenCalled();
-  });
-});
-
 describe('initSettingsUI — раздел «Недоступные» в конце экрана настроек', () => {
   const SCOUT_UA = 'Mozilla/5.0 (Linux; Android 13) SbgScout/1.2.3';
   const BROWSER_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0';
@@ -946,20 +834,6 @@ describe('initSettingsUI — раздел «Недоступные» в конц
     expect(otherSection.classList.contains('svp-settings-section-unavailable')).toBe(false);
   });
 
-  test('conflicting-модуль попадает в тот же раздел «Недоступные»', () => {
-    setDetectedVersionForTest('0.6.1');
-    const swipeToClosePopup = createMockModule({
-      id: 'swipeToClosePopup',
-      category: 'ui',
-      defaultEnabled: true,
-    });
-
-    initSettingsUI([swipeToClosePopup], new Map());
-
-    const section = getSectionOfRow('swipeToClosePopup');
-    expect(section.classList.contains('svp-settings-section-unavailable')).toBe(true);
-  });
-
   test('host-provided (keepScreenOn в Scout) тоже в разделе «Недоступные»', () => {
     setUserAgent(SCOUT_UA);
     const keepScreenOn = createMockModule({
@@ -994,20 +868,16 @@ describe('initSettingsUI — раздел «Недоступные» в конц
     expect(unavailableIndex).toBe(sections.length - 1);
   });
 
-  test('native + conflicting + host-provided уживаются в одном разделе', () => {
+  test('native-модули и host-provided уживаются в одном разделе', () => {
     setUserAgent(SCOUT_UA);
     setDetectedVersionForTest('0.6.1');
 
     const favoritedPoints = createMockModule({ id: 'favoritedPoints', category: 'feature' });
-    const swipeToClosePopup = createMockModule({ id: 'swipeToClosePopup', category: 'ui' });
     const keepScreenOn = createMockModule({ id: 'keepScreenOn', category: 'feature' });
 
-    initSettingsUI([favoritedPoints, swipeToClosePopup, keepScreenOn], new Map());
+    initSettingsUI([favoritedPoints, keepScreenOn], new Map());
 
     expect(getSectionOfRow('favoritedPoints').classList).toContain(
-      'svp-settings-section-unavailable',
-    );
-    expect(getSectionOfRow('swipeToClosePopup').classList).toContain(
       'svp-settings-section-unavailable',
     );
     expect(getSectionOfRow('keepScreenOn').classList).toContain('svp-settings-section-unavailable');
