@@ -494,6 +494,22 @@ describe('calculateDeletions', () => {
     expect(result).toEqual([]);
   });
 
+  test('fast mode: mix-кэш (часть стопок без f) блокирует удаление', () => {
+    // Регрессия: раньше lockSupportAvailable считался через `some` — хватало
+    // одной стопки с `f`, и стопки без `f` могли быть удалены, даже если их
+    // точка фактически защищена. Теперь `every` — при mix-кэше удаление
+    // блокируется целиком, исключая риск удалить незащищённую часть.
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 0;
+    const items = [
+      { g: 'r1', t: 3 as const, l: 'p1', a: 5, f: 0 }, // имеет f
+      { g: 'r2', t: 3 as const, l: 'p2', a: 3 }, // без f - mix
+    ];
+    const result = calculateDeletions(items, limits);
+    expect(result).toEqual([]);
+  });
+
   test('fast mode: удаляет лишние ключи от каждой точки отдельно (защита по locked)', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';

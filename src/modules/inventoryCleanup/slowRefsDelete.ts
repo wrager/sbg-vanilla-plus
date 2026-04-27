@@ -2,6 +2,7 @@ import { getFavoritedGuids, isFavoritesSnapshotReady } from '../../core/favorite
 import { t } from '../../core/l10n';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import { readInventoryCache, readInventoryReferences } from '../../core/inventoryCache';
+import { isInventoryReference } from '../../core/inventoryTypes';
 import { isModuleActive } from '../../core/moduleRegistry';
 import type { IDeletionEntry } from './cleanupCalculator';
 import { buildLockedPointGuids } from './cleanupCalculator';
@@ -247,18 +248,19 @@ async function runSlowDelete(): Promise<void> {
   }
 
   // Защитный слой: только нативные lock-флаги в `inventory-cache` (0.6.1+).
-  // Legacy SVP/CUI-список в логике защиты не участвует — он только источник
+  // Legacy SVP/CUI-список в логике защиты не участвует - он только источник
   // миграции. Если у пользователя есть непустой legacy список и миграция не
-  // сделана — кнопка slow cleanup скрыта (см. shouldShowButton).
+  // сделана - кнопка slow cleanup скрыта (см. shouldShowButton).
+  //
+  // lockSupportAvailable проверяется через every: ВСЕ реф-стопки должны иметь
+  // поле `f`. При mix-кэше (часть с `f`, часть без) стопки без `f` не попадают
+  // в lockedPointGuids и могли бы быть удалены даже у фактически защищённой
+  // точки. Симметрично с финальным guard в inventoryApi.deleteInventoryItems.
   const cache = readInventoryCache();
   const lockedPointGuids = buildLockedPointGuids(cache);
-  const lockSupportAvailable = cache.some(
-    (item) =>
-      typeof item === 'object' &&
-      item !== null &&
-      (item as Record<string, unknown>).t === ITEM_TYPE_REFERENCE &&
-      typeof (item as Record<string, unknown>).f === 'number',
-  );
+  const refStacks = cache.filter(isInventoryReference);
+  const lockSupportAvailable =
+    refStacks.length > 0 && refStacks.every((item) => item.f !== undefined);
   if (!lockSupportAvailable) {
     showSlowToast(
       t({

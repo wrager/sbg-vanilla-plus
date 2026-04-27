@@ -222,6 +222,25 @@ describe('deleteInventoryItems', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
+  test('guard: mix-кэш (часть стопок без f) блокирует удаление', async () => {
+    // Раньше lockSupportAvailable считался через some — хватало одной стопки
+    // с f. Стопки без f не попадают в lockedPointGuids, и удаление их ключей
+    // могло пройти, даже если их точка фактически защищена. Теперь every —
+    // mix блокируется целиком.
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { g: 'r1', t: 3, l: 'p1', a: 1, f: 0 },
+        { g: 'r2', t: 3, l: 'p2', a: 1 }, // без f
+      ]),
+    );
+    const deletions: IDeletionEntry[] = [
+      { guid: 'r1', type: 3, level: null, amount: 1, pointGuid: 'p1' },
+    ];
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow('нативный lock недоступен');
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   test('guard: lock-точка из свежего кэша блокирует удаление', async () => {
     // Симуляция race: пользователь нажал замок ПОСЛЕ расчёта deletions.
     // В deletions точка ещё не помечена locked, но в свежем cache — уже.
