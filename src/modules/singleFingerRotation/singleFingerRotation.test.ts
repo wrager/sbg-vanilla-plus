@@ -30,7 +30,7 @@ jest.mock('../../core/olMap', () => {
   };
 });
 
-import { singleFingerRotation } from './singleFingerRotation';
+import { isNativeFixedPointRotateActive, singleFingerRotation } from './singleFingerRotation';
 import { getOlMap } from '../../core/olMap';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
@@ -402,4 +402,184 @@ test('flushes pending rotation on disable', async () => {
   await singleFingerRotation.disable();
 
   expect(realSetRotation).toHaveBeenCalledTimes(1);
+});
+
+// ── runtime-детекция нативного FixedPointRotate ─────────────────────────────
+
+describe('isNativeFixedPointRotateActive', () => {
+  test('view без getConstrainRotation: false (старая версия OL / 0.6.0)', () => {
+    const map: IOlMap = {
+      ...mockMap,
+      getView: () =>
+        ({
+          ...mockView,
+          getConstrainRotation: undefined,
+        }) as IOlView,
+    };
+    expect(isNativeFixedPointRotateActive(map)).toBe(false);
+  });
+
+  test('constrainRotation true (дефолт OL): false', () => {
+    const map: IOlMap = {
+      ...mockMap,
+      getView: () =>
+        ({
+          ...mockView,
+          getConstrainRotation: () => true,
+        }) as IOlView,
+    };
+    expect(isNativeFixedPointRotateActive(map)).toBe(false);
+  });
+
+  test('constrainRotation false (SBG 0.6.1 с FixedPointRotate): true', () => {
+    const map: IOlMap = {
+      ...mockMap,
+      getView: () =>
+        ({
+          ...mockView,
+          getConstrainRotation: () => false,
+        }) as IOlView,
+    };
+    expect(isNativeFixedPointRotateActive(map)).toBe(true);
+  });
+});
+
+describe('singleFingerRotation enable() с native FixedPointRotate', () => {
+  // Перед тестом отключаем стандартный enable из beforeEach, чтобы заново
+  // активировать модуль с подменённым view.
+  beforeEach(async () => {
+    await singleFingerRotation.disable();
+    realSetRotation.mockClear();
+  });
+
+  test('skip enable если detect возвращает true: touchmove не вращает карту', async () => {
+    mockView.getConstrainRotation = () => false;
+    const consoleInfoSpy = jest.spyOn(console, 'info').mockImplementation();
+
+    await singleFingerRotation.enable();
+
+    dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+    dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+    flushAnimationFrame();
+
+    expect(realSetRotation).not.toHaveBeenCalled();
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      expect.stringContaining('обнаружен нативный FixedPointRotate'),
+    );
+    consoleInfoSpy.mockRestore();
+  });
+
+  test('skip enable идемпотентен с disable: повторный disable не падает', async () => {
+    mockView.getConstrainRotation = () => false;
+    jest.spyOn(console, 'info').mockImplementation();
+
+    await singleFingerRotation.enable();
+    await singleFingerRotation.disable();
+    await singleFingerRotation.disable(); // не должен бросать
+  });
+
+  test('после disable+enable с восстановлённым constrainRotation модуль активируется', async () => {
+    // Сценарий: игра откатила хотфикс, view пересоздан с дефолтом true.
+    mockView.getConstrainRotation = () => true;
+
+    await singleFingerRotation.enable();
+
+    dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+    dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+    flushAnimationFrame();
+
+    expect(realSetRotation).toHaveBeenCalled();
+  });
+});
+
+describe('singleFingerRotation: подавление во время нативного жеста ngrsZoom', () => {
+  // SBG 0.6.1 встроил `ol.interaction.DblClickDragZoom` (refs/game-beta/script.js:782) —
+  // двойной тап с удержанием второго пальца + вертикальный drag → зум.
+  // singleFingerRotation должен пропускать второй тап такого жеста, чтобы не
+  // конфликтовать. Реализация — внутренняя state-machine на основе окна
+  // double-tap (300мс/30px), повторяющая логику удалённого модуля ngrsZoom.
+
+  function simulateDoubleTapStart(secondTapX = 100, secondTapY = 100): void {
+    // Первый тап: touchstart → touchend на одной точке (без drag).
+    dispatchTouch('touchstart', { clientX: secondTapX, clientY: secondTapY });
+    dispatchTouch('touchend', { clientX: secondTapX, clientY: secondTapY });
+    // Второй тап в окне double-tap: новый touchstart почти на том же месте.
+    dispatchTouch('touchstart', { clientX: secondTapX, clientY: secondTapY });
+  }
+
+  test('одиночный тап → drag активирует rotation (текущее поведение не сломано)', () => {
+    realSetRotation.mockClear();
+    dispatchTouch('touchstart', { clientX: 100, clientY: 100 });
+    dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
+    flushAnimationFrame();
+    expect(realSetRotation).toHaveBeenCalled();
+  });
+
+  test('double-tap + вертикальный drag вниз: rotation НЕ активируется (это ngrsZoom)', () => {
+    realSetRotation.mockClear();
+    simulateDoubleTapStart(100, 100);
+    // Сразу вертикальный drag вниз — должно интерпретироваться как ngrsZoom.
+    dispatchTouch('touchmove', { clientX: 100, clientY: 200 });
+    flushAnimationFrame();
+    expect(realSetRotation).not.toHaveBeenCalled();
+    expect(dragPan.getActive()).toBe(true); // dragPan не отключался
+  });
+
+  test('double-tap + вертикальный drag вверх: rotation НЕ активируется', () => {
+    realSetRotation.mockClear();
+    simulateDoubleTapStart(200, 300);
+    dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
+    flushAnimationFrame();
+    expect(realSetRotation).not.toHaveBeenCalled();
+  });
+
+  test('double-tap + горизонтальный drag: rotation активируется (это не ngrsZoom)', () => {
+    realSetRotation.mockClear();
+    simulateDoubleTapStart(100, 100);
+    // Горизонтальный drag — late-старт rotation от точки начала второго тапа.
+    dispatchTouch('touchmove', { clientX: 200, clientY: 100 });
+    flushAnimationFrame();
+    expect(realSetRotation).toHaveBeenCalled();
+  });
+
+  test('tap → пауза > 300мс → tap → drag: окно double-tap истекло, rotation активируется', () => {
+    realSetRotation.mockClear();
+    dispatchTouch('touchstart', { clientX: 100, clientY: 100 });
+    dispatchTouch('touchend', { clientX: 100, clientY: 100 });
+
+    // Прошло 350мс — окно истекло.
+    jest.setSystemTime(Date.now() + 350);
+
+    dispatchTouch('touchstart', { clientX: 100, clientY: 100 });
+    dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
+    flushAnimationFrame();
+    expect(realSetRotation).toHaveBeenCalled();
+  });
+
+  test('tap → tap > 30px от первого: НЕ считается double-tap, rotation активируется сразу', () => {
+    // Активацию rotation проверяем через `dragPan.getActive() === false` —
+    // singleFingerRotation отключает DragPan ровно в момент start-rotation.
+    // Изменение угла в touchmove не используем: для произвольных точек на
+    // одной линии от центра экрана delta может быть 0 даже при rotation-старте.
+    dispatchTouch('touchstart', { clientX: 100, clientY: 100 });
+    dispatchTouch('touchend', { clientX: 100, clientY: 100 });
+    // Второй тап на 100px правее — слишком далеко для double-tap.
+    dispatchTouch('touchstart', { clientX: 200, clientY: 100 });
+    expect(dragPan.getActive()).toBe(false);
+  });
+
+  test('после disable+enable: первый touchstart активирует rotation сразу (state сброшен)', async () => {
+    realSetRotation.mockClear();
+    // Создаём «след» прошлого touchend, который мог бы вызвать double-tap.
+    dispatchTouch('touchstart', { clientX: 100, clientY: 100 });
+    dispatchTouch('touchend', { clientX: 100, clientY: 100 });
+
+    await singleFingerRotation.disable();
+    await singleFingerRotation.enable();
+
+    dispatchTouch('touchstart', { clientX: 100, clientY: 100 });
+    dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
+    flushAnimationFrame();
+    expect(realSetRotation).toHaveBeenCalled();
+  });
 });
