@@ -1,24 +1,24 @@
 // Хранилище избранных точек совместимо с CUI: та же база `CUI`, тот же objectStore
 // `favorites` (keyPath='guid'). Запись — { guid, cooldown }. Поле cooldown нужно
-// только CUI (таймер остывания точки); наш модуль его не использует, но обязан
-// сохранять существующие значения при upsert, чтобы не затереть данные CUI.
+// только CUI (таймер остывания точки); наш модуль его не использует.
+//
+// До 0.6.1 модуль favoritedPoints добавлял/удалял записи (звезда в попапе,
+// фильтр инвентаря). В 0.6.1 эту функциональность взяла на себя игра нативно
+// (поле `f` на стопках инвентаря, см. release-notes 1.3). После переименования
+// модуля в favoritesMigration write-операции стали не нужны: модуль ТОЛЬКО
+// читает локальный список и переносит точки в нативные «звёздочки»/«замочки»
+// игры через POST /api/marks. Поэтому хранилище упрощено до read-only API.
 
 import { t } from './l10n';
-
-export const FAVORITES_CHANGED_EVENT = 'svp:favorites-changed';
-
-function emitChange(): void {
-  document.dispatchEvent(new CustomEvent(FAVORITES_CHANGED_EVENT));
-}
 
 const DB_NAME = 'CUI';
 const STORE_NAME = 'favorites';
 const CUI_DB_VERSION = 9;
 
-// Count seal: количество избранных записывается в localStorage при каждом
-// изменении. При loadFavorites() если IDB пуста, а seal > 0 — значит данные
-// потеряны (Android IDB wipe). В этом случае snapshotLoaded = false, удаление
-// ключей заблокировано, пользователь получает alert.
+// Count seal: количество избранных записывается в localStorage при первой
+// успешной loadFavorites(). При следующем старте, если IDB пуста, а seal > 0 —
+// данные потеряны (Android IDB wipe). В этом случае snapshotLoaded = false,
+// удаление ключей в inventoryCleanup заблокировано, пользователь получает alert.
 export const SEAL_KEY = 'svp_favorites_seal';
 
 function updateSeal(): void {
@@ -46,12 +46,11 @@ export interface IFavoriteRecord {
 }
 
 let memoryGuids: Set<string> = new Set();
-let cooldownByGuid: Map<string, number | null> = new Map();
 let dbPromise: Promise<IDBDatabase> | null = null;
 // true после успешного loadFavorites() — означает, что memoryGuids содержит
 // достоверный снимок IDB (даже если Set пуст — пользователь просто не добавлял
 // избранных). false — IDB не читалась или чтение упало. Используется в
-// cleanupCalculator как guard вместо size > 0 (коммит 8a1c2b4).
+// inventoryCleanup как guard: на 0.6.0 без этого снимка ключи не удаляются.
 let snapshotLoaded = false;
 
 function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
@@ -61,26 +60,6 @@ function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
     };
     request.onerror = (): void => {
       reject(request.error ?? new Error('IDB request failed'));
-    };
-  });
-}
-
-/**
- * Ждёт фактического коммита транзакции IDB. request.onsuccess не гарантирует,
- * что транзакция закоммичена — она может быть отменена (abort) после успеха
- * отдельного запроса (квота, системное давление, crash). Обновлять in-memory
- * состояние безопасно только после oncomplete.
- */
-function waitForTransaction(tx: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    tx.oncomplete = (): void => {
-      resolve();
-    };
-    tx.onabort = (): void => {
-      reject(tx.error ?? new Error('IDB transaction aborted'));
-    };
-    tx.onerror = (): void => {
-      reject(tx.error ?? new Error('IDB transaction error'));
     };
   });
 }
@@ -258,11 +237,9 @@ export async function loadFavorites(): Promise<void> {
   const records: unknown[] = await promisifyRequest(store.getAll());
 
   memoryGuids = new Set();
-  cooldownByGuid = new Map();
   for (const record of records) {
     if (!isFavoriteRecord(record)) continue;
     memoryGuids.add(record.guid);
-    cooldownByGuid.set(record.guid, record.cooldown);
   }
 
   // Count seal: если IDB пуста, а seal говорит что были избранные —
@@ -272,8 +249,8 @@ export async function loadFavorites(): Promise<void> {
     snapshotLoaded = false;
     alert(
       t({
-        en: 'Favorited points data may have been lost (storage cleared). Key auto-cleanup is blocked. Re-import favorites via module settings.',
-        ru: 'Данные избранных точек могли быть потеряны (хранилище очищено). Автоочистка ключей заблокирована. Импортируйте избранные через настройки модуля.',
+        en: 'Favorited points data may have been lost (storage cleared). Key auto-cleanup is blocked. Re-add favorites in CUI or reinstall the script.',
+        ru: 'Данные избранных точек могли быть потеряны (хранилище очищено). Автоочистка ключей заблокирована. Добавьте избранные снова в CUI или переустановите скрипт.',
       }),
     );
     return;
@@ -283,7 +260,7 @@ export async function loadFavorites(): Promise<void> {
   updateSeal();
 }
 
-/** Синхронная проверка — используется из hot path автоочистки. */
+/** Синхронная проверка — для будущих use case'ов, остаётся в публичном API. */
 export function isFavorited(pointGuid: string): boolean {
   return memoryGuids.has(pointGuid);
 }
@@ -304,89 +281,9 @@ export function getFavoritesCount(): number {
   return memoryGuids.size;
 }
 
-/** Добавляет GUID в избранные. Сохраняет существующий cooldown (CUI может писать его). */
-export async function addFavorite(pointGuid: string): Promise<void> {
-  const db = await openDb();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  const store = tx.objectStore(STORE_NAME);
-  // Регистрируем ожидание коммита ДО выполнения запросов — tx.oncomplete
-  // может сработать сразу после последнего request.onsuccess.
-  const committed = waitForTransaction(tx);
-  const existing: unknown = await promisifyRequest(store.get(pointGuid));
-  const cooldown = isFavoriteRecord(existing) ? existing.cooldown : null;
-  const record: IFavoriteRecord = { guid: pointGuid, cooldown };
-  await promisifyRequest(store.put(record));
-  // Обновляем память только после фактического коммита транзакции.
-  // promisifyRequest резолвится на request.onsuccess, но транзакция может
-  // быть отменена после этого (квота, системное давление).
-  await committed;
-  memoryGuids.add(pointGuid);
-  cooldownByGuid.set(pointGuid, cooldown);
-  updateSeal();
-  emitChange();
-}
-
-export async function removeFavorite(pointGuid: string): Promise<void> {
-  const db = await openDb();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  const store = tx.objectStore(STORE_NAME);
-  const committed = waitForTransaction(tx);
-  await promisifyRequest(store.delete(pointGuid));
-  await committed;
-  memoryGuids.delete(pointGuid);
-  cooldownByGuid.delete(pointGuid);
-  updateSeal();
-  emitChange();
-}
-
-/** Экспорт: простой массив GUID'ов точек (формат для миграции между браузерами). */
-export async function exportToJson(): Promise<string> {
-  const db = await openDb();
-  const tx = db.transaction(STORE_NAME, 'readonly');
-  const store = tx.objectStore(STORE_NAME);
-  const records: unknown[] = await promisifyRequest(store.getAll());
-  const guids = records
-    .filter(isFavoriteRecord)
-    .map((record) => record.guid)
-    .sort();
-  return JSON.stringify(guids, null, 2);
-}
-
-function isGuidArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string');
-}
-
-/**
- * Импорт в режиме REPLACE: удаляет ВСЕ существующие избранные, затем добавляет
- * записи из массива. Cooldown существующих записей теряется (формат хранит
- * только GUID). Новые записи создаются с cooldown=null.
- */
-export async function importFromJson(json: string): Promise<number> {
-  const parsed: unknown = JSON.parse(json);
-  if (!isGuidArray(parsed)) {
-    throw new Error('Некорректный формат JSON: ожидается массив GUID-строк');
-  }
-  const db = await openDb();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  const store = tx.objectStore(STORE_NAME);
-  const committed = waitForTransaction(tx);
-  await promisifyRequest(store.clear());
-  for (const guid of parsed) {
-    const record: IFavoriteRecord = { guid, cooldown: null };
-    await promisifyRequest(store.put(record));
-  }
-  await committed;
-  memoryGuids = new Set(parsed);
-  cooldownByGuid = new Map(parsed.map((guid) => [guid, null]));
-  updateSeal();
-  emitChange();
-  return parsed.length;
-}
-
 /** Только для тестов: сбрасывает кеш и закрывает БД. */
 export function resetForTests(): void {
   memoryGuids = new Set();
-  cooldownByGuid = new Map();
   snapshotLoaded = false;
   localStorage.removeItem(SEAL_KEY);
   if (dbPromise) {

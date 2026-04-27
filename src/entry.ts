@@ -22,7 +22,7 @@ import { singleFingerRotation } from './modules/singleFingerRotation/singleFinge
 import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { drawTools } from './modules/drawTools/drawTools';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
-import { favoritedPoints } from './modules/favoritedPoints/favoritedPoints';
+import { favoritesMigration } from './modules/favoritesMigration/favoritesMigration';
 
 if (!isDisabled()) {
   // Перехваты, которые должны быть установлены ДО парсинга DOM и
@@ -57,8 +57,7 @@ if (!isDisabled()) {
       enhancedRefsTab,
       groupErrorToasts,
       removeAttackCloseButton,
-      // feature (favoritedPoints ПЕРЕД inventoryCleanup — зависимость init)
-      favoritedPoints,
+      // feature
       inventoryCleanup,
       keepScreenOn,
       // map
@@ -71,6 +70,8 @@ if (!isDisabled()) {
       // feature (map-зависимые)
       nextPointNavigation,
       refsOnMap,
+      // utility
+      favoritesMigration,
       // fix
       drawButtonFix,
     ]);
