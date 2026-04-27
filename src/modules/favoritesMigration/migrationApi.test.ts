@@ -165,16 +165,14 @@ function items(...guids: string[]): IMigrationItem[] {
 }
 
 describe('runMigration — retry-механизм', () => {
-  function falseConfirm(): boolean {
-    return false;
-  }
-
   test('все стопки result=true: все в succeeded, пустые списки failed', async () => {
     ok(true);
     ok(true);
     const result = await runMigration(items('s1', 's2'), {
       flag: 'favorite',
-      confirmRetry: falseConfirm,
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [],
+      toggleRetryDelayMs: 0,
     });
     expect(result.succeeded.map((i) => i.itemGuid).sort()).toEqual(['s1', 's2']);
     expect(result.networkFailed).toHaveLength(0);
@@ -186,7 +184,9 @@ describe('runMigration — retry-механизм', () => {
     ok(true); // retry: toggle on
     const result = await runMigration(items('s1'), {
       flag: 'favorite',
-      confirmRetry: falseConfirm,
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [],
+      toggleRetryDelayMs: 0,
     });
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(result.succeeded.map((i) => i.itemGuid)).toEqual(['s1']);
@@ -198,46 +198,67 @@ describe('runMigration — retry-механизм', () => {
     ok(false); // retry
     const result = await runMigration(items('s1'), {
       flag: 'favorite',
-      confirmRetry: falseConfirm,
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [],
+      toggleRetryDelayMs: 0,
     });
     expect(result.succeeded).toHaveLength(0);
     expect(result.toggleStuck.map((i) => i.itemGuid)).toEqual(['s1']);
   });
 
-  test('сетевая ошибка + confirm=false → networkFailed', async () => {
+  test('сетевая ошибка без retry: networkRetryDelaysMs=[] → networkFailed', async () => {
     networkError();
     const result = await runMigration(items('s1'), {
       flag: 'favorite',
-      confirmRetry: falseConfirm,
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [],
+      toggleRetryDelayMs: 0,
     });
     expect(result.networkFailed.map((i) => i.itemGuid)).toEqual(['s1']);
     expect(result.succeeded).toHaveLength(0);
   });
 
-  test('сетевая ошибка + confirm=true → retry с успехом → succeeded', async () => {
+  test('сетевая ошибка + auto-retry с одной попыткой → retry успешен → succeeded', async () => {
     networkError();
     ok(true);
-    const confirmRetry = jest.fn().mockReturnValueOnce(true);
     const result = await runMigration(items('s1'), {
       flag: 'favorite',
-      confirmRetry,
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [0],
+      toggleRetryDelayMs: 0,
     });
-    expect(confirmRetry).toHaveBeenCalledWith(1);
+    expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(result.succeeded.map((i) => i.itemGuid)).toEqual(['s1']);
     expect(result.networkFailed).toHaveLength(0);
   });
 
-  test('повторный confirm-цикл при повторной сетевой ошибке', async () => {
-    networkError(); // первый проход
-    networkError(); // второй проход (retry)
-    ok(true); // третий проход (retry)
-    const confirmRetry = jest.fn().mockReturnValueOnce(true).mockReturnValueOnce(true);
+  test('многоступенчатый auto-retry: первые две попытки сеть, третья успех', async () => {
+    networkError(); // initial
+    networkError(); // retry 1
+    ok(true); // retry 2
     const result = await runMigration(items('s1'), {
       flag: 'favorite',
-      confirmRetry,
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [0, 0],
+      toggleRetryDelayMs: 0,
     });
-    expect(confirmRetry).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
     expect(result.succeeded.map((i) => i.itemGuid)).toEqual(['s1']);
+  });
+
+  test('auto-retry исчерпан: все попытки сеть → стопка в networkFailed', async () => {
+    networkError(); // initial
+    networkError(); // retry 1
+    networkError(); // retry 2
+    const result = await runMigration(items('s1'), {
+      flag: 'favorite',
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [0, 0],
+      toggleRetryDelayMs: 0,
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(result.networkFailed.map((i) => i.itemGuid)).toEqual(['s1']);
+    expect(result.succeeded).toHaveLength(0);
   });
 
   test('onProgress вызывается с актуальными числами', async () => {
@@ -247,7 +268,9 @@ describe('runMigration — retry-механизм', () => {
     await runMigration(items('s1', 's2'), {
       flag: 'favorite',
       onProgress,
-      confirmRetry: falseConfirm,
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [],
+      toggleRetryDelayMs: 0,
     });
     expect(onProgress).toHaveBeenCalled();
     const lastCall = onProgress.mock.calls[onProgress.mock.calls.length - 1] as [
@@ -259,7 +282,9 @@ describe('runMigration — retry-механизм', () => {
   test('пустой массив items → пустой результат, fetch не вызывается', async () => {
     const result = await runMigration([], {
       flag: 'favorite',
-      confirmRetry: falseConfirm,
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [],
+      toggleRetryDelayMs: 0,
     });
     expect(mockFetch).not.toHaveBeenCalled();
     expect(result.succeeded).toHaveLength(0);
@@ -269,7 +294,9 @@ describe('runMigration — retry-механизм', () => {
     ok(true);
     await runMigration(items('s-lock'), {
       flag: 'locked' satisfies MigrationFlag,
-      confirmRetry: falseConfirm,
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [],
+      toggleRetryDelayMs: 0,
     });
     const body = (mockFetch.mock.calls[0] as [string, { body: string }])[1].body;
     expect(JSON.parse(body)).toEqual({ guid: 's-lock', flag: 'locked' });
@@ -319,10 +346,6 @@ describe('postMark — обновление inventory-cache', () => {
 });
 
 describe('runMigration — onPhaseChange', () => {
-  function falseConfirm(): boolean {
-    return false;
-  }
-
   test('initial фаза вызывается в начале с total = items.length', async () => {
     ok(true);
     ok(true);
@@ -330,7 +353,9 @@ describe('runMigration — onPhaseChange', () => {
     await runMigration(items('s1', 's2'), {
       flag: 'favorite',
       onPhaseChange: (phase) => phaseChanges.push({ name: phase.name, total: phase.total }),
-      confirmRetry: falseConfirm,
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [],
+      toggleRetryDelayMs: 0,
     });
     expect(phaseChanges).toEqual([{ name: 'initial', total: 2 }]);
   });
@@ -343,7 +368,9 @@ describe('runMigration — onPhaseChange', () => {
     await runMigration(items('s1', 's2'), {
       flag: 'favorite',
       onPhaseChange: (phase) => phaseChanges.push({ name: phase.name, total: phase.total }),
-      confirmRetry: falseConfirm,
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [],
+      toggleRetryDelayMs: 0,
     });
     expect(phaseChanges).toEqual([
       { name: 'initial', total: 2 },
@@ -351,16 +378,17 @@ describe('runMigration — onPhaseChange', () => {
     ]);
   });
 
-  test('retry-network фаза вызывается на каждый confirm-цикл с total = pending.length', async () => {
+  test('retry-network фаза вызывается на каждую auto-retry попытку с total = pending.length', async () => {
     networkError();
     networkError();
     ok(true);
     const phaseChanges: { name: string; total: number }[] = [];
-    const confirmRetry = jest.fn().mockReturnValueOnce(true).mockReturnValueOnce(true);
     await runMigration(items('s1'), {
       flag: 'favorite',
       onPhaseChange: (phase) => phaseChanges.push({ name: phase.name, total: phase.total }),
-      confirmRetry,
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [0, 0],
+      toggleRetryDelayMs: 0,
     });
     expect(phaseChanges).toEqual([
       { name: 'initial', total: 1 },
@@ -382,7 +410,9 @@ describe('runMigration — onPhaseChange', () => {
       onProgress: (p) => {
         progressEvents.push({ done: p.done, total: p.total });
       },
-      confirmRetry: falseConfirm,
+      requestDelayMs: 0,
+      networkRetryDelaysMs: [],
+      toggleRetryDelayMs: 0,
     });
     expect(phase).toBe('retry-toggle');
     // Финальный progress retry-фазы: done=1, total=1 (свой бар, не 2/2 от старого).

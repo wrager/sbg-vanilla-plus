@@ -16,8 +16,38 @@ const FLAG_BIT: Record<MigrationFlag, number> = {
   locked: 0b10,
 };
 
-/** Параллельные запросы — паттерн из старого `inventoryFilter.scheduleLimitedPointFetch`. */
-const CONCURRENCY = 4;
+/**
+ * Запросы к `/api/marks` идут строго последовательно (по одному за раз) с
+ * задержкой между каждым. Параллельность сервер выдерживает, но имеет
+ * rate-limit на частоту marks-операций: при concurrency=4 без задержки
+ * большая часть запросов возвращала `result: false` (отказ замаскированный
+ * под toggle-off). Sequential + delay — единственный способ гарантировать
+ * что все стопки получат флаг.
+ */
+
+/**
+ * Задержка между запросами `/api/marks` (мс). Эмпирически проверено: 30
+ * запросов с интервалом 1500мс прошли с 100% успехом (`result: true`).
+ * Меньшие интервалы не тестировались — без подтверждения на твоём сервере
+ * шансовать с rate-limit нельзя.
+ */
+const DEFAULT_REQUEST_DELAY_MS = 1500;
+
+/**
+ * Задержки перед автоматическими retry-попытками для сетевых ошибок (fetch
+ * reject / HTTP не 2xx). Экспоненциальный backoff: 5с / 15с / 45с. Если
+ * после третьего retry ошибка остаётся — сдаёмся, точка попадает в
+ * `networkFailed`. Совокупно ~65с задержки на одну упавшую стопку — нечасто
+ * стопок несколько, и пользователю проще подождать, чем выходить в confirm.
+ */
+const DEFAULT_NETWORK_RETRY_DELAYS_MS: readonly number[] = [5000, 15000, 45000];
+
+/**
+ * Задержка перед retry для `result: false` (сервер toggle снял флаг).
+ * Меньше чем для networkFailed — это не сетевая проблема, скорее всего
+ * лёгкая рассинхронизация состояния, которая решится за секунды.
+ */
+const DEFAULT_TOGGLE_RETRY_DELAY_MS = 3000;
 
 export interface IMigrationItem {
   /** GUID конкретной стопки в инвентаре (item.g) — endpoint работает на уровне стопки. */
@@ -167,9 +197,9 @@ export interface IMigrationProgress {
 export interface IMigrationResult {
   /** Стопки с применённым флагом после всех проходов. */
   succeeded: IMigrationItem[];
-  /** Сетевые ошибки, которые пользователь не захотел повторять. */
+  /** Стопки, для которых после всех auto-retry сетевая ошибка не ушла. */
   networkFailed: IMigrationItem[];
-  /** Стопки, которые toggle переключил OFF и retry не помог. */
+  /** Стопки, для которых сервер дважды подряд вернул `result: false`. */
   toggleStuck: IMigrationItem[];
 }
 
@@ -187,27 +217,48 @@ export interface IMigrationOptions {
   onProgress?: (progress: IMigrationProgress) => void;
   /**
    * Вызывается перед началом каждой фазы (initial / retry-toggle / retry-network).
-   * Позволяет UI сбросить прогресс-бар в 0/N для новой фазы и обновить статус —
-   * пользователь видит независимый прогресс retry, а не «скачок» суммарного total.
+   * Позволяет UI сбросить прогресс-бар в 0/N для новой фазы и обновить статус.
    */
   onPhaseChange?: (phase: IMigrationPhase) => void;
   /**
-   * Спрашивает у пользователя, повторять ли запросы для упавших стопок. Возвращает
-   * true → ещё проход, false → остановить. Передаётся как зависимость, чтобы
-   * тесты могли подменить confirm на стаб без window.alert.
+   * Задержка между запросами в `runBatch` (мс). По умолчанию
+   * `DEFAULT_REQUEST_DELAY_MS=1500` — обходит серверный rate-limit. В тестах
+   * передавать 0, чтобы прогон был мгновенным.
    */
-  confirmRetry: (failedCount: number) => boolean;
+  requestDelayMs?: number;
+  /**
+   * Задержки перед каждой попыткой retry-network (мс). Длина массива = число
+   * попыток (по умолчанию 3). В тестах передавать `[0]` или `[]` для скорости.
+   */
+  networkRetryDelaysMs?: readonly number[];
+  /**
+   * Задержка перед retry-toggle (мс). По умолчанию
+   * `DEFAULT_TOGGLE_RETRY_DELAY_MS=3000`. В тестах передавать 0.
+   */
+  toggleRetryDelayMs?: number;
+}
+
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
- * Прогон одного «пакета» вызовов с concurrency-лимитом. Возвращает три категории
- * результатов на каждый item.
+ * Прогон одного «пакета» вызовов: последовательно (CONCURRENCY=1), с задержкой
+ * `requestDelayMs` между запросами для обхода серверного rate-limit. Возвращает
+ * три категории результатов на каждый item.
+ *
+ * Задержка ставится ПЕРЕД каждым запросом кроме первого: первый летит сразу,
+ * следующий ждёт `requestDelayMs`. Так минимизируется задержка для ситуаций
+ * с одним кандидатом (типичный retry-сценарий), но соблюдается лимит для
+ * длинных серий (initial-фаза с десятками точек).
  */
 async function runBatch(
   items: IMigrationItem[],
   flag: MigrationFlag,
-  startProgress: { done: number; succeeded: number; total: number },
-  onProgress?: (progress: IMigrationProgress) => void,
+  total: number,
+  onProgress: ((progress: IMigrationProgress) => void) | undefined,
+  requestDelayMs: number,
 ): Promise<{
   succeeded: IMigrationItem[];
   networkFailed: IMigrationItem[];
@@ -217,51 +268,45 @@ async function runBatch(
   const networkFailed: IMigrationItem[] = [];
   const toggleOff: IMigrationItem[] = [];
 
-  let cursor = 0;
-  let { done, succeeded: succeededCount } = startProgress;
-  const { total } = startProgress;
+  let done = 0;
+  let succeededCount = 0;
 
-  async function worker(): Promise<void> {
-    while (cursor < items.length) {
-      const index = cursor++;
-      const item = items[index];
-      const outcome = await postMark(item.itemGuid, flag);
-      done++;
-      if (!outcome.networkOk) {
-        networkFailed.push(item);
-      } else if (!outcome.result) {
-        // Сетевой OK, но результат false — значит сервер toggle'нул OFF.
-        // Кандидат на отдельный retry: повторный POST вернёт ON.
-        toggleOff.push(item);
-      } else {
-        succeeded.push(item);
-        succeededCount++;
-      }
-      onProgress?.({ done, total, succeeded: succeededCount });
+  for (let index = 0; index < items.length; index++) {
+    if (index > 0) await sleep(requestDelayMs);
+    const item = items[index];
+    const outcome = await postMark(item.itemGuid, flag);
+    done++;
+    if (!outcome.networkOk) {
+      networkFailed.push(item);
+    } else if (!outcome.result) {
+      toggleOff.push(item);
+    } else {
+      succeeded.push(item);
+      succeededCount++;
     }
+    onProgress?.({ done, total, succeeded: succeededCount });
   }
-
-  const workerCount = Math.min(CONCURRENCY, items.length);
-  const promises: Promise<void>[] = [];
-  for (let i = 0; i < workerCount; i++) promises.push(worker());
-  await Promise.all(promises);
 
   return { succeeded, networkFailed, toggleOff };
 }
 
 /**
- * Прогоняет полный цикл миграции с retry-механизмом:
- * 1. Первый проход по `items`.
- * 2. `toggleOff` — повторно (один раз): если предварительный фильтр устарел,
- *    повторный вызов вернёт флаг в ON.
- * 3. `networkFailed` — спрашиваем пользователя через `confirmRetry`. На «ОК»
- *    повторяем; новые ошибки снова через confirm. Цикл до пустого набора
- *    или отказа пользователя.
+ * Прогоняет полный цикл миграции с автоматическим retry:
+ * 1. Initial-фаза — все `items` последовательно с `requestDelayMs` между запросами.
+ * 2. Retry-toggle — один проход для стопок с `result: false`, после паузы
+ *    `toggleRetryDelayMs`. Если опять `false` — стопка идёт в `toggleStuck`.
+ * 3. Retry-network — для сетевых ошибок: до `networkRetryDelaysMs.length`
+ *    автоматических попыток с возрастающим backoff (5с / 15с / 45с по умолчанию).
+ *    Никаких confirm-диалогов — пользователь нажал кнопку и ждёт результат.
  */
 export async function runMigration(
   items: IMigrationItem[],
   options: IMigrationOptions,
 ): Promise<IMigrationResult> {
+  const requestDelayMs = options.requestDelayMs ?? DEFAULT_REQUEST_DELAY_MS;
+  const networkRetryDelays = options.networkRetryDelaysMs ?? DEFAULT_NETWORK_RETRY_DELAYS_MS;
+  const toggleRetryDelay = options.toggleRetryDelayMs ?? DEFAULT_TOGGLE_RETRY_DELAY_MS;
+
   const totalSucceeded: IMigrationItem[] = [];
   const totalToggleStuck: IMigrationItem[] = [];
 
@@ -269,40 +314,45 @@ export async function runMigration(
   const initial = await runBatch(
     items,
     options.flag,
-    { done: 0, succeeded: 0, total: items.length },
+    items.length,
     options.onProgress,
+    requestDelayMs,
   );
   totalSucceeded.push(...initial.succeeded);
 
-  // Retry для toggleOff — один проход. Прогресс начинается с 0/N (свой бар фазы),
-  // succeeded не накапливается с предыдущей фазы — UI видит чистый счётчик retry.
+  // Retry для toggleOff — один проход после паузы. Прогресс начинается с 0/N
+  // (свой бар фазы), succeeded не накапливается с предыдущей фазы — UI видит
+  // чистый счётчик retry.
   if (initial.toggleOff.length > 0) {
     options.onPhaseChange?.({ name: 'retry-toggle', total: initial.toggleOff.length });
+    await sleep(toggleRetryDelay);
     const toggleResult = await runBatch(
       initial.toggleOff,
       options.flag,
-      { done: 0, succeeded: 0, total: initial.toggleOff.length },
+      initial.toggleOff.length,
       options.onProgress,
+      requestDelayMs,
     );
     totalSucceeded.push(...toggleResult.succeeded);
-    // Если вторая попытка снова toggle'нула OFF — стопка «застряла» в неустойчивом состоянии.
     totalToggleStuck.push(...toggleResult.toggleOff);
-    // Сетевые ошибки на retry заталкиваем в общий networkFailed для следующего цикла.
     initial.networkFailed.push(...toggleResult.networkFailed);
   }
 
-  // Retry для networkFailed — через confirm цикл. Каждый круг retry — отдельная фаза.
+  // Retry для networkFailed — автоматический backoff. Без confirm-диалогов:
+  // пользователь нажал кнопку → миграция сама борется с сетью. Финальные
+  // оставшиеся стопки уйдут в `networkFailed` итогового результата.
   let pendingNetwork = initial.networkFailed;
-  while (pendingNetwork.length > 0) {
-    const wantsRetry = options.confirmRetry(pendingNetwork.length);
-    if (!wantsRetry) break;
+  for (const delayMs of networkRetryDelays) {
+    if (pendingNetwork.length === 0) break;
 
     options.onPhaseChange?.({ name: 'retry-network', total: pendingNetwork.length });
+    await sleep(delayMs);
     const retry = await runBatch(
       pendingNetwork,
       options.flag,
-      { done: 0, succeeded: 0, total: pendingNetwork.length },
+      pendingNetwork.length,
       options.onProgress,
+      requestDelayMs,
     );
     totalSucceeded.push(...retry.succeeded);
     totalToggleStuck.push(...retry.toggleOff);

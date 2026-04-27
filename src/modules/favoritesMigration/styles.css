@@ -155,13 +155,18 @@
 }
 
 .svp-migration-progress.svp-partial .svp-migration-progress-bar {
-  /* Для частичной неудачи допустим accent (красный): пользователь видит сигнал,
-     что не всё прошло гладко, и читает финальный toast с деталями. */
-  background: var(--accent, #ff6b6b);
+  /* Нейтральный жёлтый — не «ошибка», а «не всё прошло, нужно повторить через
+     пару минут». Текст финального статуса даёт пользователю понятное действие. */
+  background: #e0a020;
 }
 
 .svp-migration-progress.svp-partial .svp-migration-progress-status {
-  color: var(--accent, #ff6b6b);
+  color: #e0a020;
+}
+
+.svp-migration-close:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .svp-migration-progress-counter {

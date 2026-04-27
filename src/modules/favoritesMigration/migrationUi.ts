@@ -60,9 +60,10 @@ const SUCCESS_STATUS_LABEL: ILocalizedString = {
   en: 'All stacks marked successfully',
   ru: 'Все стопки помечены успешно',
 };
-const PARTIAL_STATUS_LABEL: ILocalizedString = {
-  en: 'Migration finished with issues',
-  ru: 'Миграция завершена с проблемами',
+const PARTIAL_STATUS_TEMPLATE: ILocalizedString = {
+  // {n} заменим в runtime на оставшееся количество.
+  en: 'Marked {ok} of {total}. {n} could not be marked — try running migration again in a couple of minutes',
+  ru: 'Помечено {ok} из {total}. {n} не удалось — попробуй запустить миграцию ещё раз через пару минут',
 };
 
 const NO_KEYS_TOAST: ILocalizedString = {
@@ -74,8 +75,6 @@ const ALREADY_APPLIED_TOAST: ILocalizedString = {
   en: 'All stacks already have this flag — nothing to do',
   ru: 'У всех стопок уже стоит этот флаг — делать нечего',
 };
-
-const PROGRESS_LABEL: ILocalizedString = { en: 'Migration: ', ru: 'Миграция: ' };
 
 let panel: HTMLElement | null = null;
 let configureButton: HTMLElement | null = null;
@@ -140,6 +139,9 @@ function buildPanel(): HTMLElement {
   close.textContent = '✕';
   close.setAttribute('aria-label', t(CLOSE_LABEL));
   close.addEventListener('click', () => {
+    // Кнопка дизейблится в runFlow на время миграции — клик не пройдёт; здесь
+    // вторая защита от программных кликов и для случая отключённого `disabled`.
+    if (migrationInProgress) return;
     closePanel();
   });
   header.appendChild(close);
@@ -256,10 +258,18 @@ function setActionsDisabled(panelElement: HTMLElement, disabled: boolean): void 
   for (const action of actions) action.disabled = disabled;
 }
 
+/** Дизейблит крестик закрытия панели на время миграции — пользователь не может
+ *  прервать долгую операцию случайным кликом. Восстанавливает после завершения. */
+function setCloseDisabled(panelElement: HTMLElement, disabled: boolean): void {
+  const close = panelElement.querySelector<HTMLButtonElement>('.svp-migration-close');
+  if (close) close.disabled = disabled;
+}
+
 async function runFlow(flag: MigrationFlag, panelElement: HTMLElement): Promise<void> {
   if (migrationInProgress) return;
   migrationInProgress = true;
   setActionsDisabled(panelElement, true);
+  setCloseDisabled(panelElement, true);
 
   try {
     const candidates = buildCandidates(flag);
@@ -294,64 +304,29 @@ async function runFlow(flag: MigrationFlag, panelElement: HTMLElement): Promise<
         setProgressStatus(panelElement, t(label));
         setProgress(panelElement, { done: 0, total: phase.total, succeeded: 0 });
       },
-      confirmRetry: (failedCount) =>
-        confirm(
-          t({
-            en: `Network errors on ${failedCount} stacks. Retry?`,
-            ru: `Сетевые ошибки на ${failedCount} стопок. Повторить?`,
-          }),
-        ),
     });
-
-    const summaryParts = [
-      `${t(PROGRESS_LABEL)}${result.succeeded.length} / ${candidates.toSend.length}`,
-    ];
-    if (candidates.withoutKeys > 0) {
-      summaryParts.push(
-        t({
-          en: `${candidates.withoutKeys} points without keys skipped`,
-          ru: `${candidates.withoutKeys} точек без ключей пропущено`,
-        }),
-      );
-    }
-    if (candidates.alreadyApplied > 0) {
-      summaryParts.push(
-        t({
-          en: `${candidates.alreadyApplied} stacks already had the flag`,
-          ru: `${candidates.alreadyApplied} стопок уже имели флаг`,
-        }),
-      );
-    }
-    if (result.networkFailed.length > 0) {
-      summaryParts.push(
-        t({
-          en: `${result.networkFailed.length} network failures`,
-          ru: `${result.networkFailed.length} сетевых ошибок`,
-        }),
-      );
-    }
-    if (result.toggleStuck.length > 0) {
-      summaryParts.push(
-        t({
-          en: `${result.toggleStuck.length} stuck after toggle retry`,
-          ru: `${result.toggleStuck.length} застряли после toggle-retry`,
-        }),
-      );
-    }
 
     const isSuccess =
       result.networkFailed.length === 0 &&
       result.toggleStuck.length === 0 &&
       result.succeeded.length === candidates.toSend.length;
-    markProgressTerminal(
-      panelElement,
-      isSuccess ? 'success' : 'partial',
-      isSuccess ? t(SUCCESS_STATUS_LABEL) : t(PARTIAL_STATUS_LABEL),
-    );
-    showToast(summaryParts.join(' · '));
+
+    if (isSuccess) {
+      markProgressTerminal(panelElement, 'success', t(SUCCESS_STATUS_LABEL));
+      showToast(t(SUCCESS_STATUS_LABEL));
+    } else {
+      const remaining = candidates.toSend.length - result.succeeded.length;
+      const partialText = t(PARTIAL_STATUS_TEMPLATE)
+        .replace('{ok}', String(result.succeeded.length))
+        .replace('{total}', String(candidates.toSend.length))
+        .replace('{n}', String(remaining));
+      markProgressTerminal(panelElement, 'partial', partialText);
+      showToast(partialText);
+    }
   } finally {
     migrationInProgress = false;
     setActionsDisabled(panelElement, false);
+    setCloseDisabled(panelElement, false);
   }
 }
 
