@@ -1,6 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { injectStyles, removeStyles } from '../../core/dom';
 import { loadFavorites } from '../../core/favoritesStore';
+import { installMigrationUi, uninstallMigrationUi } from './migrationUi';
 import styles from './styles.css?inline';
 
 const MODULE_ID = 'favoritesMigration';
@@ -26,11 +27,11 @@ export const favoritesMigration: IFeatureModule = {
 
   enable() {
     injectStyles(styles, MODULE_ID);
-    // UI миграции добавляется отдельным коммитом — пока модуль виден в
-    // настройках, но по клику ничего не делает (placeholder).
+    installMigrationUi();
   },
 
   disable() {
+    uninstallMigrationUi();
     removeStyles(MODULE_ID);
   },
 };
