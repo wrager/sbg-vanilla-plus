@@ -19,19 +19,6 @@ interface IOlStyle {
   setRenderer(fn: RendererFn): void;
 }
 
-interface IFeatureWithStyle extends IOlFeature {
-  getStyle(): unknown;
-}
-
-interface IAddFeatureEvent {
-  feature: IOlFeature;
-}
-
-interface IFeatureWithEvents extends IOlFeature {
-  on(type: string, listener: () => void): void;
-  un(type: string, listener: () => void): void;
-}
-
 const wrappedFeatures = new WeakSet<IOlFeature>();
 const originalSetStyles = new WeakMap<IOlFeature, (style: unknown) => void>();
 const originalRenderers = new WeakMap<WrappedRenderer, RendererFn>();
@@ -39,7 +26,7 @@ const featureChangeListeners = new WeakMap<IOlFeature, () => void>();
 
 let map: IOlMap | null = null;
 let pointsSource: IOlVectorSource | null = null;
-let onAddFeature: ((e: IAddFeatureEvent) => void) | null = null;
+let onAddFeature: ((...args: unknown[]) => void) | null = null;
 // installGeneration защищает от race условий между async enable и быстрым
 // disable. enable содержит await getOlMap() - если disable отработал во время
 // await, мы должны выйти из enable до записи map/pointsSource и подписки на
@@ -66,12 +53,13 @@ export function fontSizeForZoom(zoom: number): number {
 
 function isStyleWithRenderer(value: unknown): value is IOlStyle {
   if (typeof value !== 'object' || value === null) return false;
-  const obj = value as Record<string, unknown>;
-  return typeof obj.getRenderer === 'function' && typeof obj.setRenderer === 'function';
+  if (!('getRenderer' in value) || typeof value.getRenderer !== 'function') return false;
+  if (!('setRenderer' in value) || typeof value.setRenderer !== 'function') return false;
+  return true;
 }
 
 function isWrappedRenderer(fn: RendererFn): fn is WrappedRenderer {
-  return (fn as WrappedRenderer)[WRAPPED_MARKER] === true;
+  return (fn as Partial<WrappedRenderer>)[WRAPPED_MARKER] === true;
 }
 
 /**
@@ -175,21 +163,28 @@ export function wrapStyleArray(styles: unknown, getZoom: () => number): void {
  */
 export function wrapFeature(feature: IOlFeature, getZoom: () => number): void {
   if (wrappedFeatures.has(feature)) return;
-  const f = feature as IFeatureWithStyle;
-  const original = f.setStyle.bind(f) as (style: unknown) => void;
-  originalSetStyles.set(feature, original);
-  f.setStyle = (style: unknown): void => {
+  // getStyle/on/un - опциональные методы IOlFeature; в реальном OL они есть
+  // у любой фичи. Пропускаем фичу, если рантайм не предоставил их (мок-сценарии,
+  // частично инициализированный объект) - хуже остаться без подписи, чем
+  // упасть на null.
+  if (typeof feature.getStyle !== 'function') return;
+  if (typeof feature.on !== 'function' || typeof feature.un !== 'function') return;
+  const originalSetStyle = feature.setStyle.bind(feature);
+  originalSetStyles.set(feature, originalSetStyle);
+  feature.setStyle = (style: unknown): void => {
     wrapStyleArray(style, getZoom);
-    original(style);
+    originalSetStyle(style);
   };
   wrappedFeatures.add(feature);
-  wrapStyleArray(f.getStyle(), getZoom);
+  wrapStyleArray(feature.getStyle(), getZoom);
 
   const onChange = (): void => {
-    wrapStyleArray(f.getStyle(), getZoom);
+    if (typeof feature.getStyle === 'function') {
+      wrapStyleArray(feature.getStyle(), getZoom);
+    }
   };
   featureChangeListeners.set(feature, onChange);
-  (f as unknown as IFeatureWithEvents).on('change', onChange);
+  feature.on('change', onChange);
 }
 
 /**
@@ -200,18 +195,17 @@ export function wrapFeature(feature: IOlFeature, getZoom: () => number): void {
  */
 export function unwrapFeature(feature: IOlFeature): void {
   if (!wrappedFeatures.has(feature)) return;
-  const f = feature as IFeatureWithStyle;
   const onChange = featureChangeListeners.get(feature);
-  if (onChange) {
-    (f as unknown as IFeatureWithEvents).un('change', onChange);
+  if (onChange && typeof feature.un === 'function') {
+    feature.un('change', onChange);
     featureChangeListeners.delete(feature);
   }
-  const original = originalSetStyles.get(feature);
-  if (original) {
-    f.setStyle = original;
+  const originalSetStyle = originalSetStyles.get(feature);
+  if (originalSetStyle) {
+    feature.setStyle = originalSetStyle;
     originalSetStyles.delete(feature);
   }
-  const styles = f.getStyle();
+  const styles = typeof feature.getStyle === 'function' ? feature.getStyle() : null;
   if (Array.isArray(styles)) {
     for (const style of styles) {
       if (!isStyleWithRenderer(style)) continue;
@@ -257,16 +251,25 @@ export const pointTextFix: IFeatureModule = {
       wrapFeature(feature, getZoom);
     }
 
-    onAddFeature = (e: IAddFeatureEvent): void => {
-      wrapFeature(e.feature, getZoom);
+    onAddFeature = (...args: unknown[]): void => {
+      const event = args[0];
+      if (typeof event !== 'object' || event === null) return;
+      if (!('feature' in event)) return;
+      const candidate = event.feature;
+      if (typeof candidate !== 'object' || candidate === null) return;
+      // `feature` приходит из OL VectorSource - объект с тем же контрактом, что
+      // у IOlFeature (getStyle, on, un, setStyle опциональны на уровне типа,
+      // но фактически есть). Приведение к IOlFeature без cast: WeakSet/WeakMap
+      // ключей ниже не различает источник, для них достаточно ссылки на объект.
+      wrapFeature(candidate as IOlFeature, getZoom);
     };
-    source.on('addfeature', onAddFeature as unknown as () => void);
+    source.on('addfeature', onAddFeature);
   },
 
   disable(): void {
     installGeneration++;
     if (pointsSource && onAddFeature) {
-      pointsSource.un('addfeature', onAddFeature as unknown as () => void);
+      pointsSource.un('addfeature', onAddFeature);
       for (const feature of pointsSource.getFeatures()) {
         unwrapFeature(feature);
       }

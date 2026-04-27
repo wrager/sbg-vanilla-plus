@@ -41,9 +41,18 @@ export interface IOlFeature {
   getId(): string | number | undefined;
   setId(id: string): void;
   setStyle(style: unknown): void;
+  // Возвращает текущий стиль фичи. На момент создания фичи может быть null,
+  // далее - то, что передавалось в setStyle (одиночный Style, массив или
+  // function). Тип unknown - стиль это структура из ol.style.* без устойчивого
+  // публичного TS-интерфейса в этом проекте.
+  getStyle?(): unknown;
   get?(key: string): unknown;
   set?(key: string, value: unknown): void;
   getProperties?(): Record<string, unknown>;
+  // Методы EventTarget OL (унаследованы от ol.events.Target). Любая фича их
+  // имеет; объявлены опциональными на случай моков в тестах, где их нет.
+  on?(type: string, listener: () => void): void;
+  un?(type: string, listener: () => void): void;
 }
 
 export interface IOlVectorSource {
@@ -51,8 +60,13 @@ export interface IOlVectorSource {
   addFeature(feature: IOlFeature): void;
   removeFeature?(feature: IOlFeature): void;
   clear(): void;
-  on(type: string, listener: () => void): void;
-  un(type: string, listener: () => void): void;
+  // Сигнатура обработчика - `(...args: unknown[]) => void`, чтобы принимать
+  // как listener'ы без параметров (`change`-event), так и с event-объектом
+  // (`addfeature` передаёт `{type, feature}`). Контравариантность по
+  // параметрам: обработчик с `unknown[]` совместим с любой более узкой
+  // подписью без cast'а на стороне вызывающего.
+  on(type: string, listener: (...args: unknown[]) => void): void;
+  un(type: string, listener: (...args: unknown[]) => void): void;
 }
 
 export interface IOlTileSource {
