@@ -12,6 +12,7 @@ import {
 } from '../../core/inventoryCache';
 import { isInventoryReference } from '../../core/inventoryTypes';
 import { isModuleEnabledByUser } from '../../core/moduleRegistry';
+import { showToast as showCoreToast } from '../../core/toast';
 import type { IDeletionEntry } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
 import {
@@ -214,8 +215,6 @@ export function collectOverLimit(
 // slowRefsDelete использует длинный duration (5 сек) — пользователь должен
 // успеть прочитать результат удаления. Обёртка не переименовывает showToast,
 // чтобы вызовы остались читаемыми.
-import { showToast as showCoreToast } from '../../core/toast';
-
 const SLOW_TOAST_DURATION = 5000;
 
 function showSlowToast(message: string): void {
