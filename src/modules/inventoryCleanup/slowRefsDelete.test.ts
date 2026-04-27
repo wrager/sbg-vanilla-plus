@@ -423,12 +423,18 @@ describe('кнопка «Очистить ключи»: disabled при -1/-1', 
   }
 
   function makeBar(): HTMLElement {
-    // Кнопка инжектируется в `.svp-fav-filter-bar` — DOM-зависимость от
-    // favoritedPoints UI (см. slowRefsDelete.ts:21).
-    const bar = document.createElement('div');
-    bar.className = 'svp-fav-filter-bar';
-    document.body.appendChild(bar);
-    return bar;
+    // Кнопка инжектируется в .inventory__controls перед нативной
+    // #inventory-delete. Минимальная DOM-обвязка: создаём controls с
+    // delete-кнопкой внутри, как в реальном инвентаре.
+    const controls = document.createElement('div');
+    controls.className = 'inventory__controls';
+    const deleteSlot = document.createElement('div');
+    const deleteButton = document.createElement('button');
+    deleteButton.id = 'inventory-delete';
+    deleteSlot.appendChild(deleteButton);
+    controls.appendChild(deleteSlot);
+    document.body.appendChild(controls);
+    return controls;
   }
 
   function getButton(): HTMLButtonElement | null {
@@ -522,10 +528,15 @@ describe('кнопка «Очистить ключи»: snapshot guard', () => {
   }
 
   function makeBar(): HTMLElement {
-    const bar = document.createElement('div');
-    bar.className = 'svp-fav-filter-bar';
-    document.body.appendChild(bar);
-    return bar;
+    const controls = document.createElement('div');
+    controls.className = 'inventory__controls';
+    const deleteSlot = document.createElement('div');
+    const deleteButton = document.createElement('button');
+    deleteButton.id = 'inventory-delete';
+    deleteSlot.appendChild(deleteButton);
+    controls.appendChild(deleteSlot);
+    document.body.appendChild(controls);
+    return controls;
   }
 
   function getButton(): HTMLButtonElement | null {

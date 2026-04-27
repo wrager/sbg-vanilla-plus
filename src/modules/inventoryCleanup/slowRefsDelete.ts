@@ -23,11 +23,14 @@ import {
 
 const BUTTON_CLASS = 'svp-cleanup-slow-refs-button';
 const MODAL_CLASS = 'svp-cleanup-slow-modal';
-// Кнопка монтируется внутрь .svp-fav-filter-bar (создавалась модулем favoritedPoints,
-// чтобы чекбокс «Только избранные» и кнопка «Очистить ключи» были в одной строке.
-// Это DOM-зависимость от элемента другого модуля, но не TS-импорт.
-const FILTER_BAR_SELECTOR = '.svp-fav-filter-bar';
+// Кнопка вставляется в .inventory__controls перед нативной #inventory-delete -
+// так пара "выделить / очистить ключи" живёт в одном слоте. Раньше монтировалась
+// в .svp-fav-filter-bar из удалённого модуля favoritedPoints; после его удаления
+// контейнер пропал. Видимость управляется CSS :has() от data-tab="3" на
+// .inventory__content - кнопка показывается только на вкладке ключей.
+const TARGET_SELECTOR = '#inventory-delete';
 export const FETCH_CONCURRENCY = 3;
+const BROOM_ICON = '\u{1F9F9}';
 
 let bodyObserver: MutationObserver | null = null;
 
@@ -387,10 +390,11 @@ function updateButtonLabel(button: HTMLButtonElement): void {
   const settings = loadCleanupSettings();
   const allied = formatLimit(settings.limits.referencesAlliedLimit);
   const notAllied = formatLimit(settings.limits.referencesNotAlliedLimit);
-  const label = t({
-    en: `Cleanup (limits: ${allied}/${notAllied})`,
-    ru: `Очистить (лимиты: ${allied}/${notAllied})`,
-  });
+  // Иконка веника + лимиты allied/notAllied. Без слова "Очистить" / "Cleanup":
+  // иконка считывается как "очистка" самостоятельно, текст оставлен только
+  // для лимитов как машиночитаемого статуса кнопки. Title не выставляем -
+  // им управляет syncDisabledState (объясняет причину disabled).
+  const label = `${BROOM_ICON} ${allied}/${notAllied}`;
   // Не записывать textContent если текст не изменился — иначе DOM-мутация
   // тригерит body MutationObserver → checkAndInject → updateButtonLabel → цикл.
   if (button.textContent !== label) {
@@ -434,12 +438,14 @@ function syncDisabledState(button: HTMLButtonElement): void {
   if (button.title !== title) button.title = title;
 }
 
-function ensureButton(bar: Element): void {
+function ensureButton(deleteSibling: Element): void {
+  const parent = deleteSibling.parentElement;
+  if (!parent) return;
+  const existing = parent.querySelector<HTMLButtonElement>(`.${BUTTON_CLASS}`);
   if (!shouldShowButton()) {
-    bar.querySelector(`.${BUTTON_CLASS}`)?.remove();
+    existing?.remove();
     return;
   }
-  const existing = bar.querySelector<HTMLButtonElement>(`.${BUTTON_CLASS}`);
   if (existing) {
     updateButtonLabel(existing);
     syncDisabledState(existing);
@@ -456,7 +462,7 @@ function ensureButton(bar: Element): void {
     if (button.disabled) return;
     void runSlowDelete();
   });
-  bar.appendChild(button);
+  parent.insertBefore(button, deleteSibling);
 }
 
 function removeButton(): void {
@@ -464,12 +470,12 @@ function removeButton(): void {
 }
 
 function checkAndInject(): void {
-  const bar = document.querySelector(FILTER_BAR_SELECTOR);
-  if (!bar) {
+  const target = document.querySelector(TARGET_SELECTOR);
+  if (!target) {
     removeButton();
     return;
   }
-  ensureButton(bar);
+  ensureButton(target);
 }
 
 let rafId: number | null = null;

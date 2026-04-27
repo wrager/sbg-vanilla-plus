@@ -226,5 +226,27 @@
 
 /* Toast-стили вынесены в core/toast.css (подключается в bootstrap). */
 
-/* Кнопка «Очистить ключи» монтируется внутрь .svp-fav-filter-bar —
-   видимость filter bar в 0.6.1 управляется нативно игрой. */
+/* Кнопка медленной очистки ключей. Стиль повторяет .svp-refs-on-map-button
+   (тот же class по спросу пользователя): прозрачный фон, тонкая граница,
+   текст в цвет --text. По умолчанию скрыта - показывается только на вкладке
+   ключей (data-tab="3" на .inventory__content) через CSS :has(). Без
+   поддержки :has() (старый WebView) кнопка остаётся скрытой; такой
+   пользователь может чистить ключи через fast mode при discover. */
+.svp-cleanup-slow-refs-button {
+  display: none;
+  background: none;
+  border: 1px solid var(--border-transp);
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.inventory:has(.inventory__content[data-tab='3']) .svp-cleanup-slow-refs-button {
+  display: inline-block;
+}
+
+.svp-cleanup-slow-refs-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
