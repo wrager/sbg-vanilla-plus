@@ -4,7 +4,10 @@ import {
   isFavoritesSnapshotReady,
   getFavoritedGuids,
   getFavoritesCount,
+  isLockMigrationDone,
+  setLockMigrationDone,
   resetForTests,
+  LOCK_MIGRATION_DONE_KEY,
   SEAL_KEY,
 } from './favoritesStore';
 
@@ -164,5 +167,35 @@ describe('count seal (детекция IDB wipe)', () => {
     localStorage.removeItem(SEAL_KEY);
     await loadFavorites();
     expect(isFavoritesSnapshotReady()).toBe(true);
+  });
+});
+
+describe('lock-migration-done flag', () => {
+  beforeEach(async () => {
+    await resetIdb();
+  });
+
+  test('изначально флаг не выставлен', () => {
+    expect(isLockMigrationDone()).toBe(false);
+  });
+
+  test('setLockMigrationDone выставляет флаг в localStorage', () => {
+    setLockMigrationDone();
+    expect(localStorage.getItem(LOCK_MIGRATION_DONE_KEY)).toBe('1');
+    expect(isLockMigrationDone()).toBe(true);
+  });
+
+  test('флаг переживает resetForTests=false (тесты явно сбрасывают)', () => {
+    setLockMigrationDone();
+    resetForTests();
+    expect(isLockMigrationDone()).toBe(false);
+    expect(localStorage.getItem(LOCK_MIGRATION_DONE_KEY)).toBeNull();
+  });
+
+  test('isLockMigrationDone=false при любых значениях кроме "1"', () => {
+    localStorage.setItem(LOCK_MIGRATION_DONE_KEY, '0');
+    expect(isLockMigrationDone()).toBe(false);
+    localStorage.setItem(LOCK_MIGRATION_DONE_KEY, 'true');
+    expect(isLockMigrationDone()).toBe(false);
   });
 });

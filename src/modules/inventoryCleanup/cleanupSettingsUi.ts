@@ -1,8 +1,12 @@
 import { injectStyles, removeStyles } from '../../core/dom';
 import { t } from '../../core/l10n';
 import type { ILocalizedString } from '../../core/l10n';
-import { isModuleActive } from '../../core/moduleRegistry';
-import { getFavoritedGuids, isFavoritesSnapshotReady } from '../../core/favoritesStore';
+import { isModuleEnabledByUser } from '../../core/moduleRegistry';
+import {
+  getFavoritedGuids,
+  isFavoritesSnapshotReady,
+  isLockMigrationDone,
+} from '../../core/favoritesStore';
 import type { ICleanupSettings, ReferencesMode } from './cleanupSettings';
 import { loadCleanupSettings, saveCleanupSettings } from './cleanupSettings';
 import styles from './styles.css?inline';
@@ -273,15 +277,15 @@ function buildPanel(
     draft.limits.catalysers[level] = value;
   });
 
-  // Удаление ключей блокируется, пока legacy SVP/CUI-список непуст и модуль
-  // favoritesMigration активен — пользователь ещё не перенёс старые избранные
-  // в нативные locked-точки. До завершения миграции автоочистка ключи не
-  // трогает; UI секции References в этом случае выводит подсказку и не даёт
-  // менять настройки.
+  // Секция References задизейблена, пока пользователь не подтвердил миграцию
+  // SVP/CUI-избранных в native lock - до этого автоочистка ключей всё равно
+  // блокируется на уровне runCleanup, а возможность менять настройки запутала
+  // бы пользователя. Подтверждение - флаг isLockMigrationDone (см. подробный
+  // разбор в inventoryCleanup.runCleanupImpl).
   const migrationPending =
-    isModuleActive('favoritesMigration') &&
-    isFavoritesSnapshotReady() &&
-    getFavoritedGuids().size > 0;
+    !isLockMigrationDone() &&
+    isModuleEnabledByUser('favoritesMigration') &&
+    (!isFavoritesSnapshotReady() || getFavoritedGuids().size > 0);
   const refsEnabled = !migrationPending;
   content.appendChild(createReferencesSection(draft, refsEnabled));
 

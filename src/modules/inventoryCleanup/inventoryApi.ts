@@ -1,7 +1,10 @@
 import type { IDeletionEntry } from './cleanupCalculator';
-import { buildLockedPointGuids } from './cleanupCalculator';
 import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
-import { INVENTORY_CACHE_KEY, readInventoryCache } from '../../core/inventoryCache';
+import {
+  INVENTORY_CACHE_KEY,
+  buildLockedPointGuids,
+  readInventoryCache,
+} from '../../core/inventoryCache';
 import { isInventoryReference } from '../../core/inventoryTypes';
 
 export interface IDeleteResult {

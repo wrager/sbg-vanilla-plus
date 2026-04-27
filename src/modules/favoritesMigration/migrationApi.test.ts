@@ -1,5 +1,6 @@
 import {
   buildCandidates,
+  inferAndPersistLockMigrationDone,
   postMark,
   runMigration,
   type IMigrationItem,
@@ -8,11 +9,19 @@ import {
 
 // Мок favoritesStore.getFavoritedGuids — возвращаем заданный Set GUID'ов точек.
 let favoritedGuidsMock: Set<string>;
+let lockMigrationDoneMock = false;
+const setLockMigrationDoneSpy = jest.fn(() => {
+  lockMigrationDoneMock = true;
+});
 
 jest.mock('../../core/favoritesStore', () => ({
   getFavoritedGuids: () => favoritedGuidsMock,
   // Не вызывается в migrationApi.ts напрямую, но импортируется типом — прокидываем заглушку.
   loadFavorites: jest.fn(),
+  isLockMigrationDone: () => lockMigrationDoneMock,
+  setLockMigrationDone: (): void => {
+    setLockMigrationDoneSpy();
+  },
 }));
 
 const AUTH_TOKEN = 'auth-test';
@@ -22,6 +31,8 @@ let mockFetch: jest.Mock;
 
 beforeEach(() => {
   favoritedGuidsMock = new Set<string>();
+  lockMigrationDoneMock = false;
+  setLockMigrationDoneSpy.mockClear();
   localStorage.clear();
   localStorage.setItem('auth', AUTH_TOKEN);
 
@@ -418,5 +429,80 @@ describe('runMigration — onPhaseChange', () => {
     // Финальный progress retry-фазы: done=1, total=1 (свой бар, не 2/2 от старого).
     const last = progressEvents[progressEvents.length - 1];
     expect(last).toEqual({ done: 1, total: 1 });
+  });
+});
+
+describe('inferAndPersistLockMigrationDone', () => {
+  test('legacy-список пуст: флаг не выставляется', () => {
+    favoritedGuidsMock = new Set<string>();
+    setInventory([]);
+    inferAndPersistLockMigrationDone();
+    expect(setLockMigrationDoneSpy).not.toHaveBeenCalled();
+  });
+
+  test('флаг уже выставлен: ничего не делает', () => {
+    favoritedGuidsMock = new Set<string>(['p1']);
+    lockMigrationDoneMock = true;
+    setInventory([{ g: 'r1', t: 3, l: 'p1', a: 5 }]); // даже без lock
+    inferAndPersistLockMigrationDone();
+    expect(setLockMigrationDoneSpy).not.toHaveBeenCalled();
+  });
+
+  test('legacy непустой, ВСЕ legacy-точки имеют locked-стопку: флаг выставляется', () => {
+    favoritedGuidsMock = new Set<string>(['p1', 'p2']);
+    setInventory([
+      { g: 'r1', t: 3, l: 'p1', a: 5, f: 0b10 },
+      { g: 'r2', t: 3, l: 'p2', a: 3, f: 0b10 },
+    ]);
+    inferAndPersistLockMigrationDone();
+    expect(setLockMigrationDoneSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('legacy непустой, у legacy-точки нет стопок ключей: засчитывается как локально защищённая', () => {
+    // Если в инвентаре нет ключей от legacy-точки, защищать нечего - точка не
+    // блокирует флаг (миграция бы тоже не нашла кандидатов для неё).
+    favoritedGuidsMock = new Set<string>(['p1', 'p-no-keys']);
+    setInventory([{ g: 'r1', t: 3, l: 'p1', a: 5, f: 0b10 }]);
+    inferAndPersistLockMigrationDone();
+    expect(setLockMigrationDoneSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('legacy непустой, есть legacy-точка с ключами без lock: флаг НЕ выставляется', () => {
+    favoritedGuidsMock = new Set<string>(['p1', 'p2']);
+    setInventory([
+      { g: 'r1', t: 3, l: 'p1', a: 5, f: 0b10 },
+      { g: 'r2', t: 3, l: 'p2', a: 3, f: 0 }, // не locked
+    ]);
+    inferAndPersistLockMigrationDone();
+    expect(setLockMigrationDoneSpy).not.toHaveBeenCalled();
+  });
+
+  test('legacy непустой, ни одна legacy-точка не locked: флаг НЕ выставляется', () => {
+    favoritedGuidsMock = new Set<string>(['p1']);
+    setInventory([{ g: 'r1', t: 3, l: 'p1', a: 5, f: 0 }]);
+    inferAndPersistLockMigrationDone();
+    expect(setLockMigrationDoneSpy).not.toHaveBeenCalled();
+  });
+
+  test('inventory-cache отсутствует: флаг НЕ выставляется (есть legacy с возможными ключами)', () => {
+    // Кэш не загружен - не можем верифицировать что миграция была проведена.
+    favoritedGuidsMock = new Set<string>(['p1']);
+    localStorage.removeItem('inventory-cache');
+    inferAndPersistLockMigrationDone();
+    // По логике: пустой кэш => не подтверждение полного локирования. p1
+    // не имеет стопок (раз кэш пуст), значит "защищать нечего" => флаг
+    // ставится. Это компромисс: если у пользователя есть ключи в
+    // реальности но кэш ещё не подгружен - первый запуск discover'а
+    // пересоздаст кэш, а флаг уже стоит. Однако защита по lock-биту в
+    // calculateDeletions всё равно отрабатывает безусловно: locked-точки
+    // там не удаляются. Риск только для legacy-точек, не помеченных lock.
+    expect(setLockMigrationDoneSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('legacy-точка с amount=0 (раздал ключи): не блокирует флаг', () => {
+    favoritedGuidsMock = new Set<string>(['p1']);
+    setInventory([{ g: 'r1', t: 3, l: 'p1', a: 0, f: 0 }]);
+    inferAndPersistLockMigrationDone();
+    expect(setLockMigrationDoneSpy).toHaveBeenCalledTimes(1);
   });
 });

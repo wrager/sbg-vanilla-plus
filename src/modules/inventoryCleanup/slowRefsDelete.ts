@@ -1,11 +1,18 @@
-import { getFavoritedGuids, isFavoritesSnapshotReady } from '../../core/favoritesStore';
+import {
+  getFavoritedGuids,
+  isFavoritesSnapshotReady,
+  isLockMigrationDone,
+} from '../../core/favoritesStore';
 import { t } from '../../core/l10n';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
-import { readInventoryCache, readInventoryReferences } from '../../core/inventoryCache';
+import {
+  buildLockedPointGuids,
+  readInventoryCache,
+  readInventoryReferences,
+} from '../../core/inventoryCache';
 import { isInventoryReference } from '../../core/inventoryTypes';
-import { isModuleActive } from '../../core/moduleRegistry';
+import { isModuleEnabledByUser } from '../../core/moduleRegistry';
 import type { IDeletionEntry } from './cleanupCalculator';
-import { buildLockedPointGuids } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
 import {
   deleteInventoryItems,
@@ -224,7 +231,11 @@ async function runSlowDelete(): Promise<void> {
   // shouldShowButton уже прячет её, но прямой вызов функции (тест, будущая
   // подмена обработчика) не должен обойти блокировку. См. комментарий в
   // shouldShowButton и в inventoryCleanup.runCleanupImpl.
-  if (isModuleActive('favoritesMigration') && !isFavoritesSnapshotReady()) {
+  if (
+    !isLockMigrationDone() &&
+    isModuleEnabledByUser('favoritesMigration') &&
+    !isFavoritesSnapshotReady()
+  ) {
     showSlowToast(
       t({
         en: 'Favorites snapshot not loaded yet — wait a moment and try again',
@@ -390,16 +401,15 @@ function updateButtonLabel(button: HTMLButtonElement): void {
 function shouldShowButton(): boolean {
   const settings = loadCleanupSettings();
   if (settings.limits.referencesMode !== 'slow') return false;
-  // Кнопка скрыта, пока legacy SVP/CUI-список непуст и активен модуль миграции —
-  // удаление ключей блокируется до завершения переноса в нативные locked.
-  // Также скрыта, пока snapshot ещё не загружен (init модуля миграции в процессе
-  // или loadFavorites упал) — мы не знаем, есть ли легаси-избранные, удаление
-  // ключей вслепую недопустимо. См. комментарий в inventoryCleanup.runCleanupImpl.
-  const migrationModuleActive = isModuleActive('favoritesMigration');
-  const snapshotReady = isFavoritesSnapshotReady();
-  if (migrationModuleActive && !snapshotReady) return false;
-  const migrationPending = migrationModuleActive && snapshotReady && getFavoritedGuids().size > 0;
-  return !migrationPending;
+  // Кнопка скрыта, пока пользователь не подтвердил миграцию SVP/CUI-избранных
+  // в native lock и в IDB остаются legacy-точки. Подтверждение - флаг
+  // isLockMigrationDone, выставляемый при success миграции в locked. Когда
+  // флаг есть, legacy становится архивом, защиту берёт нативный lock - кнопка
+  // показывается. Подробный разбор в inventoryCleanup.runCleanupImpl.
+  if (isLockMigrationDone()) return true;
+  if (!isModuleEnabledByUser('favoritesMigration')) return true;
+  if (!isFavoritesSnapshotReady()) return false;
+  return getFavoritedGuids().size === 0;
 }
 
 /**

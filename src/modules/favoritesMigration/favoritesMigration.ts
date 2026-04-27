@@ -1,6 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { injectStyles, removeStyles } from '../../core/dom';
 import { loadFavorites } from '../../core/favoritesStore';
+import { inferAndPersistLockMigrationDone } from './migrationApi';
 import { installMigrationUi, uninstallMigrationUi } from './migrationUi';
 import styles from './styles.css?inline';
 
@@ -23,6 +24,11 @@ export const favoritesMigration: IFeatureModule = {
     // Грузим IDB-снимок SVP/CUI-избранных в memory cache: миграция читает его
     // через `getFavoritedGuids()` без повторного await.
     await loadFavorites();
+    // Если пользователь уже мигрировал в native locked в прошлой версии
+    // скрипта (когда флаг ещё не писался), но IDB остался непустым -
+    // выставляем флаг ретроактивно, чтобы inventoryCleanup перестал
+    // блокировать удаление ключей подсказкой "Run favorites migration first".
+    inferAndPersistLockMigrationDone();
   },
 
   enable() {

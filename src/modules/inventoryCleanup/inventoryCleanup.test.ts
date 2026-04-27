@@ -15,7 +15,36 @@ import { registerModules } from '../../core/moduleRegistry';
 import {
   loadFavorites,
   resetForTests as resetFavoritesStoreForTests,
+  setLockMigrationDone,
 } from '../../core/favoritesStore';
+
+async function seedFavoritesIdb(
+  records: { guid: string; cooldown: number | null }[],
+): Promise<void> {
+  // Заполняет IDB CUI/favorites через прямой вызов API. Тестам нужно подставить
+  // легаси-снимок без запуска CUI/нашего модуля - семя ставится напрямую.
+  await loadFavorites();
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open('CUI');
+    request.onsuccess = (): void => {
+      const db = request.result;
+      const tx = db.transaction('favorites', 'readwrite');
+      const store = tx.objectStore('favorites');
+      for (const record of records) store.put(record);
+      tx.oncomplete = (): void => {
+        db.close();
+        resolve();
+      };
+      tx.onabort = (): void => {
+        db.close();
+        reject(tx.error ?? new Error('seed transaction aborted'));
+      };
+    };
+    request.onerror = (): void => {
+      reject(request.error ?? new Error('seed IDB open failed'));
+    };
+  });
+}
 
 // --- inventoryTypes ---
 
@@ -1373,6 +1402,81 @@ describe('inventoryCleanup module', () => {
       await flushPromises();
 
       // Snapshot готов и пуст — guard не срабатывает, удаление ключей идёт.
+      expect(inventoryDeleteCalls().length).toBeGreaterThan(0);
+
+      void inventoryCleanup.disable();
+      registerModules([]);
+      resetFavoritesStoreForTests();
+      invElement.remove();
+      limElement.remove();
+      button.remove();
+      localStorage.removeItem('inventory-cache');
+      localStorage.removeItem('svp_inventoryCleanup');
+      consoleSpy.mockRestore();
+    });
+
+    test('lock-migration-done выставлен → cleanup ключей не блокируется даже при непустом legacy', async () => {
+      // После успешной миграции в native lock пользователь подтвердил, что
+      // защиту обеспечивает нативный lock-флаг. Legacy-список становится
+      // архивом, не должен влиять на cleanup. Это тот самый сценарий, который
+      // ломал прежнюю логику ("Run favorites migration first" после успешной
+      // миграции, потому что IDB остался непустым).
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+      registerModules([
+        {
+          id: 'favoritesMigration',
+          name: { en: '', ru: '' },
+          description: { en: '', ru: '' },
+          defaultEnabled: true,
+          category: 'utility',
+          status: 'ready',
+          init() {},
+          enable() {},
+          disable() {},
+        },
+      ]);
+      resetFavoritesStoreForTests();
+      // legacy-список НЕпустой (IDB после миграции не очищается).
+      await seedFavoritesIdb([{ guid: 'p1', cooldown: null }]);
+      await loadFavorites();
+      // Пользователь подтвердил миграцию через успешный Mark as locked.
+      setLockMigrationDone();
+
+      const invElement = document.createElement('span');
+      invElement.id = 'self-info__inv';
+      invElement.textContent = '2950';
+      document.body.appendChild(invElement);
+
+      const limElement = document.createElement('span');
+      limElement.id = 'self-info__inv-lim';
+      limElement.textContent = '3000';
+      document.body.appendChild(limElement);
+
+      const settings = defaultCleanupSettings();
+      settings.limits.referencesMode = 'fast';
+      settings.limits.referencesFastLimit = 1;
+      saveCleanupSettings(settings);
+
+      // Кэш с lock-поддержкой, точка p1 НЕ locked нативно (но мы доверяем
+      // флагу: пользователь сказал "миграция сделана", дальше его выбор).
+      // Точка p2 не в legacy и не locked, должна быть удалена.
+      localStorage.setItem(
+        'inventory-cache',
+        JSON.stringify([{ g: 'r2', t: 3, l: 'p2', a: 5, f: 0 }]),
+      );
+
+      void inventoryCleanup.enable();
+
+      const button = document.createElement('button');
+      button.id = 'discover';
+      document.body.appendChild(button);
+      button.click();
+      simulateDiscoverResponse();
+
+      await flushPromises();
+
+      // Удаление ключей идёт - lock-migration-done снимает блок legacy.
       expect(inventoryDeleteCalls().length).toBeGreaterThan(0);
 
       void inventoryCleanup.disable();

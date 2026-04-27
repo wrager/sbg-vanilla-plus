@@ -1,5 +1,6 @@
 import type { IInventoryItem, IInventoryReference } from '../../core/inventoryTypes';
 import { isInventoryReference } from '../../core/inventoryTypes';
+import { buildLockedPointGuids } from '../../core/inventoryCache';
 import type { ICleanupLimits } from './cleanupSettings';
 import type { ILocalizedString } from '../../core/l10n';
 import { t } from '../../core/l10n';
@@ -61,28 +62,6 @@ export function calculateDeletions(
   }
 
   return deletions;
-}
-
-/**
- * Возвращает GUID'ы точек, у которых хотя бы одна стопка ключей помечена
- * флагом `lock` (бит 1 поля `f`, refs/game-beta/script.js:3405).
- * Стопки — деталь хранения; в UI игрок видит точку, и lock-семантика
- * пользователю «защитить ключи этой точки от удаления». Поэтому агрегируем
- * per-point: одна locked-стопка ⇒ вся точка под защитой.
- *
- * Принимает `unknown[]` — позволяет передавать сырой `inventory-cache` без
- * предварительной фильтрации; внутренний `isInventoryReference` отсеивает
- * не-рефы.
- */
-export function buildLockedPointGuids(items: readonly unknown[]): Set<string> {
-  const locked = new Set<string>();
-  for (const item of items) {
-    if (!isInventoryReference(item)) continue;
-    if (item.f === undefined) continue;
-    if ((item.f & 0b10) === 0) continue;
-    locked.add(item.l);
-  }
-  return locked;
 }
 
 interface IItemEntry {

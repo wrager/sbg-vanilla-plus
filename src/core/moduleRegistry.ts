@@ -64,6 +64,21 @@ export function isModuleActive(id: string): boolean {
   return isModuleEnabled(settings, id, mod.defaultEnabled);
 }
 
+/**
+ * Модуль зарегистрирован и включён по пользовательским настройкам, БЕЗ учёта
+ * runtime-статуса. Нужно для случаев, когда защита должна срабатывать пока
+ * init модуля ещё не завершён - например, блокировка удаления ключей в
+ * inventoryCleanup, пока favoritesMigration грузит IDB-снимок.
+ * isModuleActive в момент запущенного init возвращает false (status пока не
+ * 'ready') и снимает блокировку, открывая race-окно.
+ */
+export function isModuleEnabledByUser(id: string): boolean {
+  const mod = getModuleById(id);
+  if (!mod) return false;
+  const settings = loadSettings();
+  return isModuleEnabled(settings, id, mod.defaultEnabled);
+}
+
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 
 export function runModuleAction(

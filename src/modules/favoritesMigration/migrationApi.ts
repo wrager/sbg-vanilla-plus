@@ -1,7 +1,16 @@
-import { INVENTORY_CACHE_KEY, readInventoryReferences } from '../../core/inventoryCache';
+import {
+  INVENTORY_CACHE_KEY,
+  buildLockedPointGuids,
+  readInventoryCache,
+  readInventoryReferences,
+} from '../../core/inventoryCache';
 import type { IInventoryReference } from '../../core/inventoryTypes';
 import { isInventoryReference } from '../../core/inventoryTypes';
-import { getFavoritedGuids } from '../../core/favoritesStore';
+import {
+  getFavoritedGuids,
+  isLockMigrationDone,
+  setLockMigrationDone,
+} from '../../core/favoritesStore';
 
 /**
  * Перевод SVP/CUI-избранных в нативные «звёздочки» / «замочки» SBG 0.6.1
@@ -63,6 +72,36 @@ export interface IMigrationCandidates {
   withoutKeys: number;
   /** Стопки, которые УЖЕ имеют нужный флаг (предварительный фильтр по item.f). */
   alreadyApplied: number;
+}
+
+/**
+ * One-time инициализация флага lock-migration-done для существующих
+ * пользователей: если флаг ещё не выставлен, но в legacy IDB есть точки И
+ * каждая из них либо помечена нативным lock в свежем `inventory-cache`, либо
+ * вообще не имеет стопок ключей - значит миграция была проведена в прошлой
+ * версии скрипта (когда флаг ещё не записывался). Выставляем флаг, чтобы
+ * inventoryCleanup перестал блокировать удаление ключей.
+ *
+ * Если хоть одна legacy-точка имеет стопки И не помечена lock - миграция не
+ * завершена, флаг не выставляем; пользователь должен пройти миграцию заново.
+ *
+ * Вызывается один раз из favoritesMigration.init() после loadFavorites().
+ * Когда флаг уже выставлен (или legacy-список пуст) - no-op.
+ */
+export function inferAndPersistLockMigrationDone(): void {
+  if (isLockMigrationDone()) return;
+  const legacyGuids = getFavoritedGuids();
+  if (legacyGuids.size === 0) return;
+  const cache = readInventoryCache();
+  const lockedGuids = buildLockedPointGuids(cache);
+  for (const guid of legacyGuids) {
+    if (lockedGuids.has(guid)) continue;
+    const hasStacks = cache.some(
+      (item) => isInventoryReference(item) && item.l === guid && item.a > 0,
+    );
+    if (hasStacks) return;
+  }
+  setLockMigrationDone();
 }
 
 /**

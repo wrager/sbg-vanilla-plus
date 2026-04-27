@@ -13,6 +13,7 @@ import { registerModules as registerModulesForTest } from '../../core/moduleRegi
 import {
   loadFavorites as loadFavoritesForTest,
   resetForTests as resetFavoritesStoreForTests,
+  setLockMigrationDone,
 } from '../../core/favoritesStore';
 
 // --- collectOverLimit ---
@@ -593,6 +594,31 @@ describe('кнопка «Очистить ключи»: snapshot guard', () => {
     setSlowSettings();
     makeBar();
     registerModulesForTest([]);
+
+    installSlowRefsDelete();
+    expect(getButton()).not.toBeNull();
+  });
+
+  test('lock-migration-done выставлен → кнопка показывается даже при race-snapshot', () => {
+    // После миграции пользователь нажал Mark as locked, флаг выставлен. Даже
+    // если snapshot ещё не готов (init модуля favoritesMigration параллельный),
+    // кнопка должна показываться - блокировка снята признанием миграции.
+    setSlowSettings();
+    makeBar();
+    registerModulesForTest([
+      {
+        id: 'favoritesMigration',
+        name: { en: '', ru: '' },
+        description: { en: '', ru: '' },
+        defaultEnabled: true,
+        category: 'utility',
+        status: 'ready',
+        init() {},
+        enable() {},
+        disable() {},
+      },
+    ]);
+    setLockMigrationDone();
 
     installSlowRefsDelete();
     expect(getButton()).not.toBeNull();

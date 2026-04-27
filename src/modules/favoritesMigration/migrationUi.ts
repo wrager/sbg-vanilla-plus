@@ -1,7 +1,7 @@
 import { t } from '../../core/l10n';
 import type { ILocalizedString } from '../../core/l10n';
 import { showToast } from '../../core/toast';
-import { getFavoritesCount } from '../../core/favoritesStore';
+import { getFavoritesCount, setLockMigrationDone } from '../../core/favoritesStore';
 import {
   buildCandidates,
   runMigration,
@@ -283,6 +283,13 @@ async function runFlow(flag: MigrationFlag, panelElement: HTMLElement): Promise<
     const candidates = buildCandidates(flag);
 
     if (candidates.toSend.length === 0) {
+      // Все стопки уже помечены нужным флагом. Для locked это означает что
+      // защита уже полная - ставим lock-migration-done, чтобы inventoryCleanup
+      // перестал блокировать удаление ключей. Для favorite ничего не ставим:
+      // favorite не защищает от удаления.
+      if (flag === 'locked' && candidates.alreadyApplied > 0) {
+        setLockMigrationDone();
+      }
       const message = candidates.alreadyApplied > 0 ? t(ALREADY_APPLIED_TOAST) : t(NO_KEYS_TOAST);
       showToast(message);
       return;
@@ -320,6 +327,14 @@ async function runFlow(flag: MigrationFlag, panelElement: HTMLElement): Promise<
       result.succeeded.length === candidates.toSend.length;
 
     if (isSuccess) {
+      // Полный success миграции в locked - выставляем флаг lock-migration-done.
+      // С этого момента inventoryCleanup доверяет нативному lock-флагу и не
+      // блокирует удаление ключей по факту непустого legacy-списка.
+      // Для favorite флаг НЕ ставим: favorite не защищает от удаления, и блок
+      // должен оставаться, пока пользователь явно не нажмёт locked-миграцию.
+      if (flag === 'locked') {
+        setLockMigrationDone();
+      }
       markProgressTerminal(panelElement, 'success', t(SUCCESS_STATUS_LABEL));
       showToast(t(SUCCESS_STATUS_LABEL));
     } else {

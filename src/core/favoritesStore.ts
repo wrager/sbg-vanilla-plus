@@ -21,6 +21,15 @@ const CUI_DB_VERSION = 9;
 // удаление ключей в inventoryCleanup заблокировано, пользователь получает alert.
 export const SEAL_KEY = 'svp_favorites_seal';
 
+// Lock-migration done flag: после первого успешного прогона миграции в native
+// `locked` (или его одноразовой инициализации в favoritesMigration.init для
+// существующих пользователей) ставится в '1'. Пока флаг не выставлен и в IDB
+// есть legacy SVP/CUI-избранные, удаление ключей в inventoryCleanup
+// заблокировано - пользователь ещё не подтвердил миграцию. После выставления
+// флага legacy-список становится архивом: защиту обеспечивает нативный
+// lock-флаг (`inventory-cache[i].f & 0b10`), legacy не учитывается.
+export const LOCK_MIGRATION_DONE_KEY = 'svp_lock_migration_done';
+
 function updateSeal(): void {
   try {
     localStorage.setItem(SEAL_KEY, String(memoryGuids.size));
@@ -286,10 +295,36 @@ export function resetForTests(): void {
   memoryGuids = new Set();
   snapshotLoaded = false;
   localStorage.removeItem(SEAL_KEY);
+  localStorage.removeItem(LOCK_MIGRATION_DONE_KEY);
   if (dbPromise) {
     void dbPromise.then((db) => {
       db.close();
     });
   }
   dbPromise = null;
+}
+
+/**
+ * true - после первого успешного прогона миграции в native `locked` (или
+ * one-time инициализации флага в favoritesMigration.init для существующих
+ * пользователей). Пока false и legacy-список непуст, удаление ключей в
+ * inventoryCleanup блокируется. После выставления legacy-список становится
+ * архивом: защиту обеспечивает нативный lock-флаг.
+ */
+export function isLockMigrationDone(): boolean {
+  try {
+    return localStorage.getItem(LOCK_MIGRATION_DONE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setLockMigrationDone(): void {
+  try {
+    localStorage.setItem(LOCK_MIGRATION_DONE_KEY, '1');
+  } catch {
+    // localStorage может быть недоступен (private mode, quota). Не критично:
+    // блокировка просто продолжит срабатывать до следующего успешного запуска
+    // миграции.
+  }
 }

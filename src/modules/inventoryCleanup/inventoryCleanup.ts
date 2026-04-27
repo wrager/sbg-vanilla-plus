@@ -1,7 +1,11 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { isModuleActive } from '../../core/moduleRegistry';
+import { isModuleEnabledByUser } from '../../core/moduleRegistry';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
-import { getFavoritedGuids, isFavoritesSnapshotReady } from '../../core/favoritesStore';
+import {
+  getFavoritedGuids,
+  isFavoritesSnapshotReady,
+  isLockMigrationDone,
+} from '../../core/favoritesStore';
 // favoritesStore импортируется только для определения migrationPending — сам
 // legacy список SVP/CUI участвует только в favoritesMigration. inventoryCleanup
 // здесь использует список только как сигнал «миграция ещё не сделана».
@@ -76,30 +80,36 @@ async function runCleanupImpl(): Promise<void> {
   const items = parseInventoryCache();
   if (items.length === 0) return;
 
-  // Защита ключей: ТОЛЬКО нативные locked точки (item.f & 0b10), без legacy
-  // SVP/CUI-избранных. Однако если у пользователя есть непустой legacy список
-  // и модуль миграции активен — миграция ещё не сделана, и автоочистка ключей
-  // удалила бы то, что пользователь защищал в SVP/CUI. Блокируем удаление
-  // ключей до завершения миграции; cores/cats удаляются как обычно.
+  // Защита ключей: нативные locked точки (item.f & 0b10) защищены
+  // calculateDeletions/inventoryApi-guard'ами безусловно. Дополнительная
+  // блокировка удаления ключей нужна, пока пользователь не подтвердил
+  // миграцию SVP/CUI-избранных в native lock - иначе автоочистка удалила бы
+  // legacy-favorited ключи, которые ещё не помечены замочком в игре.
   //
-  // Дополнительный guard на snapshot: bootstrap.initModules запускает init
-  // модулей параллельно — inventoryCleanup.enable() выполняется синхронно сразу,
-  // а favoritesMigration.init() (где делается loadFavorites из IDB) асинхронный.
-  // Если первый discover успевает до завершения loadFavorites, snapshot не
-  // готов, размер легаси-списка читается как 0, и migrationPending был бы
-  // false — cleanup ключей пошёл бы вслепую, удалив legacy-favorited ключи,
-  // которые пользователь ещё не успел мигрировать. Поэтому пока модуль миграции
-  // активен, но snapshot не загружен (init ещё в процессе, или loadFavorites
-  // упал, или сработала count-seal-проверка) — удаление ключей блокируется как
-  // и при настоящем pending-состоянии.
-  const migrationModuleActive = isModuleActive('favoritesMigration');
+  // Подтверждение - флаг isLockMigrationDone, выставляемый при success
+  // миграции в locked (в migrationUi.runFlow) или ретроактивно для
+  // существующих пользователей (inferAndPersistLockMigrationDone в init).
+  // Когда флаг выставлен, legacy-список становится архивом: защиту берёт на
+  // себя нативный lock, наш блок не нужен.
+  //
+  // Когда флаг НЕ выставлен:
+  // - модуль миграции отключён пользователем - блок снимаем, его выбор;
+  // - модуль активен, snapshot не готов (init ещё крутит loadFavorites или
+  //   loadFavorites упал) - блок ставим, мы не знаем содержимое legacy и не
+  //   рискуем удалять ключи вслепую;
+  // - модуль активен, snapshot готов, legacy непустой - блок ставим, есть что
+  //   мигрировать;
+  // - модуль активен, snapshot готов, legacy пустой - блок снимаем, нечего
+  //   защищать.
+  const migrationModuleEnabled = isModuleEnabledByUser('favoritesMigration');
   const snapshotReady = isFavoritesSnapshotReady();
-  const migrationPending = migrationModuleActive && snapshotReady && getFavoritedGuids().size > 0;
-  const blockReferencesUntilSnapshot = migrationModuleActive && !snapshotReady;
-  const limitsForRun =
-    migrationPending || blockReferencesUntilSnapshot
-      ? { ...settings.limits, referencesMode: 'off' as const }
-      : settings.limits;
+  const blockReferences =
+    !isLockMigrationDone() &&
+    migrationModuleEnabled &&
+    (!snapshotReady || getFavoritedGuids().size > 0);
+  const limitsForRun = blockReferences
+    ? { ...settings.limits, referencesMode: 'off' as const }
+    : settings.limits;
   const deletions = calculateDeletions(items, limitsForRun);
   if (deletions.length === 0) return;
 

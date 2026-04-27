@@ -1,6 +1,7 @@
 import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import type { IInventoryItem } from '../../core/inventoryTypes';
-import { buildLockedPointGuids, calculateDeletions } from './cleanupCalculator';
+import { buildLockedPointGuids } from '../../core/inventoryCache';
+import { calculateDeletions } from './cleanupCalculator';
 import type { ICleanupLimits } from './cleanupSettings';
 
 const FAST_LIMIT_2: ICleanupLimits = {
