@@ -5,16 +5,35 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
+interface IPopperGlobal {
+  createPopper: (reference: Element, popper: Element, options?: unknown) => unknown;
+}
+
+function setupPopperMock(): jest.Mock {
+  // Фейковый Popper.createPopper: возвращает инстанс с минимальной структурой,
+  // которую читает popoverCloser (state.elements.reference + destroy).
+  const createPopper = jest.fn(
+    (reference: Element, popper: Element): { state: object; destroy: jest.Mock } => ({
+      state: { elements: { reference, popper } },
+      destroy: jest.fn(),
+    }),
+  );
+  (window as unknown as { Popper: IPopperGlobal }).Popper = { createPopper };
+  return createPopper;
+}
+
+function teardownPopperMock(): void {
+  delete (window as unknown as { Popper?: IPopperGlobal }).Popper;
+}
+
 function createPopover(): {
   popover: HTMLUListElement;
   favBtn: HTMLButtonElement;
   lockBtn: HTMLButtonElement;
   manageBtn: HTMLButtonElement;
 } {
-  // Структура из refs/game-beta/dom/body.html:415-423.
   const popover = document.createElement('ul');
   popover.className = 'inventory__ref-actions popover';
-  // Без `hidden` - имитируем открытое меню.
 
   const favLi = document.createElement('li');
   favLi.className = 'inventory__ra-item';
@@ -39,97 +58,151 @@ function createPopover(): {
   return { popover, favBtn, lockBtn, manageBtn };
 }
 
-describe('popoverCloser', () => {
+describe('popoverCloser - закрытие через симуляцию клика по reference', () => {
+  let referenceClick: jest.Mock;
+  let referenceElement: HTMLButtonElement;
+
+  beforeEach(() => {
+    setupPopperMock();
+    referenceElement = document.createElement('button');
+    referenceElement.className = 'inventory__item-actions';
+    referenceClick = jest.fn();
+    referenceElement.addEventListener('click', referenceClick);
+    document.body.appendChild(referenceElement);
+  });
+
   afterEach(() => {
     uninstallPopoverCloser();
+    teardownPopperMock();
     document.body.innerHTML = '';
   });
 
-  test('клик на favorite-кнопку добавляет hidden к popover', async () => {
+  function simulateGameOpensPopover(popover: Element): void {
+    // Имитируем работу игры: она вызывает Popper.createPopper(reference, popover, ...)
+    // когда пользователь кликает троеточие. Наш перехват сохранит инстанс.
+    const { Popper } = window as unknown as { Popper: IPopperGlobal };
+    Popper.createPopper(referenceElement, popover);
+  }
+
+  test('клик favorite симулирует click reference-элемента (игра вызовет destroyPopover)', async () => {
     const { popover, favBtn } = createPopover();
     installPopoverCloser();
     await flushMicrotasks();
 
+    simulateGameOpensPopover(popover);
+
     favBtn.click();
     await flushMicrotasks();
 
-    expect(popover.classList.contains('hidden')).toBe(true);
+    expect(referenceClick).toHaveBeenCalledTimes(1);
   });
 
-  test('клик на locked-кнопку добавляет hidden', async () => {
+  test('клик locked симулирует click reference', async () => {
     const { popover, lockBtn } = createPopover();
     installPopoverCloser();
     await flushMicrotasks();
+    simulateGameOpensPopover(popover);
 
     lockBtn.click();
     await flushMicrotasks();
 
-    expect(popover.classList.contains('hidden')).toBe(true);
+    expect(referenceClick).toHaveBeenCalledTimes(1);
   });
 
-  test('клик на manage-кнопку (Removal menu) добавляет hidden', async () => {
+  test('клик manage (Removal menu) симулирует click reference', async () => {
     const { popover, manageBtn } = createPopover();
     installPopoverCloser();
     await flushMicrotasks();
+    simulateGameOpensPopover(popover);
 
     manageBtn.click();
     await flushMicrotasks();
 
-    expect(popover.classList.contains('hidden')).toBe(true);
+    expect(referenceClick).toHaveBeenCalledTimes(1);
   });
 
-  test('закрытие происходит через микротаск, не синхронно', async () => {
+  test('симуляция клика срабатывает в микротаске, не синхронно', async () => {
     const { popover, favBtn } = createPopover();
     installPopoverCloser();
     await flushMicrotasks();
+    simulateGameOpensPopover(popover);
 
     favBtn.click();
-    // Сразу после клика hidden ещё не должен быть установлен (микротаск не отработал).
-    expect(popover.classList.contains('hidden')).toBe(false);
+    expect(referenceClick).not.toHaveBeenCalled();
 
     await flushMicrotasks();
-    expect(popover.classList.contains('hidden')).toBe(true);
+    expect(referenceClick).toHaveBeenCalledTimes(1);
   });
 
-  test('uninstall: клики больше не закрывают popover', async () => {
+  test('перехват createPopper срабатывает только для нашего popover (.inventory__ref-actions)', async () => {
     const { popover, favBtn } = createPopover();
     installPopoverCloser();
     await flushMicrotasks();
+
+    // Игра создаёт другой Popper - наш перехват не должен сохранить его как currentPopper.
+    const otherPopover = document.createElement('div');
+    otherPopover.className = 'some-other-popover';
+    document.body.appendChild(otherPopover);
+    const otherReference = document.createElement('button');
+    document.body.appendChild(otherReference);
+    const { Popper } = window as unknown as { Popper: IPopperGlobal };
+    Popper.createPopper(otherReference, otherPopover);
+
+    // Игра создаёт popover для .inventory__ref-actions.
+    simulateGameOpensPopover(popover);
+
+    favBtn.click();
+    await flushMicrotasks();
+
+    // Должен быть кликнут именно наш reference (от .inventory__ref-actions),
+    // не otherReference от чужого popover.
+    expect(referenceClick).toHaveBeenCalledTimes(1);
+  });
+
+  test('uninstall: createPopper восстанавливается, кнопки больше не закрывают', async () => {
+    const original = (window as unknown as { Popper: IPopperGlobal }).Popper.createPopper;
+    const { popover, favBtn } = createPopover();
+    installPopoverCloser();
+    await flushMicrotasks();
+
+    // После install createPopper заменён.
+    expect((window as unknown as { Popper: IPopperGlobal }).Popper.createPopper).not.toBe(original);
 
     uninstallPopoverCloser();
+
+    // После uninstall - оригинал.
+    expect((window as unknown as { Popper: IPopperGlobal }).Popper.createPopper).toBe(original);
+
+    simulateGameOpensPopover(popover);
     favBtn.click();
     await flushMicrotasks();
-
-    expect(popover.classList.contains('hidden')).toBe(false);
+    expect(referenceClick).not.toHaveBeenCalled();
   });
 
-  test('повторный enable->disable->enable: новый install корректно вешает listeners', async () => {
+  test('fallback: если popper не был перехвачен, popover скрывается через hidden', async () => {
     const { popover, favBtn } = createPopover();
     installPopoverCloser();
     await flushMicrotasks();
-    uninstallPopoverCloser();
-    installPopoverCloser();
-    await flushMicrotasks();
 
+    // Не вызываем simulateGameOpensPopover - currentPopper остаётся null.
     favBtn.click();
     await flushMicrotasks();
 
+    expect(referenceClick).not.toHaveBeenCalled();
     expect(popover.classList.contains('hidden')).toBe(true);
   });
 
   test('install до появления popover: ждёт через waitForElement', async () => {
     installPopoverCloser();
-    // Popover ещё нет в DOM - waitForElement пока не зарезолвится.
     await flushMicrotasks();
 
     const { popover, favBtn } = createPopover();
-    // После добавления popover MutationObserver внутри waitForElement подхватит элемент.
-    // Дадим достаточно микротасков чтобы observer отработал.
     for (let i = 0; i < 10; i++) await flushMicrotasks();
+    simulateGameOpensPopover(popover);
 
     favBtn.click();
     await flushMicrotasks();
 
-    expect(popover.classList.contains('hidden')).toBe(true);
+    expect(referenceClick).toHaveBeenCalledTimes(1);
   });
 });

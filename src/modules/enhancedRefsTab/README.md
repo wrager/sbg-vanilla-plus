@@ -15,11 +15,15 @@
 
 ### Слой 2: popover closer (JS)
 
-`popoverCloser.ts` подписывается на click-события трёх кнопок в `.inventory__ref-actions` (`[data-flag="favorite"]`, `[data-flag="locked"]`, `#inventory__ra-manage`) и после нативного обработчика добавляет класс `hidden` к popover-элементу. Это имитирует эффект игровой `destroyPopover` (refs/game-beta/script.js:4516).
+`popoverCloser.ts` подписывается на click-события трёх кнопок в `.inventory__ref-actions` (`[data-flag="favorite"]`, `[data-flag="locked"]`, `#inventory__ra-manage`) и после нативного обработчика **симулирует клик по reference-элементу** (троеточие, к которому привязан Popper). Игровой handler троеточия видит активный popover для того же guid и вызывает свой `destroyPopover` (refs/game-beta/script.js:4516) - со сбросом `popovers.ref_actions = null`.
 
-**setTimeout/microtask порядок.** Наш handler срабатывает через `Promise.resolve().then(...)` — нативный обработчик игры (отправка `/api/marks` или открытие manage-меню) отрабатывает первым, наш `hidden` ставится после.
+**Почему не `classList.add('hidden')`.** Если просто скрыть popover-элемент, объект `popovers.ref_actions` в IIFE-замыкании игры остаётся не-null. При следующем клике по троеточию игра попадает в ветку `else` своего обработчика (destroyPopover закрытого popover'a), сбрасывает state - и закрывает повторно. Эффект для пользователя: первый клик троеточия не открывает popover, нужен второй.
 
-**Игровой Popper-state.** Объект `popovers.ref_actions` лежит в IIFE-замыкании игры, нам недоступен. После нашего `hidden` Popper-инстанс остаётся в памяти, но визуально меню скрыто. При следующем клике по троеточию игра либо пересоздаст Popper для другого guid, либо повторно вызовет `destroyPopover` (если guid тот же) — оба варианта корректны.
+**Перехват `Popper.createPopper`.** Чтобы получить ссылку на reference-элемент, на enable патчим глобальный `window.Popper.createPopper`: для нашего popover'a (`.inventory__ref-actions`) сохраняем последний созданный инстанс, чтобы в момент клика Favorite/Lock/Manage достать `instance.state.elements.reference` и кликнуть его. На disable оригинальный `createPopper` восстанавливается.
+
+**setTimeout/microtask порядок.** Наш handler срабатывает через `Promise.resolve().then(...)` - нативный обработчик игры (отправка `/api/marks` или открытие manage-меню) отрабатывает первым, наш закрывающий клик троеточия идёт после.
+
+**Fallback.** Если `Popper` ещё не был перехвачен в момент действия (popover был открыт до enable модуля - редкий race), просто добавляется `hidden` к popover. Лучше визуальное закрытие без сброса state, чем оставленное открытым меню.
 
 **Защита от race-conditions.** `installGeneration` инкрементируется на каждом install/uninstall. `waitForElement('.inventory__ref-actions').then(...)` сравнивает свой generation с актуальным: если между ожиданием и резолвом случился disable, install пропускается.
 
