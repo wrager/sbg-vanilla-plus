@@ -4,7 +4,7 @@ import type { IOlMap, IOlVectorSource, IOlLayer } from '../../core/olMap';
 import { readInventoryReferences } from '../../core/inventoryCache';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 
-const MODULE_ID = 'keyCountOnPoints';
+const MODULE_ID = 'keyCountFix';
 const MIN_ZOOM = 15;
 const DEBOUNCE_MS = 100;
 
@@ -78,7 +78,7 @@ function scheduleRender(): void {
   debounceTimer = setTimeout(renderLabels, DEBOUNCE_MS);
 }
 
-export const keyCountOnPoints: IFeatureModule = {
+export const keyCountFix: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Key count on points', ru: 'Количество ключей на точках' },
   description: {

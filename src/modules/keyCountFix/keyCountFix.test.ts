@@ -1,4 +1,4 @@
-import { buildRefCounts, keyCountOnPoints } from './keyCountOnPoints';
+import { buildRefCounts, keyCountFix } from './keyCountFix';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -181,24 +181,24 @@ describe('buildRefCounts', () => {
 
 // ── module metadata ───────────────────────────────────────────────────────────
 
-describe('keyCountOnPoints metadata', () => {
+describe('keyCountFix metadata', () => {
   test('has correct id', () => {
-    expect(keyCountOnPoints.id).toBe('keyCountOnPoints');
+    expect(keyCountFix.id).toBe('keyCountFix');
   });
 
   test('has style category', () => {
-    expect(keyCountOnPoints.category).toBe('map');
+    expect(keyCountFix.category).toBe('map');
   });
 
   test('is enabled by default', () => {
-    expect(keyCountOnPoints.defaultEnabled).toBe(true);
+    expect(keyCountFix.defaultEnabled).toBe(true);
   });
 
   test('has localized name and description', () => {
-    expect(keyCountOnPoints.name.ru).toBeTruthy();
-    expect(keyCountOnPoints.name.en).toBeTruthy();
-    expect(keyCountOnPoints.description.ru).toBeTruthy();
-    expect(keyCountOnPoints.description.en).toBeTruthy();
+    expect(keyCountFix.name.ru).toBeTruthy();
+    expect(keyCountFix.name.en).toBeTruthy();
+    expect(keyCountFix.description.ru).toBeTruthy();
+    expect(keyCountFix.description.en).toBeTruthy();
   });
 });
 
@@ -215,7 +215,7 @@ import { getOlMap } from '../../core/olMap';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 
-describe('keyCountOnPoints enable/disable', () => {
+describe('keyCountFix enable/disable', () => {
   let pointsSrc: ReturnType<typeof makeSource>;
   let olMap: IOlMap;
   let view: IOlView;
@@ -231,42 +231,42 @@ describe('keyCountOnPoints enable/disable', () => {
   });
 
   afterEach(async () => {
-    await keyCountOnPoints.disable();
+    await keyCountFix.disable();
     delete window.ol;
   });
 
   test('adds layer to map on enable', async () => {
-    await keyCountOnPoints.enable();
+    await keyCountFix.enable();
     expect((olMap.addLayer as jest.Mock).mock.calls.length).toBeGreaterThan(0);
   });
 
   test('removes layer from map on disable after enable', async () => {
-    await keyCountOnPoints.enable();
-    await keyCountOnPoints.disable();
+    await keyCountFix.enable();
+    await keyCountFix.disable();
     expect((olMap.removeLayer as jest.Mock).mock.calls.length).toBeGreaterThan(0);
   });
 
   test('subscribes to points source change on enable', async () => {
-    await keyCountOnPoints.enable();
+    await keyCountFix.enable();
     expect(pointsSrc._listeners.get('change')?.length).toBeGreaterThan(0);
   });
 
   test('unsubscribes from points source change on disable', async () => {
-    await keyCountOnPoints.enable();
-    await keyCountOnPoints.disable();
+    await keyCountFix.enable();
+    await keyCountFix.disable();
     expect(pointsSrc._listeners.get('change')?.length ?? 0).toBe(0);
   });
 
   test('does nothing if ol constructors are absent', async () => {
     window.ol = { Map: { prototype: { getView: jest.fn() } } };
-    await keyCountOnPoints.enable();
+    await keyCountFix.enable();
     expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
   });
 
   test('does nothing if points layer is not found', async () => {
     const otherLayer = makeLayer('other', makeSource());
     mockGetOlMap.mockResolvedValue(makeMap([otherLayer], view));
-    await keyCountOnPoints.enable();
+    await keyCountFix.enable();
     expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
   });
 });

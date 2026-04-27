@@ -148,9 +148,10 @@ export function isSbgGreaterThan(version: string): boolean {
 // Модули, чью функциональность игра реализовала нативно. Множество заполняется
 // по одному id за раз — каждый с обоснованием перекрытия use case в commit
 // message соответствующего коммита. На 0.6.1 список изначально содержал
-// favoritedPoints, inventoryCleanup, keyCountOnPoints, singleFingerRotation,
-// nextPointNavigation — после полноценной адаптации модули возвращены
-// (с переосмыслением и/или runtime-детекцией native), сет очищен.
+// favoritedPoints, inventoryCleanup, keyCountOnPoints (переименован в
+// keyCountFix), singleFingerRotation, nextPointNavigation — после полноценной
+// адаптации модули возвращены (с переосмыслением и/или runtime-детекцией
+// native), сет очищен.
 const DEPRECATED_MODULES_NATIVE: ReadonlySet<string> = new Set<string>([]);
 
 export function isModuleNativeInCurrentGame(moduleId: string): boolean {

@@ -283,11 +283,12 @@ describe('isModuleNativeInCurrentGame', () => {
     // подавлялись (favoritedPoints, inventoryCleanup, keyCountOnPoints,
     // singleFingerRotation, nextPointNavigation, repairAtFullCharge, ngrsZoom).
     // После полноценной адаптации одни модули возвращены (с переосмыслением /
-    // runtime-детекцией native), другие удалены физически — сет пуст.
+    // runtime-детекцией native), другие удалены физически, keyCountOnPoints
+    // переименован в keyCountFix — сет пуст.
     setDetectedVersionForTest('0.6.1');
     expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(false);
     expect(isModuleNativeInCurrentGame('inventoryCleanup')).toBe(false);
-    expect(isModuleNativeInCurrentGame('keyCountOnPoints')).toBe(false);
+    expect(isModuleNativeInCurrentGame('keyCountFix')).toBe(false);
     expect(isModuleNativeInCurrentGame('singleFingerRotation')).toBe(false);
     expect(isModuleNativeInCurrentGame('nextPointNavigation')).toBe(false);
     expect(isModuleNativeInCurrentGame('repairAtFullCharge')).toBe(false);
