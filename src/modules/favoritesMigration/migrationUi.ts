@@ -364,10 +364,10 @@ function buildPanel(): HTMLElement {
   return element;
 }
 
-function setProgress(panelElement: HTMLElement, p: IMigrationProgress | null): void {
+function setProgress(panelElement: HTMLElement, progress: IMigrationProgress | null): void {
   const wrap = panelElement.querySelector<HTMLElement>('.svp-migration-progress');
   if (!wrap) return;
-  if (!p) {
+  if (!progress) {
     wrap.classList.remove('svp-active');
     wrap.classList.remove('svp-success');
     wrap.classList.remove('svp-partial');
@@ -379,7 +379,7 @@ function setProgress(panelElement: HTMLElement, p: IMigrationProgress | null): v
   wrap.classList.remove('svp-partial');
   const bar = wrap.querySelector<HTMLElement>('.svp-migration-progress-bar');
   if (bar) {
-    const percent = p.total === 0 ? 0 : Math.round((p.done / p.total) * 100);
+    const percent = progress.total === 0 ? 0 : Math.round((progress.done / progress.total) * 100);
     bar.style.width = `${percent}%`;
   }
   const counterEl = wrap.querySelector<HTMLElement>('.svp-migration-progress-counter');
@@ -390,7 +390,9 @@ function setProgress(panelElement: HTMLElement, p: IMigrationProgress | null): v
     // «прогресс есть, а число не растёт». Дополнительно выводим количество
     // успешных, если оно отличается от done.
     counterEl.textContent =
-      p.succeeded < p.done ? `${p.done} / ${p.total} (✓ ${p.succeeded})` : `${p.done} / ${p.total}`;
+      progress.succeeded < progress.done
+        ? `${progress.done} / ${progress.total} (✓ ${progress.succeeded})`
+        : `${progress.done} / ${progress.total}`;
   }
 }
 
@@ -468,8 +470,8 @@ async function runFlow(flag: MigrationFlag, panelElement: HTMLElement): Promise<
 
     const result = await runMigration(candidates.toSend, {
       flag,
-      onProgress: (p) => {
-        setProgress(panelElement, p);
+      onProgress: (progress) => {
+        setProgress(panelElement, progress);
       },
       onPhaseChange: (phase) => {
         // Каждая фаза получает собственный прогресс-бар: пользователь не видит
