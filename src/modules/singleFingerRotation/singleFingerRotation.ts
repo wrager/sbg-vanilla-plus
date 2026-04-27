@@ -280,6 +280,13 @@ export const singleFingerRotation: IFeatureModule = {
     if (isNativeFixedPointRotateActive(map)) {
       // Тихо подавляемся: console.info вместо warn, чтобы не пугать пользователя
       // в DevTools — это не ошибка, а штатная работа на 0.6.1+ без хотфикса.
+      //
+      // Детект однократный, по состоянию на момент enable. Если игра в runtime
+      // переключит constrainRotation (как уже было однажды: SBG 0.6.1 ставил
+      // false, потом хотфикс откатил FixedPointRotate и вернул дефолт true), мы
+      // не отреагируем без перезапуска модуля. Симптом «модуль не работает» или
+      // «работает параллельно с нативом» лечится перезагрузкой страницы — наш
+      // enable вызовется заново и переоценит состояние.
       console.info(
         '[SVP] singleFingerRotation: обнаружен нативный FixedPointRotate, модуль подавлен',
       );
