@@ -219,6 +219,19 @@ async function runSlowDelete(): Promise<void> {
     );
     return;
   }
+  // Fail-safe на случай если кнопка показана во время гонки snapshot-неготов.
+  // shouldShowButton уже прячет её, но прямой вызов функции (тест, будущая
+  // подмена обработчика) не должен обойти блокировку. См. комментарий в
+  // shouldShowButton и в inventoryCleanup.runCleanupImpl.
+  if (isModuleActive('favoritesMigration') && !isFavoritesSnapshotReady()) {
+    showSlowToast(
+      t({
+        en: 'Favorites snapshot not loaded yet — wait a moment and try again',
+        ru: 'Снимок избранного ещё не загружен — подожди немного и попробуй снова',
+      }),
+    );
+    return;
+  }
   const { referencesAlliedLimit, referencesNotAlliedLimit } = settings.limits;
   if (referencesAlliedLimit === -1 && referencesNotAlliedLimit === -1) {
     showSlowToast(t({ en: 'Limits not set', ru: 'Лимиты не заданы' }));
@@ -377,10 +390,13 @@ function shouldShowButton(): boolean {
   if (settings.limits.referencesMode !== 'slow') return false;
   // Кнопка скрыта, пока legacy SVP/CUI-список непуст и активен модуль миграции —
   // удаление ключей блокируется до завершения переноса в нативные locked.
-  const migrationPending =
-    isModuleActive('favoritesMigration') &&
-    isFavoritesSnapshotReady() &&
-    getFavoritedGuids().size > 0;
+  // Также скрыта, пока snapshot ещё не загружен (init модуля миграции в процессе
+  // или loadFavorites упал) — мы не знаем, есть ли легаси-избранные, удаление
+  // ключей вслепую недопустимо. См. комментарий в inventoryCleanup.runCleanupImpl.
+  const migrationModuleActive = isModuleActive('favoritesMigration');
+  const snapshotReady = isFavoritesSnapshotReady();
+  if (migrationModuleActive && !snapshotReady) return false;
+  const migrationPending = migrationModuleActive && snapshotReady && getFavoritedGuids().size > 0;
   return !migrationPending;
 }
 

@@ -9,6 +9,11 @@ import {
 } from './slowRefsDelete';
 import type { IDeletionEntry } from './cleanupCalculator';
 import { calculateDeletions } from './cleanupCalculator';
+import { registerModules as registerModulesForTest } from '../../core/moduleRegistry';
+import {
+  loadFavorites as loadFavoritesForTest,
+  resetForTests as resetFavoritesStoreForTests,
+} from '../../core/favoritesStore';
 
 // --- collectOverLimit ---
 
@@ -485,5 +490,111 @@ describe('кнопка «Очистить ключи»: disabled при -1/-1', 
 
     expect(confirmSpy).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
+  });
+});
+
+// --- Регрессия: кнопка скрыта пока snapshot favorites не загружен ---
+
+describe('кнопка «Очистить ключи»: snapshot guard', () => {
+  function fullLevelLimits(): Record<number, number> {
+    const limits: Record<number, number> = {};
+    for (let level = 1; level <= 10; level++) limits[level] = -1;
+    return limits;
+  }
+
+  function setSlowSettings(): void {
+    localStorage.setItem(
+      'svp_inventoryCleanup',
+      JSON.stringify({
+        version: 2,
+        limits: {
+          cores: fullLevelLimits(),
+          catalysers: fullLevelLimits(),
+          referencesMode: 'slow',
+          referencesFastLimit: -1,
+          referencesAlliedLimit: 5,
+          referencesNotAlliedLimit: 5,
+        },
+        minFreeSlots: 100,
+      }),
+    );
+  }
+
+  function makeBar(): HTMLElement {
+    const bar = document.createElement('div');
+    bar.className = 'svp-fav-filter-bar';
+    document.body.appendChild(bar);
+    return bar;
+  }
+
+  function getButton(): HTMLButtonElement | null {
+    return document.querySelector<HTMLButtonElement>('.svp-cleanup-slow-refs-button');
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    resetFavoritesStoreForTests();
+  });
+
+  afterEach(() => {
+    uninstallSlowRefsDelete();
+    document.body.innerHTML = '';
+    localStorage.clear();
+    registerModulesForTest([]);
+    resetFavoritesStoreForTests();
+  });
+
+  test('snapshot не загружен и модуль миграции активен → кнопка не показывается', () => {
+    setSlowSettings();
+    makeBar();
+    registerModulesForTest([
+      {
+        id: 'favoritesMigration',
+        name: { en: '', ru: '' },
+        description: { en: '', ru: '' },
+        defaultEnabled: true,
+        category: 'utility',
+        status: 'ready',
+        init() {},
+        enable() {},
+        disable() {},
+      },
+    ]);
+
+    installSlowRefsDelete();
+    expect(getButton()).toBeNull();
+  });
+
+  test('snapshot загружен и легаси-список пуст → кнопка показывается', async () => {
+    setSlowSettings();
+    makeBar();
+    registerModulesForTest([
+      {
+        id: 'favoritesMigration',
+        name: { en: '', ru: '' },
+        description: { en: '', ru: '' },
+        defaultEnabled: true,
+        category: 'utility',
+        status: 'ready',
+        init() {},
+        enable() {},
+        disable() {},
+      },
+    ]);
+    await loadFavoritesForTest();
+
+    installSlowRefsDelete();
+    expect(getButton()).not.toBeNull();
+    expect(getButton()?.disabled).toBe(false);
+  });
+
+  test('модуль миграции отключён → snapshot нерелевантен, кнопка показывается', () => {
+    setSlowSettings();
+    makeBar();
+    registerModulesForTest([]);
+
+    installSlowRefsDelete();
+    expect(getButton()).not.toBeNull();
   });
 });

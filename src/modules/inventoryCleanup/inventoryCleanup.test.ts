@@ -11,6 +11,11 @@ import type { ICleanupLimits } from './cleanupSettings';
 import { saveCleanupSettings, defaultCleanupSettings } from './cleanupSettings';
 import { inventoryCleanup } from './inventoryCleanup';
 import { initCleanupSettingsUi, destroyCleanupSettingsUi } from './cleanupSettingsUi';
+import { registerModules } from '../../core/moduleRegistry';
+import {
+  loadFavorites,
+  resetForTests as resetFavoritesStoreForTests,
+} from '../../core/favoritesStore';
 
 // --- inventoryTypes ---
 
@@ -1221,6 +1226,149 @@ describe('inventoryCleanup module', () => {
     localStorage.removeItem('svp_inventoryCleanup');
     localStorage.removeItem('auth');
     consoleSpy.mockRestore();
+  });
+
+  // Регрессия на гонку snapshot: bootstrap.initModules запускает init модулей
+  // параллельно. inventoryCleanup.enable() уже работает, а favoritesMigration.init()
+  // (await loadFavorites) ещё не закончил. Без guard'а первый discover в этом
+  // окне удалил бы legacy-favorited ключи. Эмулируем через registerModules с
+  // favoritesMigration в status='ready' и реальный favoritesStore с
+  // snapshotLoaded=false (resetForTests сбрасывает в false).
+  describe('snapshot race: legacy SVP/CUI-favorites не теряются до загрузки IDB', () => {
+    test('snapshot не готов и модуль миграции активен — рефы не удаляются', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+      // favoritesMigration зарегистрирован, status='ready', settings разрешают.
+      registerModules([
+        {
+          id: 'favoritesMigration',
+          name: { en: '', ru: '' },
+          description: { en: '', ru: '' },
+          defaultEnabled: true,
+          category: 'utility',
+          status: 'ready',
+          init() {},
+          enable() {},
+          disable() {},
+        },
+      ]);
+      // Snapshot нарочно не загружен: resetForTests ставит snapshotLoaded=false.
+      resetFavoritesStoreForTests();
+
+      const invElement = document.createElement('span');
+      invElement.id = 'self-info__inv';
+      invElement.textContent = '2950';
+      document.body.appendChild(invElement);
+
+      const limElement = document.createElement('span');
+      limElement.id = 'self-info__inv-lim';
+      limElement.textContent = '3000';
+      document.body.appendChild(limElement);
+
+      const settings = defaultCleanupSettings();
+      settings.limits.referencesMode = 'fast';
+      settings.limits.referencesFastLimit = 1;
+      saveCleanupSettings(settings);
+
+      // Кэш с lock-поддержкой (есть f), две стопки от одной точки сверх лимита.
+      localStorage.setItem(
+        'inventory-cache',
+        JSON.stringify([
+          { g: 'r1', t: 3, l: 'p1', a: 5, f: 0 },
+          { g: 'r2', t: 3, l: 'p1', a: 3, f: 0 },
+        ]),
+      );
+
+      void inventoryCleanup.enable();
+
+      const button = document.createElement('button');
+      button.id = 'discover';
+      document.body.appendChild(button);
+      button.click();
+      simulateDiscoverResponse();
+
+      await flushPromises();
+
+      // DELETE к /api/inventory вообще не отправлялся (cores/cats нет, ключи
+      // заблокированы snapshot-guard'ом).
+      expect(inventoryDeleteCalls()).toHaveLength(0);
+
+      void inventoryCleanup.disable();
+      registerModules([]);
+      invElement.remove();
+      limElement.remove();
+      button.remove();
+      localStorage.removeItem('inventory-cache');
+      localStorage.removeItem('svp_inventoryCleanup');
+      consoleSpy.mockRestore();
+    });
+
+    test('snapshot готов, легаси-список пуст — рефы удаляются по обычным лимитам', async () => {
+      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+
+      registerModules([
+        {
+          id: 'favoritesMigration',
+          name: { en: '', ru: '' },
+          description: { en: '', ru: '' },
+          defaultEnabled: true,
+          category: 'utility',
+          status: 'ready',
+          init() {},
+          enable() {},
+          disable() {},
+        },
+      ]);
+      // Имитируем успешный loadFavorites с пустой IDB (новый юзер).
+      resetFavoritesStoreForTests();
+      await loadFavorites();
+
+      const invElement = document.createElement('span');
+      invElement.id = 'self-info__inv';
+      invElement.textContent = '2950';
+      document.body.appendChild(invElement);
+
+      const limElement = document.createElement('span');
+      limElement.id = 'self-info__inv-lim';
+      limElement.textContent = '3000';
+      document.body.appendChild(limElement);
+
+      const settings = defaultCleanupSettings();
+      settings.limits.referencesMode = 'fast';
+      settings.limits.referencesFastLimit = 1;
+      saveCleanupSettings(settings);
+
+      localStorage.setItem(
+        'inventory-cache',
+        JSON.stringify([
+          { g: 'r1', t: 3, l: 'p1', a: 5, f: 0 },
+          { g: 'r2', t: 3, l: 'p1', a: 3, f: 0 },
+        ]),
+      );
+
+      void inventoryCleanup.enable();
+
+      const button = document.createElement('button');
+      button.id = 'discover';
+      document.body.appendChild(button);
+      button.click();
+      simulateDiscoverResponse();
+
+      await flushPromises();
+
+      // Snapshot готов и пуст — guard не срабатывает, удаление ключей идёт.
+      expect(inventoryDeleteCalls().length).toBeGreaterThan(0);
+
+      void inventoryCleanup.disable();
+      registerModules([]);
+      resetFavoritesStoreForTests();
+      invElement.remove();
+      limElement.remove();
+      button.remove();
+      localStorage.removeItem('inventory-cache');
+      localStorage.removeItem('svp_inventoryCleanup');
+      consoleSpy.mockRestore();
+    });
   });
 });
 

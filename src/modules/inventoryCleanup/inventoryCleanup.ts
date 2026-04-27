@@ -81,13 +81,25 @@ async function runCleanupImpl(): Promise<void> {
   // и модуль миграции активен — миграция ещё не сделана, и автоочистка ключей
   // удалила бы то, что пользователь защищал в SVP/CUI. Блокируем удаление
   // ключей до завершения миграции; cores/cats удаляются как обычно.
-  const migrationPending =
-    isModuleActive('favoritesMigration') &&
-    isFavoritesSnapshotReady() &&
-    getFavoritedGuids().size > 0;
-  const limitsForRun = migrationPending
-    ? { ...settings.limits, referencesMode: 'off' as const }
-    : settings.limits;
+  //
+  // Дополнительный guard на snapshot: bootstrap.initModules запускает init
+  // модулей параллельно — inventoryCleanup.enable() выполняется синхронно сразу,
+  // а favoritesMigration.init() (где делается loadFavorites из IDB) асинхронный.
+  // Если первый discover успевает до завершения loadFavorites, snapshot не
+  // готов, размер легаси-списка читается как 0, и migrationPending был бы
+  // false — cleanup ключей пошёл бы вслепую, удалив legacy-favorited ключи,
+  // которые пользователь ещё не успел мигрировать. Поэтому пока модуль миграции
+  // активен, но snapshot не загружен (init ещё в процессе, или loadFavorites
+  // упал, или сработала count-seal-проверка) — удаление ключей блокируется как
+  // и при настоящем pending-состоянии.
+  const migrationModuleActive = isModuleActive('favoritesMigration');
+  const snapshotReady = isFavoritesSnapshotReady();
+  const migrationPending = migrationModuleActive && snapshotReady && getFavoritedGuids().size > 0;
+  const blockReferencesUntilSnapshot = migrationModuleActive && !snapshotReady;
+  const limitsForRun =
+    migrationPending || blockReferencesUntilSnapshot
+      ? { ...settings.limits, referencesMode: 'off' as const }
+      : settings.limits;
   const deletions = calculateDeletions(items, limitsForRun);
   if (deletions.length === 0) return;
 
