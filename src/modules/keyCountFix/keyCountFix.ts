@@ -52,11 +52,21 @@ let mutationObserver: MutationObserver | null = null;
 let onPointsChange: (() => void) | null = null;
 let onZoomChange: (() => void) | null = null;
 
-// Оригинальная localStorage.getItem, сохраняется на enable и восстанавливается
-// на disable. Хук маскирует текстовый канал в map-config.h, чтобы нативный
+// Оригинальная localStorage.getItem, сохраняется на activate и восстанавливается
+// на deactivate. Хук маскирует текстовый канал в map-config.h, чтобы нативный
 // LIGHT-renderer не рисовал свой 32px-текст параллельно с нашим слоем.
 let originalGetItem: typeof Storage.prototype.getItem | null = null;
 let getItemPatchTarget: 'instance' | 'prototype' | null = null;
+
+// Перехват localStorage.setItem нужен для реакции на смену text channel
+// в layers-config БЕЗ перезагрузки страницы. Игра при сохранении настроек
+// слоёв вызывает `localStorage.setItem('map-config', ...)` и сразу
+// `requestEntities()` для перерисовки точек. Если мы поймаем setItem,
+// мы можем синхронно activate/deactivate наш слой - и в момент когда
+// игра делает getItem для нового highlight, наш патч уже стоит (или
+// наоборот, снят).
+let originalSetItem: typeof Storage.prototype.setItem | null = null;
+let setItemPatchTarget: 'instance' | 'prototype' | null = null;
 
 function maskReferencesInMapConfig(rawValue: string): string {
   let parsed: unknown;
@@ -136,6 +146,76 @@ function uninstallMapConfigGetItemHook(): void {
   getItemPatchTarget = null;
 }
 
+/**
+ * Извлекает значение text channel (байт 2 поля `h`) из строки map-config.
+ * Возвращает -1, если значение не парсится как ожидаемая структура.
+ */
+function parseTextChannel(rawValue: string): number {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawValue) as unknown;
+  } catch {
+    return -1;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return -1;
+  const config = parsed as Record<string, unknown>;
+  if (typeof config.h !== 'number') return -1;
+  return (config.h & TEXT_CHANNEL_MASK) >> TEXT_CHANNEL_SHIFT;
+}
+
+function onMapConfigChanged(newValue: string): void {
+  const channel = parseTextChannel(newValue);
+  const shouldBeActive = channel === REFERENCES_MODE_VALUE;
+  if (shouldBeActive && !isActivated()) {
+    void activate();
+  } else if (!shouldBeActive && isActivated()) {
+    deactivate();
+  }
+}
+
+function installMapConfigSetItemHook(): void {
+  if (originalSetItem !== null) return;
+
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- bind через call внутри wrapper
+  const nativeSetItem = localStorage.setItem;
+  originalSetItem = nativeSetItem;
+
+  const wrapper = function patchedSetItem(this: Storage, key: string, value: string): void {
+    nativeSetItem.call(this, key, value);
+    if (this !== localStorage || key !== MAP_CONFIG_KEY) return;
+    // Синхронно реагируем: getItem hook должен быть установлен/снят ДО того,
+    // как игра в `requestEntities()` сделает getItem('map-config') для
+    // перерисовки features с новым highlight.
+    onMapConfigChanged(value);
+  };
+
+  // Адаптивный патч (instance vs prototype) - см. installMapConfigGetItemHook.
+  localStorage.setItem = wrapper;
+  if (localStorage.setItem === wrapper) {
+    setItemPatchTarget = 'instance';
+  } else {
+    Storage.prototype.setItem = wrapper;
+    setItemPatchTarget = 'prototype';
+  }
+}
+
+function uninstallMapConfigSetItemHook(): void {
+  if (originalSetItem === null || setItemPatchTarget === null) return;
+  if (setItemPatchTarget === 'instance') {
+    localStorage.setItem = originalSetItem;
+  } else {
+    Storage.prototype.setItem = originalSetItem;
+  }
+  originalSetItem = null;
+  setItemPatchTarget = null;
+}
+
+function isActivated(): boolean {
+  // Источник истины: установлен ли getItem hook. Слой создаётся асинхронно
+  // (await getOlMap), но getItem hook ставится синхронно первым.
+  return originalGetItem !== null;
+}
+
 function renderLabels(): void {
   if (!labelsSource || !map || !pointsSource) return;
 
@@ -202,85 +282,105 @@ export const keyCountFix: IFeatureModule = {
   init() {},
 
   enable() {
-    // Если игрок не выбрал References в layers-config (refs/game-beta/script.js
-    // FeatureStyles.LIGHT case 7), нативный 32px-текст не рисуется, и нашему
-    // слою нечего фиксить. Не вешаем хук и не создаём слой — модуль становится
-    // полностью пассивным до перезагрузки страницы (смена настройки слоёв в
-    // игре требует reload, поэтому динамическая реакция на change не нужна).
-    if (!isReferencesEnabledInMapConfig()) return;
+    // setItem hook ставится ВСЕГДА - это наш канал для реакции на смену
+    // text channel в layers-config без перезагрузки страницы.
+    installMapConfigSetItemHook();
 
-    installMapConfigGetItemHook();
-
-    return getOlMap().then((olMap) => {
-      const ol = window.ol;
-      const OlVectorSource = ol?.source?.Vector;
-      const OlVectorLayer = ol?.layer?.Vector;
-      if (!OlVectorSource || !OlVectorLayer) return;
-
-      const pointsLayer = findLayerByName(olMap, 'points');
-      if (!pointsLayer) return;
-
-      const src = pointsLayer.getSource();
-      if (!src) return;
-
-      map = olMap;
-      pointsSource = src;
-      labelsSource = new OlVectorSource();
-      labelsLayer = new OlVectorLayer({
-        // as unknown as: OL Vector constructor accepts a generic options bag;
-        // IOlVectorSource cannot be narrowed to Record<string, unknown> without a guard
-        source: labelsSource as unknown as Record<string, unknown>,
-        zIndex: 5,
-      });
-
-      olMap.addLayer(labelsLayer);
-
-      onPointsChange = scheduleRender;
-      pointsSource.on('change', onPointsChange);
-
-      onZoomChange = renderLabels;
-      olMap.getView().on?.('change:resolution', onZoomChange);
-
-      const invEl = document.getElementById('self-info__inv');
-      if (invEl) {
-        mutationObserver = new MutationObserver(renderLabels);
-        mutationObserver.observe(invEl, { characterData: true, childList: true, subtree: true });
-      }
-
-      renderLabels();
-    });
+    // Если игрок сейчас выбрал References - активируемся сразу. Иначе остаёмся
+    // пассивными, ждём smetup-event через setItem hook.
+    if (isReferencesEnabledInMapConfig()) {
+      return activate();
+    }
+    return undefined;
   },
 
   disable() {
-    if (debounceTimer !== null) {
-      clearTimeout(debounceTimer);
-      debounceTimer = null;
-    }
-
-    if (mutationObserver) {
-      mutationObserver.disconnect();
-      mutationObserver = null;
-    }
-
-    if (pointsSource && onPointsChange) {
-      pointsSource.un('change', onPointsChange);
-      onPointsChange = null;
-    }
-
-    if (map && onZoomChange) {
-      map.getView().un?.('change:resolution', onZoomChange);
-      onZoomChange = null;
-    }
-
-    if (map && labelsLayer) {
-      map.removeLayer(labelsLayer);
-    }
-
-    map = null;
-    pointsSource = null;
-    labelsSource = null;
-    labelsLayer = null;
-
-    uninstallMapConfigGetItemHook();
+    deactivate();
+    uninstallMapConfigSetItemHook();
   },
 };
+
+/**
+ * Активирует слой подписей: ставит getItem hook (маскирует нативный канал),
+ * создаёт OL Vector layer с числами, подписывается на события точек и зума.
+ * Идемпотентно: если уже активирован (`originalGetItem !== null`), no-op.
+ */
+function activate(): Promise<void> | undefined {
+  if (isActivated()) return undefined;
+  installMapConfigGetItemHook();
+
+  return getOlMap().then((olMap) => {
+    if (!isActivated()) return; // могли deactivate за время await
+    const ol = window.ol;
+    const OlVectorSource = ol?.source?.Vector;
+    const OlVectorLayer = ol?.layer?.Vector;
+    if (!OlVectorSource || !OlVectorLayer) return;
+
+    const pointsLayer = findLayerByName(olMap, 'points');
+    if (!pointsLayer) return;
+
+    const src = pointsLayer.getSource();
+    if (!src) return;
+
+    map = olMap;
+    pointsSource = src;
+    labelsSource = new OlVectorSource();
+    labelsLayer = new OlVectorLayer({
+      source: labelsSource as unknown as Record<string, unknown>,
+      zIndex: 5,
+    });
+
+    olMap.addLayer(labelsLayer);
+
+    onPointsChange = scheduleRender;
+    pointsSource.on('change', onPointsChange);
+
+    onZoomChange = renderLabels;
+    olMap.getView().on?.('change:resolution', onZoomChange);
+
+    const invEl = document.getElementById('self-info__inv');
+    if (invEl) {
+      mutationObserver = new MutationObserver(renderLabels);
+      mutationObserver.observe(invEl, { characterData: true, childList: true, subtree: true });
+    }
+
+    renderLabels();
+  });
+}
+
+/**
+ * Деактивирует слой: снимает getItem hook, убирает OL слой, отписывается от
+ * событий. Идемпотентно: если уже деактивирован, no-op.
+ */
+function deactivate(): void {
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+
+  if (mutationObserver) {
+    mutationObserver.disconnect();
+    mutationObserver = null;
+  }
+
+  if (pointsSource && onPointsChange) {
+    pointsSource.un('change', onPointsChange);
+    onPointsChange = null;
+  }
+
+  if (map && onZoomChange) {
+    map.getView().un?.('change:resolution', onZoomChange);
+    onZoomChange = null;
+  }
+
+  if (map && labelsLayer) {
+    map.removeLayer(labelsLayer);
+  }
+
+  map = null;
+  pointsSource = null;
+  labelsSource = null;
+  labelsLayer = null;
+
+  uninstallMapConfigGetItemHook();
+}

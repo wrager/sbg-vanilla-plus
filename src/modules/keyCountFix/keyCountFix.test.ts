@@ -408,3 +408,123 @@ describe('keyCountFix localStorage hook for map-config', () => {
     expect(localStorage.getItem('inventory-cache')).toBe(JSON.stringify([{ g: 'x', t: 3 }]));
   });
 });
+
+describe('keyCountFix реакция на смену text channel в layers-config', () => {
+  // Сценарий из реальной игры: пользователь меняет настройку Text-слоя в
+  // layers-config. Игра делает localStorage.setItem('map-config', ...) и
+  // requestEntities(). Наш модуль должен синхронно activate/deactivate -
+  // без перезагрузки страницы.
+
+  let pointsSrc: ReturnType<typeof makeSource>;
+  let olMap: IOlMap;
+  let view: IOlView;
+
+  beforeEach(() => {
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('map-config');
+    pointsSrc = makeSource();
+    view = makeView(16);
+    const pointsLayer = makeLayer('points', pointsSrc);
+    olMap = makeMap([pointsLayer], view);
+    mockGetOlMap.mockResolvedValue(olMap);
+    mockOl();
+  });
+
+  afterEach(async () => {
+    await keyCountFix.disable();
+    delete window.ol;
+    localStorage.removeItem('map-config');
+  });
+
+  test('старт с text=Levels: модуль пассивен; setItem с text=References активирует', async () => {
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x050000 })); // text=5 Levels
+    await keyCountFix.enable();
+    expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
+
+    // Игра меняет настройку: text=Refs.
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x070000 }));
+    // setItem hook должен синхронно activate; getOlMap асинхронный.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect((olMap.addLayer as jest.Mock).mock.calls.length).toBeGreaterThan(0);
+  });
+
+  test('старт с text=Refs: модуль активен; setItem с text=Levels деактивирует', async () => {
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x070000 }));
+    await keyCountFix.enable();
+    expect((olMap.addLayer as jest.Mock).mock.calls.length).toBeGreaterThan(0);
+
+    // Игра меняет настройку: text=Levels. Должен deactivate.
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x050000 }));
+    await Promise.resolve();
+
+    expect((olMap.removeLayer as jest.Mock).mock.calls.length).toBeGreaterThan(0);
+
+    // getItem hook снят: значение уже не маскируется.
+    const raw = localStorage.getItem('map-config');
+    if (raw === null) throw new Error('map-config missing');
+    expect(((JSON.parse(raw) as { h: number }).h >> 16) & 0xff).toBe(5);
+  });
+
+  test('multiple toggle: refs -> levels -> refs -> levels', async () => {
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x070000 }));
+    await keyCountFix.enable();
+    const addCallsAfterEnable = (olMap.addLayer as jest.Mock).mock.calls.length;
+    expect(addCallsAfterEnable).toBeGreaterThan(0);
+
+    // -> levels (deactivate)
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x050000 }));
+    await Promise.resolve();
+    const removeCallsAfter1 = (olMap.removeLayer as jest.Mock).mock.calls.length;
+    expect(removeCallsAfter1).toBeGreaterThan(0);
+
+    // -> refs (activate)
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x070000 }));
+    await Promise.resolve();
+    await Promise.resolve();
+    const addCallsAfter2 = (olMap.addLayer as jest.Mock).mock.calls.length;
+    expect(addCallsAfter2).toBeGreaterThan(addCallsAfterEnable);
+
+    // -> levels (deactivate снова)
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x050000 }));
+    await Promise.resolve();
+    const removeCallsAfter3 = (olMap.removeLayer as jest.Mock).mock.calls.length;
+    expect(removeCallsAfter3).toBeGreaterThan(removeCallsAfter1);
+  });
+
+  test('setItem с тем же значением (text всё ещё refs): не делаем повторный activate', async () => {
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x070000 }));
+    await keyCountFix.enable();
+    const addCallsAfterEnable = (olMap.addLayer as jest.Mock).mock.calls.length;
+
+    // Тот же text channel - меняется только верхний/нижний highlight.
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x070101 }));
+    await Promise.resolve();
+
+    expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(addCallsAfterEnable);
+  });
+
+  test('setItem на другой ключ не вызывает activate', async () => {
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x050000 }));
+    await keyCountFix.enable();
+    expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
+
+    // Совсем другой ключ - не должен реагировать.
+    localStorage.setItem('something-else', 'value');
+    await Promise.resolve();
+
+    expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
+  });
+
+  test('disable снимает setItem hook: дальнейшие setItem не вызывают activate', async () => {
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x050000 }));
+    await keyCountFix.enable();
+    await keyCountFix.disable();
+
+    localStorage.setItem('map-config', JSON.stringify({ h: 0x070000 }));
+    await Promise.resolve();
+
+    expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
+  });
+});
