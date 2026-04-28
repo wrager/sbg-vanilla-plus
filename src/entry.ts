@@ -6,9 +6,9 @@ import { initGameVersionDetection, installGameVersionCapture } from './core/game
 import { ensureSbgVersionSupported } from './core/gameVersionPrompt';
 import { initOlMapCapture } from './core/olMap';
 import { installSbgFlavor } from './core/sbgFlavor';
+import { betterRefPopoverClosing } from './modules/betterRefPopoverClosing/betterRefPopoverClosing';
 import { enhancedMainScreen } from './modules/enhancedMainScreen/enhancedMainScreen';
 import { enhancedPointPopupUi } from './modules/enhancedPointPopupUi/enhancedPointPopupUi';
-import { enhancedRefsTab } from './modules/enhancedRefsTab/enhancedRefsTab';
 import { shiftMapCenterDown } from './modules/shiftMapCenterDown/shiftMapCenterDown';
 import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
 import { groupErrorToasts } from './modules/groupErrorToasts/groupErrorToasts';
@@ -55,7 +55,6 @@ if (!isDisabled()) {
       // ui
       enhancedMainScreen,
       enhancedPointPopupUi,
-      enhancedRefsTab,
       groupErrorToasts,
       removeAttackCloseButton,
       // feature
@@ -74,6 +73,7 @@ if (!isDisabled()) {
       improvedNextPointSwipe,
       swipeToClosePopup,
       // fix
+      betterRefPopoverClosing,
       drawButtonFix,
     ]);
   }
