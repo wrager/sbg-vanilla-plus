@@ -83,6 +83,46 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
+describe('migrationUi: footer и кнопка закрытия (общие классы)', () => {
+  test('header содержит только title, без кнопки закрытия', () => {
+    const panel = openMigrationPanel();
+    const header = panel.querySelector<HTMLElement>('.svp-migration-header');
+    expect(header).not.toBeNull();
+    expect(header?.querySelector('.svp-settings-close')).toBeNull();
+  });
+
+  test('используются общие классы settings-panel: footer и close', () => {
+    const panel = openMigrationPanel();
+    const footer = panel.querySelector<HTMLElement>('.svp-settings-footer');
+    expect(footer).not.toBeNull();
+    const close = panel.querySelector<HTMLButtonElement>('.svp-settings-close');
+    expect(close).not.toBeNull();
+    expect(close?.textContent).toBe('[x]');
+    expect(close?.getAttribute('aria-label')).toMatch(/закрыть|close/i);
+    // Собственных alias-классов больше нет - всё переиспользует основной экран.
+    expect(panel.querySelector('.svp-migration-footer')).toBeNull();
+    expect(panel.querySelector('.svp-migration-close')).toBeNull();
+  });
+
+  test('footer и close - direct children panel, идут после content', () => {
+    const panel = openMigrationPanel();
+    const content = panel.querySelector<HTMLElement>('.svp-migration-content');
+    const footer = content?.nextElementSibling;
+    expect(footer?.classList.contains('svp-settings-footer')).toBe(true);
+    // close - последний child панели, position: fixed (sibling footer'а, не внутри).
+    const lastChild = panel.lastElementChild;
+    expect(lastChild?.classList.contains('svp-settings-close')).toBe(true);
+  });
+
+  test('клик по крестику закрывает панель', () => {
+    const panel = openMigrationPanel();
+    const close = panel.querySelector<HTMLButtonElement>('.svp-settings-close');
+    expect(close).not.toBeNull();
+    close?.click();
+    expect(document.querySelector('.svp-migration-panel')).toBeNull();
+  });
+});
+
 describe('migrationUi: секции legacy / native', () => {
   test('content разделён на секции legacy (импорт/экспорт + счётчик) и native (миграция)', () => {
     const panel = openMigrationPanel();

@@ -246,18 +246,6 @@ function buildPanel(): HTMLElement {
   const title = document.createElement('span');
   title.textContent = t(TITLE);
   header.appendChild(title);
-
-  const close = document.createElement('button');
-  close.className = 'svp-migration-close';
-  close.textContent = '✕';
-  close.setAttribute('aria-label', t(CLOSE_LABEL));
-  close.addEventListener('click', () => {
-    // Кнопка дизейблится в runFlow на время миграции — клик не пройдёт; здесь
-    // вторая защита от программных кликов и для случая отключённого `disabled`.
-    if (migrationInProgress) return;
-    closePanel();
-  });
-  header.appendChild(close);
   element.appendChild(header);
 
   const content = document.createElement('div');
@@ -361,6 +349,30 @@ function buildPanel(): HTMLElement {
   content.appendChild(nativeSection);
 
   element.appendChild(content);
+
+  // Footer + крестик закрытия - один в один как на основном экране настроек:
+  // переиспользуем общие классы `.svp-settings-footer` (нескроллящаяся полоска
+  // на всю ширину снизу) и `.svp-settings-close` (fixed-кнопка `[x]` по центру
+  // bottom). До этого здесь были собственные `.svp-migration-footer` /
+  // `.svp-migration-close` со скопированными стилями - дублирование, при
+  // правке внешнего вида крестика приходилось править оба места. Теперь
+  // оба модуля рисуют один UI-элемент.
+  const footer = document.createElement('div');
+  footer.className = 'svp-settings-footer';
+  element.appendChild(footer);
+
+  const close = document.createElement('button');
+  close.className = 'svp-settings-close';
+  close.textContent = '[x]';
+  close.setAttribute('aria-label', t(CLOSE_LABEL));
+  close.addEventListener('click', () => {
+    // Кнопка дизейблится в runFlow на время миграции - клик не пройдёт; здесь
+    // вторая защита от программных кликов и для случая отключённого `disabled`.
+    if (migrationInProgress) return;
+    closePanel();
+  });
+  element.appendChild(close);
+
   return element;
 }
 
@@ -428,7 +440,7 @@ function setActionsDisabled(panelElement: HTMLElement, disabled: boolean): void 
 /** Дизейблит крестик закрытия панели на время миграции — пользователь не может
  *  прервать долгую операцию случайным кликом. Восстанавливает после завершения. */
 function setCloseDisabled(panelElement: HTMLElement, disabled: boolean): void {
-  const close = panelElement.querySelector<HTMLButtonElement>('.svp-migration-close');
+  const close = panelElement.querySelector<HTMLButtonElement>('.svp-settings-close');
   if (close) close.disabled = disabled;
 }
 
