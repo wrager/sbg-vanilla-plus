@@ -543,6 +543,10 @@ describe('refsOnMap lock protection', () => {
     mockOl();
     originalConfirm = window.confirm;
     originalFetch = window.fetch;
+    // deleteRefsFromServer теперь требует auth-токен в localStorage,
+    // симметрично с inventoryApi и migrationApi. Тесты ставят фиксированный
+    // токен; контр-тест "без auth" живёт ниже отдельно.
+    localStorage.setItem('auth', 'test-token');
     await refsOnMap.enable();
   });
 
@@ -551,6 +555,7 @@ describe('refsOnMap lock protection', () => {
     delete window.ol;
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('follow');
+    localStorage.removeItem('auth');
     document.body.innerHTML = '';
     window.confirm = originalConfirm;
     window.fetch = originalFetch;
@@ -638,10 +643,55 @@ describe('refsOnMap lock protection', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    // Bearer-токен передан в Authorization заголовке - симметрично с
+    // inventoryApi.deleteInventoryItems и migrationApi.postMark.
+    expect(init.headers).toMatchObject({
+      authorization: 'Bearer test-token',
+      'content-type': 'application/json',
+    });
     const body = JSON.parse(init.body as string) as { selection: Record<string, number> };
     // ref-1 (l=point-1, не locked) в payload; ref-2 (l=point-2, locked) - НЕ в payload.
     expect(body.selection).toHaveProperty('ref-1');
     expect(body.selection).not.toHaveProperty('ref-2');
+  });
+
+  test('без auth-токена delete не отправляет fetch', async () => {
+    // Контр-тест к новой проверке Authorization: если токен пропал из
+    // localStorage (logout или ручная чистка), deleteRefsFromServer
+    // возвращает error без сетевого вызова. Симметрично с buildAuthHeaders
+    // в inventoryApi (там throw).
+    localStorage.removeItem('auth');
+    setInventoryCacheWithLocks();
+    clickShowButton();
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    window.confirm = jest.fn(() => true);
+    const fetchSpy = jest.fn();
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // Ошибка ушла в console.error через стандартную ветку обработки
+    // response.error в handleDeleteClick.
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('refsOnMap'),
+      expect.stringContaining('Auth token'),
+    );
+    errorSpy.mockRestore();
   });
 
   test('all-locked selection: confirm не вызывается, fetch не идёт, показан toast', async () => {

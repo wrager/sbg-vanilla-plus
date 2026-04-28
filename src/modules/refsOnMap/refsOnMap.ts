@@ -71,9 +71,21 @@ function isDeleteApiResponse(value: unknown): value is IDeleteApiResponse {
 }
 
 async function deleteRefsFromServer(items: Record<string, number>): Promise<IDeleteApiResponse> {
+  // auth-токен передаётся явно, симметрично с inventoryApi.deleteInventoryItems
+  // и migrationApi.postMark. Раньше fetch шёл без Authorization-заголовка и
+  // полагался на cookie/session, но другие точки удаления уже используют
+  // Bearer-токен; согласованность исключает класс ошибок "сервер сменил
+  // механизм auth, refsOnMap молча перестал удалять".
+  const token = localStorage.getItem('auth');
+  if (!token) {
+    return { error: 'Auth token not found' };
+  }
   const response = await fetch(INVENTORY_API, {
     method: 'DELETE',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
     body: JSON.stringify({ selection: items, tab: REFS_TAB_TYPE }),
   });
   const json: unknown = await response.json();
