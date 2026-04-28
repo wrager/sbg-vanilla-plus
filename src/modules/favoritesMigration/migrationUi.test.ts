@@ -246,6 +246,11 @@ describe('migrationUi: секции legacy / native', () => {
     expect(beforeActions[1].textContent).toMatch(/перетащить|transfer/i);
     expect(afterActions).toHaveLength(1);
     expect(afterActions[0].textContent).toMatch(/некоторое время|may take some time/i);
+    // Обещание защиты locked: оба модуля упомянуты - автоочистка и refsOnMap
+    // ("Ключи на карте"). Регрессия "снова потеряли упоминание refsOnMap"
+    // ловится этим assert'ом.
+    expect(beforeActions[0].textContent).toMatch(/автоочистк|auto-cleanup/i);
+    expect(beforeActions[0].textContent).toMatch(/Ключи на карте|Refs on map/i);
   });
 
   test('кнопки миграции: иконка после текста (не перед)', () => {

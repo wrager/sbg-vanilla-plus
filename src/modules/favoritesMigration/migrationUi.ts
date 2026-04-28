@@ -51,8 +51,8 @@ const LEGACY_TEXT_WARNING: ILocalizedString = {
 };
 
 const NATIVE_TEXT_INTRO: ILocalizedString = {
-  en: 'Favorited keys: visual marker only, not protected from cleanup. Locked keys: not used for drawing. Locked keys will also not be deleted by the Vanilla+ auto-cleanup.',
-  ru: 'Избранные ключи: визуальное маркирование, не защищаются от удаления. Заблокированные ключи: не участвуют в рисовании. Также заблокированные ключи не будут удаляться автоочисткой скрипта Vanilla+.',
+  en: 'Favorited keys: visual marker only, not protected from cleanup. Locked keys: not used for drawing. Locked keys will also not be deleted by the Vanilla+ auto-cleanup module or by the "Refs on map" module.',
+  ru: 'Избранные ключи: визуальное маркирование, не защищаются от удаления. Заблокированные ключи: не участвуют в рисовании. Также заблокированные ключи не будут удаляться модулем автоочистки и модулем «Ключи на карте» Vanilla+.',
 };
 
 const NATIVE_TEXT_USE: ILocalizedString = {
