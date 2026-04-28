@@ -3,9 +3,15 @@ import { $, injectStyles, removeStyles } from '../../core/dom';
 import { t } from '../../core/l10n';
 import { getOlMap } from '../../core/olMap';
 import type { IOlFeature, IOlMap, IOlLayer, IOlMapEvent, IOlVectorSource } from '../../core/olMap';
-import { readFullInventoryReferences, INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
+import {
+  buildLockedPointGuids,
+  readFullInventoryReferences,
+  readInventoryCache,
+  INVENTORY_CACHE_KEY,
+} from '../../core/inventoryCache';
 import type { IInventoryReferenceFull } from '../../core/inventoryTypes';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
+import { showToast } from '../../core/toast';
 import css from './styles.css?inline';
 
 const MODULE_ID = 'refsOnMap';
@@ -106,6 +112,7 @@ let refsLayer: IOlLayer | null = null;
 let showButton: HTMLButtonElement | null = null;
 let closeButton: HTMLButtonElement | null = null;
 let trashButton: HTMLButtonElement | null = null;
+let lockedNote: HTMLDivElement | null = null;
 let tabClickHandler: ((event: Event) => void) | null = null;
 let mapClickHandler: ((event: IOlMapEvent) => void) | null = null;
 let viewerOpen = false;
@@ -252,25 +259,82 @@ function handleMapClick(event: IOlMapEvent): void {
 
 // ── deletion UI ──────────────────────────────────────────────────────────────
 
+/**
+ * Делит выбранные ref-фичи на разрешённые к удалению и защищённые
+ * locked-флагом точки. Источник правды о защите - inventory-cache: для
+ * каждой стопки бит 0b10 поля `f` означает «эта стопка locked»; в UI
+ * семантика per-point - одна locked-стопка защищает все ключи точки от
+ * удаления (тот же агрегатор, что в slowRefsDelete и cleanupCalculator).
+ *
+ * Свойство `pointGuid` фичи сравнивается с set'ом locked-точек; ref'ы без
+ * pointGuid (теоретически возможны при сломанном кэше) трактуются как
+ * unprotected, чтобы не блокировать удаление по неверной причине.
+ */
+function partitionByLockProtection(features: IOlFeature[]): {
+  deletable: IOlFeature[];
+  protectedRefs: IOlFeature[];
+} {
+  const cache = readInventoryCache();
+  const lockedPointGuids = buildLockedPointGuids(cache);
+  const deletable: IOlFeature[] = [];
+  const protectedRefs: IOlFeature[] = [];
+  for (const feature of features) {
+    const properties = feature.getProperties?.() ?? {};
+    const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+    if (pointGuid && lockedPointGuids.has(pointGuid)) {
+      protectedRefs.push(feature);
+    } else {
+      deletable.push(feature);
+    }
+  }
+  return { deletable, protectedRefs };
+}
+
+function sumAmount(features: IOlFeature[]): number {
+  let total = 0;
+  for (const feature of features) {
+    const properties = feature.getProperties?.() ?? {};
+    if (typeof properties.amount === 'number') total += properties.amount;
+  }
+  return total;
+}
+
 async function handleDeleteClick(): Promise<void> {
   if (uniqueRefsToDelete === 0 || !refsSource) return;
-
-  const message = t({
-    en: `Delete ${overallRefsToDelete} ref(s) from ${uniqueRefsToDelete} point(s)?`,
-    ru: `Удалить ${overallRefsToDelete} ключ(ей) от ${uniqueRefsToDelete} точ(ек)?`,
-  });
-
-  if (!confirm(message)) return;
 
   const selectedFeatures = refsSource.getFeatures().filter((feature) => {
     const properties = feature.getProperties?.();
     return properties !== undefined && properties.isSelected === true;
   });
 
+  // Защита locked: точки с замочком (бит 0b10 поля `f` любой стопки в
+  // inventory-cache) не удаляются. Семантика общая для всех модулей,
+  // работающих с массовым удалением ключей: refsOnMap, slowRefsDelete,
+  // cleanupCalculator (см. README inventoryCleanup).
+  const { deletable, protectedRefs } = partitionByLockProtection(selectedFeatures);
+
+  if (deletable.length === 0) {
+    showToast(
+      t({
+        en: 'All selected keys belong to locked points and cannot be deleted',
+        ru: 'Все выбранные ключи относятся к locked-точкам и не могут быть удалены',
+      }),
+    );
+    return;
+  }
+
+  const overallToDelete = sumAmount(deletable);
+  const message = t({
+    en: `Delete ${overallToDelete} ref(s) from ${deletable.length} point(s)?`,
+    ru: `Удалить ${overallToDelete} ключ(ей) от ${deletable.length} точ(ек)?`,
+  });
+
+  if (!confirm(message)) return;
+
   const items: Record<string, number> = {};
   const deletedGuids = new Set<string>();
 
-  for (const feature of selectedFeatures) {
+  for (const feature of deletable) {
     const id = feature.getId();
     const properties = feature.getProperties?.();
     const amount = properties?.amount;
@@ -288,7 +352,7 @@ async function handleDeleteClick(): Promise<void> {
     }
 
     // Remove features from map
-    for (const feature of selectedFeatures) {
+    for (const feature of deletable) {
       refsSource.removeFeature?.(feature);
     }
 
@@ -300,8 +364,19 @@ async function handleDeleteClick(): Promise<void> {
       updateInventoryCounter(response.count.total);
     }
 
-    overallRefsToDelete = 0;
-    uniqueRefsToDelete = 0;
+    // Уведомление об оставленных locked: показываем после успешного удаления,
+    // чтобы пользователь увидел итог в одном тосте, а не два диалога подряд.
+    if (protectedRefs.length > 0) {
+      showToast(
+        t({
+          en: `Locked points: ${protectedRefs.length} key(s) kept`,
+          ru: `Locked-точки: ${protectedRefs.length} ключ(ей) оставлено`,
+        }),
+      );
+    }
+
+    overallRefsToDelete = sumAmount(protectedRefs);
+    uniqueRefsToDelete = protectedRefs.length;
     updateTrashCounter();
   } catch (error) {
     console.error(`[SVP] ${MODULE_ID}: deletion failed:`, error);
@@ -464,6 +539,7 @@ function showViewer(): void {
     trashButton.style.visibility = 'hidden';
     trashButton.style.display = '';
   }
+  if (lockedNote) lockedNote.style.display = '';
 
   // Attach click handler for selection
   mapClickHandler = handleMapClick;
@@ -494,6 +570,7 @@ function hideViewer(): void {
 
   if (closeButton) closeButton.style.display = 'none';
   if (trashButton) trashButton.style.display = 'none';
+  if (lockedNote) lockedNote.style.display = 'none';
 
   const view = olMap?.getView();
   if (view) {
@@ -525,8 +602,8 @@ export const refsOnMap: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Refs on map', ru: 'Ключи на карте' },
   description: {
-    en: 'View and manage points with collected keys on the map at any zoom level',
-    ru: 'Просмотр и управление точками с ключами на карте на любом масштабе',
+    en: 'View and manage points with collected keys on the map at any zoom level. Keys of points marked with the native lock (SBG 0.6.1+) are protected and not deleted - same semantics as in the inventoryCleanup module.',
+    ru: 'Просмотр и управление точками с ключами на карте на любом масштабе. Ключи точек, помеченных нативным замочком (SBG 0.6.1+), защищены и не удаляются - та же семантика, что и в модуле inventoryCleanup.',
   },
   defaultEnabled: true,
   category: 'feature',
@@ -598,6 +675,19 @@ export const refsOnMap: IFeatureModule = {
             void handleDeleteClick();
           });
           document.body.appendChild(trashButton);
+
+          // Постоянная подсказка про защиту locked-точек: видна только в
+          // viewer-режиме, чтобы пользователь сразу понимал, что часть
+          // выбранного при удалении будет пропущена. Та же семантика
+          // используется в slowRefsDelete и cleanupCalculator.
+          lockedNote = document.createElement('div');
+          lockedNote.className = 'svp-refs-on-map-locked-note';
+          lockedNote.textContent = t({
+            en: 'Keys of locked points are protected and not deleted',
+            ru: 'Ключи locked-точек защищены и не удаляются',
+          });
+          lockedNote.style.display = 'none';
+          document.body.appendChild(lockedNote);
         } catch (error) {
           // Частичный успех enable() оставил бы hidden-кнопки/слой в DOM
           // (модуль помечен failed, но disable() автоматически не вызывается).
@@ -650,6 +740,11 @@ function cleanupEnableSideEffects(): void {
   if (trashButton) {
     trashButton.remove();
     trashButton = null;
+  }
+
+  if (lockedNote) {
+    lockedNote.remove();
+    lockedNote = null;
   }
 
   if (tabClickHandler) {
