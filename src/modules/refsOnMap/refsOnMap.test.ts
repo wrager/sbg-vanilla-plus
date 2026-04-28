@@ -558,8 +558,11 @@ describe('refsOnMap lock protection', () => {
 
   function setInventoryCacheWithLocks(): void {
     // ref-2 в стопке locked (бит 0b10 поля f) - точка point-2 защищена.
+    // У ref-1 поле `f` явно 0 (без lock-бита) - lockSupportAvailable=true,
+    // удаление разрешено. Mix-кэш (часть стопок без `f`) проверяется
+    // отдельным тестом ниже.
     const items = [
-      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open Point' },
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open Point', f: 0 },
       { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Locked Point', f: 0b10 },
     ];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
@@ -669,5 +672,80 @@ describe('refsOnMap lock protection', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     // Toast виден в DOM.
     expect(document.querySelector('.svp-toast')).not.toBeNull();
+  });
+
+  test('mix-кэш блокирует удаление: одна стопка без поля f - confirm и fetch не вызываются, показан toast', async () => {
+    // Mix-кэш: ref-1 без `f`, ref-2 с lock-битом. Симметрично с слоями
+    // защиты в slowRefsDelete и cleanupCalculator: стопки без `f` не
+    // попадают в lockedPointGuids (`if (item.f === undefined) continue`),
+    // и точка по факту locked может быть удалена вслепую. Защита: если хоть
+    // одна реф-стопка без `f` - удаление через viewer запрещено.
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Mixed Open' },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Mixed Locked', f: 0b10 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    // Выбираем ref-1 (без `f`, точка по нашему фильтру выглядит «открытой»).
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    const confirmSpy = jest.fn(() => true);
+    window.confirm = confirmSpy;
+    const fetchSpy = jest.fn();
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/lock|нативный|f-flag/i);
+  });
+
+  test('0.6.0 кэш без поля f целиком: удаление заблокировано', async () => {
+    // На 0.6.0 сервер не отдаёт `f`. lockSupportAvailable=false - удаление
+    // через viewer заблокировано целиком, чтобы пользователь не лишился
+    // ключей из-за отсутствия lock-семантики на старой версии игры.
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Old A' },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Old B' },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    const confirmSpy = jest.fn(() => true);
+    window.confirm = confirmSpy;
+    const fetchSpy = jest.fn();
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/lock|нативный|f-flag/i);
   });
 });

@@ -10,6 +10,7 @@ import {
   INVENTORY_CACHE_KEY,
 } from '../../core/inventoryCache';
 import type { IInventoryReferenceFull } from '../../core/inventoryTypes';
+import { isInventoryReference } from '../../core/inventoryTypes';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 import { showToast } from '../../core/toast';
 import css from './styles.css?inline';
@@ -260,6 +261,22 @@ function handleMapClick(event: IOlMapEvent): void {
 // ── deletion UI ──────────────────────────────────────────────────────────────
 
 /**
+ * Удаление ключей разрешено, только если ВСЕ реф-стопки в кэше имеют поле
+ * `f`. На 0.6.0 поле отсутствует целиком - `buildLockedPointGuids` возвращает
+ * пустой Set и locked-семантики нет. На mix-кэше (часть стопок с `f`, часть
+ * без) `buildLockedPointGuids` пропускает стопки без `f` (`if (item.f ===
+ * undefined) continue`), и точка по факту locked не попала бы в защищённые -
+ * её ключи могли быть удалены вслепую. `every` исключает этот класс ошибок
+ * целиком, симметрично с `cleanupCalculator`, `slowRefsDelete` и финальным
+ * guard'ом в `inventoryApi.deleteInventoryItems`.
+ */
+export function isLockSupportAvailable(cache: readonly unknown[]): boolean {
+  const refStacks = cache.filter(isInventoryReference);
+  if (refStacks.length === 0) return false;
+  return refStacks.every((item) => item.f !== undefined);
+}
+
+/**
  * Делит выбранные ref-фичи на разрешённые к удалению и защищённые
  * locked-флагом точки. Источник правды о защите - inventory-cache: для
  * каждой стопки бит 0b10 поля `f` означает «эта стопка locked»; в UI
@@ -306,6 +323,22 @@ async function handleDeleteClick(): Promise<void> {
     const properties = feature.getProperties?.();
     return properties !== undefined && properties.isSelected === true;
   });
+
+  // Защита mix-кэша: если хоть одна реф-стопка без поля `f`, нельзя
+  // полагаться на нативный lock - стопки без `f` не попадут в
+  // lockedPointGuids и точки по факту locked могут быть удалены вслепую.
+  // Симметрично с slowRefsDelete и cleanupCalculator. На 0.6.0 (нет `f`
+  // целиком) удаление через viewer тоже блокируется - пользователь не
+  // должен лишиться ключей из-за того что версия игры не поддерживает lock.
+  if (!isLockSupportAvailable(readInventoryCache())) {
+    showToast(
+      t({
+        en: 'Native lock support unavailable: server returned no f-flags. Deletion blocked.',
+        ru: 'Нативный lock недоступен (сервер не отдал поле f). Удаление заблокировано.',
+      }),
+    );
+    return;
+  }
 
   // Защита locked: точки с замочком (бит 0b10 поля `f` любой стопки в
   // inventory-cache) не удаляются. Семантика общая для всех модулей,
