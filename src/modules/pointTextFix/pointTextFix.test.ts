@@ -777,6 +777,47 @@ describe('installDiscoverFetchHook', () => {
     const fakeResp = (await fetchMock.mock.results[0].value) as { clone: jest.Mock };
     expect(fakeResp.clone).not.toHaveBeenCalled();
   });
+
+  test('init не ставит fetch-patch (lazy install): пользователь с отключённым модулем не получает глобальный side-effect', () => {
+    // init() не должен трогать window.fetch - patch ставится только при
+    // enable(). Если пользователь отключил pointTextFix через настройки,
+    // его /api/* запросы не должны проходить через нашу обёртку (даже если
+    // обёртка быстро no-op'ит при discoverHookEnabled=false).
+    uninstallDiscoverFetchHookForTest();
+    const fetchBefore = jest.fn(() =>
+      Promise.resolve({ ok: true, clone: jest.fn() } as unknown as Response),
+    );
+    window.fetch = fetchBefore as unknown as typeof window.fetch;
+
+    void pointTextFix.init();
+
+    expect(window.fetch).toBe(fetchBefore);
+  });
+
+  test('первый enable ставит fetch-patch (lazy install)', async () => {
+    // Контр-тест: после enable() patch стоит, и фактический fetch отличается
+    // от исходного. Регрессия для случая, если кто-то снова перенесёт
+    // installDiscoverFetchHook() из enable обратно в init.
+    uninstallDiscoverFetchHookForTest();
+    const fetchBefore = jest.fn(() =>
+      Promise.resolve({ ok: true, clone: jest.fn() } as unknown as Response),
+    );
+    window.fetch = fetchBefore as unknown as typeof window.fetch;
+
+    const targetFeature = makeFeature(null, { highlight: [] });
+    const pointsSrcLocal = makeSource([targetFeature]);
+    const layer = makeLayer('points', pointsSrcLocal);
+    const olMapLocal = makeMap([layer], makeView(16));
+    mockGetOlMap.mockResolvedValue(olMapLocal);
+
+    void pointTextFix.init();
+    expect(window.fetch).toBe(fetchBefore);
+    await pointTextFix.enable();
+
+    expect(window.fetch).not.toBe(fetchBefore);
+
+    await pointTextFix.disable();
+  });
 });
 
 // ── module enable / disable ───────────────────────────────────────────────────

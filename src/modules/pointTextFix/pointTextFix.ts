@@ -411,7 +411,16 @@ export const pointTextFix: IFeatureModule = {
   category: 'map',
 
   init() {
-    installDiscoverFetchHook();
+    // installDiscoverFetchHook раньше вызывался здесь, но это ставило
+    // monkey-patch на window.fetch для всех пользователей независимо от того,
+    // включён ли модуль. Каждый /api/* запрос проходил через нашу обёртку
+    // (внутри она быстро no-op'ит при discoverHookEnabled=false), но это
+    // глобальный side-effect, невидимый в DevTools. Переносим установку в
+    // enable: если пользователь отключил pointTextFix - патч вообще никогда
+    // не появляется. Сам патч после первого enable остаётся жить до конца
+    // сессии (повторные enable/disable идемпотентны через discoverFetchInstalled),
+    // потому что снятие требует проверить, что между install и uninstall
+    // никто не переписал fetch поверх - архитектурно дороже выгод.
   },
 
   async enable(): Promise<void> {
@@ -428,6 +437,9 @@ export const pointTextFix: IFeatureModule = {
 
     map = olMap;
     pointsSource = source;
+    // Lazy install: первый enable ставит fetch-patch; повторные no-op через
+    // discoverFetchInstalled внутри installDiscoverFetchHook.
+    installDiscoverFetchHook();
     discoverHookEnabled = true;
     const getZoom = (): number => map?.getView().getZoom?.() ?? 0;
 
