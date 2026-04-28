@@ -489,9 +489,10 @@ describe('inferAndPersistLockMigrationDone', () => {
     expect(setLockMigrationDoneSpy).toHaveBeenCalledTimes(1);
   });
 
-  test('legacy непустой, у legacy-точки нет стопок ключей: засчитывается как локально защищённая', () => {
-    // Если в инвентаре нет ключей от legacy-точки, защищать нечего - точка не
-    // блокирует флаг (миграция бы тоже не нашла кандидатов для неё).
+  test('legacy непустой, у legacy-точки нет стопок ключей: с другой подтверждённой legacy флаг ставится', () => {
+    // p1 имеет stacks+lock - подтверждение, что миграция была фактически
+    // проведена. p-no-keys без стопок и без lock сама по себе не доказывает
+    // и не опровергает - проходит как нейтральная.
     favoritedGuidsMock = new Set<string>(['p1', 'p-no-keys']);
     setInventory([{ g: 'r1', t: 3, l: 'p1', a: 5, f: 0b10 }]);
     inferAndPersistLockMigrationDone();
@@ -515,25 +516,49 @@ describe('inferAndPersistLockMigrationDone', () => {
     expect(setLockMigrationDoneSpy).not.toHaveBeenCalled();
   });
 
-  test('inventory-cache отсутствует: флаг НЕ выставляется (есть legacy с возможными ключами)', () => {
-    // Кэш не загружен - не можем верифицировать что миграция была проведена.
+  test('свежеустановленный пользователь: legacy есть, но в инвентаре нет ни ключей, ни lock - флаг НЕ выставляется', () => {
+    // Регрессионный сценарий: пользователь установил скрипт впервые на
+    // 0.6.1+, добавил точку через CUI/чужую установку SVP, ключей этой
+    // точки в инвентаре сейчас нет. Старая логика ставила флаг (потому что
+    // hasStacks=false для всех legacy и точка не "блокировала" решение); в
+    // итоге автоочистка снимала блок ещё до того как пользователь начнёт
+    // мигрировать, и при наборе ключей этой точки они удалялись без
+    // защиты. Новая логика требует positive evidence (legacy И stacks И
+    // lock одновременно) - без него флаг остаётся false.
+    favoritedGuidsMock = new Set<string>(['p1']);
+    setInventory([]);
+    inferAndPersistLockMigrationDone();
+    expect(setLockMigrationDoneSpy).not.toHaveBeenCalled();
+  });
+
+  test('inventory-cache отсутствует: флаг НЕ выставляется', () => {
+    // Кэш не загружен - не можем верифицировать что миграция была
+    // проведена. Безопаснее оставить блок и попросить пользователя пройти
+    // миграцию через UI, чем снять блок на основе пустого свидетельства.
     favoritedGuidsMock = new Set<string>(['p1']);
     localStorage.removeItem('inventory-cache');
     inferAndPersistLockMigrationDone();
-    // По логике: пустой кэш => не подтверждение полного локирования. p1
-    // не имеет стопок (раз кэш пуст), значит "защищать нечего" => флаг
-    // ставится. Это компромисс: если у пользователя есть ключи в
-    // реальности но кэш ещё не подгружен - первый запуск discover'а
-    // пересоздаст кэш, а флаг уже стоит. Однако защита по lock-биту в
-    // calculateDeletions всё равно отрабатывает безусловно: locked-точки
-    // там не удаляются. Риск только для legacy-точек, не помеченных lock.
-    expect(setLockMigrationDoneSpy).toHaveBeenCalledTimes(1);
+    expect(setLockMigrationDoneSpy).not.toHaveBeenCalled();
   });
 
-  test('legacy-точка с amount=0 (раздал ключи): не блокирует флаг', () => {
+  test('legacy-точка с amount=0 (раздал ключи): без других подтверждений флаг НЕ выставляется', () => {
+    // a=0 трактуется как hasStacks=false (стопка не считается активной).
+    // Без дополнительных подтверждений (другая legacy с stacks+lock)
+    // hasMigrationEvidence остаётся false.
     favoritedGuidsMock = new Set<string>(['p1']);
     setInventory([{ g: 'r1', t: 3, l: 'p1', a: 0, f: 0 }]);
     inferAndPersistLockMigrationDone();
-    expect(setLockMigrationDoneSpy).toHaveBeenCalledTimes(1);
+    expect(setLockMigrationDoneSpy).not.toHaveBeenCalled();
+  });
+
+  test('legacy непустой, все стопки legacy с lock но a=0: флаг НЕ выставляется', () => {
+    // Edge: пользователь мигрировал, потом раздал/удалил все ключи.
+    // a=0 не считается positive evidence (стопка не активна). Пользователь
+    // увидит блок автоочистки и пройдёт миграцию через UI - там lockComplete
+    // проставит флаг через явное действие.
+    favoritedGuidsMock = new Set<string>(['p1']);
+    setInventory([{ g: 'r1', t: 3, l: 'p1', a: 0, f: 0b10 }]);
+    inferAndPersistLockMigrationDone();
+    expect(setLockMigrationDoneSpy).not.toHaveBeenCalled();
   });
 });
