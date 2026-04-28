@@ -46,8 +46,8 @@ const LEGACY_TEXT_INTRO: ILocalizedString = {
 };
 
 const LEGACY_TEXT_WARNING: ILocalizedString = {
-  en: '⚠️ Note: this favorites list is no longer used; it is only useful for migration into the game native functionality via the buttons below.',
-  ru: '⚠️ Внимание: этот список избранного больше не используется и полезен только для миграции в стандартный функционал игры с помощью кнопок ниже.',
+  en: '⚠️ Note: this favorites list is no longer used; it is only useful for migration into the game native functionality.',
+  ru: '⚠️ Внимание: этот список избранного больше не используется и полезен только для миграции в стандартный функционал игры.',
 };
 
 const NATIVE_TEXT_INTRO: ILocalizedString = {

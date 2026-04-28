@@ -179,6 +179,10 @@ describe('migrationUi: секции legacy / native', () => {
     expect(texts.length).toBe(2);
     expect(texts[0].textContent).toMatch(/из этого браузера|from or to this browser/i);
     expect(texts[1].textContent).toMatch(/больше не используется|no longer used/i);
+    // Фраза "с помощью кнопок ниже" удалена: кнопки миграции теперь в отдельной
+    // секции "новое", а не сразу под warning - указание "ниже" географически
+    // неверное.
+    expect(texts[1].textContent).not.toMatch(/кнопок ниже|buttons below/i);
     expect(texts[1].classList.contains('svp-migration-section-text-warning')).toBe(true);
   });
 
