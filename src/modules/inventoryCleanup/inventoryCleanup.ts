@@ -208,8 +208,8 @@ export const inventoryCleanup: IFeatureModule = {
     ru: 'Автоочистка инвентаря',
   },
   description: {
-    en: 'Automatically removes excess items when discovering points. Protects keys of points marked with native lock (SBG 0.6.1+). Key deletion is blocked until the local SVP/CUI favorites list is migrated via the favoritesMigration module. Forces native "Garbage collector" off — its settings are disabled while the module is active',
-    ru: 'Автоматически удаляет лишние предметы при изучении точек. Защищает ключи точек, помеченных нативным замочком (SBG 0.6.1+). Удаление ключей блокируется, пока локальный список избранного SVP/CUI не перенесён через модуль favoritesMigration. Принудительно отключает нативный «Сборщик мусора» — пока модуль активен, нативные настройки задизейблены',
+    en: 'Automatically removes excess items when discovering points. Protects keys of points marked with native lock (SBG 0.6.1+). Key deletion is blocked until the local SVP/CUI favorites list is migrated via the favoritesMigration module. Forces native "Garbage collector" off: its settings are disabled and the block is dimmed with the "Replaced by the Vanilla+ auto-cleanup module" caption while the module is active',
+    ru: 'Автоматически удаляет лишние предметы при изучении точек. Защищает ключи точек, помеченных нативным замочком (SBG 0.6.1+). Удаление ключей блокируется, пока локальный список избранного SVP/CUI не перенесён через модуль favoritesMigration. Принудительно отключает нативный «Сборщик мусора»: пока модуль активен, нативные настройки задизейблены, а сам блок приглушён с подписью «Заменён модулем автоочистки Vanilla+»',
   },
   defaultEnabled: true,
   category: 'feature',

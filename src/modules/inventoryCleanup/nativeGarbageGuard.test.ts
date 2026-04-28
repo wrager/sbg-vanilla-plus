@@ -156,3 +156,124 @@ describe('installNativeGarbageGuard — сторона API', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 });
+
+// ── обёртка fieldset'а с подписью и opacity ──────────────────────────────────
+
+function createGarbageFieldset(): {
+  fieldset: HTMLFieldSetElement;
+  legend: HTMLLegendElement;
+  usegrb: HTMLInputElement;
+  values: HTMLInputElement[];
+  save: HTMLButtonElement;
+} {
+  // Структура из refs/game/index.html:205-227: fieldset > legend, label с
+  // input usegrb, .garbage-table, кнопка #garbage-save, текстовые подсказки.
+  const fieldset = document.createElement('fieldset');
+  fieldset.className = 'settings-block vertical';
+
+  const legend = document.createElement('legend');
+  legend.textContent = 'Сборщик мусора';
+  fieldset.appendChild(legend);
+
+  const label = document.createElement('label');
+  const usegrb = document.createElement('input');
+  usegrb.type = 'checkbox';
+  usegrb.setAttribute('data-setting', 'usegrb');
+  label.appendChild(usegrb);
+  fieldset.appendChild(label);
+
+  const table = document.createElement('div');
+  table.className = 'garbage-table';
+  const values: HTMLInputElement[] = [];
+  for (let level = 1; level <= 10; level++) {
+    for (const type of [1, 2]) {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.className = 'garbage-value';
+      input.setAttribute('data-ref', `${type}-${level}`);
+      values.push(input);
+      table.appendChild(input);
+    }
+  }
+  fieldset.appendChild(table);
+
+  const save = document.createElement('button');
+  save.id = 'garbage-save';
+  fieldset.appendChild(save);
+
+  const guide = document.createElement('div');
+  guide.className = 'text-faint';
+  guide.textContent = 'How garbage works';
+  fieldset.appendChild(guide);
+
+  document.body.appendChild(fieldset);
+  return { fieldset, legend, usegrb, values, save };
+}
+
+describe('installNativeGarbageGuard — обёртка fieldset', () => {
+  test('после install подпись с .svp-garbage-disabled-note вставлена сразу после legend', () => {
+    const { fieldset, legend } = createGarbageFieldset();
+    installNativeGarbageGuard();
+
+    const note = fieldset.querySelector<HTMLDivElement>(':scope > .svp-garbage-disabled-note');
+    expect(note).not.toBeNull();
+    expect(legend.nextElementSibling).toBe(note);
+    expect(note?.textContent).toMatch(/Vanilla\+|auto-cleanup/i);
+  });
+
+  test('содержимое fieldset (всё кроме legend и подписи) обёрнуто в .svp-garbage-disabled-content', () => {
+    const { fieldset, save } = createGarbageFieldset();
+    installNativeGarbageGuard();
+
+    const wrapper = fieldset.querySelector<HTMLDivElement>(
+      ':scope > .svp-garbage-disabled-content',
+    );
+    expect(wrapper).not.toBeNull();
+    // garbage-table, кнопка save, text-faint - все внутри wrapper.
+    expect(wrapper?.querySelector('.garbage-table')).not.toBeNull();
+    expect(wrapper?.querySelector('#garbage-save')).toBe(save);
+    expect(wrapper?.querySelector('.text-faint')).not.toBeNull();
+    // legend и подпись - НЕ внутри wrapper, а прямые дети fieldset.
+    expect(wrapper?.querySelector('legend')).toBeNull();
+    expect(wrapper?.querySelector('.svp-garbage-disabled-note')).toBeNull();
+  });
+
+  test('повторный install идемпотентен (note и wrapper не дублируются)', () => {
+    createGarbageFieldset();
+    installNativeGarbageGuard();
+    uninstallNativeGarbageGuard();
+    installNativeGarbageGuard();
+
+    expect(document.querySelectorAll('.svp-garbage-disabled-note').length).toBe(1);
+    expect(document.querySelectorAll('.svp-garbage-disabled-content').length).toBe(1);
+  });
+
+  test('uninstall возвращает содержимое fieldset в исходное состояние', () => {
+    const { fieldset, legend, usegrb, save } = createGarbageFieldset();
+    const childrenBefore = Array.from(fieldset.children);
+    installNativeGarbageGuard();
+    uninstallNativeGarbageGuard();
+
+    // Подпись и wrapper удалены.
+    expect(fieldset.querySelector('.svp-garbage-disabled-note')).toBeNull();
+    expect(fieldset.querySelector('.svp-garbage-disabled-content')).toBeNull();
+    // legend на месте, и порядок прямых детей восстановлен.
+    expect(fieldset.children[0]).toBe(legend);
+    const childrenAfter = Array.from(fieldset.children);
+    expect(childrenAfter).toEqual(childrenBefore);
+    // Inputs тоже снова доступны (закрытые в wrapper они оставались доступны через querySelector,
+    // но именно структура fieldset > * восстановилась).
+    expect(usegrb.closest('fieldset')).toBe(fieldset);
+    expect(save.closest('fieldset')).toBe(fieldset);
+  });
+
+  test('observer догоняет fieldset, добавленный после install', async () => {
+    installNativeGarbageGuard();
+    const { fieldset } = createGarbageFieldset();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fieldset.querySelector('.svp-garbage-disabled-note')).not.toBeNull();
+    expect(fieldset.querySelector('.svp-garbage-disabled-content')).not.toBeNull();
+  });
+});

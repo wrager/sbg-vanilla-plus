@@ -250,3 +250,20 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Подпись над разметкой нативного «Сборщика мусора», когда модуль активен.
+   Сидит сразу после <legend>, opacity 1 — читаема. Содержимое блока ниже
+   обёрнуто в .svp-garbage-disabled-content с opacity 0.5. Так пользователь
+   видит, что именно подменил Vanilla+, и почему остальные настройки
+   приглушены. */
+.svp-garbage-disabled-note {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--text);
+  font-style: italic;
+}
+
+.svp-garbage-disabled-content {
+  opacity: 0.5;
+  pointer-events: none;
+}
