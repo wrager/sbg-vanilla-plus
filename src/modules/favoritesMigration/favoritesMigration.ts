@@ -18,7 +18,7 @@ export const favoritesMigration: IFeatureModule = {
     ru: 'Однократная миграция избранных точек SVP/CUI в нативные «звёздочки» и «замочки» SBG 0.6.1. Открой настройки модуля — там две кнопки действия.',
   },
   defaultEnabled: true,
-  category: 'utility',
+  category: 'feature',
 
   async init() {
     // Грузим IDB-снимок SVP/CUI-избранных в memory cache: миграция читает его

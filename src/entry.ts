@@ -59,6 +59,7 @@ if (!isDisabled()) {
       groupErrorToasts,
       removeAttackCloseButton,
       // feature
+      favoritesMigration,
       inventoryCleanup,
       keepScreenOn,
       // map
@@ -72,8 +73,6 @@ if (!isDisabled()) {
       refsOnMap,
       improvedNextPointSwipe,
       swipeToClosePopup,
-      // utility
-      favoritesMigration,
       // fix
       drawButtonFix,
     ]);

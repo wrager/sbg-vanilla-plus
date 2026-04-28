@@ -1,4 +1,5 @@
 import { installMigrationUi, uninstallMigrationUi } from './migrationUi';
+import { favoritesMigration } from './favoritesMigration';
 import {
   loadFavorites,
   resetForTests as resetFavoritesStoreForTests,
@@ -81,6 +82,30 @@ beforeEach(async () => {
 afterEach(() => {
   uninstallMigrationUi();
   document.body.innerHTML = '';
+});
+
+describe('favoritesMigration: метаданные модуля', () => {
+  test('id равен "favoritesMigration"', () => {
+    expect(favoritesMigration.id).toBe('favoritesMigration');
+  });
+
+  test('category - feature (не utility)', () => {
+    // Миграция избранного - пользовательская фича, не служебная утилита.
+    // CATEGORY_ORDER в settings UI ставит feature перед utility, поэтому
+    // изменение наблюдаемо в порядке отображения модулей в настройках.
+    expect(favoritesMigration.category).toBe('feature');
+  });
+
+  test('defaultEnabled = true', () => {
+    expect(favoritesMigration.defaultEnabled).toBe(true);
+  });
+
+  test('имеет локализованные name и description', () => {
+    expect(favoritesMigration.name.ru).toBeTruthy();
+    expect(favoritesMigration.name.en).toBeTruthy();
+    expect(favoritesMigration.description.ru).toBeTruthy();
+    expect(favoritesMigration.description.en).toBeTruthy();
+  });
 });
 
 describe('migrationUi: footer и кнопка закрытия (общие классы)', () => {
