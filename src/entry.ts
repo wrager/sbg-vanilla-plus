@@ -22,7 +22,7 @@ import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { drawTools } from './modules/drawTools/drawTools';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
 import { favoritesMigration } from './modules/favoritesMigration/favoritesMigration';
-import { nextPointNavigation } from './modules/nextPointNavigation/nextPointNavigation';
+import { improvedNextPointSwipe } from './modules/improvedNextPointSwipe/improvedNextPointSwipe';
 import { swipeToClosePopup } from './modules/swipeToClosePopup/swipeToClosePopup';
 
 if (!isDisabled()) {
@@ -70,7 +70,7 @@ if (!isDisabled()) {
       drawTools,
       // feature (map-зависимые)
       refsOnMap,
-      nextPointNavigation,
+      improvedNextPointSwipe,
       swipeToClosePopup,
       // utility
       favoritesMigration,
