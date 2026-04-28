@@ -1,4 +1,8 @@
-import { installNativeGarbageGuard, uninstallNativeGarbageGuard } from './nativeGarbageGuard';
+import {
+  installNativeGarbageGuard,
+  uninstallNativeGarbageGuard,
+  resetUsegrbPostedFlagForTest,
+} from './nativeGarbageGuard';
 
 const AUTH_TOKEN = 'test-auth-token';
 
@@ -13,6 +17,10 @@ beforeEach(() => {
   mockFetch = jest.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({}) });
   originalFetch = window.fetch;
   Object.defineProperty(window, 'fetch', { value: mockFetch, writable: true });
+
+  // Флаг session-once в модуле живёт между тестами; сбрасываем, чтобы
+  // каждый тест видел чистое состояние "POST ещё не отправлялся".
+  resetUsegrbPostedFlagForTest();
 });
 
 afterEach(() => {
@@ -154,6 +162,37 @@ describe('installNativeGarbageGuard — сторона API', () => {
     uninstallNativeGarbageGuard();
 
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('повторный install за сессию не шлёт второй POST', () => {
+    // Пользователь часто toggle модуля через настройки или модуль сам
+    // флаппится из-за чужого скрипта - без session-once флага мы спамили
+    // бы /api/settings на каждый enable. Сервер всё равно дросселирует,
+    // но клиентский лишний вызов выглядит как ошибка рантайма; флаг
+    // убирает шум в логах сервера и в DevTools Network.
+    createGarbageSection();
+    installNativeGarbageGuard();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    uninstallNativeGarbageGuard();
+    installNativeGarbageGuard();
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('после resetUsegrbPostedFlagForTest install шлёт POST заново', () => {
+    // Контр-тест к session-once: симуляция перезагрузки страницы
+    // (resetUsegrbPostedFlagForTest имитирует свежий page-load).
+    // Без этого механизма пользователь, наткнувшийся на сетевую ошибку
+    // при первом fetch, не смог бы переотправить POST даже после reload.
+    createGarbageSection();
+    installNativeGarbageGuard();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    uninstallNativeGarbageGuard();
+
+    resetUsegrbPostedFlagForTest();
+    installNativeGarbageGuard();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 });
 

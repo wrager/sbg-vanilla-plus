@@ -30,6 +30,14 @@ const GARBAGE_WRAPPER_CLASS = 'svp-garbage-disabled-content';
 
 let domObserver: MutationObserver | null = null;
 let installGeneration = 0;
+// Серверный POST /api/settings выполняется один раз за жизнь страницы.
+// Если пользователь часто переключает модуль через настройки (или модуль
+// сам флаппится из-за чужого скрипта), без флага мы спамили бы /api/settings
+// на каждый enable. Сервер всё равно дросселирует, но клиентский лишний
+// вызов выглядит как ошибка рантайма; флаг убирает шум в логах сервера и
+// в DevTools Network. Сбросить флаг можно только через перезагрузку страницы:
+// модуль сам не "размигрировывает" usegrb=true, см. комментарий вверху файла.
+let usegrbPostedThisSession = false;
 
 function applyDisabledToNativeInputs(): void {
   const inputs = document.querySelectorAll<HTMLInputElement | HTMLButtonElement>(
@@ -140,8 +148,18 @@ function unwrapGarbageFieldset(): void {
  * без серверного выключения. DOM-defence остаётся в силе.
  */
 async function postUsegrbFalse(): Promise<void> {
+  if (usegrbPostedThisSession) return;
   const token = localStorage.getItem('auth');
   if (!token) return;
+  // Помечаем "отправлено" ДО fetch: если пользователь успеет повторно
+  // toggle модуля до резолва Promise, второй вызов всё равно увидит
+  // флаг и не пошлёт дубликат. Сетевой сбой не сбрасывает флаг -
+  // сервер всё равно дросселирует, и клиентский retry в этом сценарии
+  // только добавил бы шума в Network. Если usegrb окажется true на
+  // сервере (наш fetch упал, или другой клиент выставил true) - это
+  // лечится перезагрузкой страницы, на следующем page-load флаг сессии
+  // сбросится и POST уйдёт заново.
+  usegrbPostedThisSession = true;
   try {
     await fetch('/api/settings', {
       method: 'POST',
@@ -152,9 +170,14 @@ async function postUsegrbFalse(): Promise<void> {
       body: JSON.stringify({ usegrb: false }),
     });
   } catch {
-    // Сеть недоступна / сервер вернул ошибку — игнорируем. DOM-disable
+    // Сеть недоступна / сервер вернул ошибку - игнорируем. DOM-disable
     // остаётся в силе, пользователь видит, что управление у нас.
   }
+}
+
+/** Только для тестов: сбрасывает флаг сессии, чтобы каждый тест начинал с чистого состояния. */
+export function resetUsegrbPostedFlagForTest(): void {
+  usegrbPostedThisSession = false;
 }
 
 export function installNativeGarbageGuard(): void {
