@@ -153,7 +153,18 @@ async function doImport(file: File, counterElement: HTMLElement): Promise<void> 
     const text = await file.text();
     const added = await importFavoritesFromJson(text);
     counterElement.textContent = `${t(COUNTER_LABEL)} ${getFavoritesCount()}`;
-    alert(t({ en: 'Records imported: ', ru: 'Импортировано записей: ' }) + String(added));
+    // Импорт сбрасывает флаг lock-migration-done в favoritesStore: новые
+    // записи не помечены нативным замочком, и автоочистка ключей до
+    // повторной миграции в locked может удалить ключи свежеимпортированных
+    // точек. Без явного предупреждения пользователь увидит только число
+    // импортированных и не поймёт, что нужно сделать дальше - и через
+    // discover ключи будут удаляться без защиты.
+    const importedLabel = t({ en: 'Records imported: ', ru: 'Импортировано записей: ' });
+    const reminder = t({
+      en: 'Run "Migrate the old list to locked" again so that the freshly imported keys are protected from auto-cleanup.',
+      ru: 'Снова нажми "Перенести старый список в заблокированное", иначе ключи импортированных точек могут быть удалены автоочисткой.',
+    });
+    alert(`${importedLabel}${String(added)}\n\n${reminder}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
     alert(t({ en: 'Import error: ', ru: 'Ошибка импорта: ' }) + message);

@@ -319,6 +319,12 @@ describe('migrationUi: секции legacy / native', () => {
     expect(counter.textContent).toContain('3');
     expect(isLockMigrationDone()).toBe(false);
     expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('3'));
+    // Alert должен напомнить пользователю запустить миграцию в locked,
+    // иначе ключи свежеимпортированных точек могут быть удалены автоочисткой:
+    // импорт сбрасывает lock-migration-done, новые записи не помечены
+    // нативным замочком. Без напоминания пользователь видит только число
+    // импортированных и не понимает, что нужно сделать дальше.
+    expect(alertSpy).toHaveBeenCalledWith(expect.stringMatching(/locked|заблокированное/i));
     alertSpy.mockRestore();
   });
 });
