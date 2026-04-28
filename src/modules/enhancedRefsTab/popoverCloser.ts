@@ -100,11 +100,17 @@ function closePopover(): void {
 }
 
 function onActionClick(): void {
-  // microtask: пусть нативный обработчик игры (отправка marks или открытие
-  // manage-меню) отработает первым. Иначе наш закрывающий клик троеточия
-  // мог бы запуститься до того, как игра успеет обновить иконку Favorite/Lock
-  // в popover'е.
-  void Promise.resolve().then(closePopover);
+  // setTimeout(0), не Promise.resolve().then: HTML спецификация event dispatch
+  // выполняет microtask checkpoint после КАЖДОГО invocation listener-а на одном
+  // target. Если наш onActionClick зарегистрирован в bubble раньше игрового
+  // (зависит от тайминга waitForElement vs IIFE-init игры), microtask с
+  // closePopover запустится МЕЖДУ нашим и игровым listener-ом - игровой
+  // обработчик троеточия из reference.click() выставит popovers.ref_actions=null,
+  // после чего sync-часть игрового listener-а favorite/lock увидит
+  // popovers.ref_actions === null и сделает early return до apiSend. action
+  // не выполнится. setTimeout планирует task, который запустится ПОСЛЕ полного
+  // click-события (включая sync-часть игрового handler-а с apiSend).
+  setTimeout(closePopover, 0);
 }
 
 export function installPopoverCloser(): void {
