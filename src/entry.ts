@@ -23,6 +23,7 @@ import { drawTools } from './modules/drawTools/drawTools';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
 import { favoritesMigration } from './modules/favoritesMigration/favoritesMigration';
 import { nextPointNavigation } from './modules/nextPointNavigation/nextPointNavigation';
+import { swipeToClosePopup } from './modules/swipeToClosePopup/swipeToClosePopup';
 
 if (!isDisabled()) {
   // Перехваты, которые должны быть установлены ДО парсинга DOM и
@@ -70,6 +71,7 @@ if (!isDisabled()) {
       // feature (map-зависимые)
       refsOnMap,
       nextPointNavigation,
+      swipeToClosePopup,
       // utility
       favoritesMigration,
       // fix

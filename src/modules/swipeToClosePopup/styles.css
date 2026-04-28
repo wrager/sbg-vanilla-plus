@@ -1,0 +1,24 @@
+/* Браузерное touch-action для попапа: pan-x отдаёт горизонталь нативному
+   Hammer'у игры (свайп между соседними точками), вертикаль забираем себе для
+   свайпа закрытия. Игра ставит inline touch-action: pan-y, поэтому на enable
+   мы дополнительно перетираем его через style.touchAction в JS - inline побеждает
+   CSS-rule по специфичности. CSS оставляем как fallback для случаев, когда
+   inline отсутствует. */
+.info.popup {
+  touch-action: pan-x;
+}
+
+/* Слайдер ядер живёт со своими жестами Splide; touch-action: manipulation
+   разрешает single-tap/double-tap, остальное - Splide. */
+.info.popup .deploy-slider-wrp {
+  touch-action: manipulation;
+}
+
+/* CSS-transition включается классом svp-swipe-animating только во время
+   animateDismiss/animateReturn. В остальное время (touchmove) transition нет -
+   попап едет за пальцем мгновенно. */
+.info.popup.svp-swipe-animating {
+  transition:
+    translate 0.3s ease-out,
+    opacity 0.3s ease-out;
+}
