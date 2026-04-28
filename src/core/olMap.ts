@@ -53,12 +53,21 @@ export interface IOlFeature {
   // имеет; объявлены опциональными на случай моков в тестах, где их нет.
   on?(type: string, listener: () => void): void;
   un?(type: string, listener: () => void): void;
+  // Уведомляет OL renderer-cache об инвалидации feature: следующий render
+  // пересчитает execution plan и применит свежие style/renderer. Без явного
+  // вызова мутации, не идущие через setStyle (например, style.setRenderer
+  // in-place), не попадают в plan до внешнего trigger'а (move, zoom).
+  changed?(): void;
 }
 
 export interface IOlVectorSource {
   getFeatures(): IOlFeature[];
   addFeature(feature: IOlFeature): void;
   removeFeature?(feature: IOlFeature): void;
+  // Поиск feature по идентификатору; в OL API стандартный метод VectorSource.
+  // Используется при адресном обновлении state одной точки (после discover,
+  // showInfo и т. п.) - O(1) против O(n) перебора getFeatures().
+  getFeatureById?(id: string | number): IOlFeature | null;
   clear(): void;
   // Сигнатура обработчика - `(...args: unknown[]) => void`, чтобы принимать
   // как listener'ы без параметров (`change`-event), так и с event-объектом

@@ -160,6 +160,15 @@ export function wrapStyleArray(styles: unknown, getZoom: () => number): void {
  * В обработчике повторно прогоняем wrapStyleArray по getStyle() - уже
  * обёрнутые renderer пропускаются по WRAPPED_MARKER, накладные расходы
  * минимальны.
+ *
+ * После установки обёртки вызываем feature.changed(): style.setRenderer()
+ * мутирует функцию рендера in-place, но НЕ диспатчит change-event
+ * (refs/ol/ol.js:6842-6843, setRenderer присваивает renderer_ без changed()).
+ * Layer кеширует execution plan по revision counter feature; без явного
+ * changed() новый renderer не попадает в plan до внешнего trigger'а
+ * (move, zoom, click). Это и есть причина «не применяется до ререндера»
+ * на enable и «не отрисовывается при движении» на addfeature - оба пути
+ * обворачивают renderer без своего changed().
  */
 export function wrapFeature(feature: IOlFeature, getZoom: () => number): void {
   if (wrappedFeatures.has(feature)) return;
@@ -185,6 +194,8 @@ export function wrapFeature(feature: IOlFeature, getZoom: () => number): void {
   };
   featureChangeListeners.set(feature, onChange);
   feature.on('change', onChange);
+
+  if (typeof feature.changed === 'function') feature.changed();
 }
 
 /**
@@ -219,17 +230,189 @@ export function unwrapFeature(feature: IOlFeature): void {
   wrappedFeatures.delete(feature);
 }
 
+// ── refs channel sync (бaгфикс «после discover не обновляется текст») ────────
+
+// Канал references в маске Text-слоя. Совпадает с option value="7" в
+// refs/game/index.html:289 и case 7 в FeatureStyles.LIGHT renderer
+// (refs/game/script.js:374-377). Сервер кладёт сюда количество ключей
+// игрока на эту точку в момент /api/inview ответа; игра не обновляет
+// значение при последующих изменениях инвентаря (discover, удаление,
+// recycle), поэтому подпись остаётся stale до следующего drawEntities
+// (movemend на >30 м или 5-минутный таймер).
+const REFS_CHANNEL_INDEX = 7;
+const DISCOVER_URL_PATTERN = /\/api\/discover(\?|$)/;
+const REF_ITEM_TYPE = 3;
+
+let discoverFetchInstalled = false;
+let originalFetchBeforePatch: typeof window.fetch | null = null;
+
+interface IDiscoverLootItem {
+  t?: number;
+  l?: string;
+  a?: number;
+}
+
+interface IDiscoverResponseShape {
+  response?: {
+    loot?: IDiscoverLootItem[];
+  };
+}
+
+function isDiscoverResponseShape(value: unknown): value is IDiscoverResponseShape {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Считает суммарный прирост ключей конкретной точки из массива loot ответа
+ * /api/discover. В loot могут лежать предметы разных типов; refs - это
+ * t === 3, l === guid дискаверенной точки. Игра использует тот же предикат
+ * (refs/game/script.js:816 - `cache.find(f => f.t === 3 && f.l === guid)`).
+ */
+export function computeRefsGainFromDiscover(body: unknown, targetGuid: string): number {
+  if (!isDiscoverResponseShape(body)) return 0;
+  const loot = body.response?.loot;
+  if (!Array.isArray(loot)) return 0;
+  let gain = 0;
+  for (const item of loot) {
+    if (item.t !== REF_ITEM_TYPE) continue;
+    if (item.l !== targetGuid) continue;
+    if (typeof item.a !== 'number') continue;
+    gain += item.a;
+  }
+  return gain;
+}
+
+/**
+ * Извлекает guid целевой точки из RequestInit body. /api/discover - POST
+ * с JSON-payload `{position, guid, wish}` (refs/game/script.js:797-801).
+ * Возвращает null, если body отсутствует, не строка, не парсится или не
+ * содержит guid - фолбек на `.info[data-guid]` оставлен в обработчике.
+ */
+function extractDiscoverGuidFromInit(init: RequestInit | undefined): string | null {
+  const body = init?.body;
+  if (typeof body !== 'string') return null;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (typeof parsed === 'object' && parsed !== null && 'guid' in parsed) {
+      const guid = (parsed as { guid: unknown }).guid;
+      if (typeof guid === 'string') return guid;
+    }
+  } catch {
+    // невалидный JSON - не наш случай.
+  }
+  return null;
+}
+
+function extractUrl(input: RequestInfo | URL): string | null {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.toString();
+  // Request: у него поле `url: string` в DOM lib; null - страховка для моков
+  // в тестах, где может прийти неполный объект без url.
+  return typeof input.url === 'string' ? input.url : null;
+}
+
+/**
+ * Применяет refsGain к feature: in-place мутация массива highlight по
+ * индексу REFS_CHANNEL_INDEX. LIGHT-стиль закрыт closure'ом над тем же
+ * массивом (refs/game/script.js:269-270, 303), поэтому изменение по
+ * reference читается следующим вызовом renderer'а. feature.changed()
+ * инвалидирует execution plan layer'а и запускает ререндер.
+ *
+ * Если highlight отсутствует или не массив - игнорируем: точка
+ * нарисована без LIGHT-стиля (или ещё не получила prop через
+ * setProperties), наша правка не нужна.
+ */
+export function applyRefsGainToFeature(feature: IOlFeature, gain: number): void {
+  if (gain <= 0) return;
+  if (typeof feature.get !== 'function') return;
+  const highlight = feature.get('highlight');
+  if (!Array.isArray(highlight)) return;
+  const current =
+    typeof highlight[REFS_CHANNEL_INDEX] === 'number' ? highlight[REFS_CHANNEL_INDEX] : 0;
+  highlight[REFS_CHANNEL_INDEX] = current + gain;
+  if (typeof feature.changed === 'function') feature.changed();
+}
+
+function handleDiscoverResponse(response: Response, targetGuid: string): void {
+  if (!response.ok) return;
+  if (!pointsSource) return;
+  response
+    .clone()
+    .json()
+    .then((body: unknown) => {
+      if (!pointsSource) return;
+      const gain = computeRefsGainFromDiscover(body, targetGuid);
+      if (gain <= 0) return;
+      const feature =
+        typeof pointsSource.getFeatureById === 'function'
+          ? pointsSource.getFeatureById(targetGuid)
+          : null;
+      if (!feature) return;
+      applyRefsGainToFeature(feature, gain);
+    })
+    .catch(() => {
+      // Парсинг JSON упал - игра сама обработает ответ; мы пропускаем
+      // обновление подписи. Подпись обновится при следующем drawEntities.
+    });
+}
+
+/**
+ * Ставит monkey-patch на window.fetch один раз за жизнь страницы. Перехват
+ * пропускает все запросы кроме /api/discover; для них клонирует Response
+ * (чтобы не блокировать игру), парсит loot и обновляет refs-канал на
+ * целевой feature. Срабатывает только пока модуль enabled - флаг
+ * проверяется внутри обработчика.
+ */
+export function installDiscoverFetchHook(): void {
+  if (discoverFetchInstalled) return;
+  discoverFetchInstalled = true;
+  const originalFetch = window.fetch;
+  originalFetchBeforePatch = originalFetch;
+  window.fetch = function patchedFetch(
+    this: typeof window,
+    ...args: Parameters<typeof window.fetch>
+  ): Promise<Response> {
+    const responsePromise = originalFetch.apply(this, args);
+    if (!discoverHookEnabled) return responsePromise;
+    const url = extractUrl(args[0]);
+    if (!url || !DISCOVER_URL_PATTERN.test(url)) return responsePromise;
+    const targetGuid = extractDiscoverGuidFromInit(args[1]);
+    if (!targetGuid) return responsePromise;
+    void responsePromise.then(
+      (response) => {
+        handleDiscoverResponse(response, targetGuid);
+      },
+      () => {
+        // Сетевой сбой - игре уже сообщено через rejection основного промиса.
+      },
+    );
+    return responsePromise;
+  };
+}
+
+/** Тестовый сброс глобального fetch-патча. Только для тестов. */
+export function uninstallDiscoverFetchHookForTest(): void {
+  if (!discoverFetchInstalled) return;
+  if (originalFetchBeforePatch) window.fetch = originalFetchBeforePatch;
+  originalFetchBeforePatch = null;
+  discoverFetchInstalled = false;
+}
+
+let discoverHookEnabled = false;
+
 export const pointTextFix: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Point text labels', ru: 'Подписи на точках' },
   description: {
-    en: 'Replaces native fixed 32px highlighter text on points with adaptive size that stays readable at low zoom and does not rotate with the map. Applies to all text channels in Layers > Text (Levels, Deployment, References, Guards).',
-    ru: 'Заменяет нативный фиксированный 32px-текст подсветки точек адаптивным размером: читаемо на любом зуме, текст не вращается вместе с картой. Работает для всех каналов в Layers > Text (Levels, Deployment, References, Guards).',
+    en: 'Replaces native fixed 32px highlighter text on points with adaptive size that stays readable at low zoom and does not rotate with the map. Applies to all text channels in Layers > Text (Levels, Deployment, References, Guards). Also keeps the References count in sync after discoveries (the game does not refresh it until the next map data refetch).',
+    ru: 'Заменяет нативный фиксированный 32px-текст подсветки точек адаптивным размером: читаемо на любом зуме, текст не вращается вместе с картой. Работает для всех каналов в Layers > Text (Levels, Deployment, References, Guards). Также удерживает счётчик References в актуальном состоянии после изучения точки (игра обновляет его только при следующем перезапросе карты).',
   },
   defaultEnabled: true,
   category: 'map',
 
-  init() {},
+  init() {
+    installDiscoverFetchHook();
+  },
 
   async enable(): Promise<void> {
     installGeneration++;
@@ -245,6 +428,7 @@ export const pointTextFix: IFeatureModule = {
 
     map = olMap;
     pointsSource = source;
+    discoverHookEnabled = true;
     const getZoom = (): number => map?.getView().getZoom?.() ?? 0;
 
     for (const feature of source.getFeatures()) {
@@ -268,6 +452,7 @@ export const pointTextFix: IFeatureModule = {
 
   disable(): void {
     installGeneration++;
+    discoverHookEnabled = false;
     if (pointsSource && onAddFeature) {
       pointsSource.un('addfeature', onAddFeature);
       for (const feature of pointsSource.getFeatures()) {

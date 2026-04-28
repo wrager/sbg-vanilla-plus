@@ -1,6 +1,10 @@
 import {
+  applyRefsGainToFeature,
+  computeRefsGainFromDiscover,
   fontSizeForZoom,
+  installDiscoverFetchHook,
   pointTextFix,
+  uninstallDiscoverFetchHookForTest,
   wrapFeature,
   wrapLightRenderer,
   wrapStyleArray,
@@ -138,17 +142,25 @@ function makeStyleWithoutRenderer(): { foo: string } {
 
 interface IMockFeature extends IOlFeature {
   _style: unknown;
+  _props: Record<string, unknown>;
+  _changedCalls: number;
   _eventListeners: Map<string, (() => void)[]>;
   getStyle(): unknown;
   on(type: string, cb: () => void): void;
   un(type: string, cb: () => void): void;
   changed(): void;
+  get(key: string): unknown;
 }
 
-function makeFeature(initialStyle: unknown = null): IMockFeature {
+function makeFeature(
+  initialStyle: unknown = null,
+  props: Record<string, unknown> = {},
+): IMockFeature {
   const listeners = new Map<string, (() => void)[]>();
   const f: IMockFeature = {
     _style: initialStyle,
+    _props: { ...props },
+    _changedCalls: 0,
     _eventListeners: listeners,
     getGeometry: () => ({ getCoordinates: () => [0, 0] }),
     getId: () => 'f-id',
@@ -158,6 +170,9 @@ function makeFeature(initialStyle: unknown = null): IMockFeature {
     },
     getStyle() {
       return this._style;
+    },
+    get(key: string) {
+      return this._props[key];
     },
     on(type, cb) {
       const arr = listeners.get(type) ?? [];
@@ -172,6 +187,7 @@ function makeFeature(initialStyle: unknown = null): IMockFeature {
       );
     },
     changed() {
+      this._changedCalls++;
       const arr = listeners.get('change') ?? [];
       for (const cb of arr) cb();
     },
@@ -544,6 +560,222 @@ describe('wrapFeature / unwrapFeature', () => {
     expect(() => {
       unwrapFeature(feature);
     }).not.toThrow();
+  });
+
+  test('feature.changed is invoked after wrap to invalidate render plan', () => {
+    // style.setRenderer мутирует функцию рендера in-place без диспатча
+    // change-event - layer кеширует execution plan по revision counter и
+    // продолжает рисовать старый 32px-текст до явной инвалидации. wrapFeature
+    // обязан вызвать feature.changed() сам, иначе подпись не появится до
+    // следующего external trigger (move, zoom).
+    const feature = makeFeature(null);
+    wrapFeature(feature, () => 16);
+    expect(feature._changedCalls).toBe(1);
+  });
+
+  test('wrap flow does not double-fire wrapStyleArray on its own changed()', () => {
+    // feature.changed() внутри wrapFeature триггерит наш onChange listener,
+    // который снова прогоняет wrapStyleArray. Уже-обёрнутые renderer должны
+    // отсекаться по WRAPPED_MARKER, так что повторного style.setRenderer не
+    // происходит - проверяем счётчик.
+    const lightRenderer = jest.fn();
+    const light = makeStyleWithRenderer(lightRenderer as never);
+    const feature = makeFeature([light]);
+    wrapFeature(feature, () => 16);
+    expect(light.setRenderer).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── discover refs sync (баг «после discover не обновляется текст») ──────────
+
+describe('computeRefsGainFromDiscover', () => {
+  test('суммирует amount loot-элементов с t=3 и l===guid', () => {
+    const body = {
+      response: {
+        loot: [
+          { t: 3, l: 'point-a', a: 2 },
+          { t: 3, l: 'point-a', a: 3 },
+          { t: 3, l: 'point-b', a: 5 },
+          { t: 1, l: 'point-a', a: 99 }, // не ref - игнор
+        ],
+      },
+    };
+    expect(computeRefsGainFromDiscover(body, 'point-a')).toBe(5);
+    expect(computeRefsGainFromDiscover(body, 'point-b')).toBe(5);
+    expect(computeRefsGainFromDiscover(body, 'point-c')).toBe(0);
+  });
+
+  test('возвращает 0 для невалидной структуры', () => {
+    expect(computeRefsGainFromDiscover(null, 'p')).toBe(0);
+    expect(computeRefsGainFromDiscover({}, 'p')).toBe(0);
+    expect(computeRefsGainFromDiscover({ response: {} }, 'p')).toBe(0);
+    expect(computeRefsGainFromDiscover({ response: { loot: 'bad' } }, 'p')).toBe(0);
+  });
+
+  test('игнорирует элементы без числового a', () => {
+    const body = {
+      response: {
+        loot: [
+          { t: 3, l: 'p', a: 'bad' },
+          { t: 3, l: 'p', a: 4 },
+        ],
+      },
+    };
+    expect(computeRefsGainFromDiscover(body, 'p')).toBe(4);
+  });
+});
+
+describe('applyRefsGainToFeature', () => {
+  test('увеличивает highlight[7] на gain in-place и вызывает feature.changed', () => {
+    const highlight = [];
+    highlight[5] = 3;
+    highlight[7] = 2;
+    const feature = makeFeature(null, { highlight });
+    applyRefsGainToFeature(feature, 4);
+    expect(highlight[7]).toBe(6);
+    // in-place: тот же reference, что в prop - LIGHT closure прочтёт новое.
+    expect(feature.get('highlight')).toBe(highlight);
+    expect(feature._changedCalls).toBe(1);
+  });
+
+  test('инициализирует highlight[7] из 0, если индекс не задан', () => {
+    const highlight = [];
+    highlight[5] = 3;
+    const feature = makeFeature(null, { highlight });
+    applyRefsGainToFeature(feature, 2);
+    expect(highlight[7]).toBe(2);
+  });
+
+  test('игнорирует gain<=0', () => {
+    const highlight = [];
+    highlight[7] = 5;
+    const feature = makeFeature(null, { highlight });
+    applyRefsGainToFeature(feature, 0);
+    applyRefsGainToFeature(feature, -3);
+    expect(highlight[7]).toBe(5);
+    expect(feature._changedCalls).toBe(0);
+  });
+
+  test('игнорирует feature без highlight-prop', () => {
+    const feature = makeFeature(null, {});
+    expect(() => {
+      applyRefsGainToFeature(feature, 3);
+    }).not.toThrow();
+    expect(feature._changedCalls).toBe(0);
+  });
+
+  test('игнорирует non-array highlight', () => {
+    const feature = makeFeature(null, { highlight: 'bad' });
+    applyRefsGainToFeature(feature, 3);
+    expect(feature._changedCalls).toBe(0);
+  });
+});
+
+describe('installDiscoverFetchHook', () => {
+  let origFetch: typeof window.fetch | undefined;
+
+  beforeEach(() => {
+    origFetch = window.fetch;
+  });
+
+  afterEach(() => {
+    uninstallDiscoverFetchHookForTest();
+    if (origFetch) window.fetch = origFetch;
+  });
+
+  test('перехватывает /api/discover после enable и обновляет refs-канал целевой feature', async () => {
+    const highlight = [];
+    highlight[7] = 1;
+    const targetFeature = makeFeature(null, { highlight });
+    const pointsSrcLocal = makeSource([targetFeature]);
+    pointsSrcLocal.getFeatureById = jest.fn((id: string | number) =>
+      id === 'point-a' ? targetFeature : null,
+    );
+    const layer = makeLayer('points', pointsSrcLocal);
+    const olMapLocal = makeMap([layer], makeView(16));
+    mockGetOlMap.mockResolvedValue(olMapLocal);
+
+    // Симулируем ответ сервера: 3 ключа дропа на point-a.
+    const responseBody = {
+      response: {
+        loot: [{ t: 3, l: 'point-a', a: 3 }],
+      },
+    };
+    const fakeResponse = {
+      ok: true,
+      clone: jest.fn(() => ({
+        json: jest.fn(() => Promise.resolve(responseBody)),
+      })),
+    } as unknown as Response;
+    window.fetch = jest.fn(() => Promise.resolve(fakeResponse)) as unknown as typeof window.fetch;
+    installDiscoverFetchHook();
+
+    await pointTextFix.enable();
+
+    // POST /api/discover с guid в body.
+    await window.fetch('/api/discover', {
+      method: 'POST',
+      body: JSON.stringify({ position: [0, 0], guid: 'point-a', wish: 0 }),
+    });
+    // Микро-тик для then-цепочки внутри handleDiscoverResponse.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(highlight[7]).toBe(4);
+    await pointTextFix.disable();
+  });
+
+  test('не обновляет feature при disable (флаг discoverHookEnabled)', async () => {
+    const highlight = [];
+    highlight[7] = 1;
+    const targetFeature = makeFeature(null, { highlight });
+    const pointsSrcLocal = makeSource([targetFeature]);
+    pointsSrcLocal.getFeatureById = jest.fn(() => targetFeature);
+    const layer = makeLayer('points', pointsSrcLocal);
+    const olMapLocal = makeMap([layer], makeView(16));
+    mockGetOlMap.mockResolvedValue(olMapLocal);
+
+    const responseBody = { response: { loot: [{ t: 3, l: 'point-a', a: 3 }] } };
+    const fakeResponse = {
+      ok: true,
+      clone: jest.fn(() => ({
+        json: jest.fn(() => Promise.resolve(responseBody)),
+      })),
+    } as unknown as Response;
+    window.fetch = jest.fn(() => Promise.resolve(fakeResponse)) as unknown as typeof window.fetch;
+    installDiscoverFetchHook();
+
+    await pointTextFix.enable();
+    await pointTextFix.disable();
+
+    await window.fetch('/api/discover', {
+      method: 'POST',
+      body: JSON.stringify({ guid: 'point-a' }),
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // disable снял флаг; обработчик пропустил запрос.
+    expect(highlight[7]).toBe(1);
+  });
+
+  test('игнорирует не-/api/discover URL', async () => {
+    installDiscoverFetchHook();
+    const fetchMock = jest.fn(() =>
+      Promise.resolve({ ok: true, clone: jest.fn() } as unknown as Response),
+    );
+    // restore чтобы patched fetch вызвал именно fetchMock (он сейчас обёрнут).
+    uninstallDiscoverFetchHookForTest();
+    window.fetch = fetchMock as unknown as typeof window.fetch;
+    installDiscoverFetchHook();
+
+    await window.fetch('/api/inview', { method: 'GET' });
+    await Promise.resolve();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // clone не вызывался - значит, ветка discover-обработки не сработала.
+    const fakeResp = (await fetchMock.mock.results[0].value) as { clone: jest.Mock };
+    expect(fakeResp.clone).not.toHaveBeenCalled();
   });
 });
 
