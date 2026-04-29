@@ -11,6 +11,7 @@ import { enhancedMainScreen } from './modules/enhancedMainScreen/enhancedMainScr
 import { enhancedPointPopupUi } from './modules/enhancedPointPopupUi/enhancedPointPopupUi';
 import { shiftMapCenterDown } from './modules/shiftMapCenterDown/shiftMapCenterDown';
 import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
+import { repairButtonFix } from './modules/repairButtonFix/repairButtonFix';
 import { groupErrorToasts } from './modules/groupErrorToasts/groupErrorToasts';
 import { removeAttackCloseButton } from './modules/removeAttackCloseButton/removeAttackCloseButton';
 import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
@@ -75,6 +76,7 @@ if (!isDisabled()) {
       // fix
       betterRefPopoverClosing,
       drawButtonFix,
+      repairButtonFix,
     ]);
   }
 
