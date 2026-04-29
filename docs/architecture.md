@@ -141,6 +141,8 @@ src/
 │   ├── gameConstants.ts     # Константы игры (типы предметов)
 │   ├── inventoryTypes.ts    # Типы предметов инвентаря + type guards
 │   ├── inventoryCache.ts    # Чтение inventory-cache из localStorage
+│   ├── favoritesStore.ts    # IDB CUI/favorites (read-only) + lock-migration-done flag
+│   ├── popupSwipe.ts        # Общая инфраструктура свайп-жестов на .info
 │   ├── themeColors.ts       # Чтение CSS custom properties темы
 │   ├── gameEvents.ts        # Наблюдение за DOM-событиями игры
 │   ├── gameVersion.ts       # Проверка совместимости версий
