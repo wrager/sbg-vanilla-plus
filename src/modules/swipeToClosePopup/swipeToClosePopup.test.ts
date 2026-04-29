@@ -1,17 +1,14 @@
 import {
-  ANIMATION_DURATION,
   DIRECTION_THRESHOLD,
   DISMISS_THRESHOLD,
-  OPACITY_DISTANCE,
   dispatchTouchEndForTest,
   dispatchTouchMoveForTest,
   dispatchTouchStartForTest,
   getStateForTest,
-  isWithinCoresSlider,
-  resetTrackingForTest,
+  resetForTest,
   setPopupForTest,
-  swipeToClosePopup,
-} from './swipeToClosePopup';
+} from '../../core/popupSwipe';
+import { isWithinCoresSlider, swipeToClosePopup } from './swipeToClosePopup';
 
 function setupPopupDom(): HTMLElement {
   document.body.innerHTML = `
@@ -37,8 +34,8 @@ function setupPopupDom(): HTMLElement {
 
 afterEach(async () => {
   await swipeToClosePopup.disable();
+  resetForTest();
   setPopupForTest(null);
-  resetTrackingForTest();
   document.body.innerHTML = '';
 });
 
@@ -66,202 +63,99 @@ describe('isWithinCoresSlider', () => {
   });
 });
 
-// ── live-стили во время свайпа ───────────────────────────────────────────────
+// ── интеграция модуля с core/popupSwipe ──────────────────────────────────────
 
-describe('live-стили на touchmove', () => {
-  let popup: HTMLElement;
+describe('swipeToClosePopup интеграция с core/popupSwipe', () => {
+  test('enable: touch-action на попапе становится none, регистрируется направление up', async () => {
+    setupPopupDom();
+    const popup = document.querySelector('.info') as HTMLElement;
+    popup.style.touchAction = 'pan-y';
 
-  beforeEach(() => {
-    popup = setupPopupDom();
+    await swipeToClosePopup.enable();
+
+    expect(popup.style.touchAction).toBe('none');
+
+    // direction='up' зарегистрирован: touchstart + туч движение вверх -> tracking, swiping.
     setPopupForTest(popup);
-  });
-
-  test('после превышения direction-threshold вверх state переходит в swiping и применяются стили', () => {
-    const setSpy = jest.spyOn(popup.style, 'setProperty');
     const target = popup.querySelector('.content-text') as HTMLElement;
     dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
-    expect(getStateForTest()).toBe('tracking');
-
-    // Маленькое движение - state остаётся tracking, стили не применяются.
-    dispatchTouchMoveForTest({ clientX: 100, clientY: 500 - DIRECTION_THRESHOLD + 1, target }, 50);
-    expect(getStateForTest()).toBe('tracking');
-    expect(setSpy).not.toHaveBeenCalledWith('translate', expect.any(String));
-
-    // Превышение порога вверх + вертикаль доминирует - state swiping, рендер.
-    dispatchTouchMoveForTest({ clientX: 105, clientY: 500 - 60, target }, 100);
-    expect(getStateForTest()).toBe('swiping');
-    expect(setSpy).toHaveBeenCalledWith('translate', '0 -60px');
-    expect(parseFloat(popup.style.opacity)).toBeGreaterThan(0);
-    expect(parseFloat(popup.style.opacity)).toBeLessThan(1);
+    expect(getStateForTest().state).toBe('tracking');
+    dispatchTouchMoveForTest({ clientX: 100, clientY: 500 - DIRECTION_THRESHOLD - 1, target }, 50);
+    expect(getStateForTest().state).toBe('swiping');
+    expect(getStateForTest().activeDirection).toBe('up');
   });
 
-  test('горизонтальный жест переводит state в idle', () => {
-    const target = popup.querySelector('.content-text') as HTMLElement;
-    dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
-    // deltaX=100, deltaY=15 - оба превышают threshold, но deltaX доминирует.
-    dispatchTouchMoveForTest({ clientX: 200, clientY: 515, target }, 50);
-    expect(getStateForTest()).toBe('idle');
-  });
+  test('disable: touch-action восстанавливается, direction=up снимается', async () => {
+    setupPopupDom();
+    const popup = document.querySelector('.info') as HTMLElement;
+    popup.style.touchAction = 'pan-y';
 
-  test('свайп вниз - не наш жест (тоже idle)', () => {
-    const target = popup.querySelector('.content-text') as HTMLElement;
-    dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
-    // deltaY=+60 (вниз) - не свайп вверх.
-    dispatchTouchMoveForTest({ clientX: 100, clientY: 560, target }, 50);
-    expect(getStateForTest()).toBe('idle');
-  });
+    await swipeToClosePopup.enable();
+    await swipeToClosePopup.disable();
 
-  test('opacity достигает 0 при OPACITY_DISTANCE смещении', () => {
-    const target = popup.querySelector('.content-text') as HTMLElement;
-    dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
-    dispatchTouchMoveForTest({ clientX: 100, clientY: 500 - OPACITY_DISTANCE, target }, 100);
-    expect(parseFloat(popup.style.opacity)).toBeCloseTo(0);
-  });
-});
+    expect(popup.style.touchAction).toBe('pan-y');
 
-// ── touchend ────────────────────────────────────────────────────────────────
-
-describe('touchend - dismiss vs return', () => {
-  let popup: HTMLElement;
-
-  beforeEach(() => {
-    popup = setupPopupDom();
+    // После disable swipe вверх не должен трогать handler (decide/finalize не вызовутся).
     setPopupForTest(popup);
-  });
-
-  test('свайп с превышением DISMISS_THRESHOLD по смещению - animate-out', () => {
     const target = popup.querySelector('.content-text') as HTMLElement;
     dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
-    dispatchTouchMoveForTest(
-      { clientX: 100, clientY: 500 - (DISMISS_THRESHOLD + 10), target },
-      300,
-    );
-    dispatchTouchEndForTest(400);
-    expect(getStateForTest()).toBe('animating');
-    expect(popup.classList.contains('svp-swipe-animating')).toBe(true);
+    // Нет registered direction -> idle.
+    expect(getStateForTest().state).toBe('idle');
   });
 
-  test('flick-свайп (быстрый, малое смещение) - animate-out по velocity', () => {
-    const target = popup.querySelector('.content-text') as HTMLElement;
-    dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
-    // Смещение 50px (меньше DISMISS_THRESHOLD=100) за 50мс -> velocity = 1.0
-    // (больше VELOCITY_THRESHOLD=0.5).
-    dispatchTouchMoveForTest({ clientX: 100, clientY: 450, target }, 30);
-    dispatchTouchEndForTest(50);
-    expect(getStateForTest()).toBe('animating');
-  });
-
-  test('недотянутый свайп - animate-back', () => {
-    const target = popup.querySelector('.content-text') as HTMLElement;
-    dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
-    dispatchTouchMoveForTest({ clientX: 100, clientY: 480, target }, 200);
-    dispatchTouchEndForTest(400);
-    expect(getStateForTest()).toBe('animating');
-    expect(popup.classList.contains('svp-swipe-animating')).toBe(true);
-  });
-
-  test('тап без движения - state idle (без анимации)', () => {
-    const target = popup.querySelector('.content-text') as HTMLElement;
-    dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
-    dispatchTouchEndForTest(50);
-    expect(getStateForTest()).toBe('idle');
-  });
-
-  test('animate-out -> transitionend -> клик .popup-close', async () => {
-    const target = popup.querySelector('.content-text') as HTMLElement;
+  test('свайп вверх через popupSwipe вызывает popup-close.click() (finalize)', async () => {
+    setupPopupDom();
+    const popup = document.querySelector('.info') as HTMLElement;
     const closeButton = popup.querySelector('.popup-close') as HTMLElement;
     const clickSpy = jest.spyOn(closeButton, 'click');
+
+    await swipeToClosePopup.enable();
+    setPopupForTest(popup);
+
+    const target = popup.querySelector('.content-text') as HTMLElement;
     dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
     dispatchTouchMoveForTest(
       { clientX: 100, clientY: 500 - (DISMISS_THRESHOLD + 20), target },
       300,
     );
     dispatchTouchEndForTest(400);
-    // requestAnimationFrame ставит translate на следующем тике; в jsdom rAF
-    // вызывается через setTimeout(0).
+
+    // requestAnimationFrame в jsdom через setTimeout(0).
     await new Promise((resolve) => setTimeout(resolve, 0));
-    // Эмулируем transitionend на самом popup-элементе.
+    // Эмулируем transitionend - core вызовет finalize().
     const evt = new Event('transitionend', { bubbles: false });
     Object.defineProperty(evt, 'target', { value: popup });
     popup.dispatchEvent(evt);
+
     expect(clickSpy).toHaveBeenCalledTimes(1);
-    expect(getStateForTest()).toBe('idle');
   });
 
-  test('safety-таймер закрывает попап если transitionend не пришёл', () => {
-    jest.useFakeTimers();
-    try {
-      const target = popup.querySelector('.content-text') as HTMLElement;
-      const closeButton = popup.querySelector('.popup-close') as HTMLElement;
-      const clickSpy = jest.spyOn(closeButton, 'click');
-      dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
-      dispatchTouchMoveForTest(
-        { clientX: 100, clientY: 500 - (DISMISS_THRESHOLD + 20), target },
-        300,
-      );
-      dispatchTouchEndForTest(400);
-      jest.advanceTimersByTime(ANIMATION_DURATION + 100);
-      expect(clickSpy).toHaveBeenCalledTimes(1);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
+  test('canStart-фильтр: жест внутри cores-slider не активирует свайп', async () => {
+    setupPopupDom();
+    const popup = document.querySelector('.info') as HTMLElement;
+    await swipeToClosePopup.enable();
+    setPopupForTest(popup);
 
-  test('тач, начавшийся в слайдере ядер, игнорируется', () => {
+    // Тач на slide. canStart возвращает false -> jest нет других зарегистрированных
+    // direction-ов с canStart=true -> state остаётся idle.
     const slide = popup.querySelector('.splide__slide') as HTMLElement;
-    const closeButton = popup.querySelector('.popup-close') as HTMLElement;
-    const clickSpy = jest.spyOn(closeButton, 'click');
     dispatchTouchStartForTest({ clientX: 100, clientY: 500, target: slide }, 0);
-    expect(getStateForTest()).toBe('idle');
-    dispatchTouchMoveForTest({ clientX: 100, clientY: 380, target: slide }, 100);
-    dispatchTouchEndForTest(200);
-    expect(clickSpy).not.toHaveBeenCalled();
-  });
-});
 
-// ── enable / disable ─────────────────────────────────────────────────────────
-
-describe('swipeToClosePopup enable/disable', () => {
-  test('после enable popup получает 4 touch-listener', async () => {
-    setupPopupDom();
-    const popup = document.querySelector('.info') as HTMLElement;
-    const addSpy = jest.spyOn(popup, 'addEventListener');
-    await swipeToClosePopup.enable();
-    const types = addSpy.mock.calls.map((call) => call[0]);
-    expect(types).toContain('touchstart');
-    expect(types).toContain('touchmove');
-    expect(types).toContain('touchend');
-    expect(types).toContain('touchcancel');
+    expect(getStateForTest().state).toBe('idle');
   });
 
-  test('enable перетирает inline touch-action на pan-x', async () => {
+  test('горизонтальный жест через popupSwipe не активирует up-handler (idle)', async () => {
     setupPopupDom();
     const popup = document.querySelector('.info') as HTMLElement;
-    popup.style.touchAction = 'pan-y';
     await swipeToClosePopup.enable();
-    expect(popup.style.touchAction).toBe('pan-x');
-  });
+    setPopupForTest(popup);
 
-  test('disable восстанавливает оригинальный touch-action', async () => {
-    setupPopupDom();
-    const popup = document.querySelector('.info') as HTMLElement;
-    popup.style.touchAction = 'pan-y';
-    await swipeToClosePopup.enable();
-    await swipeToClosePopup.disable();
-    expect(popup.style.touchAction).toBe('pan-y');
-  });
+    const target = popup.querySelector('.content-text') as HTMLElement;
+    dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
+    // dx=100, dy=15 - dx доминирует, direction='right' не зарегистрирован -> idle.
+    dispatchTouchMoveForTest({ clientX: 200, clientY: 515, target }, 50);
 
-  test('disable снимает все 4 touch-listener', async () => {
-    setupPopupDom();
-    const popup = document.querySelector('.info') as HTMLElement;
-    const removeSpy = jest.spyOn(popup, 'removeEventListener');
-    await swipeToClosePopup.enable();
-    await swipeToClosePopup.disable();
-    const types = removeSpy.mock.calls.map((call) => call[0]);
-    expect(types).toContain('touchstart');
-    expect(types).toContain('touchmove');
-    expect(types).toContain('touchend');
-    expect(types).toContain('touchcancel');
+    expect(getStateForTest().state).toBe('idle');
   });
 });
 

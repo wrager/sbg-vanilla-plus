@@ -69,6 +69,12 @@ const directionHandlers = new Map<SwipeDirection, ISwipeDirectionHandler>();
 let popup: HTMLElement | null = null;
 let savedTouchAction: string | null = null;
 let installGeneration = 0;
+// Ref-count установок: оба модуля (swipeToClosePopup и improvedNextPointSwipe)
+// могут параллельно вызывать install/uninstall в своих enable/disable. Без
+// счётчика disable одного модуля сорвал бы listener'ы другого. Реальный
+// attach происходит только при первом install (refs 0->1), реальный detach -
+// только при последнем uninstall (refs 1->0).
+let installRefs = 0;
 
 let state: GestureState = 'idle';
 let activeDirection: SwipeDirection | null = null;
@@ -451,10 +457,13 @@ function restoreTouchAction(element: HTMLElement): void {
 
 /**
  * Подключает touch-listener'ы и observer к попапу. Если попап ещё не в DOM,
- * ждёт через `waitForElement`. Безопасно вызывать многократно: повторный
- * install no-op (учитывается через generation counter).
+ * ждёт через `waitForElement`. Идемпотентен через ref-counter: реальный
+ * attach происходит только при первом install (refs 0->1), последующие
+ * вызовы только инкрементируют счётчик.
  */
 export function installPopupSwipe(selector: string): void {
+  installRefs++;
+  if (installRefs > 1) return;
   installGeneration++;
   const myGeneration = installGeneration;
   const immediate = $(selector);
@@ -478,10 +487,15 @@ export function installPopupSwipe(selector: string): void {
 /**
  * Снимает touch-listener'ы и observer. Зарегистрированные direction-handler'ы
  * НЕ очищаются - модули отвечают за свою регистрацию через unregister-функцию.
- * Это позволяет одному модулю выгружаться (uninstall) без затрагивания других,
- * если они продолжают жить.
+ *
+ * Реальный detach происходит только при последнем uninstall (refs 1->0),
+ * чтобы выгрузка одного модуля не сорвала listener'ы другого, продолжающего
+ * жить. Дисбаланс install/uninstall (счётчик ушёл бы в минус) клампится в 0.
  */
 export function uninstallPopupSwipe(): void {
+  if (installRefs <= 0) return;
+  installRefs--;
+  if (installRefs > 0) return;
   installGeneration++;
   detachListeners();
   stopPopupObserver();
@@ -568,6 +582,7 @@ export function resetForTest(): void {
   directionHandlers.clear();
   popup = null;
   savedTouchAction = null;
+  installRefs = 0;
   installGeneration++;
   state = 'idle';
   activeDirection = null;

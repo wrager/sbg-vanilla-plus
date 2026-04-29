@@ -377,14 +377,47 @@ describe('install / uninstall lifecycle', () => {
     expect(popup.style.touchAction).toBe('pan-y');
   });
 
-  test('повторный install сохраняет оригинальный touch-action для последующего uninstall', () => {
+  test('два install + один uninstall: listeners остаются (ref-counter)', () => {
+    const popup = makePopup();
+    installPopupSwipe('.info.popup');
+    installPopupSwipe('.info.popup');
+    registerDirection('up', makeHandler().handler);
+
+    // Один uninstall - listener'ы должны остаться (другой модуль ещё пользуется).
+    uninstallPopupSwipe();
+
+    const touchEvent = new Event('touchstart', { bubbles: true }) as unknown as TouchEvent;
+    Object.defineProperty(touchEvent, 'targetTouches', {
+      value: [{ clientX: 100, clientY: 200, target: popup }],
+    });
+    Object.defineProperty(touchEvent, 'timeStamp', { value: 0 });
+    Object.defineProperty(touchEvent, 'preventDefault', { value: () => {} });
+    popup.dispatchEvent(touchEvent);
+
+    expect(getStateForTest().state).toBe('tracking');
+  });
+
+  test('два install + два uninstall: listeners сняты, touch-action восстановлен', () => {
+    const popup = makePopup();
+    popup.style.touchAction = 'pan-y';
+    installPopupSwipe('.info.popup');
+    installPopupSwipe('.info.popup');
+
+    uninstallPopupSwipe();
+    expect(popup.style.touchAction).toBe('none');
+    uninstallPopupSwipe();
+    expect(popup.style.touchAction).toBe('pan-y');
+  });
+
+  test('лишний uninstall (без install) - no-op, не уходит в минус', () => {
     const popup = makePopup();
     popup.style.touchAction = 'pan-y';
 
+    uninstallPopupSwipe();
+    uninstallPopupSwipe();
+
     installPopupSwipe('.info.popup');
-    // Повторный install не должен перезаписать сохранённый pan-y текущим
-    // 'none' от нашего же предыдущего install.
-    installPopupSwipe('.info.popup');
+    expect(popup.style.touchAction).toBe('none');
     uninstallPopupSwipe();
     expect(popup.style.touchAction).toBe('pan-y');
   });
