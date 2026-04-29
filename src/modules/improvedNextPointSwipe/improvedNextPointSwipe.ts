@@ -410,7 +410,15 @@ export const improvedNextPointSwipe: IFeatureModule = {
   category: 'feature',
 
   init() {
-    installHammerInterceptor();
+    // installHammerInterceptor раньше вызывался здесь, но это ставило
+    // monkey-patch на Hammer.Manager.prototype.emit для всех пользователей,
+    // в том числе тех, кто отключил improvedNextPointSwipe через настройки.
+    // Внутри patched-функции interceptEnabled-флаг быстро no-op'ит ветку
+    // блокировки, но сама обёртка emit остаётся глобальной для всех
+    // Hammer-instance'ов страницы. Перенесли установку в enable: если
+    // пользователь отключил модуль - patch вообще никогда не появляется,
+    // прототип Hammer.Manager не трогается. Аналогичная правка для
+    // window.fetch-патча в pointTextFix - коммит 663aa01.
   },
 
   enable() {
@@ -426,8 +434,12 @@ export const improvedNextPointSwipe: IFeatureModule = {
       pointsSource = source;
       playerSource = playerLayerSource;
       interceptEnabled = true;
-      // На случай, если Hammer глобал появился позже init (порядок загрузки
-      // скриптов на странице): повторный install no-op, если уже установлен.
+      // Lazy install: первый enable ставит patch; повторные no-op через
+      // interceptInstalled внутри installHammerInterceptor. После первого
+      // enable patch остаётся жить до конца сессии (повторные enable/disable
+      // идемпотентны), потому что снятие patch требует проверить что между
+      // install и uninstall никто не переписал Hammer.Manager.prototype.emit
+      // поверх - архитектурно дороже выгод.
       installHammerInterceptor();
       observePopup();
 

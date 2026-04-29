@@ -362,12 +362,46 @@ describe('improvedNextPointSwipe enable/disable', () => {
     expect(popup?.querySelectorAll('button').length).toBe(0);
   });
 
-  test('init ставит patch на Hammer.Manager.prototype.emit', () => {
+  test('installHammerInterceptor ставит patch на Hammer.Manager.prototype.emit', () => {
     setupHammerGlobalMock();
     installHammerInterceptor();
     const patched = (window as unknown as { Hammer: IFakeHammerStatic }).Hammer.Manager.prototype
       .emit;
     // patch заменил функцию - имя patched (как в реализации), не наш jest.fn().
+    expect(patched.name).toBe('patched');
+  });
+
+  test('init НЕ ставит Hammer-patch (lazy install): пользователь с отключённым модулем не получает глобальный side-effect', () => {
+    // init() не должен трогать Hammer.Manager.prototype.emit - patch ставится
+    // только при enable(). Если пользователь отключил improvedNextPointSwipe
+    // через настройки, его Hammer-instance'ы (включая чужие, например свайп
+    // карусели ядер) не должны проходить через нашу обёртку. Аналог фикса
+    // для window.fetch в pointTextFix - коммит 663aa01.
+    const { originalEmit } = setupHammerGlobalMock();
+    uninstallHammerInterceptorForTest();
+
+    void improvedNextPointSwipe.init();
+
+    const patched = (window as unknown as { Hammer: IFakeHammerStatic }).Hammer.Manager.prototype
+      .emit;
+    expect(patched).toBe(originalEmit);
+  });
+
+  test('первый enable ставит Hammer-patch (lazy install)', async () => {
+    // Контр-тест: после enable() patch стоит. Регрессия для случая, если
+    // кто-то снова перенесёт installHammerInterceptor из enable обратно в init.
+    const { originalEmit } = setupHammerGlobalMock();
+    uninstallHammerInterceptorForTest();
+
+    void improvedNextPointSwipe.init();
+    expect((window as unknown as { Hammer: IFakeHammerStatic }).Hammer.Manager.prototype.emit).toBe(
+      originalEmit,
+    );
+    await improvedNextPointSwipe.enable();
+
+    const patched = (window as unknown as { Hammer: IFakeHammerStatic }).Hammer.Manager.prototype
+      .emit;
+    expect(patched).not.toBe(originalEmit);
     expect(patched.name).toBe('patched');
   });
 
