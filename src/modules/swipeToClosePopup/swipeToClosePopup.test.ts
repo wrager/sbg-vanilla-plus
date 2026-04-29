@@ -144,6 +144,25 @@ describe('swipeToClosePopup интеграция с core/popupSwipe', () => {
     expect(getStateForTest().state).toBe('idle');
   });
 
+  test('dismiss-анимация быстрее в 2 раза дефолта (150мс через transition-duration)', async () => {
+    setupPopupDom();
+    const popup = document.querySelector('.info') as HTMLElement;
+    const setSpy = jest.spyOn(popup.style, 'setProperty');
+
+    await swipeToClosePopup.enable();
+    setPopupForTest(popup);
+
+    const target = popup.querySelector('.content-text') as HTMLElement;
+    dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 500 - (DISMISS_THRESHOLD + 20), target },
+      300,
+    );
+    dispatchTouchEndForTest(400);
+
+    expect(setSpy).toHaveBeenCalledWith('transition-duration', '150ms');
+  });
+
   test('горизонтальный жест через popupSwipe не активирует up-handler (idle)', async () => {
     setupPopupDom();
     const popup = document.querySelector('.info') as HTMLElement;

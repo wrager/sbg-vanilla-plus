@@ -13,6 +13,13 @@ const MODULE_ID = 'swipeToClosePopup';
 
 const POPUP_SELECTOR = '.info';
 
+// Длительность dismiss/return-анимации (мс). Вдвое короче дефолтных 300мс
+// в core/popupSwipe: пользователь хочет почувствовать, что попап ушёл сразу,
+// без ожидания. improvedNextPointSwipe оставляет дефолт - там анимация длиннее
+// нужна, чтобы попап успел уехать в сторону свайпа и появиться попап следующей
+// точки без мерцания.
+const SWIPE_TO_CLOSE_ANIMATION_MS = 150;
+
 const CORES_SLIDER_ANCESTOR_SELECTORS = ['.deploy-slider-wrp', '.splide', '#cores-list'];
 
 /**
@@ -67,7 +74,12 @@ export const swipeToClosePopup: IFeatureModule = {
   init() {},
   enable() {
     injectStyles(styles, MODULE_ID);
-    const handler: ISwipeDirectionHandler = { canStart, decide, finalize };
+    const handler: ISwipeDirectionHandler = {
+      canStart,
+      decide,
+      finalize,
+      animationDurationMs: SWIPE_TO_CLOSE_ANIMATION_MS,
+    };
     unregister = registerDirection('up', handler);
     installPopupSwipe(POPUP_SELECTOR);
   },

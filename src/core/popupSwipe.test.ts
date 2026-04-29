@@ -329,6 +329,125 @@ describe('swiping -> animating', () => {
   });
 });
 
+describe('per-handler animationDurationMs', () => {
+  function setupSwiping(direction: SwipeDirection, handler: ISwipeDirectionHandler): HTMLElement {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    registerDirection(direction, handler);
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    return popup;
+  }
+
+  test('animateDismiss с handler.animationDurationMs ставит inline transition-duration', () => {
+    const handler: ISwipeDirectionHandler = {
+      decide: () => 'dismiss',
+      finalize: jest.fn(),
+      animationDurationMs: 150,
+    };
+    const popup = setupSwiping('up', handler);
+    const setSpy = jest.spyOn(popup.style, 'setProperty');
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DISMISS_THRESHOLD - 1, target: popup },
+      50,
+    );
+    dispatchTouchEndForTest(100);
+
+    expect(setSpy).toHaveBeenCalledWith('transition-duration', '150ms');
+  });
+
+  test('animateReturn с handler.animationDurationMs ставит inline transition-duration', () => {
+    const handler: ISwipeDirectionHandler = {
+      decide: () => 'return',
+      finalize: jest.fn(),
+      animationDurationMs: 150,
+    };
+    const popup = setupSwiping('up', handler);
+    const setSpy = jest.spyOn(popup.style, 'setProperty');
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DISMISS_THRESHOLD - 1, target: popup },
+      50,
+    );
+    dispatchTouchEndForTest(100);
+
+    expect(setSpy).toHaveBeenCalledWith('transition-duration', '150ms');
+  });
+
+  test('animateReturn без декларации в handler использует дефолт ANIMATION_DURATION', () => {
+    const handler: ISwipeDirectionHandler = {
+      decide: () => 'return',
+      finalize: jest.fn(),
+    };
+    const popup = setupSwiping('up', handler);
+    const setSpy = jest.spyOn(popup.style, 'setProperty');
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DISMISS_THRESHOLD - 1, target: popup },
+      50,
+    );
+    dispatchTouchEndForTest(100);
+
+    expect(setSpy).toHaveBeenCalledWith('transition-duration', `${String(ANIMATION_DURATION)}ms`);
+  });
+
+  test('safety timer длится duration + safety margin (короткая анимация заканчивается раньше)', () => {
+    const finalize = jest.fn();
+    const handler: ISwipeDirectionHandler = {
+      decide: () => 'dismiss',
+      finalize,
+      animationDurationMs: 150,
+    };
+    const popup = setupSwiping('up', handler);
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DISMISS_THRESHOLD - 1, target: popup },
+      50,
+    );
+    dispatchTouchEndForTest(100);
+
+    // 150ms + safety margin: после 200ms timer срабатывает.
+    jest.advanceTimersByTime(150 + ANIMATION_SAFETY_MARGIN + 10);
+    expect(finalize).toHaveBeenCalledTimes(1);
+  });
+
+  test('два handler с разными duration: каждый использует свой', () => {
+    const handlerA: ISwipeDirectionHandler = {
+      decide: () => 'dismiss',
+      finalize: jest.fn(),
+      animationDurationMs: 150,
+    };
+    const handlerB: ISwipeDirectionHandler = {
+      decide: () => 'dismiss',
+      finalize: jest.fn(),
+      animationDurationMs: 600,
+    };
+    const popup = makePopup();
+    setPopupForTest(popup);
+    registerDirection('up', handlerA);
+    registerDirection('left', handlerB);
+
+    const setSpy = jest.spyOn(popup.style, 'setProperty');
+
+    // Свайп вверх через handlerA: 150ms.
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DISMISS_THRESHOLD - 1, target: popup },
+      50,
+    );
+    dispatchTouchEndForTest(100);
+    expect(setSpy).toHaveBeenCalledWith('transition-duration', '150ms');
+    popup.dispatchEvent(new Event('transitionend'));
+
+    setSpy.mockClear();
+
+    // Свайп влево через handlerB: 600ms.
+    dispatchTouchStartForTest({ clientX: 200, clientY: 200, target: popup }, 200);
+    dispatchTouchMoveForTest(
+      { clientX: 200 - DISMISS_THRESHOLD - 1, clientY: 200, target: popup },
+      250,
+    );
+    dispatchTouchEndForTest(300);
+    expect(setSpy).toHaveBeenCalledWith('transition-duration', '600ms');
+  });
+});
+
 describe('multi-touch / cancel посреди swiping', () => {
   test('multi-touch посреди swiping: state -> idle с reset styles', () => {
     const popup = makePopup();

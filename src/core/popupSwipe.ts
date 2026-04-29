@@ -45,6 +45,12 @@ export interface ISwipeDirectionHandler {
    * вызывается - попап остаётся как был.
    */
   finalize: () => void;
+  /**
+   * Длительность dismiss/return-анимации (мс). По умолчанию ANIMATION_DURATION = 300.
+   * Применяется только когда жест прошёл через handler этого direction'а;
+   * другие direction'ы используют свои значения (или дефолт).
+   */
+  animationDurationMs?: number;
 }
 
 /** Минимальное смещение (px), после которого направление считается определённым. */
@@ -152,6 +158,7 @@ function resetElementStyles(element: HTMLElement): void {
   element.style.removeProperty('translate');
   element.style.opacity = '';
   element.style.willChange = '';
+  element.style.removeProperty('transition-duration');
   element.classList.remove(ANIMATING_CLASS);
 }
 
@@ -161,6 +168,12 @@ function hasStaleSwipeStyles(element: HTMLElement): boolean {
     element.style.opacity !== '' ||
     element.classList.contains(ANIMATING_CLASS)
   );
+}
+
+function getAnimationDurationForDirection(direction: SwipeDirection | null): number {
+  if (!direction) return ANIMATION_DURATION;
+  const handler = directionHandlers.get(direction);
+  return handler?.animationDurationMs ?? ANIMATION_DURATION;
 }
 
 function clearSafetyTimer(): void {
@@ -202,6 +215,12 @@ function animateDismiss(direction: SwipeDirection, finalize: () => void): void {
   if (!popup) return;
   state = 'animating';
   const animatingElement = popup;
+  const duration = getAnimationDurationForDirection(direction);
+  // Inline transition-duration перебивает CSS-rule (по специфичности),
+  // позволяя per-handler настройку длительности без дублирования CSS-классов.
+  // CSS-rule в styles.css задаёт сам факт transition (на translate и opacity),
+  // мы только меняем длительность.
+  animatingElement.style.setProperty('transition-duration', `${String(duration)}ms`);
   animatingElement.classList.add(ANIMATING_CLASS);
 
   let finished = false;
@@ -218,7 +237,7 @@ function animateDismiss(direction: SwipeDirection, finalize: () => void): void {
   };
 
   animatingElement.addEventListener('transitionend', onTransitionEnd);
-  safetyTimer = setTimeout(finish, ANIMATION_DURATION + ANIMATION_SAFETY_MARGIN);
+  safetyTimer = setTimeout(finish, duration + ANIMATION_SAFETY_MARGIN);
 
   // requestAnimationFrame отделяет добавление animating-класса от смены translate:
   // браузер успевает зафиксировать стартовый стиль, тогда transition отрабатывает
@@ -234,6 +253,10 @@ function animateReturn(): void {
   if (!popup) return;
   state = 'animating';
   const animatingElement = popup;
+  // Длительность return берём по тому же direction, что был активен в swiping
+  // (handler этого direction'а контролирует обе ветки своей анимации).
+  const duration = getAnimationDurationForDirection(activeDirection);
+  animatingElement.style.setProperty('transition-duration', `${String(duration)}ms`);
   animatingElement.classList.add(ANIMATING_CLASS);
 
   let finished = false;
@@ -249,7 +272,7 @@ function animateReturn(): void {
   };
 
   animatingElement.addEventListener('transitionend', onTransitionEnd);
-  safetyTimer = setTimeout(finish, ANIMATION_DURATION + ANIMATION_SAFETY_MARGIN);
+  safetyTimer = setTimeout(finish, duration + ANIMATION_SAFETY_MARGIN);
 
   animationFrameId = requestAnimationFrame(() => {
     animationFrameId = null;

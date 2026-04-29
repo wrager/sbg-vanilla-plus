@@ -2,6 +2,11 @@
    svp-swipe-animating включается только во время анимации; в остальное
    время transition отсутствует - попап едет за пальцем мгновенно.
 
+   Длительность 0.3s - дефолт; конкретные модули (например, swipeToClosePopup
+   укорачивает до 150мс) перебивают её через inline transition-duration,
+   выставляемый core/popupSwipe из handler.animationDurationMs. Inline-стиль
+   побеждает CSS-rule по специфичности.
+
    touch-action на самом попапе теперь устанавливается через JS из
    core/popupSwipe (touch-action: none), потому что обе оси под нашим
    контролем. inline-стиль игры (touch-action: pan-y) перебивается там же. */
