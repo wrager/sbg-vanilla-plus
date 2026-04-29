@@ -2,8 +2,15 @@ import { waitForElement } from '../../core/dom';
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { getOlMap, findLayerByName } from '../../core/olMap';
 import type { IOlMap, IOlFeature, IOlVectorSource } from '../../core/olMap';
+import {
+  installPopupSwipe,
+  registerDirection,
+  uninstallPopupSwipe,
+  type SwipeOutcome,
+} from '../../core/popupSwipe';
 
 const MODULE_ID = 'improvedNextPointSwipe';
+const POPUP_SELECTOR = '.info';
 const INTERACTION_RANGE = 45;
 const AUTOZOOM_THRESHOLD = 16;
 const AUTOZOOM_TARGET = 17;
@@ -19,6 +26,14 @@ let fakeClickRetries = 0;
 const MAX_FAKE_CLICK_RETRIES = 3;
 let popupObserver: MutationObserver | null = null;
 let autozoomInProgress = false;
+let unregisterLeft: (() => void) | null = null;
+let unregisterRight: (() => void) | null = null;
+// Результат decide() запоминается между decide и finalize: на decide мы решаем,
+// есть ли следующая точка (true -> 'dismiss'), а в finalize вызываем openPointPopup
+// для уже выбранного guid. Хранение между двумя callback'ами избегает второго
+// прохода tryNavigateInRange (он недетерминирован при изменениях точек/попапа
+// между touchend и transitionend).
+let pendingNavigationGuid: string | null = null;
 
 // ── Геодезическое расстояние ────────────────────────────────────────────────
 
@@ -158,12 +173,18 @@ function openPointPopup(guid: string): void {
 
 // ── Навигация по приоритету ─────────────────────────────────────────────────
 
-export function tryNavigateInRange(): boolean {
-  if (!map || !pointsSource) return false;
+/**
+ * Выбирает guid следующей точки по приоритету в радиусе действия. Возвращает
+ * null если кандидатов нет (все in-range посещены и зацикливание тоже не нашло).
+ * НЕ открывает попап и не трогает state - чистая функция выбора, чтобы decide()
+ * мог вернуть outcome без побочных эффектов.
+ */
+export function pickNextGuidInRange(): string | null {
+  if (!map || !pointsSource) return null;
   const currentId = getPopupPointId();
-  if (!currentId) return false;
+  if (!currentId) return null;
   const playerCoordinates = getPlayerCoordinates();
-  if (!playerCoordinates) return false;
+  if (!playerCoordinates) return null;
   rangeVisited.add(currentId);
 
   const features = pointsSource.getFeatures();
@@ -186,11 +207,9 @@ export function tryNavigateInRange(): boolean {
     next = findNextByPriority(playerCoordinates, cycledCandidates);
   }
 
-  if (!next) return false;
+  if (!next) return null;
   const nextId = next.getId();
-  if (nextId === undefined) return false;
-  openPointPopup(String(nextId));
-  return true;
+  return nextId === undefined ? null : String(nextId);
 }
 
 /**
@@ -222,7 +241,8 @@ function autozoomAndNavigate(): void {
     view.setZoom?.(savedZoom);
     // После подгрузки точек повторяем попытку - новый набор может содержать
     // кандидатов в радиусе, которых не было до зума.
-    tryNavigateInRange();
+    const guid = pickNextGuidInRange();
+    if (guid) openPointPopup(guid);
   };
   const onSourceChange = (): void => {
     finish();
@@ -231,13 +251,35 @@ function autozoomAndNavigate(): void {
   setTimeout(finish, AUTOZOOM_TIMEOUT_MS);
 }
 
-function navigateInRange(): void {
-  const navigated = tryNavigateInRange();
-  if (!navigated && !autozoomInProgress) {
-    // Кандидатов нет - возможно низкий зум и точки рядом не подгружены.
-    // Сдвигаем viewport к игроку, ждём загрузки, повторяем.
+// ── Direction handler ───────────────────────────────────────────────────────
+
+/**
+ * decide вызывается core/popupSwipe на touchend после passed-threshold жеста.
+ * Если кандидат в радиусе есть - запоминаем guid в pendingNavigationGuid и
+ * возвращаем 'dismiss' (попап улетает в направлении свайпа). Если кандидатов
+ * нет - возвращаем 'return' (анимация возврата как явная обратная связь
+ * "следующей нет"). autozoom-fallback запускается при 'return', чтобы при
+ * низком зуме после reload точек повторить попытку через openPointPopup
+ * напрямую.
+ */
+function decide(): SwipeOutcome {
+  const guid = pickNextGuidInRange();
+  if (guid) {
+    pendingNavigationGuid = guid;
+    return 'dismiss';
+  }
+  pendingNavigationGuid = null;
+  if (!autozoomInProgress) {
     autozoomAndNavigate();
   }
+  return 'return';
+}
+
+function finalize(): void {
+  if (!pendingNavigationGuid) return;
+  const guid = pendingNavigationGuid;
+  pendingNavigationGuid = null;
+  openPointPopup(guid);
 }
 
 // ── Перехват нативного horizontal-Hammer ────────────────────────────────────
@@ -259,16 +301,16 @@ interface IHammerStaticLike {
 
 /**
  * Глобальный patch на Hammer.Manager.prototype.emit. Срабатывает при любом
- * gesture-emit на любом Hammer-instance страницы. Если modulle enabled, name -
- * swipeleft/swiperight, и element - .info, нативный listener (refs/game/script.js:727-752,
- * перебор near_points) подменяется нашей навигацией с приоритетом по полезности
- * в радиусе действия. В остальных случаях - pass-through к оригинальному emit.
+ * gesture-emit на любом Hammer-instance страницы. Если модуль enabled, имя -
+ * swipeleft/swiperight и element - .info, нативный listener (refs/game/script.js:727-752,
+ * перебор near_points) подавляется: emit просто не доходит до handler'ов
+ * игры. Сама навигация теперь делается через core/popupSwipe-touch-listener,
+ * параллельно с Hammer'ом по тем же touch-events; Hammer всё равно
+ * распознаёт жест и emit'ит, поэтому без этого patch'а игра тоже бы переключила
+ * точку через своих listener'ов на swipeleft/swiperight.
  *
- * Различение от своего Hammer на .info (модуль swipeToClosePopup) идёт по name:
- * там DIRECTION_VERTICAL и emit'ы swipeup, наш фильтр их не задевает. Patch
- * ставится один раз за жизнь страницы; повторный install no-op. Снять patch
- * нельзя, но при interceptEnabled=false вся ветка - pass-through, оверхед
- * минимален.
+ * Patch ставится один раз за жизнь страницы; повторный install no-op. Снять
+ * patch нельзя, но при interceptEnabled=false вся ветка - pass-through.
  */
 export function installHammerInterceptor(): void {
   if (interceptInstalled) return;
@@ -281,7 +323,8 @@ export function installHammerInterceptor(): void {
     if (interceptEnabled && (name === 'swipeleft' || name === 'swiperight')) {
       const element = this.element;
       if (element instanceof Element && element.matches('.info')) {
-        navigateInRange();
+        // Нативный обработчик подавлен; навигацию делает наш direction-handler
+        // в core/popupSwipe (вызывается из onTouchEnd с анимацией dismiss/return).
         return;
       }
     }
@@ -306,7 +349,12 @@ function onPopupMutation(popup: Element): void {
       // Фейковый клик переоткрыл ту же точку - повторить навигацию.
       fakeClickRetries++;
       expectedNextGuid = null;
-      navigateInRange();
+      const guid = pickNextGuidInRange();
+      if (guid) {
+        openPointPopup(guid);
+      } else if (!autozoomInProgress) {
+        autozoomAndNavigate();
+      }
       return;
     }
     if (currentGuid === lastSeenGuid && expectedNextGuid) {
@@ -355,8 +403,8 @@ export const improvedNextPointSwipe: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Improved next point swipe', ru: 'Улучшенный свайп к следующей точке' },
   description: {
-    en: 'Replaces the native horizontal swipe between adjacent points (cycle through all visible features) with a smarter walk: in the player interaction range, with priority free-deploy-slots > discoverable > nearest. Auto-zooms to 17 if the current zoom is too low to load nearby points. The native swipe handler is suppressed via a Hammer.Manager.prototype.emit patch.',
-    ru: 'Заменяет нативный горизонтальный свайп между соседними точками (циклический перебор всех видимых) умной навигацией: только в радиусе действия игрока, с приоритетом свободные слоты > доступная для изучения > ближайшая. Если зум слишком низкий и точки рядом не подгружены - сдвигает viewport к игроку и зумит до 17. Нативный обработчик подавляется через patch Hammer.Manager.prototype.emit.',
+    en: 'Replaces the native horizontal swipe between adjacent points (cycle through all visible features) with a smarter walk: in the player interaction range, with priority free-deploy-slots > discoverable > nearest. The popup follows the finger during the swipe and animates off-screen on release; if no next point exists, the popup snaps back as explicit feedback. Auto-zooms to 17 if the current zoom is too low to load nearby points. The native swipe handler is suppressed via a Hammer.Manager.prototype.emit patch.',
+    ru: 'Заменяет нативный горизонтальный свайп между соседними точками (циклический перебор всех видимых) умной навигацией: только в радиусе действия игрока, с приоритетом свободные слоты > доступная для изучения > ближайшая. Попап едет за пальцем во время свайпа и улетает в сторону при отпускании; если следующей точки нет, попап возвращается на место - явная обратная связь. Если зум слишком низкий и точки рядом не подгружены - сдвигает viewport к игроку и зумит до 17. Нативный обработчик подавляется через patch Hammer.Manager.prototype.emit.',
   },
   defaultEnabled: true,
   category: 'feature',
@@ -382,11 +430,29 @@ export const improvedNextPointSwipe: IFeatureModule = {
       // скриптов на странице): повторный install no-op, если уже установлен.
       installHammerInterceptor();
       observePopup();
+
+      // Регистрация двух направлений с одинаковым handler: и left, и right
+      // совершают навигацию к следующей точке по радиусу. Разница только в
+      // направлении dismiss-анимации (попап улетает влево или вправо
+      // соответственно), что core/popupSwipe рисует автоматически.
+      unregisterLeft = registerDirection('left', { decide, finalize });
+      unregisterRight = registerDirection('right', { decide, finalize });
+      installPopupSwipe(POPUP_SELECTOR);
     });
   },
 
   disable() {
     interceptEnabled = false;
+    if (unregisterLeft) {
+      unregisterLeft();
+      unregisterLeft = null;
+    }
+    if (unregisterRight) {
+      unregisterRight();
+      unregisterRight = null;
+    }
+    uninstallPopupSwipe();
+    pendingNavigationGuid = null;
     if (popupObserver) {
       popupObserver.disconnect();
       popupObserver = null;

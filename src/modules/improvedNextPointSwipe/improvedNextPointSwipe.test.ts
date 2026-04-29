@@ -7,9 +7,18 @@ import {
   getGeodeticDistance,
   improvedNextPointSwipe,
   installHammerInterceptor,
-  tryNavigateInRange,
+  pickNextGuidInRange,
   uninstallHammerInterceptorForTest,
 } from './improvedNextPointSwipe';
+import {
+  DISMISS_THRESHOLD,
+  dispatchTouchEndForTest,
+  dispatchTouchMoveForTest,
+  dispatchTouchStartForTest,
+  getStateForTest,
+  resetForTest as resetPopupSwipeForTest,
+  setPopupForTest,
+} from '../../core/popupSwipe';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
 
 // ── OL mocks ────────────────────────────────────────────────────────────────
@@ -341,6 +350,7 @@ describe('improvedNextPointSwipe enable/disable', () => {
     document.querySelector('.info.popup')?.remove();
     delete (window as unknown as { Hammer?: unknown }).Hammer;
     uninstallHammerInterceptorForTest();
+    resetPopupSwipeForTest();
   });
 
   test('does not inject any button into popup on enable', async () => {
@@ -361,14 +371,16 @@ describe('improvedNextPointSwipe enable/disable', () => {
     expect(patched.name).toBe('patched');
   });
 
-  test('после enable swipeleft на .info триггерит navigate (showInfo вызван)', async () => {
-    setupHammerGlobalMock();
+  test('после enable swipeleft через нативный Hammer-emit БЛОКИРУЕТСЯ (originalEmit не вызывается, навигация идёт через popupSwipe)', async () => {
+    const { originalEmit } = setupHammerGlobalMock();
     installHammerInterceptor();
     const showInfoMock = jest.fn();
     window.showInfo = showInfoMock;
     await improvedNextPointSwipe.enable();
 
     // Симулируем emit('swipeleft') от нативного Hammer-instance с element = .info.
+    // Раньше patch вызывал navigateInRange сам и проксировал event дальше; теперь
+    // он только блокирует, навигация идёт через core/popupSwipe-touch-flow.
     const popup = document.querySelector('.info.popup') as HTMLElement;
     const fakeManager = { element: popup };
     (window as unknown as { Hammer: IFakeHammerStatic }).Hammer.Manager.prototype.emit.call(
@@ -376,8 +388,9 @@ describe('improvedNextPointSwipe enable/disable', () => {
       'swipeleft',
     );
 
-    // p1 - текущая, ближайшая в радиусе 45m - p2 (20,20).
-    expect(showInfoMock).toHaveBeenCalledWith('p2');
+    expect(originalEmit).not.toHaveBeenCalled();
+    // showInfo не дёрнут patch'ом - navigate теперь только через touch-flow.
+    expect(showInfoMock).not.toHaveBeenCalled();
     delete window.showInfo;
   });
 
@@ -426,12 +439,130 @@ describe('improvedNextPointSwipe enable/disable', () => {
     expect(originalEmit).toHaveBeenCalledWith('swipeup', undefined);
   });
 
-  test('tryNavigateInRange после enable выбирает ближайшую непосещённую', async () => {
-    window.showInfo = jest.fn();
+  test('pickNextGuidInRange после enable выбирает ближайшую непосещённую', async () => {
     await improvedNextPointSwipe.enable();
-    expect(tryNavigateInRange()).toBe(true);
-    // p2 - ближайшая непосещённая в радиусе.
-    expect(window.showInfo).toHaveBeenCalledWith('p2');
+    // p2 - ближайшая непосещённая в радиусе 45m.
+    expect(pickNextGuidInRange()).toBe('p2');
+  });
+});
+
+// ── core/popupSwipe интеграция: dismiss / return / openPointPopup ─────────────
+
+describe('improvedNextPointSwipe + core/popupSwipe', () => {
+  let pointsSrc: IOlVectorSource;
+  let playerSrc: IOlVectorSource;
+  let view: IOlView;
+  let olMap: IOlMap & { dispatchEvent: jest.Mock; getPixelFromCoordinate: jest.Mock };
+
+  beforeEach(() => {
+    pointsSrc = makeSource([
+      makeFeature('p1', [10, 10]),
+      makeFeature('p2', [20, 20]),
+      makeFeature('p3', [200, 200]),
+    ]);
+    playerSrc = makeSource([makeFeature('player', [0, 0])]);
+    view = makeView();
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
+      view,
+    );
+    mockGetOlMap.mockResolvedValue(olMap);
+
+    const popup = document.createElement('div');
+    popup.className = 'info popup';
+    popup.dataset.guid = 'p1';
+    document.body.appendChild(popup);
+
+    setupHammerGlobalMock();
+  });
+
+  afterEach(async () => {
+    await improvedNextPointSwipe.disable();
+    document.querySelector('.info.popup')?.remove();
+    delete (window as unknown as { Hammer?: unknown }).Hammer;
     delete window.showInfo;
+    uninstallHammerInterceptorForTest();
+    resetPopupSwipeForTest();
+  });
+
+  function setupSwipingRight(popup: HTMLElement): void {
+    setPopupForTest(popup);
+    const target = popup;
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target }, 0);
+    // Тащим вправо за threshold.
+    dispatchTouchMoveForTest({ clientX: 100 + DISMISS_THRESHOLD + 20, clientY: 205, target }, 100);
+  }
+
+  test('свайп вправо при наличии кандидата: state=animating, после transitionend showInfo вызван с guid', async () => {
+    const showInfoMock = jest.fn();
+    window.showInfo = showInfoMock;
+    await improvedNextPointSwipe.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    setupSwipingRight(popup);
+    expect(getStateForTest().state).toBe('swiping');
+    dispatchTouchEndForTest(150);
+
+    expect(getStateForTest().state).toBe('animating');
+    expect(showInfoMock).not.toHaveBeenCalled();
+
+    // requestAnimationFrame в jsdom - setTimeout(0).
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const evt = new Event('transitionend', { bubbles: false });
+    Object.defineProperty(evt, 'target', { value: popup });
+    popup.dispatchEvent(evt);
+
+    // p2 - ближайшая в радиусе.
+    expect(showInfoMock).toHaveBeenCalledWith('p2');
+  });
+
+  test('свайп вправо при отсутствии кандидатов: animateReturn (showInfo не вызывается)', async () => {
+    // Все точки вне радиуса 45m: p2 и p3 - далеко, p1 - текущая (visited).
+    pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p2', [200, 200])]);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
+      view,
+    );
+    mockGetOlMap.mockResolvedValue(olMap);
+
+    const showInfoMock = jest.fn();
+    window.showInfo = showInfoMock;
+    await improvedNextPointSwipe.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    setupSwipingRight(popup);
+    dispatchTouchEndForTest(150);
+
+    expect(getStateForTest().state).toBe('animating');
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const evt = new Event('transitionend', { bubbles: false });
+    Object.defineProperty(evt, 'target', { value: popup });
+    popup.dispatchEvent(evt);
+
+    expect(showInfoMock).not.toHaveBeenCalled();
+    expect(getStateForTest().state).toBe('idle');
+  });
+
+  test('свайп влево при наличии кандидата: showInfo вызван с guid (left/right эквивалентны)', async () => {
+    const showInfoMock = jest.fn();
+    window.showInfo = showInfoMock;
+    await improvedNextPointSwipe.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    setPopupForTest(popup);
+    dispatchTouchStartForTest({ clientX: 200, clientY: 200, target: popup }, 0);
+    dispatchTouchMoveForTest(
+      { clientX: 200 - DISMISS_THRESHOLD - 20, clientY: 205, target: popup },
+      100,
+    );
+    dispatchTouchEndForTest(150);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const evt = new Event('transitionend', { bubbles: false });
+    Object.defineProperty(evt, 'target', { value: popup });
+    popup.dispatchEvent(evt);
+
+    expect(showInfoMock).toHaveBeenCalledWith('p2');
   });
 });
