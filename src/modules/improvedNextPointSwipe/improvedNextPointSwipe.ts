@@ -15,6 +15,12 @@ const INTERACTION_RANGE = 45;
 const AUTOZOOM_THRESHOLD = 16;
 const AUTOZOOM_TARGET = 17;
 const AUTOZOOM_TIMEOUT_MS = 3000;
+// Длительность dismiss/return-анимации (мс). Исходный дефолт core/popupSwipe -
+// 300мс - маскировал await /api/point внутри game's showInfo (round-trip
+// 100-300мс), но ощущался медленно. 120мс - резкий отклик на жест; кратко
+// видна "дыра" между улетающим попапом и появлением нового на медленной сети,
+// но "дыра" воспринимается как загрузка, а не как лаг скрипта.
+const SWIPE_NEXT_ANIMATION_MS = 120;
 
 let map: IOlMap | null = null;
 let pointsSource: IOlVectorSource | null = null;
@@ -461,8 +467,19 @@ export const improvedNextPointSwipe: IFeatureModule = {
       // совершают навигацию к следующей точке по радиусу. Разница только в
       // направлении dismiss-анимации (попап улетает влево или вправо
       // соответственно), что core/popupSwipe рисует автоматически.
-      unregisterLeft = registerDirection('left', { decide, finalize });
-      unregisterRight = registerDirection('right', { decide, finalize });
+      // animationDurationMs=120: дефолт core/popupSwipe (300мс) ощущался как
+      // лаг; 120мс - резкий отклик. Аналог per-handler duration в
+      // swipeToClosePopup (150мс) - коммит 0096e91.
+      unregisterLeft = registerDirection('left', {
+        decide,
+        finalize,
+        animationDurationMs: SWIPE_NEXT_ANIMATION_MS,
+      });
+      unregisterRight = registerDirection('right', {
+        decide,
+        finalize,
+        animationDurationMs: SWIPE_NEXT_ANIMATION_MS,
+      });
       installPopupSwipe(POPUP_SELECTOR);
     });
   },

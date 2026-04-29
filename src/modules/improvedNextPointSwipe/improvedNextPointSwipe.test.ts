@@ -625,4 +625,21 @@ describe('improvedNextPointSwipe + core/popupSwipe', () => {
 
     expect(showInfoMock).toHaveBeenCalledWith('p2');
   });
+
+  test('dismiss-анимация 120мс через per-handler transition-duration', async () => {
+    // Дефолт core/popupSwipe = 300мс. Модуль регистрирует left/right с
+    // animationDurationMs=120 - core устанавливает inline transition-duration:
+    // 120ms на animatingElement через setProperty. Регрессия для случая если
+    // кто-то снимет animationDurationMs из registerDirection или поменяет число.
+    window.showInfo = jest.fn();
+    await improvedNextPointSwipe.enable();
+
+    const popup = document.querySelector('.info.popup') as HTMLElement;
+    const setSpy = jest.spyOn(popup.style, 'setProperty');
+
+    setupSwipingRight(popup);
+    dispatchTouchEndForTest(150);
+
+    expect(setSpy).toHaveBeenCalledWith('transition-duration', '120ms');
+  });
 });
