@@ -192,6 +192,42 @@ describe('tracking -> swiping', () => {
 
     expect(getStateForTest().state).toBe('idle');
   });
+
+  test('cancelable=true в swiping: preventDefault вызван', () => {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    registerDirection('up', makeHandler().handler);
+
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    const preventDefault = jest.fn();
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DIRECTION_THRESHOLD - 1, target: popup },
+      50,
+      { cancelable: true, preventDefault },
+    );
+
+    expect(preventDefault).toHaveBeenCalled();
+  });
+
+  test('cancelable=false в swiping: preventDefault НЕ вызван (избегаем [Intervention] спама)', () => {
+    // Браузер делает touchmove non-cancelable когда уже начал обрабатывать
+    // touch как скролл (типичный сценарий: свайп вверх в попапе с прокручиваемым
+    // контентом - браузер скроллит и спамит [Intervention] на каждый
+    // preventDefault от нас).
+    const popup = makePopup();
+    setPopupForTest(popup);
+    registerDirection('up', makeHandler().handler);
+
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    const preventDefault = jest.fn();
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DIRECTION_THRESHOLD - 1, target: popup },
+      50,
+      { cancelable: false, preventDefault },
+    );
+
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
 });
 
 describe('swiping: applySwipeStyles', () => {

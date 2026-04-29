@@ -342,8 +342,15 @@ function onTouchMove(event: TouchEvent): void {
 
   if (!activeDirection) return;
   // На swiping забираем жест у браузера: preventDefault не даст ему скроллить
-  // и отдавать pointercancel другим Hammer-recognizer'ам.
-  event.preventDefault();
+  // и отдавать pointercancel другим Hammer-recognizer'ам. Проверяем cancelable -
+  // браузер делает event non-cancelable если уже начал обрабатывать touch как
+  // скролл (типичный сценарий: свайп вверх в попапе с прокручиваемым контентом
+  // - браузер успевает решить скроллить и сделать последующие touchmove
+  // non-cancelable до нашего state=swiping). Без проверки spam'ит [Intervention]
+  // в консоли по 13-15 ошибок за одну серию touchmove.
+  if (event.cancelable) {
+    event.preventDefault();
+  }
   const delta = deltaForDirection(dx, dy, activeDirection);
   currentDelta = delta;
   if (popup) applySwipeStyles(popup, activeDirection, delta);
@@ -545,12 +552,14 @@ export function dispatchTouchStartForTest(
 export function dispatchTouchMoveForTest(
   touch: { clientX: number; clientY: number; target: EventTarget | null },
   timeStamp: number,
+  options: { cancelable?: boolean; preventDefault?: () => void } = {},
 ): void {
   onTouchMove({
     targetTouches: [touch],
     timeStamp,
     target: touch.target,
-    preventDefault: () => {},
+    cancelable: options.cancelable ?? true,
+    preventDefault: options.preventDefault ?? (() => {}),
   } as unknown as TouchEvent);
 }
 
