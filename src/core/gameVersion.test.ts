@@ -285,12 +285,13 @@ describe('isModuleNativeInCurrentGame', () => {
     // После полноценной адаптации одни модули возвращены (с переосмыслением /
     // runtime-детекцией native), другие удалены физически (repairAtFullCharge,
     // ngrsZoom), swipeToClosePopup возвращён под новым жестом, keyCountOnPoints
-    // переименован в keyCountFix, nextPointNavigation переименован в
-    // improvedNextPointSwipe и теперь полностью замещает нативный свайп - сет пуст.
+    // переименован в pointTextFix (промежуточный rename keyCountFix до публичного
+    // релиза не дошёл), nextPointNavigation переименован в improvedNextPointSwipe
+    // и теперь полностью замещает нативный свайп - сет пуст.
     setDetectedVersionForTest('0.6.1');
     expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(false);
     expect(isModuleNativeInCurrentGame('inventoryCleanup')).toBe(false);
-    expect(isModuleNativeInCurrentGame('keyCountFix')).toBe(false);
+    expect(isModuleNativeInCurrentGame('pointTextFix')).toBe(false);
     expect(isModuleNativeInCurrentGame('singleFingerRotation')).toBe(false);
     expect(isModuleNativeInCurrentGame('improvedNextPointSwipe')).toBe(false);
     expect(isModuleNativeInCurrentGame('repairAtFullCharge')).toBe(false);
