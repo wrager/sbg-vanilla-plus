@@ -28,6 +28,13 @@ let popupObserver: MutationObserver | null = null;
 let autozoomInProgress = false;
 let unregisterLeft: (() => void) | null = null;
 let unregisterRight: (() => void) | null = null;
+// installGeneration защищает от race условий между async enable и быстрым
+// disable. enable содержит await getOlMap() - если disable отработал во время
+// await, мы должны выйти из enable до записи map/pointsSource, регистрации
+// направлений и подключения popupSwipe, иначе direction-handler'ы и observer
+// останутся вечно при логически-disabled модуле. Тот же паттерн в pointTextFix
+// (коммит 168da1a), popoverCloser и nativeGarbageGuard.
+let installGeneration = 0;
 // Результат decide() запоминается между decide и finalize: на decide мы решаем,
 // есть ли следующая точка (true -> 'dismiss'), а в finalize вызываем openPointPopup
 // для уже выбранного guid. Хранение между двумя callback'ами избегает второго
@@ -422,7 +429,14 @@ export const improvedNextPointSwipe: IFeatureModule = {
   },
 
   enable() {
+    installGeneration++;
+    const myGeneration = installGeneration;
     return getOlMap().then((olMap) => {
+      // disable отработал между стартом enable и резолвом getOlMap - выходим до
+      // записи map/pointsSource и регистраций direction-handler'ов, чтобы при
+      // логически-disabled модуле не остались наши left/right в popupSwipe и
+      // observer на попапе.
+      if (myGeneration !== installGeneration) return;
       const pointsLayer = findLayerByName(olMap, 'points');
       if (!pointsLayer) return;
       const source = pointsLayer.getSource();
@@ -454,6 +468,7 @@ export const improvedNextPointSwipe: IFeatureModule = {
   },
 
   disable() {
+    installGeneration++;
     interceptEnabled = false;
     if (unregisterLeft) {
       unregisterLeft();

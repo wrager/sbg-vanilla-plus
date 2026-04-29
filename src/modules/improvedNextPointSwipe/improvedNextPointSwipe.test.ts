@@ -405,6 +405,32 @@ describe('improvedNextPointSwipe enable/disable', () => {
     expect(patched.name).toBe('patched');
   });
 
+  test('disable во время await getOlMap не оставляет вечные регистрации left/right в popupSwipe', async () => {
+    // Race-disable: enable стартует, getOlMap в процессе резолва. До того как
+    // он зарезолвится, успевает отработать disable. После резолва enable не
+    // должен регистрировать left/right в popupSwipe и подключать popupSwipe -
+    // иначе direction-handler'ы и observer останутся вечно при логически-disabled
+    // модуле. Регистрация direction'а одного и того же имени дважды бросает в
+    // popupSwipe - используем это как индикатор: после race-disable повторный
+    // enable должен пройти чисто, без коллизии регистраций.
+    let resolveGetOlMap: ((value: typeof olMap) => void) | undefined;
+    const pendingMap = new Promise<typeof olMap>((resolve) => {
+      resolveGetOlMap = resolve;
+    });
+    mockGetOlMap.mockReturnValueOnce(pendingMap);
+
+    const enablePromise = improvedNextPointSwipe.enable();
+    void improvedNextPointSwipe.disable();
+    resolveGetOlMap?.(olMap);
+    await enablePromise;
+
+    // Если бы race-guard отсутствовал, then-callback зарегистрировал бы
+    // 'left'/'right' в popupSwipe, и следующий enable бросил бы из-за
+    // дубликата direction. С guard - then-callback вышел до регистраций.
+    mockGetOlMap.mockResolvedValueOnce(olMap);
+    await expect(improvedNextPointSwipe.enable()).resolves.not.toThrow();
+  });
+
   test('после enable swipeleft через нативный Hammer-emit БЛОКИРУЕТСЯ (originalEmit не вызывается, навигация идёт через popupSwipe)', async () => {
     const { originalEmit } = setupHammerGlobalMock();
     installHammerInterceptor();
