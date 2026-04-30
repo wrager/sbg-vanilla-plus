@@ -12,12 +12,3 @@
 .cores-list__level {
   font-size: 1rem;
 }
-
-#magic-deploy-btn {
-  position: fixed;
-  bottom: 5px;
-  left: 5px;
-  width: 32px;
-  height: 32px;
-  min-height: auto;
-}
