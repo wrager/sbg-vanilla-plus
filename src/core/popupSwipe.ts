@@ -1,7 +1,6 @@
 /**
- * Общая инфраструктура свайп-жестов на попапе точки игры (`.info`). Заменяет
- * дублирование state machine и анимаций между модулями `swipeToClosePopup` и
- * `improvedNextPointSwipe`.
+ * Общая инфраструктура свайп-жестов на попапе точки игры (`.info`). Выносит из
+ * модулей-потребителей дублирование state machine и анимаций.
  *
  * Модули регистрируют направление (`up`/`down`/`left`/`right`) и handler, который:
  *  - решает, можно ли начать жест на конкретном touch-target (`canStart`),
@@ -11,7 +10,9 @@
  * State machine, общие константы и анимации живут здесь; модули не управляют
  * touch-listener'ами и стилями попапа напрямую. Это исключает класс ошибок,
  * когда два модуля параллельно вешают listener'ы на один элемент и
- * `preventDefault` одного отнимает жест у другого.
+ * `preventDefault` одного отнимает жест у другого. Сейчас единственный
+ * потребитель - swipeToClosePopup (`up`); ref-counter в install/uninstall
+ * сохранён для безопасного добавления других модулей в будущем.
  */
 
 import { $, waitForElement } from './dom';
@@ -75,11 +76,11 @@ const directionHandlers = new Map<SwipeDirection, ISwipeDirectionHandler>();
 let popup: HTMLElement | null = null;
 let savedTouchAction: string | null = null;
 let installGeneration = 0;
-// Ref-count установок: оба модуля (swipeToClosePopup и improvedNextPointSwipe)
-// могут параллельно вызывать install/uninstall в своих enable/disable. Без
-// счётчика disable одного модуля сорвал бы listener'ы другого. Реальный
-// attach происходит только при первом install (refs 0->1), реальный detach -
-// только при последнем uninstall (refs 1->0).
+// Ref-count установок: несколько модулей могут параллельно вызывать
+// install/uninstall в своих enable/disable. Без счётчика disable одного модуля
+// сорвал бы listener'ы другого. Реальный attach происходит только при первом
+// install (refs 0->1), реальный detach - только при последнем uninstall
+// (refs 1->0).
 let installRefs = 0;
 
 let state: GestureState = 'idle';

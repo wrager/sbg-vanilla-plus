@@ -15,9 +15,7 @@ const POPUP_SELECTOR = '.info';
 
 // Длительность dismiss/return-анимации (мс). Вдвое короче дефолтных 300мс
 // в core/popupSwipe: пользователь хочет почувствовать, что попап ушёл сразу,
-// без ожидания. improvedNextPointSwipe оставляет дефолт - там анимация длиннее
-// нужна, чтобы попап успел уехать в сторону свайпа и появиться попап следующей
-// точки без мерцания.
+// без ожидания.
 const SWIPE_TO_CLOSE_ANIMATION_MS = 150;
 
 const CORES_SLIDER_ANCESTOR_SELECTORS = ['.deploy-slider-wrp', '.splide', '#cores-list'];
@@ -88,10 +86,10 @@ export const swipeToClosePopup: IFeatureModule = {
       unregister();
       unregister = null;
     }
-    // uninstallPopupSwipe вызывается тут безусловно: если другой модуль (например,
-    // improvedNextPointSwipe) тоже пользуется popupSwipe, его enable()
-    // переинициализирует listener'ы. Это допустимо: повторный install
-    // идемпотентен по touch-action, и зарегистрированные handler'ы не сбрасываются.
+    // uninstallPopupSwipe вызывается тут безусловно: если в будущем появятся
+    // другие модули-потребители popupSwipe, ref-counter в core корректно
+    // развяжет одновременные install/uninstall. Повторный install идемпотентен
+    // по touch-action, зарегистрированные handler'ы не сбрасываются.
     uninstallPopupSwipe();
     removeStyles(MODULE_ID);
   },
