@@ -8,13 +8,13 @@
 - **Animate-out при достаточном свайпе.** Если смещение превысило `DISMISS_THRESHOLD = 100px` или скорость превысила `VELOCITY_THRESHOLD = 0.5 px/ms` (быстрый flick на коротком пути), попап плавно уходит наверх за экран (150мс) и закрывается через клик по `.info .popup-close`.
 - **Animate-back при недотянутом свайпе.** Если жест не прошёл порог - попап возвращается в исходное положение тем же 150мс transition'ом.
 - **Слайдер ядер исключён.** Свайп внутри `.deploy-slider-wrp` / `.splide` / `#cores-list` модулем игнорируется. Так splide-карусель ядер сохраняет свой жестовый интерфейс.
-- **Не конфликтует с нативным горизонтальным свайпом игры.** Игра ловит swipeleft/swiperight через Hammer.Swipe на `.info`. Наш core/popupSwipe сначала классифицирует жест по доминирующей оси первого движения: вертикаль уходит в наш handler, горизонталь до нас не доходит и обрабатывается нативным Hammer'ом.
+- **Не конфликтует с горизонтальным свайпом к следующей точке.** core/popupSwipe классифицирует жест по доминирующей оси первого движения: вертикаль уходит в наш handler `up`, горизонталь - в handler `left`/`right` модуля `nextPointSwipeAnimation` (если он включён). Нативный горизонтальный Hammer-свайп игры подавляется отдельно модулем `betterNextPointSwipe` через runtime-override `Hammer.Manager.prototype.emit`.
 
 ## Архитектура
 
 ### Регистрация в core/popupSwipe
 
-Модуль не управляет touch-listener'ами и анимациями напрямую - этим занят общий `src/core/popupSwipe.ts`. swipeToClosePopup на enable вызывает `registerDirection('up', { canStart, decide, finalize })` и `installPopupSwipe('.info')`. На disable - снимает регистрацию через возвращённый unregister и вызывает `uninstallPopupSwipe()`. Сейчас swipeToClosePopup - единственный потребитель core/popupSwipe; ref-counter в core (`installRefs` 0->1 при первом install, 1->0 при последнем uninstall) сохранён на случай, если в будущем добавятся другие модули с регистрацией других направлений.
+Модуль не управляет touch-listener'ами и анимациями напрямую - этим занят общий `src/core/popupSwipe.ts`. swipeToClosePopup на enable вызывает `registerDirection('up', { canStart, decide, finalize })` и `installPopupSwipe('.info')`. На disable - снимает регистрацию через возвращённый unregister и вызывает `uninstallPopupSwipe()`. Параллельный потребитель core/popupSwipe - `nextPointSwipeAnimation` (направления `left`/`right`); ref-counter в core (`installRefs` 0->1 при первом install, 1->0 при последнем uninstall) обеспечивает корректную работу: реальный attach listener-ов происходит при первом install, реальный detach - только при последнем uninstall, поэтому disable одного модуля не сорвёт listener-ы другого.
 
 ### Handler
 

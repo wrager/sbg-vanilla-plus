@@ -26,7 +26,7 @@
 
 Игра при successful discover увеличивает `inventory-cache[i].a` для соответствующих ref-стопок и обновляет `#i-ref` в попапе, но НЕ трогает `prop.highlight` на feature и не пересоздаёт LIGHT-стиль. Канал refs (id=7 в FeatureStyles.LIGHT, refs/game/script.js:374-377) рисует `values[7]` из closure массива - это значение остаётся прежним до следующего `drawEntities`.
 
-Модуль ставит monkey-patch на `window.fetch` в `init()` (один раз за жизнь страницы; повторные `installDiscoverFetchHook` no-op). Перехватчик пропускает все запросы, кроме `/api/discover`; для них:
+Модуль ставит monkey-patch на `window.fetch` при первом `enable` (один раз за жизнь страницы; повторные `installDiscoverFetchHook` no-op). Lazy install: пользователь с отключённым модулем не получает глобальный side-effect на свои запросы. Перехватчик пропускает все запросы, кроме `/api/discover`; для них:
 
 1. Извлекает guid целевой точки из request body (`{position, guid, wish}`).
 2. Клонирует Response и парсит JSON параллельно с игрой (не блокируя её обработку).
@@ -34,7 +34,7 @@
 4. Находит feature через `pointsSource.getFeatureById(guid)` и in-place увеличивает `feature.get('highlight')[7]` на gain. LIGHT-стиль closure читает этот же массив, поэтому следующий рендер уже показывает актуальное число.
 5. Вызывает `feature.changed()` для инвалидации execution plan.
 
-Перехват активен только пока модуль enabled - флаг `discoverHookEnabled` ставится в `enable()`, снимается в `disable()`. Сам fetch-патч остаётся вечным (как `installGameVersionCapture`), но при `discoverHookEnabled = false` запрос проходит насквозь без обработки.
+Перехват активен только пока модуль enabled - флаг `discoverHookEnabled` ставится в `enable()`, снимается в `disable()`. Сам fetch-патч после первого install остаётся вечным (как `installGameVersionCapture`), но при `discoverHookEnabled = false` запрос проходит насквозь без обработки.
 
 ### Обёртка через Proxy на canvas-context
 

@@ -10,9 +10,10 @@
  * State machine, общие константы и анимации живут здесь; модули не управляют
  * touch-listener'ами и стилями попапа напрямую. Это исключает класс ошибок,
  * когда два модуля параллельно вешают listener'ы на один элемент и
- * `preventDefault` одного отнимает жест у другого. Сейчас единственный
- * потребитель - swipeToClosePopup (`up`); ref-counter в install/uninstall
- * сохранён для безопасного добавления других модулей в будущем.
+ * `preventDefault` одного отнимает жест у другого. Сейчас потребители:
+ * `swipeToClosePopup` (`up`) и `nextPointSwipeAnimation` (`left`/`right`).
+ * Ref-counter в install/uninstall защищает от срыва listener-ов одного
+ * модуля при disable другого.
  */
 
 import { $, waitForElement } from './dom';
