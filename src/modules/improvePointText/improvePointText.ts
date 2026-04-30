@@ -2,8 +2,8 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 import { getOlMap, findLayerByName } from '../../core/olMap';
 import type { IOlMap, IOlVectorSource, IOlFeature } from '../../core/olMap';
 
-const MODULE_ID = 'pointTextFix';
-const WRAPPED_MARKER = Symbol('svp.pointTextFix.wrapped');
+const MODULE_ID = 'improvePointText';
+const WRAPPED_MARKER = Symbol('svp.improvePointText.wrapped');
 
 interface IRendererState {
   context: CanvasRenderingContext2D;
@@ -400,9 +400,9 @@ export function uninstallDiscoverFetchHookForTest(): void {
 
 let discoverHookEnabled = false;
 
-export const pointTextFix: IFeatureModule = {
+export const improvePointText: IFeatureModule = {
   id: MODULE_ID,
-  name: { en: 'Point text labels', ru: 'Подписи на точках' },
+  name: { en: 'Improved point text', ru: 'Улучшенный текст на точках' },
   description: {
     en: 'Adaptive font for the point text label selected in Layers > Text. The label stays horizontal regardless of map rotation. For the References channel the count updates immediately after discover.',
     ru: 'Адаптивный размер шрифта для текста подсветки точек, выбранного в Layers > Text. Подпись не вращается вместе с картой. Для канала ключей значение обновляется сразу после изучения точки.',
@@ -416,7 +416,7 @@ export const pointTextFix: IFeatureModule = {
     // включён ли модуль. Каждый /api/* запрос проходил через нашу обёртку
     // (внутри она быстро no-op'ит при discoverHookEnabled=false), но это
     // глобальный side-effect, невидимый в DevTools. Переносим установку в
-    // enable: если пользователь отключил pointTextFix - патч вообще никогда
+    // enable: если пользователь отключил improvePointText - патч вообще никогда
     // не появляется. Сам патч после первого enable остаётся жить до конца
     // сессии (повторные enable/disable идемпотентны через discoverFetchInstalled),
     // потому что снятие требует проверить, что между install и uninstall

@@ -3,16 +3,16 @@ import {
   computeRefsGainFromDiscover,
   fontSizeForZoom,
   installDiscoverFetchHook,
-  pointTextFix,
+  improvePointText,
   uninstallDiscoverFetchHookForTest,
   wrapFeature,
   wrapLightRenderer,
   wrapStyleArray,
   unwrapFeature,
-} from './pointTextFix';
+} from './improvePointText';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
 
-const WRAPPED_MARKER_DESC = 'svp.pointTextFix.wrapped';
+const WRAPPED_MARKER_DESC = 'svp.improvePointText.wrapped';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -710,7 +710,7 @@ describe('installDiscoverFetchHook', () => {
     window.fetch = jest.fn(() => Promise.resolve(fakeResponse)) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
 
-    await pointTextFix.enable();
+    await improvePointText.enable();
 
     // POST /api/discover с guid в body.
     await window.fetch('/api/discover', {
@@ -722,7 +722,7 @@ describe('installDiscoverFetchHook', () => {
     await Promise.resolve();
 
     expect(highlight[7]).toBe(4);
-    await pointTextFix.disable();
+    await improvePointText.disable();
   });
 
   test('не обновляет feature при disable (флаг discoverHookEnabled)', async () => {
@@ -745,8 +745,8 @@ describe('installDiscoverFetchHook', () => {
     window.fetch = jest.fn(() => Promise.resolve(fakeResponse)) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
 
-    await pointTextFix.enable();
-    await pointTextFix.disable();
+    await improvePointText.enable();
+    await improvePointText.disable();
 
     await window.fetch('/api/discover', {
       method: 'POST',
@@ -780,7 +780,7 @@ describe('installDiscoverFetchHook', () => {
 
   test('init не ставит fetch-patch (lazy install): пользователь с отключённым модулем не получает глобальный side-effect', () => {
     // init() не должен трогать window.fetch - patch ставится только при
-    // enable(). Если пользователь отключил pointTextFix через настройки,
+    // enable(). Если пользователь отключил improvePointText через настройки,
     // его /api/* запросы не должны проходить через нашу обёртку (даже если
     // обёртка быстро no-op'ит при discoverHookEnabled=false).
     uninstallDiscoverFetchHookForTest();
@@ -789,7 +789,7 @@ describe('installDiscoverFetchHook', () => {
     );
     window.fetch = fetchBefore as unknown as typeof window.fetch;
 
-    void pointTextFix.init();
+    void improvePointText.init();
 
     expect(window.fetch).toBe(fetchBefore);
   });
@@ -810,13 +810,13 @@ describe('installDiscoverFetchHook', () => {
     const olMapLocal = makeMap([layer], makeView(16));
     mockGetOlMap.mockResolvedValue(olMapLocal);
 
-    void pointTextFix.init();
+    void improvePointText.init();
     expect(window.fetch).toBe(fetchBefore);
-    await pointTextFix.enable();
+    await improvePointText.enable();
 
     expect(window.fetch).not.toBe(fetchBefore);
 
-    await pointTextFix.disable();
+    await improvePointText.disable();
   });
 });
 
@@ -832,7 +832,7 @@ import { getOlMap } from '../../core/olMap';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 
-describe('pointTextFix.enable / disable', () => {
+describe('improvePointText.enable / disable', () => {
   let pointsSrc: IMockSource;
   let olMap: IOlMap;
   let view: IOlView;
@@ -846,11 +846,11 @@ describe('pointTextFix.enable / disable', () => {
   });
 
   afterEach(async () => {
-    await pointTextFix.disable();
+    await improvePointText.disable();
   });
 
   test('enable subscribes to addfeature on points source', async () => {
-    await pointTextFix.enable();
+    await improvePointText.enable();
     expect(pointsSrc._listeners.get('addfeature')?.length).toBe(1);
   });
 
@@ -863,13 +863,13 @@ describe('pointTextFix.enable / disable', () => {
     olMap = makeMap([pointsLayer], view);
     mockGetOlMap.mockResolvedValue(olMap);
 
-    await pointTextFix.enable();
+    await improvePointText.enable();
 
     expect(light.setRenderer).toHaveBeenCalledTimes(1);
   });
 
   test('addfeature event after enable wraps the new feature', async () => {
-    await pointTextFix.enable();
+    await improvePointText.enable();
     const lightRenderer = jest.fn();
     const light = makeStyleWithRenderer(lightRenderer as never);
     const newFeature = makeFeature([light]);
@@ -881,18 +881,18 @@ describe('pointTextFix.enable / disable', () => {
     const otherLayer = makeLayer('other', makeSource());
     olMap = makeMap([otherLayer], view);
     mockGetOlMap.mockResolvedValue(olMap);
-    await pointTextFix.enable();
+    await improvePointText.enable();
     expect(pointsSrc._listeners.get('addfeature')).toBeUndefined();
   });
 
   test('module does not add any layer (no own layer is created)', async () => {
-    await pointTextFix.enable();
+    await improvePointText.enable();
     expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
   });
 
   test('disable unsubscribes addfeature listener', async () => {
-    await pointTextFix.enable();
-    await pointTextFix.disable();
+    await improvePointText.enable();
+    await improvePointText.disable();
     expect(pointsSrc._listeners.get('addfeature')?.length ?? 0).toBe(0);
   });
 
@@ -905,8 +905,8 @@ describe('pointTextFix.enable / disable', () => {
     olMap = makeMap([pointsLayer], view);
     mockGetOlMap.mockResolvedValue(olMap);
 
-    await pointTextFix.enable();
-    await pointTextFix.disable();
+    await improvePointText.enable();
+    await improvePointText.disable();
 
     expect(light._renderer).toBe(lightRenderer);
 
@@ -919,7 +919,7 @@ describe('pointTextFix.enable / disable', () => {
 
   test('disable without enable is idempotent (no throw)', () => {
     expect(() => {
-      void pointTextFix.disable();
+      void improvePointText.disable();
     }).not.toThrow();
   });
 
@@ -933,9 +933,9 @@ describe('pointTextFix.enable / disable', () => {
     });
     mockGetOlMap.mockReturnValueOnce(pendingMap);
 
-    const enablePromise = pointTextFix.enable();
+    const enablePromise = improvePointText.enable();
     // disable отрабатывает, пока enable ещё ждёт getOlMap.
-    void pointTextFix.disable();
+    void improvePointText.disable();
     // Теперь резолвим getOlMap - продолжается тело enable.
     resolveGetOlMap?.(olMap);
     await enablePromise;
@@ -947,23 +947,23 @@ describe('pointTextFix.enable / disable', () => {
 
 // ── module metadata ───────────────────────────────────────────────────────────
 
-describe('pointTextFix metadata', () => {
+describe('improvePointText metadata', () => {
   test('has correct id', () => {
-    expect(pointTextFix.id).toBe('pointTextFix');
+    expect(improvePointText.id).toBe('improvePointText');
   });
 
   test('has map category', () => {
-    expect(pointTextFix.category).toBe('map');
+    expect(improvePointText.category).toBe('map');
   });
 
   test('is enabled by default', () => {
-    expect(pointTextFix.defaultEnabled).toBe(true);
+    expect(improvePointText.defaultEnabled).toBe(true);
   });
 
   test('has localized name and description', () => {
-    expect(pointTextFix.name.ru).toBeTruthy();
-    expect(pointTextFix.name.en).toBeTruthy();
-    expect(pointTextFix.description.ru).toBeTruthy();
-    expect(pointTextFix.description.en).toBeTruthy();
+    expect(improvePointText.name.ru).toBeTruthy();
+    expect(improvePointText.name.en).toBeTruthy();
+    expect(improvePointText.description.ru).toBeTruthy();
+    expect(improvePointText.description.en).toBeTruthy();
   });
 });

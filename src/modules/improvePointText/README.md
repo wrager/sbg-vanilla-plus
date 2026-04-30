@@ -1,4 +1,4 @@
-# Подписи на точках (pointTextFix)
+# Улучшенный текст на точках (improvePointText)
 
 Адаптивный размер шрифта для текста подсветки точек, выбранного в Layers > Text. Подпись не вращается вместе с картой. Для канала ключей значение обновляется сразу после изучения точки.
 
@@ -58,10 +58,10 @@
 
 ## Файловая структура
 
-| Файл                   | Назначение                                                                                                                                                                                  |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pointTextFix.ts`      | Определение модуля + `wrapFeature`/`unwrapFeature`, `wrapStyleArray`, `wrapLightRenderer`, `fontSizeForZoom`; перехват /api/discover (`installDiscoverFetchHook`, `applyRefsGainToFeature`) |
-| `pointTextFix.test.ts` | Тесты адаптивного шрифта, обёртки renderer'a, реакции на `change`-event, race-disable, idempotency, инвалидации render plan через feature.changed, обновления refs-канала после discover    |
+| Файл                       | Назначение                                                                                                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `improvePointText.ts`      | Определение модуля + `wrapFeature`/`unwrapFeature`, `wrapStyleArray`, `wrapLightRenderer`, `fontSizeForZoom`; перехват /api/discover (`installDiscoverFetchHook`, `applyRefsGainToFeature`) |
+| `improvePointText.test.ts` | Тесты адаптивного шрифта, обёртки renderer'a, реакции на `change`-event, race-disable, idempotency, инвалидации render plan через feature.changed, обновления refs-канала после discover    |
 
 ## Настройки
 
