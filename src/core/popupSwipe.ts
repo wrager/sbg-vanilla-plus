@@ -53,6 +53,20 @@ export interface ISwipeDirectionHandler {
    * другие direction'ы используют свои значения (или дефолт).
    */
   animationDurationMs?: number;
+  /**
+   * Не отменять активную dismiss/return-анимацию, если попап в это время
+   * меняет `data-guid` (например, нативный handler игры синхронно вызвал
+   * `showInfo` параллельно с нашей анимацией). Дефолт false: observer
+   * штатно делает `cleanupAnimation`, что корректно для жеста закрытия
+   * (`swipeToClosePopup`) - там data-guid не должен меняться mid-animation.
+   * Для горизонтального свайпа (`nextPointSwipeAnimation`) data-guid change
+   * во время animateDismiss это ОЖИДАЕМОЕ событие: либо native game's
+   * Hammer-handler синхронно сделал переключение, либо наш finalize
+   * вызовет `showInfo` после transitionend. cleanupAnimation в обоих
+   * случаях рвёт визуально стартовавшую dismiss-анимацию mid-flight,
+   * пользователь видит "попап немного начал лететь и резко вернулся".
+   */
+  keepAnimatingOnDataGuidChange?: boolean;
 }
 
 /** Минимальное смещение (px), после которого направление считается определённым. */
@@ -70,7 +84,7 @@ export const ANIMATION_SAFETY_MARGIN = 50;
 
 const ANIMATING_CLASS = 'svp-swipe-animating';
 
-type GestureState = 'idle' | 'tracking' | 'swiping' | 'animating';
+export type GestureState = 'idle' | 'tracking' | 'swiping' | 'animating';
 
 const directionHandlers = new Map<SwipeDirection, ISwipeDirectionHandler>();
 
@@ -430,6 +444,16 @@ function startPopupObserver(): void {
         const currentGuid = popup.dataset.guid ?? null;
         if (currentGuid === lastObservedGuid) continue;
         lastObservedGuid = currentGuid;
+        // Активная анимация direction-handler-а с keepAnimatingOnDataGuidChange
+        // намеренно идёт mid-flight через смену guid (native game's Hammer
+        // синхронно вызвал showInfo параллельно с нашей dismiss-анимацией,
+        // или наш finalize вызовет showInfo после transitionend). Не рвём
+        // её - пусть досмотрит до конца, на финиш resetElementStyles покажет
+        // попап с новым содержимым в естественной позиции.
+        if (state === 'animating' && activeDirection !== null) {
+          const handler = directionHandlers.get(activeDirection);
+          if (handler?.keepAnimatingOnDataGuidChange) continue;
+        }
         if (state !== 'idle' || hasStaleSwipeStyles(popup)) cleanupAnimation(popup);
       }
     }
@@ -609,6 +633,12 @@ export function getStateForTest(): {
   activeDirection: SwipeDirection | null;
 } {
   return { state, activeDirection };
+}
+
+/** Прямая настройка state и activeDirection для тестов observer-логики. */
+export function setStateForTest(s: GestureState, ad: SwipeDirection | null): void {
+  state = s;
+  activeDirection = ad;
 }
 
 export function resetForTest(): void {

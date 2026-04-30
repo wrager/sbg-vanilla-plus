@@ -16,6 +16,7 @@ import {
   registerDirection,
   resetForTest,
   setPopupForTest,
+  setStateForTest,
   uninstallPopupSwipe,
   type ISwipeDirectionHandler,
   type SwipeDirection,
@@ -633,5 +634,86 @@ describe('popup observer', () => {
       expect(popup.style.opacity).toBe('');
       expect(popup.classList.contains('svp-swipe-animating')).toBe(false);
     });
+  });
+
+  test('data-guid change в state=animating без флага handler: cleanupAnimation вызван', async () => {
+    // Default behaviour для swipeToClosePopup-style direction: смена guid
+    // mid-animation - это аномалия (попап только что закрывали, кто-то
+    // открыл другую точку), нужно сбросить stale-стили.
+    const popup = makePopup();
+    installPopupSwipe('.info.popup');
+
+    const up = makeHandler('dismiss');
+    registerDirection('up', up.handler);
+
+    // Имитируем активную animation: state=animating + activeDirection=up
+    // + stale-стили на попапе.
+    setStateForTest('animating', 'up');
+    popup.style.opacity = '0';
+    popup.classList.add('svp-swipe-animating');
+
+    popup.dataset.guid = 'point-b';
+
+    await Promise.resolve();
+
+    // cleanupAnimation сработал: styles сброшены, state=idle.
+    expect(popup.style.opacity).toBe('');
+    expect(popup.classList.contains('svp-swipe-animating')).toBe(false);
+    expect(getStateForTest().state).toBe('idle');
+  });
+
+  test('data-guid change в state=animating с keepAnimatingOnDataGuidChange: animation не отменена', async () => {
+    // Для горизонтального свайпа смена guid mid-animation ожидаема:
+    // native game's Hammer-handler синхронно вызвал showInfo во время
+    // нашей animateDismiss. Animation должна досмотреть до конца -
+    // observer не должен её рвать.
+    const popup = makePopup();
+    installPopupSwipe('.info.popup');
+
+    const handler: ISwipeDirectionHandler = {
+      decide: () => 'dismiss',
+      finalize: jest.fn(),
+      keepAnimatingOnDataGuidChange: true,
+    };
+    registerDirection('left', handler);
+
+    setStateForTest('animating', 'left');
+    popup.style.opacity = '0';
+    popup.classList.add('svp-swipe-animating');
+
+    popup.dataset.guid = 'point-b';
+
+    await Promise.resolve();
+
+    // styles остались, state остался animating - animation продолжается.
+    expect(popup.style.opacity).toBe('0');
+    expect(popup.classList.contains('svp-swipe-animating')).toBe(true);
+    expect(getStateForTest().state).toBe('animating');
+  });
+
+  test('флаг keepAnimatingOnDataGuidChange не блокирует cleanup в state=swiping', async () => {
+    // Защита проверяется только в state=animating. В других state-ах
+    // (например, swiping - пользователь ещё держит палец) логика остаётся
+    // штатной: data-guid change остановит трекинг.
+    const popup = makePopup();
+    installPopupSwipe('.info.popup');
+
+    const handler: ISwipeDirectionHandler = {
+      decide: () => 'dismiss',
+      finalize: jest.fn(),
+      keepAnimatingOnDataGuidChange: true,
+    };
+    registerDirection('left', handler);
+
+    setStateForTest('swiping', 'left');
+    popup.style.opacity = '0.8';
+
+    popup.dataset.guid = 'point-b';
+
+    await Promise.resolve();
+
+    // cleanupAnimation сработал.
+    expect(popup.style.opacity).toBe('');
+    expect(getStateForTest().state).toBe('idle');
   });
 });

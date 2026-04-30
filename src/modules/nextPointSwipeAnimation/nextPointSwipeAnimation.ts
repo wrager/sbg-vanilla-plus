@@ -132,6 +132,12 @@ const swipeHandler: ISwipeDirectionHandler = {
   decide: decideSwipe,
   finalize: finalizeSwipe,
   animationDurationMs: SWIPE_ANIMATION_MS,
+  // data-guid меняется во время animateDismiss в двух кейсах: либо native
+  // game's Hammer-handler синхронно в touchend сделал showInfo (когда
+  // betterNextPointSwipe выключен), либо наш finalize вызовет showInfo
+  // после transitionend. В обоих случаях animation должна досмотреть -
+  // popupSwipe observer не должен её рвать через cleanupAnimation.
+  keepAnimatingOnDataGuidChange: true,
 };
 
 export const nextPointSwipeAnimation: IFeatureModule = {

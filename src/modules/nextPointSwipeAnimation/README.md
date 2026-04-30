@@ -36,7 +36,7 @@ State machine `core/popupSwipe` (`idle -> tracking -> swiping -> animating -> id
 
 **Оба модуля активны (default)**: `betterNextPointSwipe` через runtime-override `Hammer.Manager.prototype.emit` подавляет нативный handler игры. Когда он замечает что `nextPointSwipeAnimation` тоже активен (через `isModuleActive`), он не вызывает свою синхронную navigation - анимация сама выполнит её в `finalize` после dismiss-анимации. Без этого navigation сработала бы дважды.
 
-**Только anim, без better**: нативный Hammer-handler игры жив и сработает синхронно на touchend свайпа - native showInfo. Наш `decide` это распознаёт через approximate `visibleCount > 1` и возвращает `dismiss` без pending guid. Animation идёт параллельно нативному, finalize ничего не делает (native сам открыл точку). UX: пользователь видит анимацию свайпа на нативной навигации.
+**Только anim, без better**: нативный Hammer-handler игры жив и сработает синхронно на touchend свайпа - native showInfo. Наш `decide` это распознаёт через approximate `visibleCount > 1` и возвращает `dismiss` без pending guid. Animation идёт параллельно нативному, finalize ничего не делает (native сам открыл точку). Native showInfo синхронно меняет `popup.dataset.guid`; чтобы popupSwipe-observer не отменил нашу dismiss-анимацию через `cleanupAnimation`, swipeHandler выставляет `keepAnimatingOnDataGuidChange: true` - observer пропускает data-guid mutation в state=animating. Animation досматривает до transitionend, потом resetElementStyles показывает попап с уже подменённым нативом содержимым новой точки.
 
 **Только better, без anim**: animation не зарегистрирована, betterNextPointSwipe мгновенно выполняет navigation в Hammer-override без анимации.
 
