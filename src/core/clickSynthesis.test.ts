@@ -134,4 +134,30 @@ describe('installClickFallback', () => {
     expect(event.bubbles).toBe(true);
     expect(event.cancelable).toBe(true);
   });
+
+  test('не диспатчит click на disabled-кнопке', () => {
+    // Native browser блокирует click на disabled-button. Polyfill через
+    // dispatchEvent обходил этот блок и срабатывал на залоченной #deploy /
+    // #discover - двойной запрос к серверу. Проверяем что polyfill повторяет
+    // native-поведение.
+    element.disabled = true;
+    dispatchPointer('pointerdown', { x: 100, y: 100, t: 1000 });
+    dispatchPointer('pointerup', { x: 100, y: 100, t: 1100 });
+
+    jest.advanceTimersByTime(80);
+    expect(clickListener).not.toHaveBeenCalled();
+  });
+
+  test('не диспатчит click если кнопка стала disabled между pointerup и таймером', () => {
+    // Синхронный native click handler игры (#deploy onclick) ставит
+    // prop('disabled', true) при первом срабатывании. Если native click уже
+    // прошёл, но за 80мс к нашему диспатчу кнопка успела перейти в disabled -
+    // повторно проверяем перед dispatch и не выпускаем дубль.
+    dispatchPointer('pointerdown', { x: 100, y: 100, t: 1000 });
+    dispatchPointer('pointerup', { x: 100, y: 100, t: 1100 });
+    // Между pointerup и истечением таймера игра залочила кнопку.
+    element.disabled = true;
+    jest.advanceTimersByTime(80);
+    expect(clickListener).not.toHaveBeenCalled();
+  });
 });

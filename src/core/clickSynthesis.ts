@@ -32,6 +32,24 @@ const TAP_MAX_DISTANCE_PX = 10;
 const SYNTHESIS_DELAY_MS = 80;
 
 /**
+ * Браузер не синтезирует `click` для tap по disabled-кнопке: dispatch event
+ * блокируется на стадии активации формы. Наш polyfill через
+ * `dispatchEvent('click')` этот блок обходит - игровой обработчик срабатывает
+ * на залоченной кнопке (двойной deploy/discover, и т. п.). Здесь повторяем
+ * native-поведение: на disabled-элементе синтетический click не диспатчим.
+ *
+ * `HTMLButtonElement.disabled` reflect-ит content attribute. Игра ставит
+ * `prop('disabled', true)` (jQuery, синхронизирует attribute и property) и
+ * `setAttribute('disabled', '')` на саму кнопку - оба пути ловятся через
+ * property. Form-control-наследованный disabled (родительский
+ * `<fieldset disabled>`) не покрывается - игра в попапе точки
+ * (`refs/game/script.js`) не использует fieldset, поэтому защита не нужна.
+ */
+function isElementDisabled(element: HTMLElement): boolean {
+  return (element as { disabled?: unknown }).disabled === true;
+}
+
+/**
  * Устанавливает click-fallback на элемент. Возвращает функцию для снятия.
  *
  * Listeners в capture-phase, чтобы наш click-detector видел click ДО других
@@ -57,6 +75,9 @@ export function installClickFallback(element: HTMLElement): () => void {
     const duration = event.timeStamp - downAt;
     const distance = Math.hypot(event.clientX - downX, event.clientY - downY);
     if (duration > TAP_MAX_DURATION_MS || distance > TAP_MAX_DISTANCE_PX) return;
+    // Pre-check: tap по уже-disabled кнопке - native бы не выпустил click,
+    // и мы тоже не должны.
+    if (isElementDisabled(element)) return;
 
     const x = event.clientX;
     const y = event.clientY;
@@ -68,6 +89,13 @@ export function installClickFallback(element: HTMLElement): () => void {
     setTimeout(() => {
       element.removeEventListener('click', onClick, true);
       if (clickFired) return;
+      // Между pointerup и тиком таймера state мог поменяться: нативный click
+      // игры сработал синхронно и поставил `prop('disabled', true)` (см.
+      // refs/game/script.js:882, 947, 987 для #deploy/#repair/#draw), или
+      // игра асинхронно залочила кнопку через apiSend.then(). Повторно
+      // проверяем перед диспатчем - иначе диспатчим click на залоченную и
+      // вызываем дубль.
+      if (isElementDisabled(element)) return;
       element.dispatchEvent(
         new MouseEvent('click', {
           bubbles: true,
