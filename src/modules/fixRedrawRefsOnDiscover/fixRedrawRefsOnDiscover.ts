@@ -230,8 +230,8 @@ export const fixRedrawRefsOnDiscover: IFeatureModule = {
     ru: 'Фикс обновления счётчика ключей после изучения',
   },
   description: {
-    en: 'Updates the references counter on the point map label immediately after discover. Native game updates the inventory counter but leaves prop.highlight stale until the next requestEntities (move >30m or 5-minute timer).',
-    ru: 'Обновляет счётчик ключей на подписи точки на карте сразу после изучения. Нативно игра обновляет счётчик в инвентаре, но prop.highlight на feature остаётся stale до следующего перезапроса карты (движение >30м или 5-минутный таймер).',
+    en: 'Updates the references counter on the point map label immediately after discover.',
+    ru: 'Обновляет счётчик ключей на подписи точки на карте сразу после изучения.',
   },
   defaultEnabled: true,
   category: 'fix',
