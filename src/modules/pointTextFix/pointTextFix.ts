@@ -6,14 +6,16 @@ import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 
 const MODULE_ID = 'pointTextFix';
 const LABELS_LAYER_NAME = 'svp-point-text-fix';
-// Канал references в FeatureStyles.LIGHT (case 7 в refs/game/script.js около 374)
-// и индекс в массиве `prop.highlight`. Native renderer на этом канале рисует
-// число, в нашей реализации native пропускается, а число берётся из inventory-cache
-// и рисуется на отдельном overlay-слое.
-const REFS_CHANNEL_INDEX = 7;
+const MAP_CONFIG_KEY = 'map-config';
 const MIN_ZOOM = 13;
 const DEBOUNCE_MS = 100;
 const WRAPPED_MARKER = Symbol('svp.pointTextFix.wrapped');
+
+// Каналы Layers > Text picker, для которых в FeatureStyles.LIGHT (refs/game/script.js около 269)
+// рисуется текст: Levels (5), Cores (6), References (7), Guards (8).
+// Channels 1-4, 9 рисуют арки/кольца/секторы/прогресс-бары и текст не выпускают.
+type TextChannel = 5 | 6 | 7 | 8;
+const REFS_CHANNEL: TextChannel = 7;
 
 function clamp(low: number, value: number, high: number): number {
   return Math.max(low, Math.min(high, value));
@@ -25,10 +27,103 @@ function clamp(low: number, value: number, high: number): number {
  *
  * Нативный LIGHT-renderer (refs/game/script.js около 281) пишет
  * `bold 46px Manrope` константой - на zoom 13-14 числа закрывают сами
- * точки. Наш меньший адаптивный размер остаётся читаемым на любом зуме.
+ * точки. Адаптивный размер остаётся читаемым на любом зуме.
  */
 export function fontSizeForZoom(zoom: number): number {
   return Math.round(clamp(10, zoom - 3, 16));
+}
+
+// ── map-config.h ─────────────────────────────────────────────────────────────
+
+interface IMapConfig {
+  l?: number;
+  h?: number;
+}
+
+/**
+ * Читает поле `h` из `localStorage['map-config']` - bitfield из 3 слотов
+ * по 8 бит, в каждом 0 (off) или индекс канала 1..7. Slot N извлекается
+ * как `(h >> N*8) & 0xff`. Игра упаковывает значение здесь же на сохранении
+ * (refs/game/script.js около 1738) и читает при создании LIGHT-стиля
+ * (refs/game/script.js около 3194), передавая в closure.
+ *
+ * Возвращает 0 для отсутствующего/невалидного значения - совпадает с native
+ * fallback `JSON.parse(...).h ?? 0`.
+ */
+export function readMapConfigH(): number {
+  const raw = localStorage.getItem(MAP_CONFIG_KEY);
+  if (!raw) return 0;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return 0;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return 0;
+  const h = (parsed as IMapConfig).h;
+  return typeof h === 'number' ? h : 0;
+}
+
+/** Канал в slot 2 (центральный текст) - то, что игрок выбрал в третьем select-е Layers > Text. */
+function getCenterChannel(ids: number): number {
+  return (ids >>> 16) & 0xff;
+}
+
+function isTextChannel(channel: number): channel is TextChannel {
+  return channel === 5 || channel === 6 || channel === 7 || channel === 8;
+}
+
+// ── Predicted text queue (counter-based фильтр в wrap) ───────────────────────
+
+interface IPredictedTextItem {
+  slot: 0 | 1 | 2;
+  channel: TextChannel;
+}
+
+/**
+ * Моделирует порядок ctx.strokeText/fillText вызовов нативного LIGHT-renderer
+ * (refs/game/script.js около 301-378) для заданных `ids` (map-config.h) и
+ * `highlight` (`prop.highlight` точки). Возвращает упорядоченный список text-пар:
+ * каждая пара = одна последовательность `ctx.strokeText(value, ...)` +
+ * `ctx.fillText(value, ...)`.
+ *
+ * Логика по слотам i=0..2:
+ * - id = (ids >> i*8) & 0xff
+ * - is_text = (i === 2)
+ * - case 5 (Levels):  text только если is_text. value=0 не пропускается (native рисует "0").
+ * - case 6 (Cores):   `if (!value) continue` ВСЯ итерация (нет ни pellets, ни text). При is_text - text.
+ * - case 7 (Refs):    `if (!value) continue`. Нет is_text-проверки, text во всех слотах.
+ * - case 8 (Guards):  `if (value === -1) continue`. Нет is_text-проверки.
+ * - case 1-4, 9:      text не рисуют.
+ *
+ * Используется в Proxy на ctx внутри wrapLightRenderer для подсчёта индекса
+ * пары: `pairIdx = Math.floor(textCallCounter / 2)` маппит `i`-ю пару text-вызовов
+ * на её slot/channel в queue. Slot 2 пропускаем (overlay рисует), slot 0/1
+ * (редкие случаи, channel 7/8 в нетипичной конфигурации) - pass-through через
+ * wrap с adaptive font и поворот-compensation.
+ */
+export function predictTextQueue(ids: number, highlight: readonly unknown[]): IPredictedTextItem[] {
+  const queue: IPredictedTextItem[] = [];
+  for (let i = 0; i < 3; i++) {
+    const slot = i as 0 | 1 | 2;
+    const id = (ids >>> (slot * 8)) & 0xff;
+    const value = highlight[id];
+    if (typeof value === 'undefined') continue;
+    const isText = slot === 2;
+    if (id === 5) {
+      if (isText) queue.push({ slot, channel: 5 });
+    } else if (id === 6) {
+      if (!value) continue;
+      if (isText) queue.push({ slot, channel: 6 });
+    } else if (id === 7) {
+      if (!value) continue;
+      queue.push({ slot, channel: 7 });
+    } else if (id === 8) {
+      if (value === -1) continue;
+      queue.push({ slot, channel: 8 });
+    }
+  }
+  return queue;
 }
 
 // ── Wrap нативного LIGHT-renderer ────────────────────────────────────────────
@@ -67,56 +162,58 @@ function isWrappedRenderer(fn: RendererFn): fn is WrappedRenderer {
 /**
  * Оборачивает нативный LIGHT-renderer. На каждом render call:
  *
- * 1. Перед вызовом original временно подменяет `feature.get('highlight')[7]`
- *    на undefined и восстанавливает после вызова. Native LIGHT-renderer на
- *    case 7 (refs) имеет ранний `if (typeof value === 'undefined') continue`,
- *    поэтому при undefined-значении text для канала refs не рисуется ни в
- *    одном из 3 слотов. Наш overlay-слой рисует это число из inventory-cache.
- *    Backup нужен, чтобы другие места игры (showInfo, attack response,
- *    requestEntities при следующем drawEntities), читающие `prop.highlight`,
- *    видели исходные данные без пропуска нашей подмены.
+ * 1. `ctx.font` - подмена `Npx` на `fontSizeForZoom(zoom) * pixelRatio`.
+ *    Множитель повторяет поведение OL Text style (refs/ol/ol.js около 8841):
+ *    textScale = pixelRatio * scale; без него на retina-устройстве текст
+ *    выходит в `pixelRatio` раз меньше эквивалентного OL Text.
  *
- * 2. Создаёт Proxy вокруг `state.context`:
- *    - Подменяет любое `Npx` в `ctx.font` на адаптивный размер, умноженный
- *      на `state.pixelRatio`. Множитель повторяет поведение OL Text style
- *      (refs/ol/ol.js около 8841): textScale = pixelRatio * scale, далее
- *      ctx.scale(textScale) перед fillText. Custom renderer вызывается с
- *      уже подготовленным контекстом БЕЗ этой scale-трансформации, поэтому
- *      без ручного умножения на pixelRatio текст выходит в pixelRatio раз
- *      меньше эквивалентного OL Text style того же размера.
- *    - Оборачивает `ctx.fillText`/`ctx.strokeText` в save -> translate(x,y) ->
- *      rotate(-state.rotation) -> translate(-x,-y) -> orig -> restore.
- *      Компенсирует поворот канваса OL под map rotation, текст остаётся
- *      горизонтальным независимо от поворота карты. При rotation=0 - прямой
- *      pass-through без save/restore.
- *    - Все прочие методы и поля - проброс на реальный context (методы через
- *      bind, чтобы CanvasRenderingContext2D работал на своём this).
+ * 2. `ctx.fillText`/`ctx.strokeText` - counter-based filter:
+ *    - Считает порядок вызовов и сопоставляет с predicted-queue (см.
+ *      `predictTextQueue`).
+ *    - Если text-вызов соответствует slot 2 (центр) - пропускается. Наш
+ *      overlay-слой рисует значение этого канала сам с adaptive шрифтом и
+ *      theme-цветами.
+ *    - Иначе (slot 0/1, нетипичная конфигурация channel 7/8 в нецентральном
+ *      слоте) - pass-through на реальный context с поворот-compensation
+ *      (`save -> translate(x,y) -> rotate(-state.rotation) -> translate(-x,-y)
+ *      -> orig -> restore`); при rotation=0 - прямой вызов без save/restore.
  *
- * Цвета (fillStyle, strokeStyle), геометрия (beginPath, arc, stroke),
- * остальные text-каналы (Levels, Deployment, Guards) идут нативно. Только
- * канал refs (7) подавляется через backup/restore highlight[7].
+ *    Counter работает потому, что native LIGHT всегда выпускает text парой
+ *    (strokeText сразу после fillText или наоборот - в коде пара
+ *    `ctx.strokeText(value, xc, yc); ctx.fillText(value, xc, yc)` подряд),
+ *    а порядок пар детерминирован по `for (i=0..2)` в renderer'е.
+ *
+ * 3. Все прочие методы и поля (fillStyle, strokeStyle, beginPath, arc,
+ *    stroke и т.д.) - проброс на реальный context. Native рисует кольца,
+ *    арки, прогресс-бары как обычно.
+ *
+ * `idsAtWrapTime` - снапшот `map-config.h` на момент wrap-а, синхронизирован
+ * с `ids` в closure native LIGHT-стиля (игра передаёт его в FeatureStyles.LIGHT
+ * при drawEntities; refs/game/script.js около 3194). Если игрок изменит
+ * Layers > Text picker позже, native LIGHT не пересобирается до следующего
+ * `requestEntities`, поэтому frozen ids в closure остаются - и `idsAtWrapTime`
+ * остаётся синхронным с фактической последовательностью text-вызовов.
+ * predictTextQueue использует тот же snapshot.
  */
 export function wrapLightRenderer(original: RendererFn, getZoom: () => number): WrappedRenderer {
+  const idsAtWrapTime = readMapConfigH();
+
   const wrapped: WrappedRenderer = (coordinates, state) => {
     const realCtx = state.context;
     const rotation = state.rotation ?? 0;
     const pixelRatio = state.pixelRatio ?? 1;
     const fontPx = Math.round(fontSizeForZoom(getZoom()) * pixelRatio);
 
-    // Backup и nullify highlight[7] для подавления native channel refs.
-    let highlight: unknown[] | null = null;
-    let refsBackup: unknown = undefined;
-    let refsBackedUp = false;
+    let queue: IPredictedTextItem[] = [];
     const feature = state.feature;
     if (feature && typeof feature.get === 'function') {
-      const value: unknown = feature.get('highlight');
-      if (Array.isArray(value)) {
-        highlight = value;
-        refsBackup = value[REFS_CHANNEL_INDEX];
-        value[REFS_CHANNEL_INDEX] = undefined;
-        refsBackedUp = true;
+      const highlight: unknown = feature.get('highlight');
+      if (Array.isArray(highlight)) {
+        queue = predictTextQueue(idsAtWrapTime, highlight);
       }
     }
+
+    let textCallCounter = 0;
 
     const proxyCtx = new Proxy(realCtx, {
       set(target, prop, value: unknown): boolean {
@@ -127,15 +224,26 @@ export function wrapLightRenderer(original: RendererFn, getZoom: () => number): 
         return true;
       },
       get(target, prop): unknown {
-        if ((prop === 'fillText' || prop === 'strokeText') && rotation !== 0) {
+        if (prop === 'fillText' || prop === 'strokeText') {
           return (text: string, x: number, y: number, maxWidth?: number): void => {
-            target.save();
-            target.translate(x, y);
-            target.rotate(-rotation);
-            target.translate(-x, -y);
-            if (prop === 'fillText') target.fillText(text, x, y, maxWidth);
-            else target.strokeText(text, x, y, maxWidth);
-            target.restore();
+            const pairIdx = Math.floor(textCallCounter / 2);
+            textCallCounter++;
+
+            if (pairIdx < queue.length && queue[pairIdx].slot === 2) return;
+
+            if (rotation !== 0) {
+              target.save();
+              target.translate(x, y);
+              target.rotate(-rotation);
+              target.translate(-x, -y);
+              if (prop === 'fillText') target.fillText(text, x, y, maxWidth);
+              else target.strokeText(text, x, y, maxWidth);
+              target.restore();
+            } else if (prop === 'fillText') {
+              target.fillText(text, x, y, maxWidth);
+            } else {
+              target.strokeText(text, x, y, maxWidth);
+            }
           };
         }
         const value: unknown = Reflect.get(target, prop, target);
@@ -146,13 +254,7 @@ export function wrapLightRenderer(original: RendererFn, getZoom: () => number): 
       },
     });
 
-    try {
-      original(coordinates, { ...state, context: proxyCtx });
-    } finally {
-      if (refsBackedUp && highlight) {
-        highlight[REFS_CHANNEL_INDEX] = refsBackup;
-      }
-    }
+    original(coordinates, { ...state, context: proxyCtx });
   };
   wrapped[WRAPPED_MARKER] = true;
   originalRenderers.set(wrapped, original);
@@ -190,17 +292,12 @@ export function wrapStyleArray(styles: unknown, getZoom: () => number): void {
  * в-место (style[1] = FeatureStyles.LIGHT(...)) и вызывает feature.changed()
  * без setStyle. Без обработки 'change' этот новый LIGHT остаётся с нативным
  * renderer, и текст после открытия/закрытия попапа возвращается к 46px.
- * В обработчике повторно прогоняем wrapStyleArray по getStyle() - уже
- * обёрнутые renderer пропускаются по WRAPPED_MARKER, накладные расходы
- * минимальны.
  *
  * После установки обёртки вызываем feature.changed(): style.setRenderer()
  * мутирует функцию рендера in-place, но НЕ диспатчит change-event
- * (refs/ol/ol.js около 6842-6843, setRenderer присваивает renderer_ без
- * changed()). Layer кеширует execution plan по revision counter feature;
- * без явного changed() новый renderer не попадает в plan до внешнего
- * trigger'а (move, zoom, click). Это и есть причина "не применяется до
- * ререндера" на enable.
+ * (refs/ol/ol.js около 6842, setRenderer присваивает renderer_ без changed()).
+ * Layer кеширует execution plan по revision counter feature; без явного
+ * changed() новый renderer не попадает в plan до внешнего trigger'а.
  */
 export function wrapFeature(feature: IOlFeature, getZoom: () => number): void {
   if (wrappedFeatures.has(feature)) return;
@@ -229,8 +326,8 @@ export function wrapFeature(feature: IOlFeature, getZoom: () => number): void {
 /**
  * Снимает обёртку: восстанавливает оригинальный feature.setStyle и заменяет
  * обёрнутый renderer на текущем LIGHT-стиле обратно на нативный (через
- * WeakMap wrapped -> original). После этого следующий рендер выдаст
- * нативный 46px-текст и нативный канал refs снова появится.
+ * WeakMap wrapped -> original). После этого следующий рендер выдаёт
+ * нативный 46px-текст и нативный текст центрального канала снова появится.
  */
 export function unwrapFeature(feature: IOlFeature): void {
   if (!wrappedFeatures.has(feature)) return;
@@ -259,12 +356,12 @@ export function unwrapFeature(feature: IOlFeature): void {
   if (typeof feature.changed === 'function') feature.changed();
 }
 
-// ── Overlay-слой для refs из inventory-cache ─────────────────────────────────
+// ── Overlay-слой: рисует значение выбранного канала ──────────────────────────
 
 /**
  * Считает суммарное количество ключей на каждой точке из inventory-cache.
- * Ключ ассоциирован с точкой через поле `l` (guid точки) и количеством `a`
- * в стопке. Несколько стопок одной точки складываются.
+ * Используется только когда slot 2 выбранного канала = References (7),
+ * иначе значения берутся из feature.get('highlight').
  */
 export function buildRefCounts(): Map<string, number> {
   const refs = readInventoryReferences();
@@ -273,6 +370,46 @@ export function buildRefCounts(): Map<string, number> {
     counts.set(ref.l, (counts.get(ref.l) ?? 0) + ref.a);
   }
   return counts;
+}
+
+/**
+ * Возвращает текст для overlay-label данной точки в зависимости от того,
+ * какой канал игрок выбрал в slot 2 Layers > Text picker. Логика
+ * соответствует нативному LIGHT renderer-у на refs/game/script.js около
+ * 316-383 в is_text-ветке: case 5 рисует любое определённое value (включая
+ * 0); case 6 пропускает 0; case 7 берёт значение из inventory-cache (мы
+ * читаем точно тот же агрегат, что отображал бы native, но обновляем сразу
+ * после изменения инвентаря); case 8 пропускает -1.
+ */
+export function computeLabelText(
+  feature: IOlFeature,
+  slot2Channel: TextChannel,
+  refCounts: Map<string, number> | null,
+): string | null {
+  if (slot2Channel === REFS_CHANNEL) {
+    const id = feature.getId();
+    if (typeof id !== 'string' || !refCounts) return null;
+    const count = refCounts.get(id) ?? 0;
+    if (count <= 0) return null;
+    return String(count);
+  }
+
+  if (typeof feature.get !== 'function') return null;
+  const highlight: unknown = feature.get('highlight');
+  if (!Array.isArray(highlight)) return null;
+  const value: unknown = highlight[slot2Channel];
+
+  if (slot2Channel === 5) {
+    if (typeof value !== 'number') return null;
+    return String(value);
+  }
+  if (slot2Channel === 6) {
+    if (typeof value !== 'number' || value === 0) return null;
+    return String(value);
+  }
+  // slot2Channel === 8
+  if (typeof value !== 'number' || value === -1) return null;
+  return String(value);
 }
 
 let map: IOlMap | null = null;
@@ -297,8 +434,10 @@ function renderLabels(): void {
   const zoom = map.getView().getZoom?.() ?? 0;
   if (zoom < MIN_ZOOM) return;
 
-  const counts = buildRefCounts();
-  if (counts.size === 0) return;
+  const slot2 = getCenterChannel(readMapConfigH());
+  if (!isTextChannel(slot2)) return;
+
+  const refCounts = slot2 === REFS_CHANNEL ? buildRefCounts() : null;
 
   const ol = window.ol;
   const OlFeature = ol?.Feature;
@@ -316,8 +455,8 @@ function renderLabels(): void {
   for (const feature of pointsSource.getFeatures()) {
     const id = feature.getId();
     if (typeof id !== 'string') continue;
-    const count = counts.get(id);
-    if (!count || count <= 0) continue;
+    const text = computeLabelText(feature, slot2, refCounts);
+    if (text === null) continue;
     const coords = feature.getGeometry().getCoordinates();
     const label = new OlFeature({ geometry: new OlPoint(coords) });
     label.setId(id + ':svp-pt-label');
@@ -325,7 +464,7 @@ function renderLabels(): void {
       new OlStyle({
         text: new OlText({
           font,
-          text: String(count),
+          text,
           fill: new OlFill({ color: textColor }),
           stroke: new OlStroke({ color: bgColor, width: 3 }),
         }),
@@ -347,8 +486,8 @@ export const pointTextFix: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Point text labels', ru: 'Подписи на точках' },
   description: {
-    en: 'Adaptive font (10-16px) for point text in Layers > Text: readable at any zoom and stays horizontal regardless of map rotation. Works for all channels (Levels, Deployment, Guards). For the References channel the count is read directly from your inventory and rendered on a separate overlay layer, so the label updates immediately after discover/recycle without waiting for the next map data refresh.',
-    ru: 'Адаптивный размер шрифта (10-16 пикселей) для текста подсветки точек в Layers > Text: читаемо на любом зуме, не вращается вместе с картой. Работает для всех каналов (Levels, Deployment, Guards). Для канала References количество ключей берётся напрямую из инвентаря и рисуется на отдельном overlay-слое, поэтому подпись обновляется сразу после изучения/переработки точки, без ожидания следующего перезапроса карты.',
+    en: 'Renders the value of the channel selected in the third Layers > Text slot on a separate overlay layer with adaptive font (10-16px): point Levels, Cores, References, or Guards. Native text of that channel is suppressed to avoid double labels. For the References channel the count is read directly from your inventory and updates immediately after discover/recycle, without waiting for the next map data refresh. The label stays horizontal regardless of map rotation.',
+    ru: 'Показывает на отдельном overlay-слое адаптивным шрифтом (10-16 пикселей) значение канала, выбранного в третьем слоте Layers > Text: уровень точки (Levels), ядра (Cores), ключи (References) или гарды (Guards). Нативный текст этого канала подавляется, чтобы не было двойной подписи. Для канала ключей значение берётся напрямую из инвентаря и обновляется сразу после изучения/переработки точки, без ожидания следующего перезапроса карты. Подпись не вращается вместе с картой.',
   },
   defaultEnabled: true,
   category: 'map',
@@ -375,7 +514,6 @@ export const pointTextFix: IFeatureModule = {
     pointsSource = src;
     const getZoom = (): number => map?.getView().getZoom?.() ?? 0;
 
-    // Wrap LIGHT-renderer'ов на всех существующих и будущих features.
     for (const feature of src.getFeatures()) {
       wrapFeature(feature, getZoom);
     }
@@ -385,14 +523,10 @@ export const pointTextFix: IFeatureModule = {
       if (!('feature' in event)) return;
       const candidate = event.feature;
       if (typeof candidate !== 'object' || candidate === null) return;
-      // candidate приходит из OL VectorSource - объект с тем же контрактом, что
-      // у IOlFeature. Приведение без cast: WeakSet/WeakMap ключей ниже не
-      // различает источник, для них достаточно ссылки на объект.
       wrapFeature(candidate as IOlFeature, getZoom);
     };
     src.on('addfeature', onAddFeature);
 
-    // Overlay-слой для refs из inventory-cache.
     labelsSource = new OlVectorSource();
     labelsLayer = new OlVectorLayer({
       // as unknown as: OL Vector constructor accepts a generic options bag;
