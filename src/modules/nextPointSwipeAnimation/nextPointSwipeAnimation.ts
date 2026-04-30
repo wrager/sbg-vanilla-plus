@@ -1,4 +1,5 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
+import { isModuleActive } from '../../core/moduleRegistry';
 import { getOlMap, findLayerByName } from '../../core/olMap';
 import type { IOlMap, IOlVectorSource } from '../../core/olMap';
 import {
@@ -11,6 +12,7 @@ import {
 import { pickNextInRange } from '../../core/nextPointPicker';
 
 const MODULE_ID = 'nextPointSwipeAnimation';
+const FEATURE_MODULE_ID = 'betterNextPointSwipe';
 const POPUP_SELECTOR = '.info.popup';
 const INTERACTION_RANGE = 45;
 // Длительность dismiss/return-анимации (мс). Короче дефолтных 300мс из
@@ -55,31 +57,65 @@ function canStartHorizontalSwipe(event: TouchEvent): boolean {
 }
 
 /**
- * Pre-pick следующей точки: если есть - dismiss (попап улетит, finalize
- * откроет следующую), если нет - return (попап отскочит, без navigation).
- * pendingNextGuid сохраняется для finalize.
+ * Решает, анимировать dismiss (попап улетит) или return (фейковая, отскок).
+ *
+ * dismiss выполняем когда переключение точки реально произойдёт - либо нашим
+ * priority (pickNextInRange), либо нативным handler-ом игры (если он не
+ * подавлен модулем betterNextPointSwipe и near_points достаточно). Native
+ * near_points недоступен из closure, поэтому approximate: visible features
+ * count > 1 = native почти наверняка переключит. Без этой проверки если у
+ * пользователя нет точек в радиусе действия (наш pickNext возвращает null),
+ * decide возвращал бы 'return' даже когда native handler параллельно делает
+ * navigation - визуальный конфликт "попап отскочил, точка переключилась".
+ *
+ * pendingNextGuid сохраняется только для нашего priority. При native-кейсе
+ * pendingNextGuid=null - finalize ничего не делает, native showInfo уже
+ * сработал синхронно в touchend параллельно с нашим animateDismiss.
  */
 function decideSwipe(): SwipeOutcome {
   if (!map || !pointsSource) return 'return';
-  const playerCoords = getPlayerCoords();
-  if (!playerCoords) return 'return';
   const popup = document.querySelector(POPUP_SELECTOR);
   if (!popup || popup.classList.contains('hidden')) return 'return';
   const currentGuid = (popup as HTMLElement).dataset.guid;
   if (!currentGuid) return 'return';
 
-  const next = pickNextInRange({
-    playerCoords,
-    features: pointsSource.getFeatures(),
-    currentGuid,
-    visited: rangeVisited,
-    radiusMeters: INTERACTION_RANGE,
-  });
-  if (!next) return 'return';
-  const nextId = next.getId();
-  if (nextId === undefined) return 'return';
-  pendingNextGuid = String(nextId);
-  return 'dismiss';
+  const features = pointsSource.getFeatures();
+
+  // (1) Наш priority: если есть кандидат в радиусе - dismiss с pending guid.
+  const playerCoords = getPlayerCoords();
+  if (playerCoords) {
+    const next = pickNextInRange({
+      playerCoords,
+      features,
+      currentGuid,
+      visited: rangeVisited,
+      radiusMeters: INTERACTION_RANGE,
+    });
+    if (next) {
+      const nextId = next.getId();
+      if (nextId !== undefined) {
+        pendingNextGuid = String(nextId);
+        return 'dismiss';
+      }
+    }
+  }
+
+  // (2) Priority пусто. Если betterNext активен - native подавлен, переключения
+  // не будет, фейковая анимация уместна.
+  if (isModuleActive(FEATURE_MODULE_ID)) {
+    return 'return';
+  }
+
+  // (3) betterNext выключен - native handler жив. Переключит ли он? Native
+  // условие: near_points.length > 1. Approximate через visible features count.
+  const visibleCount = features.filter((feature) => feature.getId() !== undefined).length;
+  if (visibleCount > 1) {
+    pendingNextGuid = null;
+    return 'dismiss';
+  }
+
+  // (4) И наш не нашёл, и native не переключит - true фейковая.
+  return 'return';
 }
 
 function finalizeSwipe(): void {

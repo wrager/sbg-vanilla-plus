@@ -4,10 +4,16 @@
 
 ## Поведение
 
-Свайп влево или вправо на попапе точки (`.info`, вне карусели ядер):
+Свайп влево или вправо на попапе точки (`.info`, вне карусели ядер) - попап улетает в направлении свайпа когда переключение реально произойдёт, иначе отскакивает обратно (фейковая анимация).
 
-- **Если следующая точка есть** в радиусе действия (45 м, по приоритету `betterNextPointSwipe`) - попап улетает в направлении свайпа с opacity 0, через 120 мс открывается следующая точка через `window.showInfo`.
-- **Если следующей точки нет** - попап с тем же translation отскакивает обратно с opacity 1, остаётся открытым на текущей точке.
+Решение dismiss vs return принимается так:
+
+1. Наш priority (`pickNextInRange` из `core/nextPointPicker`) нашёл следующую точку в радиусе действия (45 м) - dismiss, finalize вызовет `window.showInfo`.
+2. Иначе если `betterNextPointSwipe` активен (нативный handler подавлен) - return, фейковая анимация. Переключения не будет.
+3. Иначе если на карте видно больше одной точки (наш `pointsSource.getFeatures().length > 1`) - dismiss без pending guid. Анимация работает в параллель с нативным handler-ом игры, который синхронно в touchend сделает navigation через `near_points`. Это путь "анимация для нативного свайпа" когда `betterNextPointSwipe` выключен пользователем.
+4. Иначе - return. Ни мы, ни нативный не переключат: на карте только текущая видимая точка.
+
+В пункте 3 мы не имеем доступа к нативному `near_points` (closure в game-script), поэтому approximate через `points_source.getFeatures().length > 1` - грубо, но достаточно: если на карте >= 2 видимых точки, нативный `near_points` в типичном сценарии уже наполнен после клика по точке на карте, и переключение состоится.
 
 ## Зачем отдельный модуль
 
@@ -28,9 +34,13 @@ State machine `core/popupSwipe` (`idle -> tracking -> swiping -> animating -> id
 
 ### Совместимость с betterNextPointSwipe
 
-Когда оба модуля активны (default), `betterNextPointSwipe` через runtime-override `Hammer.Manager.prototype.emit` подавляет нативный handler игры. Когда он замечает что `nextPointSwipeAnimation` тоже активен (через `isModuleActive`), он не вызывает свою синхронную navigation - анимация сама выполнит её в `finalize`. Без этого navigation сработала бы дважды (Hammer override + animation finalize).
+**Оба модуля активны (default)**: `betterNextPointSwipe` через runtime-override `Hammer.Manager.prototype.emit` подавляет нативный handler игры. Когда он замечает что `nextPointSwipeAnimation` тоже активен (через `isModuleActive`), он не вызывает свою синхронную navigation - анимация сама выполнит её в `finalize` после dismiss-анимации. Без этого navigation сработала бы дважды.
 
-Если выключить `betterNextPointSwipe`, оставив только анимацию: нативный Hammer-handler игры жив и тоже срабатывает на свайп - возможна двойная navigation (нативный showInfo через `near_points` плюс наша через `pickNextInRange`). Это нелогичная конфигурация модулей; обычно либо оба активны (полная замена нативного с анимацией), либо оба выключены (чистый нативный свайп).
+**Только anim, без better**: нативный Hammer-handler игры жив и сработает синхронно на touchend свайпа - native showInfo. Наш `decide` это распознаёт через approximate `visibleCount > 1` и возвращает `dismiss` без pending guid. Animation идёт параллельно нативному, finalize ничего не делает (native сам открыл точку). UX: пользователь видит анимацию свайпа на нативной навигации.
+
+**Только better, без anim**: animation не зарегистрирована, betterNextPointSwipe мгновенно выполняет navigation в Hammer-override без анимации.
+
+**Оба выключены**: чистый нативный свайп игры без UI feedback с нашей стороны.
 
 ### Логика выбора
 

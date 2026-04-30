@@ -80,7 +80,7 @@ function makeMap(layers: IOlLayer[]): IOlMap {
   };
 }
 
-// ── Mock olMap ──────────────────────────────────────────────────────────────
+// ── Mocks ───────────────────────────────────────────────────────────────────
 
 jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
@@ -88,8 +88,20 @@ jest.mock('../../core/olMap', () => ({
   findLayerByName: jest.requireActual('../../core/olMap').findLayerByName,
 }));
 
+jest.mock('../../core/moduleRegistry', () => {
+  const actual = jest.requireActual<typeof import('../../core/moduleRegistry')>(
+    '../../core/moduleRegistry',
+  );
+  return {
+    ...actual,
+    isModuleActive: jest.fn(() => false),
+  };
+});
+
 import { getOlMap } from '../../core/olMap';
+import { isModuleActive } from '../../core/moduleRegistry';
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
+const mockIsModuleActive = isModuleActive as jest.MockedFunction<typeof isModuleActive>;
 
 // ── Метаданные ──────────────────────────────────────────────────────────────
 
@@ -195,7 +207,8 @@ describe('nextPointSwipeAnimation behaviour', () => {
     expect(showInfoMock).toHaveBeenCalledWith('p2');
   });
 
-  test('decide возвращает return когда нет следующей точки', async () => {
+  test('decide возвращает return когда нет точек кроме текущей и native подавлен', async () => {
+    mockIsModuleActive.mockImplementation((id: string) => id === 'betterNextPointSwipe');
     pointsSrc = makeSource([makeFeature('p1', [10, 10])]); // только текущая
     mockGetOlMap.mockResolvedValue(
       makeMap([makeLayer('points', pointsSrc), makeLayer('player', playerSrc)]),
@@ -205,6 +218,46 @@ describe('nextPointSwipeAnimation behaviour', () => {
     expect(outcome).toBe('return');
     finalizeForTest();
     expect(showInfoMock).not.toHaveBeenCalled();
+    mockIsModuleActive.mockImplementation(() => false);
+  });
+
+  test('decide возвращает return когда priority пуст и betterNext active (native подавлен)', async () => {
+    // Игрок далеко от всех точек: pickNextInRange null.
+    playerSrc = makeSource([makeFeature('player', [10000, 10000])]);
+    mockGetOlMap.mockResolvedValue(
+      makeMap([makeLayer('points', pointsSrc), makeLayer('player', playerSrc)]),
+    );
+    mockIsModuleActive.mockImplementation((id: string) => id === 'betterNextPointSwipe');
+    await nextPointSwipeAnimation.enable();
+    expect(decideForTest()).toBe('return');
+    mockIsModuleActive.mockImplementation(() => false);
+  });
+
+  test('decide возвращает dismiss без pending guid когда priority пуст но native может переключить', async () => {
+    // Игрок далеко от всех точек: pickNextInRange null.
+    // betterNext не активен - native handler может сработать. Visible features = 3 (>1).
+    playerSrc = makeSource([makeFeature('player', [10000, 10000])]);
+    mockGetOlMap.mockResolvedValue(
+      makeMap([makeLayer('points', pointsSrc), makeLayer('player', playerSrc)]),
+    );
+    mockIsModuleActive.mockImplementation(() => false);
+    await nextPointSwipeAnimation.enable();
+    expect(decideForTest()).toBe('dismiss');
+    // Pending guid не сохранён - native сделает свой showInfo.
+    finalizeForTest();
+    expect(showInfoMock).not.toHaveBeenCalled();
+  });
+
+  test('decide возвращает return когда видимая точка только одна и betterNext выключен', async () => {
+    // Только одна visible feature: ни native, ни мы переключить не можем.
+    pointsSrc = makeSource([makeFeature('p1', [10, 10])]);
+    playerSrc = makeSource([makeFeature('player', [10000, 10000])]);
+    mockGetOlMap.mockResolvedValue(
+      makeMap([makeLayer('points', pointsSrc), makeLayer('player', playerSrc)]),
+    );
+    mockIsModuleActive.mockImplementation(() => false);
+    await nextPointSwipeAnimation.enable();
+    expect(decideForTest()).toBe('return');
   });
 
   test('decide возвращает return при скрытом попапе', async () => {
