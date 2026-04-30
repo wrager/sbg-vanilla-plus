@@ -1,14 +1,14 @@
 import {
-  buildRefCounts,
-  computeLabelText,
+  applyRefsGainToFeature,
+  computeRefsGainFromDiscover,
   fontSizeForZoom,
+  installDiscoverFetchHook,
   pointTextFix,
-  predictTextQueue,
-  readMapConfigH,
-  unwrapFeature,
+  uninstallDiscoverFetchHookForTest,
   wrapFeature,
   wrapLightRenderer,
   wrapStyleArray,
+  unwrapFeature,
 } from './pointTextFix';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
 
@@ -47,19 +47,8 @@ function makeSource(features: IOlFeature[] = []): IMockSource {
   };
 }
 
-interface IMockView extends IOlView {
-  _listeners: Map<string, (() => void)[]>;
-  _setZoom(zoom: number): void;
-}
-
-function makeView(zoom = 16): IMockView {
-  const listeners = new Map<string, (() => void)[]>();
-  let currentZoom = zoom;
+function makeView(zoom = 16): IOlView {
   return {
-    _listeners: listeners,
-    _setZoom(z) {
-      currentZoom = z;
-    },
     padding: [0, 0, 0, 0],
     getCenter: () => undefined,
     setCenter: () => {},
@@ -67,19 +56,7 @@ function makeView(zoom = 16): IMockView {
     changed: () => {},
     getRotation: () => 0,
     setRotation: () => {},
-    getZoom: () => currentZoom,
-    on(type, cb) {
-      const arr = listeners.get(type) ?? [];
-      arr.push(cb);
-      listeners.set(type, arr);
-    },
-    un(type, cb) {
-      const arr = listeners.get(type) ?? [];
-      listeners.set(
-        type,
-        arr.filter((l) => l !== cb),
-      );
-    },
+    getZoom: () => zoom,
   };
 }
 
@@ -178,7 +155,6 @@ interface IMockFeature extends IOlFeature {
 function makeFeature(
   initialStyle: unknown = null,
   props: Record<string, unknown> = {},
-  id: string | number | undefined = 'f-id',
 ): IMockFeature {
   const listeners = new Map<string, (() => void)[]>();
   const f: IMockFeature = {
@@ -187,7 +163,7 @@ function makeFeature(
     _changedCalls: 0,
     _eventListeners: listeners,
     getGeometry: () => ({ getCoordinates: () => [0, 0] }),
-    getId: () => id,
+    getId: () => 'f-id',
     setId: jest.fn(),
     setStyle(style: unknown) {
       this._style = style;
@@ -219,305 +195,34 @@ function makeFeature(
   return f;
 }
 
-function mockOl(): { createdSources: IOlVectorSource[] } {
-  const createdSources: IOlVectorSource[] = [];
-
-  window.ol = {
-    Map: { prototype: { getView: jest.fn() } },
-    source: {
-      Vector: jest.fn().mockImplementation(() => {
-        const s = makeSource();
-        createdSources.push(s);
-        return s;
-      }) as unknown as new () => IOlVectorSource,
-    },
-    layer: {
-      Vector: jest.fn().mockImplementation((opts: Record<string, unknown>) => {
-        const src = createdSources[createdSources.length - 1] ?? makeSource();
-        const name = typeof opts.name === 'string' ? opts.name : undefined;
-        return {
-          get: (key: string) => (key === 'name' ? name : undefined),
-          getSource: () => src,
-        } as IOlLayer;
-      }) as unknown as new (opts: Record<string, unknown>) => IOlLayer,
-    },
-    Feature: jest.fn().mockImplementation((opts?: Record<string, unknown>) => {
-      const geometry = (opts?.geometry as { getCoordinates(): number[] } | undefined) ?? {
-        getCoordinates: () => [0, 0],
-      };
-      let id: string | number | undefined;
-      let style: unknown = null;
-      return {
-        getGeometry: () => geometry,
-        getId: () => id,
-        setId: jest.fn((newId: string) => {
-          id = newId;
-        }),
-        setStyle: jest.fn((s: unknown) => {
-          style = s;
-        }),
-        getStyle: () => style,
-      } as unknown as IOlFeature;
-    }) as unknown as new (opts?: Record<string, unknown>) => IOlFeature,
-    geom: {
-      Point: jest.fn().mockImplementation((coords: number[]) => ({
-        getCoordinates: () => coords,
-      })) as unknown as new (coords: number[]) => { getCoordinates(): number[] },
-    },
-    style: {
-      Style: jest.fn().mockImplementation((o: Record<string, unknown>) => o) as unknown as new (
-        opts: Record<string, unknown>,
-      ) => unknown,
-      Text: jest.fn().mockImplementation((o: Record<string, unknown>) => o) as unknown as new (
-        opts: Record<string, unknown>,
-      ) => unknown,
-      Fill: jest.fn().mockImplementation((o: Record<string, unknown>) => o) as unknown as new (
-        opts: Record<string, unknown>,
-      ) => unknown,
-      Stroke: jest.fn().mockImplementation((o: Record<string, unknown>) => o) as unknown as new (
-        opts: Record<string, unknown>,
-      ) => unknown,
-    },
-  };
-
-  return { createdSources };
-}
-
-function makePointFeature(id: string, props: Record<string, unknown> = {}): IOlFeature {
-  return {
-    getGeometry: () => ({ getCoordinates: () => [0, 0] }),
-    getId: () => id,
-    setId: jest.fn(),
-    setStyle: jest.fn(),
-    get: (key: string) => props[key],
-    getProperties: () => props,
-  };
-}
-
-function packH(slot0: number, slot1: number, slot2: number): number {
-  return (slot0 & 0xff) | ((slot1 & 0xff) << 8) | ((slot2 & 0xff) << 16);
-}
-
 // ── fontSizeForZoom ───────────────────────────────────────────────────────────
 
 describe('fontSizeForZoom', () => {
-  test('zoom 13 -> 10 (нижняя граница clamp)', () => {
+  test('zoom 13 -> 10', () => {
     expect(fontSizeForZoom(13)).toBe(10);
   });
-  test('zoom 16 -> 13 (линейная интерполяция)', () => {
+  test('zoom 16 -> 13', () => {
     expect(fontSizeForZoom(16)).toBe(13);
   });
-  test('zoom 19 -> 16 (верхняя граница clamp)', () => {
-    expect(fontSizeForZoom(19)).toBe(16);
+  test('zoom 18 -> 15', () => {
+    expect(fontSizeForZoom(18)).toBe(15);
   });
-  test('zoom 25 -> 16 (saturate)', () => {
+  test('zoom 20+ saturates at 16', () => {
+    expect(fontSizeForZoom(20)).toBe(16);
     expect(fontSizeForZoom(25)).toBe(16);
   });
-  test('zoom 5 -> 10 (saturate снизу)', () => {
+  test('zoom < 13 clamps to 10', () => {
     expect(fontSizeForZoom(5)).toBe(10);
-  });
-});
-
-// ── readMapConfigH ────────────────────────────────────────────────────────────
-
-describe('readMapConfigH', () => {
-  afterEach(() => {
-    localStorage.clear();
-  });
-
-  test('отсутствует - 0', () => {
-    expect(readMapConfigH()).toBe(0);
-  });
-  test('невалидный JSON - 0', () => {
-    localStorage.setItem('map-config', 'not-json');
-    expect(readMapConfigH()).toBe(0);
-  });
-  test('h не число - 0', () => {
-    localStorage.setItem('map-config', JSON.stringify({ l: 5, h: 'bad' }));
-    expect(readMapConfigH()).toBe(0);
-  });
-  test('читает packed h', () => {
-    const h = packH(1, 2, 7);
-    localStorage.setItem('map-config', JSON.stringify({ l: 7, h }));
-    expect(readMapConfigH()).toBe(h);
-  });
-});
-
-// ── predictTextQueue ──────────────────────────────────────────────────────────
-
-describe('predictTextQueue', () => {
-  test('пустой highlight - empty queue', () => {
-    expect(predictTextQueue(packH(7, 7, 7), [])).toEqual([]);
-  });
-
-  test('slot 2 = 5 (Levels), highlight[5]=10 - text-pair в slot 2', () => {
-    const h: unknown[] = [];
-    h[5] = 10;
-    expect(predictTextQueue(packH(0, 0, 5), h)).toEqual([{ slot: 2, channel: 5 }]);
-  });
-
-  test('slot 2 = 5, highlight[5]=0 - всё равно text-pair (native рисует "0")', () => {
-    const h: unknown[] = [];
-    h[5] = 0;
-    expect(predictTextQueue(packH(0, 0, 5), h)).toEqual([{ slot: 2, channel: 5 }]);
-  });
-
-  test('slot 2 = 6 (Cores), value=0 - пропуск всей итерации', () => {
-    const h: unknown[] = [];
-    h[6] = 0;
-    expect(predictTextQueue(packH(0, 0, 6), h)).toEqual([]);
-  });
-
-  test('slot 2 = 6, value=3 - text-pair', () => {
-    const h: unknown[] = [];
-    h[6] = 3;
-    expect(predictTextQueue(packH(0, 0, 6), h)).toEqual([{ slot: 2, channel: 6 }]);
-  });
-
-  test('slot 2 = 7 (Refs), value=0 - пропуск', () => {
-    const h: unknown[] = [];
-    h[7] = 0;
-    expect(predictTextQueue(packH(0, 0, 7), h)).toEqual([]);
-  });
-
-  test('slot 2 = 7, value=5 - text-pair', () => {
-    const h: unknown[] = [];
-    h[7] = 5;
-    expect(predictTextQueue(packH(0, 0, 7), h)).toEqual([{ slot: 2, channel: 7 }]);
-  });
-
-  test('slot 2 = 8 (Guards), value=-1 - пропуск', () => {
-    const h: unknown[] = [];
-    h[8] = -1;
-    expect(predictTextQueue(packH(0, 0, 8), h)).toEqual([]);
-  });
-
-  test('slot 2 = 8, value=10 - text-pair', () => {
-    const h: unknown[] = [];
-    h[8] = 10;
-    expect(predictTextQueue(packH(0, 0, 8), h)).toEqual([{ slot: 2, channel: 8 }]);
-  });
-
-  test('slot 2 = 0 (off) - пустая queue (highlight[0] undefined)', () => {
-    expect(predictTextQueue(packH(0, 0, 0), [])).toEqual([]);
-  });
-
-  test('case 5 в slot 0/1 - арка, без text', () => {
-    const h: unknown[] = [];
-    h[5] = 10;
-    expect(predictTextQueue(packH(5, 5, 0), h)).toEqual([]);
-  });
-
-  test('case 6 в slot 0/1 при value=3 - pellets, без text', () => {
-    const h: unknown[] = [];
-    h[6] = 3;
-    expect(predictTextQueue(packH(6, 6, 0), h)).toEqual([]);
-  });
-
-  test('case 7 в slot 0 (нетипично) - text-pair в slot 0 (в native нет is_text-проверки)', () => {
-    const h: unknown[] = [];
-    h[7] = 5;
-    expect(predictTextQueue(packH(7, 0, 0), h)).toEqual([{ slot: 0, channel: 7 }]);
-  });
-
-  test('case 7 в slot 0 + case 5 в slot 2 - две text-pair в правильном порядке', () => {
-    const h: unknown[] = [];
-    h[5] = 8;
-    h[7] = 5;
-    expect(predictTextQueue(packH(7, 0, 5), h)).toEqual([
-      { slot: 0, channel: 7 },
-      { slot: 2, channel: 5 },
-    ]);
-  });
-
-  test('case 1-4 в slot 0/1 - арки без text', () => {
-    const h: unknown[] = [];
-    h[1] = 1;
-    h[2] = 1;
-    h[5] = 10;
-    expect(predictTextQueue(packH(1, 2, 5), h)).toEqual([{ slot: 2, channel: 5 }]);
-  });
-
-  test('case 9 в slot 0 - team-color арки без text', () => {
-    const h: unknown[] = [];
-    h[9] = 1;
-    h[5] = 10;
-    expect(predictTextQueue(packH(9, 0, 5), h)).toEqual([{ slot: 2, channel: 5 }]);
-  });
-});
-
-// ── computeLabelText ──────────────────────────────────────────────────────────
-
-describe('computeLabelText', () => {
-  function highlightWith(index: number, value: unknown): unknown[] {
-    const h: unknown[] = [];
-    h[index] = value;
-    return h;
-  }
-
-  test('slot2=5, highlight[5]=10 -> "10"', () => {
-    const f = makeFeature(null, { highlight: highlightWith(5, 10) });
-    expect(computeLabelText(f, 5, null)).toBe('10');
-  });
-  test('slot2=5, highlight[5]=0 -> "0" (mirror native)', () => {
-    const f = makeFeature(null, { highlight: highlightWith(5, 0) });
-    expect(computeLabelText(f, 5, null)).toBe('0');
-  });
-  test('slot2=5, highlight[5] undefined -> null', () => {
-    const f = makeFeature(null, { highlight: [] as unknown[] });
-    expect(computeLabelText(f, 5, null)).toBeNull();
-  });
-  test('slot2=5, no highlight prop -> null', () => {
-    const f = makeFeature(null, {});
-    expect(computeLabelText(f, 5, null)).toBeNull();
-  });
-  test('slot2=6, value=0 -> null', () => {
-    const f = makeFeature(null, { highlight: highlightWith(6, 0) });
-    expect(computeLabelText(f, 6, null)).toBeNull();
-  });
-  test('slot2=6, value=3 -> "3"', () => {
-    const f = makeFeature(null, { highlight: highlightWith(6, 3) });
-    expect(computeLabelText(f, 6, null)).toBe('3');
-  });
-  test('slot2=7, refCounts has positive count -> string', () => {
-    const f = makeFeature(null, {}, 'point-1');
-    const counts = new Map([['point-1', 5]]);
-    expect(computeLabelText(f, 7, counts)).toBe('5');
-  });
-  test('slot2=7, refCounts null -> null', () => {
-    const f = makeFeature(null, {}, 'point-1');
-    expect(computeLabelText(f, 7, null)).toBeNull();
-  });
-  test('slot2=7, refCounts has 0 -> null', () => {
-    const f = makeFeature(null, {}, 'point-1');
-    const counts = new Map([['point-1', 0]]);
-    expect(computeLabelText(f, 7, counts)).toBeNull();
-  });
-  test('slot2=7, feature id not string -> null', () => {
-    const f = makeFeature(null, {}, undefined);
-    const counts = new Map([['point-1', 5]]);
-    expect(computeLabelText(f, 7, counts)).toBeNull();
-  });
-  test('slot2=8, value=-1 -> null', () => {
-    const f = makeFeature(null, { highlight: highlightWith(8, -1) });
-    expect(computeLabelText(f, 8, null)).toBeNull();
-  });
-  test('slot2=8, value=5 -> "5"', () => {
-    const f = makeFeature(null, { highlight: highlightWith(8, 5) });
-    expect(computeLabelText(f, 8, null)).toBe('5');
+    expect(fontSizeForZoom(0)).toBe(10);
   });
 });
 
 // ── wrapLightRenderer ─────────────────────────────────────────────────────────
 
-describe('wrapLightRenderer: adaptive font / поворот', () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
-
-  test('font 46px при zoom=16 заменяется на 13px (адаптивный)', () => {
+describe('wrapLightRenderer', () => {
+  test('font replacement at zoom=16 substitutes 32px -> 13px', () => {
     const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
-      state.context.font = 'bold 46px "Manrope"';
+      state.context.font = 'bold 32px "Manrope"';
     });
     const wrapped = wrapLightRenderer(original as never, () => 16);
     const ctx = makeCtx();
@@ -525,9 +230,41 @@ describe('wrapLightRenderer: adaptive font / поворот', () => {
     expect(ctx.font).toBe('bold 13px "Manrope"');
   });
 
-  test('font множится на pixelRatio (mirror OL Text textScale)', () => {
+  test('font replacement at zoom=13 substitutes 32px -> 10px', () => {
     const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
-      state.context.font = 'bold 46px "Manrope"';
+      state.context.font = 'bold 32px "Manrope"';
+    });
+    const wrapped = wrapLightRenderer(original as never, () => 13);
+    const ctx = makeCtx();
+    wrapped(null, { context: ctx as unknown as CanvasRenderingContext2D, rotation: 0 });
+    expect(ctx.font).toBe('bold 10px "Manrope"');
+  });
+
+  test('font replacement at zoom=20 substitutes 32px -> 16px', () => {
+    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
+      state.context.font = 'bold 32px "Manrope"';
+    });
+    const wrapped = wrapLightRenderer(original as never, () => 20);
+    const ctx = makeCtx();
+    wrapped(null, { context: ctx as unknown as CanvasRenderingContext2D, rotation: 0 });
+    expect(ctx.font).toBe('bold 16px "Manrope"');
+  });
+
+  test('font without Npx is passed through unchanged', () => {
+    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
+      state.context.font = 'italic Manrope';
+    });
+    const wrapped = wrapLightRenderer(original as never, () => 16);
+    const ctx = makeCtx();
+    wrapped(null, { context: ctx as unknown as CanvasRenderingContext2D, rotation: 0 });
+    expect(ctx.font).toBe('italic Manrope');
+  });
+
+  test('font is multiplied by state.pixelRatio (mirror OL Text textScale = pixelRatio * scale)', () => {
+    // На retina-устройстве (pixelRatio=2) zoom=16 даёт 13px * 2 = 26px в ctx.font.
+    // OL Text style автоматически делает то же через textScale_ перед fillText.
+    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
+      state.context.font = 'bold 32px "Manrope"';
     });
     const wrapped = wrapLightRenderer(original as never, () => 16);
     const ctx = makeCtx();
@@ -539,219 +276,160 @@ describe('wrapLightRenderer: adaptive font / поворот', () => {
     expect(ctx.font).toBe('bold 26px "Manrope"');
   });
 
-  test('non-text методы проходят на реальный context', () => {
+  test('font with pixelRatio=3 (high-DPI) at zoom=13 -> 30px', () => {
+    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
+      state.context.font = 'bold 32px "Manrope"';
+    });
+    const wrapped = wrapLightRenderer(original as never, () => 13);
+    const ctx = makeCtx();
+    wrapped(null, {
+      context: ctx as unknown as CanvasRenderingContext2D,
+      rotation: 0,
+      pixelRatio: 3,
+    });
+    // 10 * 3 = 30
+    expect(ctx.font).toBe('bold 30px "Manrope"');
+  });
+
+  test('fillText at rotation=0 is direct pass-through, no save/restore', () => {
+    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
+      state.context.fillText('5', 100, 200);
+    });
+    const wrapped = wrapLightRenderer(original as never, () => 16);
+    const ctx = makeCtx();
+    wrapped(null, { context: ctx as unknown as CanvasRenderingContext2D, rotation: 0 });
+    expect(ctx.fillText).toHaveBeenCalledWith('5', 100, 200);
+    expect(ctx.save).not.toHaveBeenCalled();
+    expect(ctx.restore).not.toHaveBeenCalled();
+  });
+
+  test('fillText at rotation!=0 applies rotation compensation around (x,y)', () => {
+    const calls: string[] = [];
+    const ctx = makeCtx();
+    ctx.save.mockImplementation(() => calls.push('save'));
+    ctx.translate.mockImplementation((x: number, y: number) =>
+      calls.push(`translate(${String(x)},${String(y)})`),
+    );
+    ctx.rotate.mockImplementation((a: number) => calls.push(`rotate(${String(a)})`));
+    ctx.fillText.mockImplementation((t: string, x: number, y: number) =>
+      calls.push(`fillText(${t},${String(x)},${String(y)})`),
+    );
+    ctx.restore.mockImplementation(() => calls.push('restore'));
+
+    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
+      state.context.fillText('5', 100, 200);
+    });
+    const wrapped = wrapLightRenderer(original as never, () => 16);
+    wrapped(null, { context: ctx as unknown as CanvasRenderingContext2D, rotation: 1.57 });
+
+    expect(calls).toEqual([
+      'save',
+      'translate(100,200)',
+      'rotate(-1.57)',
+      'translate(-100,-200)',
+      'fillText(5,100,200)',
+      'restore',
+    ]);
+  });
+
+  test('strokeText at rotation!=0 same compensation', () => {
+    const calls: string[] = [];
+    const ctx = makeCtx();
+    ctx.save.mockImplementation(() => calls.push('save'));
+    ctx.translate.mockImplementation((x: number, y: number) =>
+      calls.push(`translate(${String(x)},${String(y)})`),
+    );
+    ctx.rotate.mockImplementation((a: number) => calls.push(`rotate(${String(a)})`));
+    ctx.strokeText.mockImplementation((t: string, x: number, y: number) =>
+      calls.push(`strokeText(${t},${String(x)},${String(y)})`),
+    );
+    ctx.restore.mockImplementation(() => calls.push('restore'));
+
+    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
+      state.context.strokeText('5', 100, 200);
+    });
+    const wrapped = wrapLightRenderer(original as never, () => 16);
+    wrapped(null, { context: ctx as unknown as CanvasRenderingContext2D, rotation: 1.57 });
+
+    expect(calls).toEqual([
+      'save',
+      'translate(100,200)',
+      'rotate(-1.57)',
+      'translate(-100,-200)',
+      'strokeText(5,100,200)',
+      'restore',
+    ]);
+  });
+
+  test('non-text drawing methods pass through to real context', () => {
     const ctx = makeCtx();
     const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
       state.context.beginPath();
       state.context.arc(0, 0, 10, 0, Math.PI);
+      state.context.moveTo(1, 1);
+      state.context.lineTo(2, 2);
       state.context.stroke();
     });
     const wrapped = wrapLightRenderer(original as never, () => 16);
-    wrapped(null, { context: ctx as unknown as CanvasRenderingContext2D, rotation: 0 });
+    wrapped(null, { context: ctx as unknown as CanvasRenderingContext2D, rotation: 1.57 });
     expect(ctx.beginPath).toHaveBeenCalledTimes(1);
     expect(ctx.arc).toHaveBeenCalledWith(0, 0, 10, 0, Math.PI);
+    expect(ctx.moveTo).toHaveBeenCalledWith(1, 1);
+    expect(ctx.lineTo).toHaveBeenCalledWith(2, 2);
     expect(ctx.stroke).toHaveBeenCalledTimes(1);
+    // Non-text вызовы НЕ оборачиваются save/restore.
+    expect(ctx.save).not.toHaveBeenCalled();
+    expect(ctx.restore).not.toHaveBeenCalled();
   });
 
-  test('обёрнутый renderer несёт WRAPPED_MARKER symbol', () => {
-    const wrapped = wrapLightRenderer(jest.fn() as never, () => 16);
+  test('color and lineWidth setters pass through unchanged (native colors preserved)', () => {
+    const ctx = makeCtx();
+    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
+      state.context.fillStyle = '#fff';
+      state.context.strokeStyle = '#000';
+      state.context.lineWidth = 3;
+    });
+    const wrapped = wrapLightRenderer(original as never, () => 16);
+    wrapped(null, { context: ctx as unknown as CanvasRenderingContext2D, rotation: 0 });
+    expect(ctx.fillStyle).toBe('#fff');
+    expect(ctx.strokeStyle).toBe('#000');
+    expect(ctx.lineWidth).toBe(3);
+  });
+
+  test('wrapped renderer carries WRAPPED_MARKER symbol', () => {
+    const original = jest.fn();
+    const wrapped = wrapLightRenderer(original as never, () => 16);
     const markers = Object.getOwnPropertySymbols(wrapped);
+    expect(markers.length).toBeGreaterThan(0);
     const marker = markers.find((s) => s.description === WRAPPED_MARKER_DESC);
     expect(marker).toBeDefined();
     expect((wrapped as unknown as Record<symbol, unknown>)[marker as symbol]).toBe(true);
   });
-});
 
-describe('wrapLightRenderer: counter-based filter native text', () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
-
-  test('slot 2 = 5 (Levels), value=10 - native text для slot 2 НЕ вызывается', () => {
-    const h: unknown[] = [];
-    h[5] = 10;
-    const feature = makeFeature(null, { highlight: h });
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(0, 0, 5) }));
-
-    const ctx = makeCtx();
-    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
-      state.context.strokeText('10', 100, 200);
-      state.context.fillText('10', 100, 200);
-    });
+  test('original receives state with proxy context, other state fields preserved', () => {
+    const original = jest.fn();
     const wrapped = wrapLightRenderer(original as never, () => 16);
-    wrapped(null, {
-      context: ctx as unknown as CanvasRenderingContext2D,
-      rotation: 0,
-      feature,
-    });
-
-    expect(ctx.strokeText).not.toHaveBeenCalled();
-    expect(ctx.fillText).not.toHaveBeenCalled();
-  });
-
-  test('slot 2 = 7 (Refs), value=5 - native text для slot 2 НЕ вызывается', () => {
-    const h: unknown[] = [];
-    h[7] = 5;
-    const feature = makeFeature(null, { highlight: h });
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(0, 0, 7) }));
-
     const ctx = makeCtx();
-    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
-      state.context.strokeText('5', 100, 200);
-      state.context.fillText('5', 100, 200);
-    });
-    const wrapped = wrapLightRenderer(original as never, () => 16);
-    wrapped(null, {
+    const state = {
       context: ctx as unknown as CanvasRenderingContext2D,
-      rotation: 0,
-      feature,
-    });
-
-    expect(ctx.strokeText).not.toHaveBeenCalled();
-    expect(ctx.fillText).not.toHaveBeenCalled();
-  });
-
-  test('slot 0 = 7, slot 2 = 5 - первая пара (slot 0) проходит, вторая (slot 2) пропускается', () => {
-    const h: unknown[] = [];
-    h[5] = 8;
-    h[7] = 5;
-    const feature = makeFeature(null, { highlight: h });
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(7, 0, 5) }));
-
-    const ctx = makeCtx();
-    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
-      // slot 0: refs -> text "5"
-      state.context.strokeText('5', 100, 100);
-      state.context.fillText('5', 100, 100);
-      // slot 2: levels -> text "8"
-      state.context.strokeText('8', 200, 200);
-      state.context.fillText('8', 200, 200);
-    });
-    const wrapped = wrapLightRenderer(original as never, () => 16);
-    wrapped(null, {
-      context: ctx as unknown as CanvasRenderingContext2D,
-      rotation: 0,
-      feature,
-    });
-
-    // slot 0 пара прошла
-    expect(ctx.strokeText).toHaveBeenCalledTimes(1);
-    expect(ctx.strokeText).toHaveBeenCalledWith('5', 100, 100, undefined);
-    expect(ctx.fillText).toHaveBeenCalledTimes(1);
-    expect(ctx.fillText).toHaveBeenCalledWith('5', 100, 100, undefined);
-    // slot 2 пара отфильтрована
-  });
-
-  test('slot 2 = 0 (off) - native text не было запланировано, не вызвано', () => {
-    const h: unknown[] = [];
-    h[5] = 10;
-    const feature = makeFeature(null, { highlight: h });
-    localStorage.setItem('map-config', JSON.stringify({ h: 0 }));
-
-    const ctx = makeCtx();
-    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
-      // эмулируем что native code сам не вызовет text при slot 2 = off
-      // (значение не определено ни в одном из 3 слотов)
-      void state;
-    });
-    const wrapped = wrapLightRenderer(original as never, () => 16);
-    wrapped(null, {
-      context: ctx as unknown as CanvasRenderingContext2D,
-      rotation: 0,
-      feature,
-    });
-
-    expect(ctx.strokeText).not.toHaveBeenCalled();
-    expect(ctx.fillText).not.toHaveBeenCalled();
-  });
-
-  test('slot 2 = 5 при rotation!=0 - text пропущен, save/restore не вызваны', () => {
-    const h: unknown[] = [];
-    h[5] = 10;
-    const feature = makeFeature(null, { highlight: h });
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(0, 0, 5) }));
-
-    const ctx = makeCtx();
-    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
-      state.context.strokeText('10', 100, 200);
-      state.context.fillText('10', 100, 200);
-    });
-    const wrapped = wrapLightRenderer(original as never, () => 16);
-    wrapped(null, {
-      context: ctx as unknown as CanvasRenderingContext2D,
-      rotation: 1.57,
-      feature,
-    });
-
-    expect(ctx.save).not.toHaveBeenCalled();
-    expect(ctx.restore).not.toHaveBeenCalled();
-    expect(ctx.strokeText).not.toHaveBeenCalled();
-  });
-
-  test('slot 0 = 7 при rotation!=0 - text проходит с поворот compensation', () => {
-    const h: unknown[] = [];
-    h[7] = 5;
-    const feature = makeFeature(null, { highlight: h });
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(7, 0, 0) }));
-
-    const ctx = makeCtx();
-    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
-      state.context.strokeText('5', 100, 200);
-      state.context.fillText('5', 100, 200);
-    });
-    const wrapped = wrapLightRenderer(original as never, () => 16);
-    wrapped(null, {
-      context: ctx as unknown as CanvasRenderingContext2D,
-      rotation: 1.57,
-      feature,
-    });
-
-    expect(ctx.save).toHaveBeenCalledTimes(2);
-    expect(ctx.rotate).toHaveBeenCalledWith(-1.57);
-    expect(ctx.strokeText).toHaveBeenCalledTimes(1);
-    expect(ctx.fillText).toHaveBeenCalledTimes(1);
-    expect(ctx.restore).toHaveBeenCalledTimes(2);
-  });
-
-  test('idsAtWrapTime - снапшот на момент wrap-а, не текущий localStorage', () => {
-    // Wrap создаётся при h=slot2=5. Затем localStorage меняется на slot2=7.
-    // На render call queue должна использовать h из момента wrap (slot2=5),
-    // потому что native LIGHT closure также имеет старый h.
-    const h: unknown[] = [];
-    h[5] = 10;
-    h[7] = 3;
-    const feature = makeFeature(null, { highlight: h });
-
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(0, 0, 5) }));
-    const original = jest.fn((_coords: unknown, state: { context: IMockCtx }) => {
-      // native iterates с h=slot2=5: одна text-пара slot 2 channel 5.
-      state.context.strokeText('10', 100, 200);
-      state.context.fillText('10', 100, 200);
-    });
-    const wrapped = wrapLightRenderer(original as never, () => 16);
-
-    // Меняем map-config после wrap-а.
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(0, 0, 7) }));
-
-    const ctx = makeCtx();
-    wrapped(null, {
-      context: ctx as unknown as CanvasRenderingContext2D,
-      rotation: 0,
-      feature,
-    });
-
-    // Slot 2 пара пропущена по queue от idsAtWrapTime.
-    expect(ctx.strokeText).not.toHaveBeenCalled();
+      rotation: 0.5,
+    };
+    wrapped(['coords'], state);
+    expect(original).toHaveBeenCalledTimes(1);
+    const callArg = (original.mock.calls[0] as unknown[])[1] as {
+      context: unknown;
+      rotation: number;
+    };
+    expect(callArg.rotation).toBe(0.5);
+    // context должен быть proxy, не сам ctx.
+    expect(callArg.context).not.toBe(ctx);
   });
 });
 
-// ── wrapStyleArray / wrapFeature / unwrapFeature ──────────────────────────────
+// ── wrapStyleArray ────────────────────────────────────────────────────────────
 
 describe('wrapStyleArray', () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
-  test('оборачивает LIGHT renderer, не трогает POINT-стиль', () => {
+  test('wraps LIGHT renderer, leaves POINT style alone', () => {
     const lightRenderer = jest.fn();
     const light = makeStyleWithRenderer(lightRenderer as never);
     const point = makeStyleWithoutRenderer();
@@ -759,33 +437,47 @@ describe('wrapStyleArray', () => {
     expect(light.setRenderer).toHaveBeenCalledTimes(1);
     expect(light._renderer).not.toBe(lightRenderer);
   });
-  test('null - no-op', () => {
+
+  test('non-array input is no-op', () => {
+    const lightRenderer = jest.fn();
+    const light = makeStyleWithRenderer(lightRenderer as never);
+    wrapStyleArray(light, () => 16);
+    expect(light.setRenderer).not.toHaveBeenCalled();
+  });
+
+  test('null and undefined are no-ops', () => {
     expect(() => {
       wrapStyleArray(null, () => 16);
     }).not.toThrow();
+    expect(() => {
+      wrapStyleArray(undefined, () => 16);
+    }).not.toThrow();
   });
-  test('уже обёрнутый renderer не оборачивается повторно', () => {
-    const wrappedOnce = wrapLightRenderer(jest.fn() as never, () => 16);
+
+  test('already-wrapped renderer is not double-wrapped', () => {
+    const original = jest.fn();
+    const wrappedOnce = wrapLightRenderer(original as never, () => 16);
     const style = makeStyleWithRenderer(wrappedOnce);
     wrapStyleArray([style], () => 16);
     expect(style.setRenderer).not.toHaveBeenCalled();
   });
 });
 
-describe('wrapFeature / unwrapFeature', () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
+// ── wrapFeature / unwrapFeature ───────────────────────────────────────────────
 
-  test('после wrap setStyle оборачивает LIGHT renderer', () => {
+describe('wrapFeature / unwrapFeature', () => {
+  test('after wrap, setStyle wraps LIGHT renderer in passed array', () => {
     const feature = makeFeature(null);
     wrapFeature(feature, () => 16);
-    const light = makeStyleWithRenderer(jest.fn() as never);
-    feature.setStyle([makeStyleWithoutRenderer(), light]);
+    const lightRenderer = jest.fn();
+    const light = makeStyleWithRenderer(lightRenderer as never);
+    const point = makeStyleWithoutRenderer();
+    feature.setStyle([point, light]);
     expect(light.setRenderer).toHaveBeenCalledTimes(1);
+    expect(feature.getStyle()).toEqual([point, light]);
   });
 
-  test('повторный wrapFeature - no-op', () => {
+  test('repeated wrapFeature on the same feature is no-op', () => {
     const feature = makeFeature(null);
     wrapFeature(feature, () => 16);
     const firstSetStyle = feature.setStyle;
@@ -793,92 +485,342 @@ describe('wrapFeature / unwrapFeature', () => {
     expect(feature.setStyle).toBe(firstSetStyle);
   });
 
-  test('текущий стиль во время wrap оборачивается', () => {
-    const light = makeStyleWithRenderer(jest.fn() as never);
+  test('current style at wrap time is wrapped immediately', () => {
+    const lightRenderer = jest.fn();
+    const light = makeStyleWithRenderer(lightRenderer as never);
     const feature = makeFeature([light]);
     wrapFeature(feature, () => 16);
     expect(light.setRenderer).toHaveBeenCalledTimes(1);
   });
 
-  test('unwrapFeature восстанавливает setStyle и renderer', () => {
+  test('unwrapFeature restores setStyle (subsequent setStyle does not wrap)', () => {
+    const feature = makeFeature(null);
+    wrapFeature(feature, () => 16);
+    unwrapFeature(feature);
+    const lightRenderer = jest.fn();
+    const light = makeStyleWithRenderer(lightRenderer as never);
+    feature.setStyle([light]);
+    expect(light.setRenderer).not.toHaveBeenCalled();
+  });
+
+  test('unwrapFeature restores original renderer on current LIGHT style', () => {
     const lightRenderer = jest.fn();
     const light = makeStyleWithRenderer(lightRenderer as never);
     const feature = makeFeature([light]);
     wrapFeature(feature, () => 16);
+    expect(light._renderer).not.toBe(lightRenderer);
     unwrapFeature(feature);
     expect(light._renderer).toBe(lightRenderer);
-
-    const newLight = makeStyleWithRenderer(jest.fn() as never);
-    feature.setStyle([newLight]);
-    expect(newLight.setRenderer).not.toHaveBeenCalled();
   });
 
-  test('feature.changed() заново оборачивает новый LIGHT (in-place мутация)', () => {
-    const oldLight = makeStyleWithRenderer(jest.fn() as never);
+  test('feature.changed() after in-place style mutation re-wraps new LIGHT renderer', () => {
+    // Симулируем сценарий showInfo: игра берёт style array, заменяет style[1]
+    // на новый LIGHT (не через setStyle), вызывает feature.changed().
+    const oldLightRenderer = jest.fn();
+    const oldLight = makeStyleWithRenderer(oldLightRenderer as never);
     const feature = makeFeature([oldLight]);
     wrapFeature(feature, () => 16);
+    // oldLight уже обёрнут.
 
-    const newLight = makeStyleWithRenderer(jest.fn() as never);
+    // Игра мутирует in-place: style[1] = новый LIGHT с нативным renderer.
+    const newLightRenderer = jest.fn();
+    const newLight = makeStyleWithRenderer(newLightRenderer as never);
     const styles = feature.getStyle() as IMockStyle[];
     styles[0] = newLight;
+
+    // Триггерим feature.changed() - то же, что делает игра.
     feature.changed();
 
+    // Новый LIGHT должен быть обёрнут.
     expect(newLight.setRenderer).toHaveBeenCalledTimes(1);
+    expect(newLight._renderer).not.toBe(newLightRenderer);
   });
 
-  test('feature.changed вызывается после wrap для инвалидации render plan', () => {
+  test('unwrapFeature unsubscribes change listener (subsequent changed() does not re-wrap)', () => {
     const feature = makeFeature(null);
-    const before = feature._changedCalls;
     wrapFeature(feature, () => 16);
-    expect(feature._changedCalls).toBeGreaterThan(before);
+    unwrapFeature(feature);
+
+    // После unwrap кладём новый LIGHT и триггерим changed.
+    const lightRenderer = jest.fn();
+    const light = makeStyleWithRenderer(lightRenderer as never);
+    const styles = [light];
+    // Прямая мутация _style минуя setStyle, иначе wrapStyleArray не пройдёт
+    // через restored нативный setStyle.
+    feature._style = styles;
+    feature.changed();
+
+    expect(light.setRenderer).not.toHaveBeenCalled();
+  });
+
+  test('repeated unwrapFeature is no-op', () => {
+    const feature = makeFeature(null);
+    wrapFeature(feature, () => 16);
+    unwrapFeature(feature);
+    expect(() => {
+      unwrapFeature(feature);
+    }).not.toThrow();
+  });
+
+  test('feature.changed is invoked after wrap to invalidate render plan', () => {
+    // style.setRenderer мутирует функцию рендера in-place без диспатча
+    // change-event - layer кеширует execution plan по revision counter и
+    // продолжает рисовать старый 32px-текст до явной инвалидации. wrapFeature
+    // обязан вызвать feature.changed() сам, иначе подпись не появится до
+    // следующего external trigger (move, zoom).
+    const feature = makeFeature(null);
+    wrapFeature(feature, () => 16);
+    expect(feature._changedCalls).toBe(1);
+  });
+
+  test('wrap flow does not double-fire wrapStyleArray on its own changed()', () => {
+    // feature.changed() внутри wrapFeature триггерит наш onChange listener,
+    // который снова прогоняет wrapStyleArray. Уже-обёрнутые renderer должны
+    // отсекаться по WRAPPED_MARKER, так что повторного style.setRenderer не
+    // происходит - проверяем счётчик.
+    const lightRenderer = jest.fn();
+    const light = makeStyleWithRenderer(lightRenderer as never);
+    const feature = makeFeature([light]);
+    wrapFeature(feature, () => 16);
+    expect(light.setRenderer).toHaveBeenCalledTimes(1);
   });
 });
 
-// ── buildRefCounts ────────────────────────────────────────────────────────────
+// ── discover refs sync (баг «после discover не обновляется текст») ──────────
 
-describe('buildRefCounts', () => {
+describe('computeRefsGainFromDiscover', () => {
+  test('суммирует amount loot-элементов с t=3 и l===guid', () => {
+    const body = {
+      response: {
+        loot: [
+          { t: 3, l: 'point-a', a: 2 },
+          { t: 3, l: 'point-a', a: 3 },
+          { t: 3, l: 'point-b', a: 5 },
+          { t: 1, l: 'point-a', a: 99 }, // не ref - игнор
+        ],
+      },
+    };
+    expect(computeRefsGainFromDiscover(body, 'point-a')).toBe(5);
+    expect(computeRefsGainFromDiscover(body, 'point-b')).toBe(5);
+    expect(computeRefsGainFromDiscover(body, 'point-c')).toBe(0);
+  });
+
+  test('возвращает 0 для невалидной структуры', () => {
+    expect(computeRefsGainFromDiscover(null, 'p')).toBe(0);
+    expect(computeRefsGainFromDiscover({}, 'p')).toBe(0);
+    expect(computeRefsGainFromDiscover({ response: {} }, 'p')).toBe(0);
+    expect(computeRefsGainFromDiscover({ response: { loot: 'bad' } }, 'p')).toBe(0);
+  });
+
+  test('игнорирует элементы без числового a', () => {
+    const body = {
+      response: {
+        loot: [
+          { t: 3, l: 'p', a: 'bad' },
+          { t: 3, l: 'p', a: 4 },
+        ],
+      },
+    };
+    expect(computeRefsGainFromDiscover(body, 'p')).toBe(4);
+  });
+});
+
+describe('applyRefsGainToFeature', () => {
+  test('увеличивает highlight[7] на gain in-place и вызывает feature.changed', () => {
+    const highlight = [];
+    highlight[5] = 3;
+    highlight[7] = 2;
+    const feature = makeFeature(null, { highlight });
+    applyRefsGainToFeature(feature, 4);
+    expect(highlight[7]).toBe(6);
+    // in-place: тот же reference, что в prop - LIGHT closure прочтёт новое.
+    expect(feature.get('highlight')).toBe(highlight);
+    expect(feature._changedCalls).toBe(1);
+  });
+
+  test('инициализирует highlight[7] из 0, если индекс не задан', () => {
+    const highlight = [];
+    highlight[5] = 3;
+    const feature = makeFeature(null, { highlight });
+    applyRefsGainToFeature(feature, 2);
+    expect(highlight[7]).toBe(2);
+  });
+
+  test('игнорирует gain<=0', () => {
+    const highlight = [];
+    highlight[7] = 5;
+    const feature = makeFeature(null, { highlight });
+    applyRefsGainToFeature(feature, 0);
+    applyRefsGainToFeature(feature, -3);
+    expect(highlight[7]).toBe(5);
+    expect(feature._changedCalls).toBe(0);
+  });
+
+  test('игнорирует feature без highlight-prop', () => {
+    const feature = makeFeature(null, {});
+    expect(() => {
+      applyRefsGainToFeature(feature, 3);
+    }).not.toThrow();
+    expect(feature._changedCalls).toBe(0);
+  });
+
+  test('игнорирует non-array highlight', () => {
+    const feature = makeFeature(null, { highlight: 'bad' });
+    applyRefsGainToFeature(feature, 3);
+    expect(feature._changedCalls).toBe(0);
+  });
+});
+
+describe('installDiscoverFetchHook', () => {
+  let origFetch: typeof window.fetch | undefined;
+
+  beforeEach(() => {
+    origFetch = window.fetch;
+  });
+
   afterEach(() => {
-    localStorage.removeItem('inventory-cache');
+    uninstallDiscoverFetchHookForTest();
+    if (origFetch) window.fetch = origFetch;
   });
-  test('пустой кэш - пустая Map', () => {
-    expect(buildRefCounts().size).toBe(0);
-  });
-  test('агрегирует количество по точке', () => {
-    localStorage.setItem(
-      'inventory-cache',
-      JSON.stringify([
-        { g: 'r1', t: 3, l: 'p1', a: 2 },
-        { g: 'r2', t: 3, l: 'p1', a: 1 },
-        { g: 'r3', t: 3, l: 'p2', a: 3 },
-      ]),
+
+  test('перехватывает /api/discover после enable и обновляет refs-канал целевой feature', async () => {
+    const highlight = [];
+    highlight[7] = 1;
+    const targetFeature = makeFeature(null, { highlight });
+    const pointsSrcLocal = makeSource([targetFeature]);
+    pointsSrcLocal.getFeatureById = jest.fn((id: string | number) =>
+      id === 'point-a' ? targetFeature : null,
     );
-    const counts = buildRefCounts();
-    expect(counts.get('p1')).toBe(3);
-    expect(counts.get('p2')).toBe(3);
+    const layer = makeLayer('points', pointsSrcLocal);
+    const olMapLocal = makeMap([layer], makeView(16));
+    mockGetOlMap.mockResolvedValue(olMapLocal);
+
+    // Симулируем ответ сервера: 3 ключа дропа на point-a.
+    const responseBody = {
+      response: {
+        loot: [{ t: 3, l: 'point-a', a: 3 }],
+      },
+    };
+    const fakeResponse = {
+      ok: true,
+      clone: jest.fn(() => ({
+        json: jest.fn(() => Promise.resolve(responseBody)),
+      })),
+    } as unknown as Response;
+    window.fetch = jest.fn(() => Promise.resolve(fakeResponse)) as unknown as typeof window.fetch;
+    installDiscoverFetchHook();
+
+    await pointTextFix.enable();
+
+    // POST /api/discover с guid в body.
+    await window.fetch('/api/discover', {
+      method: 'POST',
+      body: JSON.stringify({ position: [0, 0], guid: 'point-a', wish: 0 }),
+    });
+    // Микро-тик для then-цепочки внутри handleDiscoverResponse.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(highlight[7]).toBe(4);
+    await pointTextFix.disable();
+  });
+
+  test('не обновляет feature при disable (флаг discoverHookEnabled)', async () => {
+    const highlight = [];
+    highlight[7] = 1;
+    const targetFeature = makeFeature(null, { highlight });
+    const pointsSrcLocal = makeSource([targetFeature]);
+    pointsSrcLocal.getFeatureById = jest.fn(() => targetFeature);
+    const layer = makeLayer('points', pointsSrcLocal);
+    const olMapLocal = makeMap([layer], makeView(16));
+    mockGetOlMap.mockResolvedValue(olMapLocal);
+
+    const responseBody = { response: { loot: [{ t: 3, l: 'point-a', a: 3 }] } };
+    const fakeResponse = {
+      ok: true,
+      clone: jest.fn(() => ({
+        json: jest.fn(() => Promise.resolve(responseBody)),
+      })),
+    } as unknown as Response;
+    window.fetch = jest.fn(() => Promise.resolve(fakeResponse)) as unknown as typeof window.fetch;
+    installDiscoverFetchHook();
+
+    await pointTextFix.enable();
+    await pointTextFix.disable();
+
+    await window.fetch('/api/discover', {
+      method: 'POST',
+      body: JSON.stringify({ guid: 'point-a' }),
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // disable снял флаг; обработчик пропустил запрос.
+    expect(highlight[7]).toBe(1);
+  });
+
+  test('игнорирует не-/api/discover URL', async () => {
+    installDiscoverFetchHook();
+    const fetchMock = jest.fn(() =>
+      Promise.resolve({ ok: true, clone: jest.fn() } as unknown as Response),
+    );
+    // restore чтобы patched fetch вызвал именно fetchMock (он сейчас обёрнут).
+    uninstallDiscoverFetchHookForTest();
+    window.fetch = fetchMock as unknown as typeof window.fetch;
+    installDiscoverFetchHook();
+
+    await window.fetch('/api/inview', { method: 'GET' });
+    await Promise.resolve();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // clone не вызывался - значит, ветка discover-обработки не сработала.
+    const fakeResp = (await fetchMock.mock.results[0].value) as { clone: jest.Mock };
+    expect(fakeResp.clone).not.toHaveBeenCalled();
+  });
+
+  test('init не ставит fetch-patch (lazy install): пользователь с отключённым модулем не получает глобальный side-effect', () => {
+    // init() не должен трогать window.fetch - patch ставится только при
+    // enable(). Если пользователь отключил pointTextFix через настройки,
+    // его /api/* запросы не должны проходить через нашу обёртку (даже если
+    // обёртка быстро no-op'ит при discoverHookEnabled=false).
+    uninstallDiscoverFetchHookForTest();
+    const fetchBefore = jest.fn(() =>
+      Promise.resolve({ ok: true, clone: jest.fn() } as unknown as Response),
+    );
+    window.fetch = fetchBefore as unknown as typeof window.fetch;
+
+    void pointTextFix.init();
+
+    expect(window.fetch).toBe(fetchBefore);
+  });
+
+  test('первый enable ставит fetch-patch (lazy install)', async () => {
+    // Контр-тест: после enable() patch стоит, и фактический fetch отличается
+    // от исходного. Регрессия для случая, если кто-то снова перенесёт
+    // installDiscoverFetchHook() из enable обратно в init.
+    uninstallDiscoverFetchHookForTest();
+    const fetchBefore = jest.fn(() =>
+      Promise.resolve({ ok: true, clone: jest.fn() } as unknown as Response),
+    );
+    window.fetch = fetchBefore as unknown as typeof window.fetch;
+
+    const targetFeature = makeFeature(null, { highlight: [] });
+    const pointsSrcLocal = makeSource([targetFeature]);
+    const layer = makeLayer('points', pointsSrcLocal);
+    const olMapLocal = makeMap([layer], makeView(16));
+    mockGetOlMap.mockResolvedValue(olMapLocal);
+
+    void pointTextFix.init();
+    expect(window.fetch).toBe(fetchBefore);
+    await pointTextFix.enable();
+
+    expect(window.fetch).not.toBe(fetchBefore);
+
+    await pointTextFix.disable();
   });
 });
 
-// ── module metadata ───────────────────────────────────────────────────────────
-
-describe('pointTextFix metadata', () => {
-  test('id = pointTextFix', () => {
-    expect(pointTextFix.id).toBe('pointTextFix');
-  });
-  test('категория map', () => {
-    expect(pointTextFix.category).toBe('map');
-  });
-  test('включён по умолчанию', () => {
-    expect(pointTextFix.defaultEnabled).toBe(true);
-  });
-  test('локализованные name/description', () => {
-    expect(pointTextFix.name.ru).toBeTruthy();
-    expect(pointTextFix.name.en).toBeTruthy();
-    expect(pointTextFix.description.ru).toBeTruthy();
-    expect(pointTextFix.description.en).toBeTruthy();
-  });
-});
-
-// ── enable/disable + render labels ────────────────────────────────────────────
+// ── module enable / disable ───────────────────────────────────────────────────
 
 jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
@@ -890,224 +832,138 @@ import { getOlMap } from '../../core/olMap';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 
-describe('pointTextFix enable / disable', () => {
+describe('pointTextFix.enable / disable', () => {
   let pointsSrc: IMockSource;
-  let view: IMockView;
   let olMap: IOlMap;
+  let view: IOlView;
 
   beforeEach(() => {
-    localStorage.clear();
     pointsSrc = makeSource();
     view = makeView(16);
     const pointsLayer = makeLayer('points', pointsSrc);
     olMap = makeMap([pointsLayer], view);
     mockGetOlMap.mockResolvedValue(olMap);
-    mockOl();
   });
 
   afterEach(async () => {
     await pointTextFix.disable();
-    delete window.ol;
   });
 
-  test('подписки на addfeature/change/change:resolution на enable, отписка на disable', async () => {
+  test('enable subscribes to addfeature on points source', async () => {
     await pointTextFix.enable();
     expect(pointsSrc._listeners.get('addfeature')?.length).toBe(1);
-    expect(pointsSrc._listeners.get('change')?.length).toBeGreaterThan(0);
-    expect(view._listeners.get('change:resolution')?.length).toBeGreaterThan(0);
+  });
 
+  test('enable wraps existing features in points source', async () => {
+    const lightRenderer = jest.fn();
+    const light = makeStyleWithRenderer(lightRenderer as never);
+    const feature = makeFeature([light]);
+    pointsSrc = makeSource([feature]);
+    const pointsLayer = makeLayer('points', pointsSrc);
+    olMap = makeMap([pointsLayer], view);
+    mockGetOlMap.mockResolvedValue(olMap);
+
+    await pointTextFix.enable();
+
+    expect(light.setRenderer).toHaveBeenCalledTimes(1);
+  });
+
+  test('addfeature event after enable wraps the new feature', async () => {
+    await pointTextFix.enable();
+    const lightRenderer = jest.fn();
+    const light = makeStyleWithRenderer(lightRenderer as never);
+    const newFeature = makeFeature([light]);
+    pointsSrc._emit('addfeature', { feature: newFeature });
+    expect(light.setRenderer).toHaveBeenCalledTimes(1);
+  });
+
+  test('enable without points layer is no-op', async () => {
+    const otherLayer = makeLayer('other', makeSource());
+    olMap = makeMap([otherLayer], view);
+    mockGetOlMap.mockResolvedValue(olMap);
+    await pointTextFix.enable();
+    expect(pointsSrc._listeners.get('addfeature')).toBeUndefined();
+  });
+
+  test('module does not add any layer (no own layer is created)', async () => {
+    await pointTextFix.enable();
+    expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(0);
+  });
+
+  test('disable unsubscribes addfeature listener', async () => {
+    await pointTextFix.enable();
     await pointTextFix.disable();
     expect(pointsSrc._listeners.get('addfeature')?.length ?? 0).toBe(0);
-    expect(pointsSrc._listeners.get('change')?.length ?? 0).toBe(0);
-    expect(view._listeners.get('change:resolution')?.length ?? 0).toBe(0);
   });
 
-  test('addLayer на enable, removeLayer на disable', async () => {
+  test('disable restores setStyle on existing features', async () => {
+    const lightRenderer = jest.fn();
+    const light = makeStyleWithRenderer(lightRenderer as never);
+    const feature = makeFeature([light]);
+    pointsSrc = makeSource([feature]);
+    const pointsLayer = makeLayer('points', pointsSrc);
+    olMap = makeMap([pointsLayer], view);
+    mockGetOlMap.mockResolvedValue(olMap);
+
     await pointTextFix.enable();
-    expect((olMap.addLayer as jest.Mock).mock.calls.length).toBe(1);
     await pointTextFix.disable();
-    expect((olMap.removeLayer as jest.Mock).mock.calls.length).toBe(1);
+
+    expect(light._renderer).toBe(lightRenderer);
+
+    // Subsequent setStyle на feature НЕ оборачивает новый стиль.
+    const newLightRenderer = jest.fn();
+    const newLight = makeStyleWithRenderer(newLightRenderer as never);
+    feature.setStyle([newLight]);
+    expect(newLight.setRenderer).not.toHaveBeenCalled();
   });
 
-  test('layer создаётся с именем svp-point-text-fix', async () => {
-    await pointTextFix.enable();
-    const ol = window.ol;
-    const VectorLayerCtor = ol?.layer?.Vector as unknown as jest.Mock;
-    const calls = VectorLayerCtor.mock.calls as unknown[][];
-    const lastCall = calls[calls.length - 1];
-    expect((lastCall[0] as Record<string, unknown>).name).toBe('svp-point-text-fix');
-  });
-
-  test('disable до enable - идемпотентен', () => {
+  test('disable without enable is idempotent (no throw)', () => {
     expect(() => {
       void pointTextFix.disable();
     }).not.toThrow();
   });
 
-  test('race-disable во время await getOlMap не оставляет подписки', async () => {
-    let resolveGetOlMap: ((v: IOlMap) => void) | undefined;
-    const pending = new Promise<IOlMap>((resolve) => {
+  test('disable во время await getOlMap не оставляет вечную подписку addfeature', async () => {
+    // Race-disable: enable стартует, getOlMap в процессе резолва. До того как
+    // он зарезолвится, успевает отработать disable. После резолва enable не
+    // должен подписаться на addfeature - иначе подписка остаётся вечно.
+    let resolveGetOlMap: ((value: IOlMap) => void) | undefined;
+    const pendingMap = new Promise<IOlMap>((resolve) => {
       resolveGetOlMap = resolve;
     });
-    mockGetOlMap.mockReturnValueOnce(pending);
+    mockGetOlMap.mockReturnValueOnce(pendingMap);
 
     const enablePromise = pointTextFix.enable();
+    // disable отрабатывает, пока enable ещё ждёт getOlMap.
     void pointTextFix.disable();
+    // Теперь резолвим getOlMap - продолжается тело enable.
     resolveGetOlMap?.(olMap);
     await enablePromise;
 
+    // Подписки на addfeature быть не должно.
     expect(pointsSrc._listeners.get('addfeature')?.length ?? 0).toBe(0);
-    expect(pointsSrc._listeners.get('change')?.length ?? 0).toBe(0);
-  });
-
-  test('enable wraps существующих features', async () => {
-    const light = makeStyleWithRenderer(jest.fn() as never);
-    const feature = makeFeature([light]);
-    pointsSrc = makeSource([feature]);
-    olMap = makeMap([makeLayer('points', pointsSrc)], view);
-    mockGetOlMap.mockResolvedValue(olMap);
-
-    await pointTextFix.enable();
-    expect(light.setRenderer).toHaveBeenCalledTimes(1);
   });
 });
 
-describe('pointTextFix render labels по выбранному каналу', () => {
-  let view: IMockView;
-  let olMap: IOlMap;
-  let createdSources: IOlVectorSource[];
+// ── module metadata ───────────────────────────────────────────────────────────
 
-  function setup(features: IOlFeature[]): void {
-    const pointsSrc = makeSource(features);
-    olMap = makeMap([makeLayer('points', pointsSrc)], view);
-    mockGetOlMap.mockResolvedValue(olMap);
-  }
-
-  beforeEach(() => {
-    localStorage.clear();
-    view = makeView(16);
-    ({ createdSources } = mockOl());
+describe('pointTextFix metadata', () => {
+  test('has correct id', () => {
+    expect(pointTextFix.id).toBe('pointTextFix');
   });
 
-  afterEach(async () => {
-    await pointTextFix.disable();
-    delete window.ol;
+  test('has map category', () => {
+    expect(pointTextFix.category).toBe('map');
   });
 
-  test('slot2 = 5 (Levels) - рисует highlight[5] для каждой точки', async () => {
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(0, 0, 5) }));
-    const h1: unknown[] = [];
-    h1[5] = 8;
-    const h2: unknown[] = [];
-    h2[5] = 3;
-    setup([makePointFeature('p1', { highlight: h1 }), makePointFeature('p2', { highlight: h2 })]);
-
-    await pointTextFix.enable();
-
-    const labelsSrc = createdSources[createdSources.length - 1];
-    expect((labelsSrc.addFeature as jest.Mock).mock.calls.length).toBe(2);
+  test('is enabled by default', () => {
+    expect(pointTextFix.defaultEnabled).toBe(true);
   });
 
-  test('slot2 = 7 (Refs) - читает inventory-cache, не highlight[7]', async () => {
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(0, 0, 7) }));
-    localStorage.setItem('inventory-cache', JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 5 }]));
-    setup([makePointFeature('p1'), makePointFeature('p2')]);
-
-    await pointTextFix.enable();
-
-    const labelsSrc = createdSources[createdSources.length - 1];
-    // p1 имеет refs, p2 - нет.
-    expect((labelsSrc.addFeature as jest.Mock).mock.calls.length).toBe(1);
-  });
-
-  test('slot2 = 0 (off) - labels пуст', async () => {
-    localStorage.setItem('map-config', JSON.stringify({ h: 0 }));
-    const h: unknown[] = [];
-    h[5] = 10;
-    setup([makePointFeature('p1', { highlight: h })]);
-
-    await pointTextFix.enable();
-
-    const labelsSrc = createdSources[createdSources.length - 1];
-    expect((labelsSrc.addFeature as jest.Mock).mock.calls.length).toBe(0);
-  });
-
-  test('slot2 = 4 (не text-канал) - labels пуст', async () => {
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(0, 0, 4) }));
-    const h: unknown[] = [];
-    h[4] = 1;
-    setup([makePointFeature('p1', { highlight: h })]);
-
-    await pointTextFix.enable();
-
-    const labelsSrc = createdSources[createdSources.length - 1];
-    expect((labelsSrc.addFeature as jest.Mock).mock.calls.length).toBe(0);
-  });
-
-  test('slot2 = 6 (Cores) - пропускает точки с value=0', async () => {
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(0, 0, 6) }));
-    const h1: unknown[] = [];
-    h1[6] = 0;
-    const h2: unknown[] = [];
-    h2[6] = 4;
-    setup([makePointFeature('p1', { highlight: h1 }), makePointFeature('p2', { highlight: h2 })]);
-
-    await pointTextFix.enable();
-
-    const labelsSrc = createdSources[createdSources.length - 1];
-    expect((labelsSrc.addFeature as jest.Mock).mock.calls.length).toBe(1);
-  });
-
-  test('zoom < MIN_ZOOM - labels пуст', async () => {
-    view._setZoom(12);
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(0, 0, 5) }));
-    const h: unknown[] = [];
-    h[5] = 10;
-    setup([makePointFeature('p1', { highlight: h })]);
-
-    await pointTextFix.enable();
-
-    const labelsSrc = createdSources[createdSources.length - 1];
-    expect((labelsSrc.addFeature as jest.Mock).mock.calls.length).toBe(0);
-  });
-
-  test('change:resolution event перерисовывает labels', async () => {
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(0, 0, 5) }));
-    const h: unknown[] = [];
-    h[5] = 10;
-    setup([makePointFeature('p1', { highlight: h })]);
-
-    await pointTextFix.enable();
-
-    const labelsSrc = createdSources[createdSources.length - 1];
-    const initial = (labelsSrc.addFeature as jest.Mock).mock.calls.length;
-    const cb = view._listeners.get('change:resolution')?.[0];
-    cb?.();
-
-    expect((labelsSrc.addFeature as jest.Mock).mock.calls.length).toBe(initial + 1);
-  });
-
-  test('source change debounced ререндерит labels', async () => {
-    jest.useFakeTimers();
-    localStorage.setItem('map-config', JSON.stringify({ h: packH(0, 0, 5) }));
-    const h: unknown[] = [];
-    h[5] = 10;
-    const pointsSrc = makeSource([makePointFeature('p1', { highlight: h })]);
-    olMap = makeMap([makeLayer('points', pointsSrc)], view);
-    mockGetOlMap.mockResolvedValue(olMap);
-
-    await pointTextFix.enable();
-
-    const labelsSrc = createdSources[createdSources.length - 1];
-    const initial = (labelsSrc.addFeature as jest.Mock).mock.calls.length;
-
-    pointsSrc._emit('change');
-    pointsSrc._emit('change');
-    expect((labelsSrc.addFeature as jest.Mock).mock.calls.length).toBe(initial);
-
-    jest.runAllTimers();
-    expect((labelsSrc.addFeature as jest.Mock).mock.calls.length).toBeGreaterThan(initial);
-
-    jest.useRealTimers();
+  test('has localized name and description', () => {
+    expect(pointTextFix.name.ru).toBeTruthy();
+    expect(pointTextFix.name.en).toBeTruthy();
+    expect(pointTextFix.description.ru).toBeTruthy();
+    expect(pointTextFix.description.en).toBeTruthy();
   });
 });

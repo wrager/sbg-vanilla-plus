@@ -64,6 +64,10 @@ export interface IOlVectorSource {
   getFeatures(): IOlFeature[];
   addFeature(feature: IOlFeature): void;
   removeFeature?(feature: IOlFeature): void;
+  // Поиск feature по идентификатору; в OL API стандартный метод VectorSource.
+  // Используется при адресном обновлении state одной точки (после discover,
+  // showInfo и т. п.) - O(1) против O(n) перебора getFeatures().
+  getFeatureById?(id: string | number): IOlFeature | null;
   clear(): void;
   // Сигнатура обработчика - `(...args: unknown[]) => void`, чтобы принимать
   // как listener'ы без параметров (`change`-event), так и с event-объектом
