@@ -10,10 +10,10 @@
 
 1. Наш priority (`pickNextInRange` из `core/nextPointPicker`) нашёл следующую точку в радиусе действия (45 м) - dismiss, finalize вызовет `window.showInfo`.
 2. Иначе если `betterNextPointSwipe` активен (нативный handler подавлен) - return, фейковая анимация. Переключения не будет.
-3. Иначе если на карте видно больше одной точки (наш `pointsSource.getFeatures().length > 1`) - dismiss без pending guid. Анимация работает в параллель с нативным handler-ом игры, который синхронно в touchend сделает navigation через `near_points`. Это путь "анимация для нативного свайпа" когда `betterNextPointSwipe` выключен пользователем.
-4. Иначе - return. Ни мы, ни нативный не переключат: на карте только текущая видимая точка.
+3. Иначе если в радиусе игрока (45м) есть >= 2 видимых точек (`findFeaturesInRange(playerCoords, features, 45).length > 1`) - dismiss без pending guid. Анимация работает в параллель с нативным handler-ом игры, который синхронно в touchend сделает navigation через `near_points`. Это путь "анимация для нативного свайпа" когда `betterNextPointSwipe` выключен пользователем.
+4. Иначе - return. Ни мы, ни нативный не переключат.
 
-В пункте 3 мы не имеем доступа к нативному `near_points` (closure в game-script), поэтому approximate через `points_source.getFeatures().length > 1` - грубо, но достаточно: если на карте >= 2 видимых точки, нативный `near_points` в типичном сценарии уже наполнен после клика по точке на карте, и переключение состоится.
+В пункте 3 проверка `findFeaturesInRange(playerCoords, features, 45).length > 1` - точное соответствие native-условия `near_points.length > 1`, потому что игра заполняет `near_points` через `visible.filter(isInRange(player))` (`refs/game/script.js:559`). Если в радиусе игрока < 2 точек, native handler в touchend сделает no-op - dismiss-анимация уехала бы вхолостую, поэтому возвращаем return.
 
 ## Зачем отдельный модуль
 

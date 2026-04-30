@@ -9,7 +9,7 @@ import {
   type ISwipeDirectionHandler,
   type SwipeOutcome,
 } from '../../core/popupSwipe';
-import { pickNextInRange } from '../../core/nextPointPicker';
+import { findFeaturesInRange, pickNextInRange } from '../../core/nextPointPicker';
 
 const MODULE_ID = 'nextPointSwipeAnimation';
 const FEATURE_MODULE_ID = 'betterNextPointSwipe';
@@ -60,13 +60,17 @@ function canStartHorizontalSwipe(event: TouchEvent): boolean {
  * Решает, анимировать dismiss (попап улетит) или return (фейковая, отскок).
  *
  * dismiss выполняем когда переключение точки реально произойдёт - либо нашим
- * priority (pickNextInRange), либо нативным handler-ом игры (если он не
- * подавлен модулем betterNextPointSwipe и near_points достаточно). Native
- * near_points недоступен из closure, поэтому approximate: visible features
- * count > 1 = native почти наверняка переключит. Без этой проверки если у
- * пользователя нет точек в радиусе действия (наш pickNext возвращает null),
- * decide возвращал бы 'return' даже когда native handler параллельно делает
- * navigation - визуальный конфликт "попап отскочил, точка переключилась".
+ * priority (pickNextInRange нашёл в радиусе action), либо нативным handler-ом
+ * игры (когда betterNextPointSwipe выключен и в радиусе игрока есть кандидат
+ * для native).
+ *
+ * Native handler условие: `near_points.length > 1`, где `near_points`
+ * заполняется при map.click через `visible.filter(isInRange(player))`
+ * (refs/game/script.js:559). Это точное соответствие
+ * `findFeaturesInRange(playerCoords, features, INTERACTION_RANGE)`. Если в
+ * радиусе < 2 точек, native handler в touchend сделает no-op - тогда
+ * dismiss-анимация уехала бы вхолостую (попап улетел и snapped back на
+ * старое содержимое). В этом случае возвращаем 'return'.
  *
  * pendingNextGuid сохраняется только для нашего priority. При native-кейсе
  * pendingNextGuid=null - finalize ничего не делает, native showInfo уже
@@ -106,12 +110,16 @@ function decideSwipe(): SwipeOutcome {
     return 'return';
   }
 
-  // (3) betterNext выключен - native handler жив. Переключит ли он? Native
-  // условие: near_points.length > 1. Approximate через visible features count.
-  const visibleCount = features.filter((feature) => feature.getId() !== undefined).length;
-  if (visibleCount > 1) {
-    pendingNextGuid = null;
-    return 'dismiss';
+  // (3) betterNext выключен - native handler жив. Переключит, если в радиусе
+  // игрока >= 2 точек (включая текущую). dismiss без pendingNextGuid: native
+  // showInfo сработает синхронно в touchend, finalize сам делать ничего не
+  // должен.
+  if (playerCoords) {
+    const inRange = findFeaturesInRange(playerCoords, features, INTERACTION_RANGE);
+    if (inRange.length > 1) {
+      pendingNextGuid = null;
+      return 'dismiss';
+    }
   }
 
   // (4) И наш не нашёл, и native не переключит - true фейковая.

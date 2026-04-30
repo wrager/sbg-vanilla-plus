@@ -233,19 +233,17 @@ describe('nextPointSwipeAnimation behaviour', () => {
     mockIsModuleActive.mockImplementation(() => false);
   });
 
-  test('decide возвращает dismiss без pending guid когда priority пуст но native может переключить', async () => {
-    // Игрок далеко от всех точек: pickNextInRange null.
-    // betterNext не активен - native handler может сработать. Visible features = 3 (>1).
+  test('decide возвращает return когда игрок далеко от всех точек и betterNext выключен', async () => {
+    // Игрок далеко - нет точек в радиусе 45м: pickNextInRange null И native
+    // near_points = visible.filter(isInRange) тоже пуст. Ни мы, ни native не
+    // переключат. dismiss-анимация уехала бы вхолостую - правильно return.
     playerSrc = makeSource([makeFeature('player', [10000, 10000])]);
     mockGetOlMap.mockResolvedValue(
       makeMap([makeLayer('points', pointsSrc), makeLayer('player', playerSrc)]),
     );
     mockIsModuleActive.mockImplementation(() => false);
     await nextPointSwipeAnimation.enable();
-    expect(decideForTest()).toBe('dismiss');
-    // Pending guid не сохранён - native сделает свой showInfo.
-    finalizeForTest();
-    expect(showInfoMock).not.toHaveBeenCalled();
+    expect(decideForTest()).toBe('return');
   });
 
   test('decide возвращает return когда видимая точка только одна и betterNext выключен', async () => {
