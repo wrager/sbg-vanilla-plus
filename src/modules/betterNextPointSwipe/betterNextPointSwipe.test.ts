@@ -299,6 +299,13 @@ describe('betterNextPointSwipe behaviour', () => {
     const emit = getOverriddenEmit();
     emit.call({}, 'swipeleft', { target: popup });
     expect(showInfoMock).not.toHaveBeenCalled();
+    // Без points layer enable выходит до installHammerOverride - нативный
+    // Hammer-handler не подавлен, и emit прокидывается на нативный mock
+    // (в исходных тестах это поведение не проверялось, добавлено как
+    // регрессионная защита: если кто-то перенесёт installHammerOverride
+    // выше pointsLayer-check, нативный handler перестанет работать на
+    // несуществующем layer).
+    expect(nativeHandlerCalls).toHaveLength(1);
   });
 
   test('race-disable во время await getOlMap не ставит override', async () => {
