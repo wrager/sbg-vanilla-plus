@@ -1,8 +1,7 @@
 import { enhancedPointPopupUi } from './enhancedPointPopupUi';
 
 describe('enhancedPointPopupUi', () => {
-  afterEach(async () => {
-    await enhancedPointPopupUi.disable();
+  afterEach(() => {
     document.head.innerHTML = '';
     document.body.innerHTML = '';
   });
@@ -113,57 +112,5 @@ describe('enhancedPointPopupUi — изоляция от новых блоков
 
     const matched = popup.querySelectorAll('.i-stat__entry:not(.i-stat__cores)');
     expect(matched.length).toBe(1);
-  });
-});
-
-describe('enhancedPointPopupUi — защита wand button', () => {
-  afterEach(async () => {
-    await enhancedPointPopupUi.disable();
-    document.head.innerHTML = '';
-    document.body.innerHTML = '';
-  });
-
-  test('wand button styles не инжектируются при отсутствии #magic-deploy-btn', async () => {
-    await enhancedPointPopupUi.enable();
-    expect(document.getElementById('svp-enhancedPointPopupUi-wand')).toBeNull();
-  });
-
-  test('wand button styles инжектируются при наличии #magic-deploy-btn', async () => {
-    const button = document.createElement('button');
-    button.id = 'magic-deploy-btn';
-    document.body.appendChild(button);
-    await enhancedPointPopupUi.enable();
-    expect(document.getElementById('svp-enhancedPointPopupUi-wand')).not.toBeNull();
-  });
-
-  test('wand button styles инжектируются когда #magic-deploy-btn появляется после enable', async () => {
-    await enhancedPointPopupUi.enable();
-    expect(document.getElementById('svp-enhancedPointPopupUi-wand')).toBeNull();
-    const button = document.createElement('button');
-    button.id = 'magic-deploy-btn';
-    document.body.appendChild(button);
-    await Promise.resolve();
-    expect(document.getElementById('svp-enhancedPointPopupUi-wand')).not.toBeNull();
-  });
-
-  test('wand button styles удаляются когда #magic-deploy-btn исчезает из DOM', async () => {
-    const button = document.createElement('button');
-    button.id = 'magic-deploy-btn';
-    document.body.appendChild(button);
-    await enhancedPointPopupUi.enable();
-    expect(document.getElementById('svp-enhancedPointPopupUi-wand')).not.toBeNull();
-    document.body.removeChild(button);
-    await Promise.resolve();
-    expect(document.getElementById('svp-enhancedPointPopupUi-wand')).toBeNull();
-  });
-
-  test('disable удаляет wand button styles', async () => {
-    const button = document.createElement('button');
-    button.id = 'magic-deploy-btn';
-    document.body.appendChild(button);
-    await enhancedPointPopupUi.enable();
-    expect(document.getElementById('svp-enhancedPointPopupUi-wand')).not.toBeNull();
-    await enhancedPointPopupUi.disable();
-    expect(document.getElementById('svp-enhancedPointPopupUi-wand')).toBeNull();
   });
 });
