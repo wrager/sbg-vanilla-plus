@@ -253,6 +253,157 @@ const REF_ITEM_TYPE = 3;
 let discoverFetchInstalled = false;
 let originalFetchBeforePatch: typeof window.fetch | null = null;
 
+// ── Диагностика (временная, для отладки бага «refs не обновляются после
+// discover»). Вшита в скрипт; после определения root cause - удаляется одним
+// коммитом. Тестируется на мобильнике без DevTools: при тапе по кнопке
+// discover (в попапе точки) накапливаем checkpoint-данные, через 3 секунды
+// показываем alert со сводкой - пользователь делает скриншот.
+//
+// Триггеры старта diagnostic-сессии: (a) клик по любой кнопке внутри
+// `.discover` контейнера попапа (`#discover` и `.discover-mod` - игра
+// привязывает doDiscovery к обоим, refs/game/script.js:878-879); (b)
+// перехват /api/discover в нашем patchedFetch если сессия ещё не активна
+// (страховка на случай если кнопка discover не сработала trigger - например,
+// если игра поменяла DOM-структуру). Сессия идёт 3000мс, накапливая данные;
+// в конце - alert.
+
+interface IDiagSession {
+  triggerSource: string;
+  startTimestamp: number;
+  fetchEntered: boolean;
+  hookActive: boolean | null;
+  urlMatched: boolean;
+  guid: string | null;
+  guidExtractionFailed: boolean;
+  bodyPreview: string | null;
+  responseStatus: number | null;
+  fetchRejectedError: string | null;
+  jsonParsed: boolean | null;
+  jsonParseError: string | null;
+  gain: number | null;
+  bodyShape: string | null;
+  featureFound: boolean | null;
+  pointsSourceMissing: boolean;
+  highlightShape: string | null;
+  beforeRefs: unknown;
+  afterRefs: unknown;
+}
+
+let diagSession: IDiagSession | null = null;
+let diagSessionTimer: ReturnType<typeof setTimeout> | null = null;
+let diagDocumentClickHandler: ((event: Event) => void) | null = null;
+
+function makeEmptySession(triggerSource: string): IDiagSession {
+  return {
+    triggerSource,
+    startTimestamp: Date.now(),
+    fetchEntered: false,
+    hookActive: null,
+    urlMatched: false,
+    guid: null,
+    guidExtractionFailed: false,
+    bodyPreview: null,
+    responseStatus: null,
+    fetchRejectedError: null,
+    jsonParsed: null,
+    jsonParseError: null,
+    gain: null,
+    bodyShape: null,
+    featureFound: null,
+    pointsSourceMissing: false,
+    highlightShape: null,
+    beforeRefs: undefined,
+    afterRefs: undefined,
+  };
+}
+
+function startDiagSession(triggerSource: string): void {
+  if (diagSession !== null) return;
+  diagSession = makeEmptySession(triggerSource);
+  diagSessionTimer = setTimeout(showDiagAlert, 3000);
+}
+
+function fmt(value: unknown): string {
+  if (value === null) return 'null';
+  if (value === undefined) return '-';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  // Объекты/массивы маловероятны (мы кладём только примитивы), но JSON.stringify
+  // безопаснее чем дефолтный toString '[object Object]'.
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return '(unstringifiable)';
+  }
+}
+
+function showDiagAlert(): void {
+  diagSessionTimer = null;
+  const session = diagSession;
+  diagSession = null;
+  if (!session) return;
+  const elapsed = Date.now() - session.startTimestamp;
+  const lines = [
+    `improvedPointText diag (${String(elapsed)}ms)`,
+    `trigger: ${session.triggerSource}`,
+    `fetchPatched: ${String(discoverFetchInstalled)}`,
+    `hookEnabled: ${String(discoverHookEnabled)}`,
+    `pointsSourceSet: ${String(pointsSource !== null)}`,
+    `--- fetch hook ---`,
+    `fetchEntered: ${fmt(session.fetchEntered)}`,
+    `urlMatched: ${fmt(session.urlMatched)}`,
+    `guid: ${fmt(session.guid) || '(empty)'}`,
+    session.guidExtractionFailed ? `guidExtractionFailed, body: ${fmt(session.bodyPreview)}` : null,
+    `--- response ---`,
+    `respStatus: ${fmt(session.responseStatus)}`,
+    session.fetchRejectedError ? `fetchRejected: ${session.fetchRejectedError}` : null,
+    `jsonParsed: ${fmt(session.jsonParsed)}`,
+    session.jsonParseError ? `jsonErr: ${session.jsonParseError}` : null,
+    `bodyShape: ${fmt(session.bodyShape)}`,
+    `gain: ${fmt(session.gain)}`,
+    `--- feature ---`,
+    `featureFound: ${fmt(session.featureFound)}`,
+    `highlightShape: ${fmt(session.highlightShape)}`,
+    `refs[7]: ${fmt(session.beforeRefs)} -> ${fmt(session.afterRefs)}`,
+  ].filter((line): line is string => line !== null);
+  // alert блокирует UI - даёт пользователю время сделать скриншот.
+  alert(lines.join('\n'));
+}
+
+function isDiscoverButtonClick(event: Event): boolean {
+  const target = event.target;
+  if (!(target instanceof Element)) return false;
+  // refs/game/script.js:878-879: doDiscovery привязан к #discover и
+  // .discover-mod (внутри #i-discover-actions). Дочерние клики
+  // (например, span внутри button) тоже считаем триггером.
+  return target.closest('#discover, .discover-mod, .discover button') !== null;
+}
+
+function startDiscoverClickListener(): void {
+  if (diagDocumentClickHandler) return;
+  diagDocumentClickHandler = (event: Event): void => {
+    if (!isDiscoverButtonClick(event)) return;
+    startDiagSession('discover-click');
+  };
+  document.addEventListener('click', diagDocumentClickHandler, true);
+}
+
+function stopDiscoverClickListener(): void {
+  if (!diagDocumentClickHandler) return;
+  document.removeEventListener('click', diagDocumentClickHandler, true);
+  diagDocumentClickHandler = null;
+}
+
+/** Сброс диагностической сессии. Только для тестов. */
+export function resetDiagnosticSessionForTest(): void {
+  if (diagSessionTimer !== null) {
+    clearTimeout(diagSessionTimer);
+    diagSessionTimer = null;
+  }
+  diagSession = null;
+  stopDiscoverClickListener();
+}
+
 interface IDiscoverLootItem {
   t?: number;
   l?: string;
@@ -341,25 +492,58 @@ export function applyRefsGainToFeature(feature: IOlFeature, gain: number): void 
 }
 
 function handleDiscoverResponse(response: Response, targetGuid: string): void {
+  if (diagSession) diagSession.responseStatus = response.status;
   if (!response.ok) return;
-  if (!pointsSource) return;
+  if (!pointsSource) {
+    if (diagSession) diagSession.pointsSourceMissing = true;
+    return;
+  }
   response
     .clone()
     .json()
     .then((body: unknown) => {
-      if (!pointsSource) return;
+      if (diagSession) {
+        diagSession.jsonParsed = true;
+        diagSession.bodyShape =
+          typeof body === 'object' && body !== null
+            ? Object.keys(body as Record<string, unknown>).join(',')
+            : typeof body;
+      }
+      if (!pointsSource) {
+        if (diagSession) diagSession.pointsSourceMissing = true;
+        return;
+      }
       const gain = computeRefsGainFromDiscover(body, targetGuid);
+      if (diagSession) diagSession.gain = gain;
       if (gain <= 0) return;
       const feature =
         typeof pointsSource.getFeatureById === 'function'
           ? pointsSource.getFeatureById(targetGuid)
           : null;
+      if (diagSession) diagSession.featureFound = feature !== null;
       if (!feature) return;
+      const highlightBefore: unknown = feature.get?.('highlight');
+      if (diagSession) {
+        diagSession.highlightShape = Array.isArray(highlightBefore)
+          ? `array[${String(highlightBefore.length)}]`
+          : typeof highlightBefore;
+        diagSession.beforeRefs = Array.isArray(highlightBefore)
+          ? highlightBefore[REFS_CHANNEL_INDEX]
+          : null;
+      }
       applyRefsGainToFeature(feature, gain);
+      if (diagSession) {
+        const highlightAfter: unknown = feature.get?.('highlight');
+        diagSession.afterRefs = Array.isArray(highlightAfter)
+          ? highlightAfter[REFS_CHANNEL_INDEX]
+          : null;
+      }
     })
-    .catch(() => {
-      // Парсинг JSON упал - игра сама обработает ответ; мы пропускаем
-      // обновление подписи. Подпись обновится при следующем drawEntities.
+    .catch((error: unknown) => {
+      if (diagSession) {
+        diagSession.jsonParsed = false;
+        diagSession.jsonParseError = error instanceof Error ? error.message : String(error);
+      }
     });
 }
 
@@ -380,17 +564,40 @@ export function installDiscoverFetchHook(): void {
     ...args: Parameters<typeof window.fetch>
   ): Promise<Response> {
     const responsePromise = originalFetch.apply(this, args);
-    if (!discoverHookEnabled) return responsePromise;
     const url = extractUrl(args[0]);
-    if (!url || !DISCOVER_URL_PATTERN.test(url)) return responsePromise;
+    const isDiscoverUrl = url !== null && DISCOVER_URL_PATTERN.test(url);
+    if (isDiscoverUrl) {
+      // Страховочный триггер сессии: если discover-click listener не сработал
+      // (например, игра поменяла DOM-структуру кнопки), сессия всё равно
+      // запустится при перехвате fetch.
+      if (diagSession === null) startDiagSession('fetch-intercept');
+      if (diagSession) {
+        diagSession.fetchEntered = true;
+        diagSession.urlMatched = true;
+        diagSession.hookActive = discoverHookEnabled;
+      }
+    }
+    if (!discoverHookEnabled) return responsePromise;
+    if (!isDiscoverUrl) return responsePromise;
     const targetGuid = extractDiscoverGuidFromInit(args[1]);
-    if (!targetGuid) return responsePromise;
+    if (!targetGuid) {
+      if (diagSession) {
+        diagSession.guidExtractionFailed = true;
+        const body = args[1]?.body;
+        diagSession.bodyPreview =
+          typeof body === 'string' ? body.slice(0, 100) : `(${typeof body})`;
+      }
+      return responsePromise;
+    }
+    if (diagSession) diagSession.guid = targetGuid;
     void responsePromise.then(
       (response) => {
         handleDiscoverResponse(response, targetGuid);
       },
-      () => {
-        // Сетевой сбой - игре уже сообщено через rejection основного промиса.
+      (error: unknown) => {
+        if (diagSession) {
+          diagSession.fetchRejectedError = error instanceof Error ? error.message : String(error);
+        }
       },
     );
     return responsePromise;
@@ -448,6 +655,7 @@ export const improvedPointText: IFeatureModule = {
     // discoverFetchInstalled внутри installDiscoverFetchHook.
     installDiscoverFetchHook();
     discoverHookEnabled = true;
+    startDiscoverClickListener();
     const getZoom = (): number => map?.getView().getZoom?.() ?? 0;
 
     for (const feature of source.getFeatures()) {
@@ -472,6 +680,7 @@ export const improvedPointText: IFeatureModule = {
   disable(): void {
     installGeneration++;
     discoverHookEnabled = false;
+    stopDiscoverClickListener();
     if (pointsSource && onAddFeature) {
       pointsSource.un('addfeature', onAddFeature);
       for (const feature of pointsSource.getFeatures()) {
