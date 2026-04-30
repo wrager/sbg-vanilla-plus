@@ -22,27 +22,25 @@ describe('nextPointSwipeFix metadata', () => {
 });
 
 describe('nextPointSwipeFix enable/disable', () => {
-  let drawClickListener: jest.Mock;
-  let discoverClickListener: jest.Mock;
-
   beforeEach(() => {
     jest.useFakeTimers();
     document.body.innerHTML = `
       <div class="info popup">
-        <div class="i-buttons">
-          <button id="draw"><span id="draw-count">[0]</span></button>
-          <button id="discover">Изучить</button>
+        <div class="i-stat">
+          <div class="i-buttons">
+            <button id="draw"><span id="draw-count">[0]</span></button>
+            <button id="discover">Изучить</button>
+            <button id="repair">Починить</button>
+            <button id="i-navigate">Навигация</button>
+          </div>
+          <button id="deploy">Проставить</button>
         </div>
       </div>
     `;
-    drawClickListener = jest.fn();
-    discoverClickListener = jest.fn();
-    document.querySelector('#draw')?.addEventListener('click', drawClickListener);
-    document.querySelector('#discover')?.addEventListener('click', discoverClickListener);
   });
 
-  afterEach(() => {
-    void nextPointSwipeFix.disable();
+  afterEach(async () => {
+    await nextPointSwipeFix.disable();
     jest.useRealTimers();
     document.body.innerHTML = '';
   });
@@ -66,73 +64,117 @@ describe('nextPointSwipeFix enable/disable', () => {
     target.dispatchEvent(event);
   }
 
-  test('enable устанавливает fallback на #draw и #discover', () => {
-    void nextPointSwipeFix.enable();
-
-    const draw = document.querySelector<HTMLElement>('#draw');
-    if (!draw) throw new Error('#draw not found');
-    dispatchPointer(draw, 'pointerdown', { x: 100, y: 100, t: 1000 });
-    dispatchPointer(draw, 'pointerup', { x: 100, y: 100, t: 1100 });
-    expect(drawClickListener).not.toHaveBeenCalled();
+  function expectClickPolyfill(buttonSelector: string): void {
+    const button = document.querySelector<HTMLElement>(buttonSelector);
+    if (!button) throw new Error(`${buttonSelector} not found`);
+    const click = jest.fn();
+    button.addEventListener('click', click);
+    dispatchPointer(button, 'pointerdown', { x: 100, y: 100, t: 1000 });
+    dispatchPointer(button, 'pointerup', { x: 100, y: 100, t: 1100 });
+    expect(click).not.toHaveBeenCalled();
     jest.advanceTimersByTime(80);
-    expect(drawClickListener).toHaveBeenCalledTimes(1);
+    expect(click).toHaveBeenCalledTimes(1);
+  }
 
-    const discover = document.querySelector<HTMLElement>('#discover');
-    if (!discover) throw new Error('#discover not found');
-    dispatchPointer(discover, 'pointerdown', { x: 200, y: 200, t: 2000 });
-    dispatchPointer(discover, 'pointerup', { x: 200, y: 200, t: 2100 });
-    jest.advanceTimersByTime(80);
-    expect(discoverClickListener).toHaveBeenCalledTimes(1);
+  test('enable устанавливает fallback на все кнопки попапа', async () => {
+    await nextPointSwipeFix.enable();
+    expectClickPolyfill('#draw');
+    expectClickPolyfill('#discover');
+    expectClickPolyfill('#repair');
+    expectClickPolyfill('#i-navigate');
+    expectClickPolyfill('#deploy');
   });
 
-  test('enable пропускает отсутствующие элементы без ошибок', () => {
-    document.querySelector('#discover')?.remove();
-    expect(() => nextPointSwipeFix.enable()).not.toThrow();
+  test('observer ставит fallback на динамически добавленные кнопки', async () => {
+    await nextPointSwipeFix.enable();
+
+    // showInfo пересоздаёт cores list - симулируем добавление новой кнопки.
+    const popup = document.querySelector('.info.popup');
+    if (!popup) throw new Error('popup not found');
+    const newButton = document.createElement('button');
+    newButton.id = 'dynamic-button';
+    newButton.textContent = 'Dynamic';
+    popup.appendChild(newButton);
+
+    // MutationObserver runs синхронно после микрозадачи в jsdom.
+    await Promise.resolve();
+    expectClickPolyfill('#dynamic-button');
+  });
+
+  test('observer ставит fallback на кнопку внутри добавленного контейнера', async () => {
+    await nextPointSwipeFix.enable();
+
+    const popup = document.querySelector('.info.popup');
+    if (!popup) throw new Error('popup not found');
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = '<button id="nested-button">Nested</button>';
+    popup.appendChild(wrapper);
+
+    await Promise.resolve();
+    expectClickPolyfill('#nested-button');
+  });
+
+  test('disable снимает fallback - polyfill больше не диспатчит', async () => {
+    await nextPointSwipeFix.enable();
+    await nextPointSwipeFix.disable();
 
     const draw = document.querySelector<HTMLElement>('#draw');
     if (!draw) throw new Error('#draw not found');
+    const click = jest.fn();
+    draw.addEventListener('click', click);
     dispatchPointer(draw, 'pointerdown', { x: 100, y: 100, t: 1000 });
     dispatchPointer(draw, 'pointerup', { x: 100, y: 100, t: 1100 });
     jest.advanceTimersByTime(80);
-    expect(drawClickListener).toHaveBeenCalledTimes(1);
+    expect(click).not.toHaveBeenCalled();
   });
 
-  test('disable снимает fallback - polyfill больше не диспатчит', () => {
-    void nextPointSwipeFix.enable();
-    void nextPointSwipeFix.disable();
+  test('disable отключает observer - новые кнопки не получают fallback', async () => {
+    await nextPointSwipeFix.enable();
+    await nextPointSwipeFix.disable();
 
-    const draw = document.querySelector<HTMLElement>('#draw');
-    if (!draw) throw new Error('#draw not found');
-    dispatchPointer(draw, 'pointerdown', { x: 100, y: 100, t: 1000 });
-    dispatchPointer(draw, 'pointerup', { x: 100, y: 100, t: 1100 });
+    const popup = document.querySelector('.info.popup');
+    if (!popup) throw new Error('popup not found');
+    const newButton = document.createElement('button');
+    newButton.id = 'after-disable';
+    popup.appendChild(newButton);
+
+    await Promise.resolve();
+    const click = jest.fn();
+    newButton.addEventListener('click', click);
+    dispatchPointer(newButton, 'pointerdown', { x: 100, y: 100, t: 1000 });
+    dispatchPointer(newButton, 'pointerup', { x: 100, y: 100, t: 1100 });
     jest.advanceTimersByTime(80);
-    expect(drawClickListener).not.toHaveBeenCalled();
+    expect(click).not.toHaveBeenCalled();
   });
 
-  test('повторный enable идемпотентен (не дублирует fallback)', () => {
-    void nextPointSwipeFix.enable();
-    void nextPointSwipeFix.enable();
+  test('повторный enable идемпотентен (не дублирует fallback)', async () => {
+    await nextPointSwipeFix.enable();
+    await nextPointSwipeFix.enable();
 
     const draw = document.querySelector<HTMLElement>('#draw');
     if (!draw) throw new Error('#draw not found');
+    const click = jest.fn();
+    draw.addEventListener('click', click);
     dispatchPointer(draw, 'pointerdown', { x: 100, y: 100, t: 1000 });
     dispatchPointer(draw, 'pointerup', { x: 100, y: 100, t: 1100 });
     jest.advanceTimersByTime(80);
     // Click диспатчится один раз, не дважды.
-    expect(drawClickListener).toHaveBeenCalledTimes(1);
+    expect(click).toHaveBeenCalledTimes(1);
   });
 
-  test('после нативного click polyfill не дублирует', () => {
-    void nextPointSwipeFix.enable();
+  test('после нативного click polyfill не дублирует', async () => {
+    await nextPointSwipeFix.enable();
 
     const draw = document.querySelector<HTMLElement>('#draw');
     if (!draw) throw new Error('#draw not found');
+    const click = jest.fn();
+    draw.addEventListener('click', click);
     dispatchPointer(draw, 'pointerdown', { x: 100, y: 100, t: 1000 });
     dispatchPointer(draw, 'pointerup', { x: 100, y: 100, t: 1100 });
     draw.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    expect(drawClickListener).toHaveBeenCalledTimes(1);
+    expect(click).toHaveBeenCalledTimes(1);
 
     jest.advanceTimersByTime(80);
-    expect(drawClickListener).toHaveBeenCalledTimes(1);
+    expect(click).toHaveBeenCalledTimes(1);
   });
 });
