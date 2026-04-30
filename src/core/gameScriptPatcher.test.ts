@@ -47,11 +47,32 @@ describe('isGameScript', () => {
 // ── applyPatches ─────────────────────────────────────────────────────────────
 
 describe('applyPatches', () => {
+  // Воспроизводит блок из refs/game/script.js:722-726 с LF — именно так,
+  // как мы ожидаем в production-сборке скрипта игры.
+  const NATIVE_HAMMER_BLOCK = [
+    "  const hammer_info = new Hammer(document.querySelector('.info'), {",
+    '    recognizers: [',
+    '      [Hammer.Swipe, { direction: Hammer.DIRECTION_HORIZONTAL }],',
+    '    ],',
+    '  })',
+    "  hammer_info.on('swipeleft swiperight', function(event) {})",
+  ].join('\n');
+
   test('applies showInfo patch when marker found', () => {
-    const source = 'const x = 1; class Bitfield { }';
+    const source = `const x = 1; class Bitfield { }\n${NATIVE_HAMMER_BLOCK}`;
     const { result, appliedCount } = applyPatches(source);
     expect(result).toContain('window.showInfo = showInfo');
     expect(result).toContain('class Bitfield');
+    expect(appliedCount).toBe(EXPECTED_PATCHES_COUNT);
+  });
+
+  test('disables native .info hammer swipe', () => {
+    const source = `class Bitfield { }\n${NATIVE_HAMMER_BLOCK}`;
+    const { result, appliedCount } = applyPatches(source);
+    expect(result).toContain('__svpNativeInfoSwipeDisabled = true');
+    expect(result).toContain('{ on() {} }');
+    // Нативного new Hammer(...) больше нет в выходе:
+    expect(result).not.toMatch(/new Hammer\(document\.querySelector\('\.info'\)/);
     expect(appliedCount).toBe(EXPECTED_PATCHES_COUNT);
   });
 

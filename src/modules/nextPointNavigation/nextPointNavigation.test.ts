@@ -6,9 +6,20 @@ import {
   hasFreeSlots,
   isDiscoverable,
   getGeodeticDistance,
+  pickNextInRange,
   nextPointNavigation,
 } from './nextPointNavigation';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
+import {
+  DIRECTION_THRESHOLD,
+  DISMISS_THRESHOLD,
+  dispatchTouchEndForTest,
+  dispatchTouchMoveForTest,
+  dispatchTouchStartForTest,
+  getStateForTest,
+  resetForTest,
+  setPopupForTest,
+} from '../../core/popupSwipe';
 
 // ── OL mocks ────────────────────────────────────────────────────────────────
 
@@ -121,6 +132,44 @@ function makeMapWithDispatch(
     dispatchEvent: jest.fn(),
     getPixelFromCoordinate: jest.fn().mockReturnValue([100, 200]),
   };
+}
+
+function setupPopupDom(guid?: string): HTMLElement {
+  const popup = document.createElement('div');
+  popup.className = 'info popup';
+  if (guid !== undefined) popup.dataset.guid = guid;
+  document.body.appendChild(popup);
+  return popup;
+}
+
+/**
+ * Эмулирует горизонтальный свайп через core/popupSwipe и завершает анимацию
+ * dispatchEvent('transitionend'). Свайп влево (dx < 0) активирует direction='left',
+ * свайп вправо (dx > 0) — 'right'. В нашем модуле оба registered к одному handler.
+ */
+function performHorizontalSwipe(
+  popup: HTMLElement,
+  direction: 'left' | 'right',
+  options: { target?: HTMLElement } = {},
+): void {
+  const target = options.target ?? popup;
+  const sign = direction === 'left' ? -1 : 1;
+  const startX = 200;
+  const endX = startX + sign * (DISMISS_THRESHOLD + 20);
+  setPopupForTest(popup);
+  dispatchTouchStartForTest({ clientX: startX, clientY: 300, target }, 0);
+  dispatchTouchMoveForTest(
+    { clientX: startX + sign * (DIRECTION_THRESHOLD + 1), clientY: 300, target },
+    50,
+  );
+  dispatchTouchMoveForTest({ clientX: endX, clientY: 300, target }, 250);
+  dispatchTouchEndForTest(300);
+}
+
+function flushSwipeAnimation(popup: HTMLElement): void {
+  const evt = new Event('transitionend', { bubbles: false });
+  Object.defineProperty(evt, 'target', { value: popup });
+  popup.dispatchEvent(evt);
 }
 
 // ── getGeodeticDistance ──────────────────────────────────────────────────────
@@ -352,7 +401,7 @@ describe('nextPointNavigation metadata', () => {
   });
 });
 
-// ── enable / disable ─────────────────────────────────────────────────────────
+// ── enable / disable / swipe integration ────────────────────────────────────
 
 jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
@@ -369,6 +418,7 @@ describe('nextPointNavigation enable/disable', () => {
   let playerSrc: IOlVectorSource;
   let view: IOlView;
   let olMap: IOlMap & { dispatchEvent: jest.Mock; getPixelFromCoordinate: jest.Mock };
+  let popup: HTMLElement;
 
   beforeEach(() => {
     // p1=[10,10] (dist≈14), p2=[20,20] (dist≈28), p3=[200,200]
@@ -386,125 +436,117 @@ describe('nextPointNavigation enable/disable', () => {
     olMap = makeMapWithDispatch([pointsLayer, playerLayer], view);
     mockGetOlMap.mockResolvedValue(olMap);
 
-    const popup = document.createElement('div');
-    popup.className = 'info popup';
-    const buttonsContainer = document.createElement('div');
-    buttonsContainer.className = 'i-buttons';
-    popup.appendChild(buttonsContainer);
-    document.body.appendChild(popup);
+    popup = setupPopupDom();
   });
 
   afterEach(async () => {
     await nextPointNavigation.disable();
+    resetForTest();
+    setPopupForTest(null);
     document.querySelector('.info.popup')?.remove();
-  });
-
-  test('injects button into visible popup on enable', async () => {
-    await nextPointNavigation.enable();
-    const button = document.querySelector('.svp-next-point-button');
-    expect(button).not.toBeNull();
-    expect(button?.textContent).toBe('→');
-  });
-
-  test('removes button on disable', async () => {
-    await nextPointNavigation.enable();
-    await nextPointNavigation.disable();
-    expect(document.querySelector('.svp-next-point-button')).toBeNull();
-  });
-
-  test('navigates to nearest in-range point', async () => {
-    await nextPointNavigation.enable();
-
-    const popup = document.querySelector('.info.popup') as HTMLElement;
-    popup.dataset.guid = 'p1';
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
-    button.click();
-
-    // От игрока [0,0] ближайшая непосещённая в ренже = p2
-    expect(olMap.getPixelFromCoordinate).toHaveBeenCalledWith([20, 20]);
-  });
-
-  test('uses window.showInfo when available', async () => {
-    const mockShowInfo = jest.fn();
-    window.showInfo = mockShowInfo;
-
-    await nextPointNavigation.enable();
-
-    const popup = document.querySelector('.info.popup') as HTMLElement;
-    popup.dataset.guid = 'p1';
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
-    button.click();
-
-    expect(mockShowInfo).toHaveBeenCalledWith('p2');
-    // Не должен использовать fake click
-    expect(olMap.dispatchEvent).not.toHaveBeenCalled();
-
     delete window.showInfo;
   });
 
-  test('does not hide popup before calling showInfo (no flicker)', async () => {
-    // Регрессия: раньше openPointPopup делал classList.add('hidden') перед showInfo
-    // (по мотивам CUI), что давало мерцание попапа в течение await внутри showInfo.
-    // Нативный свайп игры (refs/game/script.js:751) попап не скрывает - showInfo
-    // обновляет содержимое и сам убирает hidden. Тест фиксирует, что попап
-    // остаётся видимым между нашим вызовом и работой showInfo.
+  test('horizontal swipe navigates to nearest in-range point via showInfo', async () => {
     const mockShowInfo = jest.fn();
     window.showInfo = mockShowInfo;
-
     await nextPointNavigation.enable();
 
-    const popup = document.querySelector('.info.popup') as HTMLElement;
     popup.dataset.guid = 'p1';
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
-    button.click();
+    performHorizontalSwipe(popup, 'left');
+    flushSwipeAnimation(popup);
 
-    expect(popup.classList.contains('hidden')).toBe(false);
     expect(mockShowInfo).toHaveBeenCalledWith('p2');
+  });
 
-    delete window.showInfo;
+  test('right swipe also goes to next (priority navigation, not native prev)', async () => {
+    const mockShowInfo = jest.fn();
+    window.showInfo = mockShowInfo;
+    await nextPointNavigation.enable();
+
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    performHorizontalSwipe(popup, 'right');
+    flushSwipeAnimation(popup);
+
+    // Both directions go through pickNextInRange — same priority logic.
+    expect(mockShowInfo).toHaveBeenCalledWith('p2');
   });
 
   test('falls back to fake click when showInfo not available', async () => {
     delete window.showInfo;
     await nextPointNavigation.enable();
 
-    const popup = document.querySelector('.info.popup') as HTMLElement;
     popup.dataset.guid = 'p1';
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
-    button.click();
+    performHorizontalSwipe(popup, 'left');
+    flushSwipeAnimation(popup);
 
-    // Должен использовать fake click
     expect(olMap.getPixelFromCoordinate).toHaveBeenCalledWith([20, 20]);
   });
 
-  test('skips out-of-range points', async () => {
-    // Только p1 в ренже, p3 далеко
+  test('does not hide popup before calling showInfo (no flicker)', async () => {
+    // Регрессия: openPointPopup не должен скрывать попап перед showInfo.
+    // Мерцание возникало в течение await apiQuery внутри showInfo.
+    // Нативный свайп игры (refs/game/script.js:751) попап не скрывает.
+    const mockShowInfo = jest.fn();
+    window.showInfo = mockShowInfo;
+    await nextPointNavigation.enable();
+
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    performHorizontalSwipe(popup, 'left');
+    flushSwipeAnimation(popup);
+
+    expect(popup.classList.contains('hidden')).toBe(false);
+    expect(mockShowInfo).toHaveBeenCalledWith('p2');
+  });
+
+  test('swipe inside cores splide carousel does not navigate', async () => {
+    const mockShowInfo = jest.fn();
+    window.showInfo = mockShowInfo;
+    await nextPointNavigation.enable();
+
+    popup.dataset.guid = 'p1';
+    const splide = document.createElement('div');
+    splide.className = 'splide';
+    const slide = document.createElement('div');
+    slide.className = 'splide__slide';
+    splide.appendChild(slide);
+    popup.appendChild(splide);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // canStart возвращает false для target внутри .splide -> direction-handler
+    // не активируется -> state остаётся idle, finalize не вызывается.
+    setPopupForTest(popup);
+    dispatchTouchStartForTest({ clientX: 200, clientY: 300, target: slide }, 0);
+    expect(getStateForTest().state).toBe('idle');
+  });
+
+  test('skips out-of-range points (only current in range -> no navigation)', async () => {
     pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p3', [200, 200])]);
     olMap = makeMapWithDispatch(
       [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
       view,
     );
     mockGetOlMap.mockResolvedValue(olMap);
+    const mockShowInfo = jest.fn();
+    window.showInfo = mockShowInfo;
     await nextPointNavigation.enable();
 
-    const popup = document.querySelector('.info.popup') as HTMLElement;
     popup.dataset.guid = 'p1';
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
-    olMap.dispatchEvent.mockClear();
-    button.click();
+    performHorizontalSwipe(popup, 'left');
+    flushSwipeAnimation(popup);
 
-    // p1 единственная в ренже — цикл не найдёт другую точку
-    expect(olMap.dispatchEvent).not.toHaveBeenCalled();
+    // p1 - единственная в радиусе. decide вернёт 'return' -> finalize не зовётся.
+    expect(mockShowInfo).not.toHaveBeenCalled();
   });
 
   test('cycles when all in-range visited', async () => {
@@ -514,54 +556,48 @@ describe('nextPointNavigation enable/disable', () => {
       view,
     );
     mockGetOlMap.mockResolvedValue(olMap);
+    const mockShowInfo = jest.fn();
+    window.showInfo = mockShowInfo;
     await nextPointNavigation.enable();
 
-    const popup = document.querySelector('.info.popup') as HTMLElement;
     popup.dataset.guid = 'p1';
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
+    // Первый свайп: p1 visited -> p2
+    performHorizontalSwipe(popup, 'left');
+    flushSwipeAnimation(popup);
+    expect(mockShowInfo).toHaveBeenLastCalledWith('p2');
 
-    // Первый клик: p1 visited → p2
-    button.click();
-    expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([20, 20]);
-
-    // Симулируем открытие p2
+    // Симулируем открытие p2 показом нового data-guid
     popup.dataset.guid = 'p2';
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // Второй клик: все visited → цикл → p1
-    olMap.getPixelFromCoordinate.mockClear();
-    button.click();
-    expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([10, 10]);
-  });
-
-  test('does not move the map on navigation', async () => {
-    await nextPointNavigation.enable();
-
-    const popup = document.querySelector('.info.popup') as HTMLElement;
-    popup.dataset.guid = 'p1';
-
-    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
-    button.click();
-
-    expect(view.setCenter).not.toHaveBeenCalled();
+    // Второй свайп: все visited -> цикл -> p1
+    performHorizontalSwipe(popup, 'left');
+    flushSwipeAnimation(popup);
+    expect(mockShowInfo).toHaveBeenLastCalledWith('p1');
   });
 
   test('does nothing when popup has no guid', async () => {
+    const mockShowInfo = jest.fn();
+    window.showInfo = mockShowInfo;
     await nextPointNavigation.enable();
 
-    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
-    button.click();
+    performHorizontalSwipe(popup, 'left');
+    flushSwipeAnimation(popup);
 
-    expect(olMap.dispatchEvent).not.toHaveBeenCalled();
+    expect(mockShowInfo).not.toHaveBeenCalled();
   });
 
   test('does nothing when points layer not found', async () => {
     const otherLayer = makeLayer('other', makeSource());
     mockGetOlMap.mockResolvedValue(makeMapWithDispatch([otherLayer], view));
     await nextPointNavigation.enable();
-    expect(document.querySelector('.svp-next-point-button')).toBeNull();
+    // Регистрация направлений не должна произойти - модуль выходит из enable
+    // до registerDirection. Свайп не приведёт к навигации.
+    setPopupForTest(popup);
+    dispatchTouchStartForTest({ clientX: 200, clientY: 300, target: popup }, 0);
+    expect(getStateForTest().state).toBe('idle');
   });
 
   test('double disable does not throw', async () => {
@@ -571,15 +607,22 @@ describe('nextPointNavigation enable/disable', () => {
   });
 
   test('resets chain when popup guid changes without navigation', async () => {
+    pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p2', [20, 20])]);
+    olMap = makeMapWithDispatch(
+      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
+      view,
+    );
+    mockGetOlMap.mockResolvedValue(olMap);
+    const mockShowInfo = jest.fn();
+    window.showInfo = mockShowInfo;
     await nextPointNavigation.enable();
 
-    const popup = document.querySelector('.info.popup') as HTMLElement;
     popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
-
-    button.click();
-    expect(olMap.dispatchEvent).toHaveBeenCalledTimes(1);
+    performHorizontalSwipe(popup, 'left');
+    flushSwipeAnimation(popup);
+    expect(mockShowInfo).toHaveBeenLastCalledWith('p2');
 
     // Симулируем открытие p2 (ожидаемая точка)
     popup.dataset.guid = 'p2';
@@ -590,13 +633,16 @@ describe('nextPointNavigation enable/disable', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Цепочка сбросилась — p2 снова доступна
-    olMap.dispatchEvent.mockClear();
-    olMap.getPixelFromCoordinate.mockClear();
-    button.click();
-    expect(olMap.getPixelFromCoordinate).toHaveBeenCalledWith([20, 20]);
+    mockShowInfo.mockClear();
+    performHorizontalSwipe(popup, 'left');
+    flushSwipeAnimation(popup);
+    expect(mockShowInfo).toHaveBeenCalledWith('p2');
   });
 
   test('retries navigation when fake click reopens same point', async () => {
+    // Только в fallback-режиме (без showInfo). Fake click мог промахнуться -
+    // popup data-guid остался прежним -> popupObserver запускает retry.
+    delete window.showInfo;
     pointsSrc = makeSource([
       makeFeature('p1', [10, 10]),
       makeFeature('p2', [20, 20]),
@@ -609,16 +655,14 @@ describe('nextPointNavigation enable/disable', () => {
     mockGetOlMap.mockResolvedValue(olMap);
     await nextPointNavigation.enable();
 
-    const popup = document.querySelector('.info.popup') as HTMLElement;
     popup.dataset.guid = 'p1';
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
-
-    button.click();
+    performHorizontalSwipe(popup, 'left');
+    flushSwipeAnimation(popup);
     expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([20, 20]);
 
-    // Фейковый клик переоткрыл ту же точку
+    // Фейковый клик переоткрыл ту же точку - триггерим mutation
     const temp = document.createElement('span');
     popup.appendChild(temp);
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -629,6 +673,7 @@ describe('nextPointNavigation enable/disable', () => {
   });
 
   test('accepts different point when fake click misses target', async () => {
+    delete window.showInfo;
     pointsSrc = makeSource([
       makeFeature('p1', [10, 10]),
       makeFeature('p2', [20, 20]),
@@ -641,12 +686,10 @@ describe('nextPointNavigation enable/disable', () => {
     mockGetOlMap.mockResolvedValue(olMap);
     await nextPointNavigation.enable();
 
-    const popup = document.querySelector('.info.popup') as HTMLElement;
     popup.dataset.guid = 'p1';
 
-    const button = document.querySelector('.svp-next-point-button') as HTMLElement;
-
-    button.click();
+    performHorizontalSwipe(popup, 'left');
+    flushSwipeAnimation(popup);
     expect(olMap.getPixelFromCoordinate).toHaveBeenLastCalledWith([20, 20]);
 
     // Фейковый клик попал в p3 вместо p2
@@ -655,166 +698,125 @@ describe('nextPointNavigation enable/disable', () => {
 
     // p3 принята, p2 доступна (не была в visited)
     olMap.getPixelFromCoordinate.mockClear();
-    button.click();
+    performHorizontalSwipe(popup, 'left');
+    flushSwipeAnimation(popup);
     expect(olMap.getPixelFromCoordinate).toHaveBeenCalledWith([20, 20]);
   });
 
-  test('disables button when no in-range points', async () => {
-    playerSrc = makeSource([makeFeature('player', [1000, 1000])]);
-    pointsSrc = makeSource([makeFeature('p1', [10, 10])]);
-    olMap = makeMapWithDispatch(
-      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
-      view,
-    );
-    mockGetOlMap.mockResolvedValue(olMap);
+  test('does not move map on swipe (only opens popup)', async () => {
+    const mockShowInfo = jest.fn();
+    window.showInfo = mockShowInfo;
     await nextPointNavigation.enable();
 
-    const popup = document.querySelector('.info.popup') as HTMLElement;
     popup.dataset.guid = 'p1';
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const button = document.querySelector('.svp-next-point-button') as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
+    (view.setCenter as jest.Mock).mockClear();
+    performHorizontalSwipe(popup, 'left');
+    flushSwipeAnimation(popup);
+
+    expect(view.setCenter).not.toHaveBeenCalled();
   });
 
-  test('disables button when only the current point is in range', async () => {
-    // p1 в ренже (dist≈14), p2 вне ренжа (dist≈283)
-    pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p2', [200, 200])]);
-    playerSrc = makeSource([makeFeature('player', [0, 0])]);
-    olMap = makeMapWithDispatch(
-      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
-      view,
-    );
-    mockGetOlMap.mockResolvedValue(olMap);
+  test('left and right are registered as separate directions', async () => {
+    const mockShowInfo = jest.fn();
+    window.showInfo = mockShowInfo;
     await nextPointNavigation.enable();
 
-    const popup = document.querySelector('.info.popup') as HTMLElement;
     popup.dataset.guid = 'p1';
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const button = document.querySelector('.svp-next-point-button') as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
+    // Свайп влево активирует direction='left'
+    setPopupForTest(popup);
+    dispatchTouchStartForTest({ clientX: 200, clientY: 300, target: popup }, 0);
+    dispatchTouchMoveForTest(
+      { clientX: 200 - DIRECTION_THRESHOLD - 1, clientY: 300, target: popup },
+      50,
+    );
+    expect(getStateForTest().activeDirection).toBe('left');
+    dispatchTouchEndForTest(100);
+
+    resetForTest();
+    setPopupForTest(popup);
+
+    // Re-enable так как resetForTest снёс зарегистрированные direction'ы
+    await nextPointNavigation.disable();
+    await nextPointNavigation.enable();
+    setPopupForTest(popup);
+
+    dispatchTouchStartForTest({ clientX: 200, clientY: 300, target: popup }, 0);
+    dispatchTouchMoveForTest(
+      { clientX: 200 + DIRECTION_THRESHOLD + 1, clientY: 300, target: popup },
+      50,
+    );
+    expect(getStateForTest().activeDirection).toBe('right');
   });
 
-  test('enables button when another point is also in range', async () => {
-    // p1 (dist≈14) и p2 (dist≈28) оба в ренже
-    pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p2', [20, 20])]);
-    playerSrc = makeSource([makeFeature('player', [0, 0])]);
-    olMap = makeMapWithDispatch(
-      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
-      view,
-    );
-    mockGetOlMap.mockResolvedValue(olMap);
+  test('disable unregisters left and right directions', async () => {
     await nextPointNavigation.enable();
 
-    const popup = document.querySelector('.info.popup') as HTMLElement;
     popup.dataset.guid = 'p1';
     await new Promise((resolve) => setTimeout(resolve, 0));
-
-    const button = document.querySelector('.svp-next-point-button') as HTMLButtonElement;
-    expect(button.disabled).toBe(false);
-  });
-
-  test('enables button when current point is out of range but others are in range', async () => {
-    // p1 вне ренжа, p2 в ренже (dist≈14)
-    pointsSrc = makeSource([makeFeature('p1', [200, 200]), makeFeature('p2', [10, 10])]);
-    playerSrc = makeSource([makeFeature('player', [0, 0])]);
-    olMap = makeMapWithDispatch(
-      [makeLayer('points', pointsSrc), makeLayer('player', playerSrc)],
-      view,
-    );
-    mockGetOlMap.mockResolvedValue(olMap);
-    await nextPointNavigation.enable();
-
-    const popup = document.querySelector('.info.popup') as HTMLElement;
-    popup.dataset.guid = 'p1';
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    const button = document.querySelector('.svp-next-point-button') as HTMLButtonElement;
-    expect(button.disabled).toBe(false);
-  });
-
-  test('updates button state when pointsSource emits change', async () => {
-    // Начинаем с одной точкой в ренже (текущая) — кнопка disabled
-    const features = [makeFeature('p1', [10, 10])];
-    const listeners = new Map<string, (() => void)[]>();
-    const dynamicSource: IOlVectorSource = {
-      getFeatures: () => features,
-      addFeature: jest.fn(),
-      clear: jest.fn(),
-      on(type: string, callback: () => void) {
-        const array = listeners.get(type) ?? [];
-        array.push(callback);
-        listeners.set(type, array);
-      },
-      un(type: string, callback: () => void) {
-        const array = listeners.get(type) ?? [];
-        listeners.set(
-          type,
-          array.filter((listener) => listener !== callback),
-        );
-      },
-    };
-
-    playerSrc = makeSource([makeFeature('player', [0, 0])]);
-    olMap = makeMapWithDispatch(
-      [makeLayer('points', dynamicSource), makeLayer('player', playerSrc)],
-      view,
-    );
-    mockGetOlMap.mockResolvedValue(olMap);
-    await nextPointNavigation.enable();
-
-    const popup = document.querySelector('.info.popup') as HTMLElement;
-    popup.dataset.guid = 'p1';
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    const button = document.querySelector('.svp-next-point-button') as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-
-    // Добавляем вторую точку и эмитим change
-    features.push(makeFeature('p2', [20, 20]));
-    for (const callback of listeners.get('change') ?? []) {
-      callback();
-    }
-
-    expect(button.disabled).toBe(false);
-  });
-
-  test('cleans up source change listener on disable', async () => {
-    const listeners = new Map<string, (() => void)[]>();
-    const trackingSource: IOlVectorSource = {
-      getFeatures: () => [makeFeature('p1', [10, 10])],
-      addFeature: jest.fn(),
-      clear: jest.fn(),
-      on(type: string, callback: () => void) {
-        const array = listeners.get(type) ?? [];
-        array.push(callback);
-        listeners.set(type, array);
-      },
-      un(type: string, callback: () => void) {
-        const array = listeners.get(type) ?? [];
-        listeners.set(
-          type,
-          array.filter((listener) => listener !== callback),
-        );
-      },
-    };
-
-    playerSrc = makeSource([makeFeature('player', [0, 0])]);
-    olMap = makeMapWithDispatch(
-      [makeLayer('points', trackingSource), makeLayer('player', playerSrc)],
-      view,
-    );
-    mockGetOlMap.mockResolvedValue(olMap);
-    await nextPointNavigation.enable();
-
-    const changeListenersAfterEnable = listeners.get('change')?.length ?? 0;
-    expect(changeListenersAfterEnable).toBeGreaterThan(0);
 
     await nextPointNavigation.disable();
 
-    const changeListenersAfterDisable = listeners.get('change')?.length ?? 0;
-    expect(changeListenersAfterDisable).toBe(0);
+    // После disable горизонтальный жест не активирует handler -> direction
+    // не назначается, state остаётся idle.
+    setPopupForTest(popup);
+    dispatchTouchStartForTest({ clientX: 200, clientY: 300, target: popup }, 0);
+    dispatchTouchMoveForTest(
+      { clientX: 200 - DIRECTION_THRESHOLD - 1, clientY: 300, target: popup },
+      50,
+    );
+    expect(getStateForTest().state).toBe('idle');
+  });
+
+  test('uses 120ms transition-duration on dismiss', async () => {
+    const mockShowInfo = jest.fn();
+    window.showInfo = mockShowInfo;
+    await nextPointNavigation.enable();
+
+    popup.dataset.guid = 'p1';
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const setSpy = jest.spyOn(popup.style, 'setProperty');
+    performHorizontalSwipe(popup, 'left');
+
+    expect(setSpy).toHaveBeenCalledWith('transition-duration', '120ms');
+  });
+
+  test('race-disable during enable does not register direction', async () => {
+    // Эмулируем долгий getOlMap.
+    let resolveOlMap: (value: typeof olMap) => void = () => {};
+    mockGetOlMap.mockReturnValue(
+      new Promise((resolve) => {
+        resolveOlMap = resolve;
+      }),
+    );
+
+    const enablePromise = nextPointNavigation.enable();
+    // Disable до резолва.
+    await nextPointNavigation.disable();
+    // Резолвим getOlMap.
+    resolveOlMap(olMap);
+    await enablePromise;
+
+    // Direction не зарегистрирован - горизонтальный жест в idle.
+    setPopupForTest(popup);
+    dispatchTouchStartForTest({ clientX: 200, clientY: 300, target: popup }, 0);
+    dispatchTouchMoveForTest(
+      { clientX: 200 - DIRECTION_THRESHOLD - 1, clientY: 300, target: popup },
+      50,
+    );
+    expect(getStateForTest().state).toBe('idle');
+  });
+});
+
+// ── pickNextInRange (через enable) ──────────────────────────────────────────
+
+describe('pickNextInRange (export shape)', () => {
+  test('is exported as a function', () => {
+    expect(typeof pickNextInRange).toBe('function');
   });
 });
 
@@ -834,6 +836,8 @@ describe('autozoom', () => {
   afterEach(async () => {
     jest.useRealTimers();
     await nextPointNavigation.disable();
+    resetForTest();
+    setPopupForTest(null);
     document.querySelector('.info.popup')?.remove();
   });
 
@@ -845,12 +849,7 @@ describe('autozoom', () => {
     );
     mockGetOlMap.mockResolvedValue(olMap);
 
-    const popup = document.createElement('div');
-    popup.className = 'info popup';
-    const buttonsContainer = document.createElement('div');
-    buttonsContainer.className = 'i-buttons';
-    popup.appendChild(buttonsContainer);
-    document.body.appendChild(popup);
+    const popup = setupPopupDom();
 
     await nextPointNavigation.enable();
 
@@ -873,12 +872,7 @@ describe('autozoom', () => {
     );
     mockGetOlMap.mockResolvedValue(olMap);
 
-    const popup = document.createElement('div');
-    popup.className = 'info popup';
-    const buttonsContainer = document.createElement('div');
-    buttonsContainer.className = 'i-buttons';
-    popup.appendChild(buttonsContainer);
-    document.body.appendChild(popup);
+    const popup = setupPopupDom();
 
     await nextPointNavigation.enable();
 

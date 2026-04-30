@@ -1,15 +1,27 @@
-import { injectStyles, removeStyles, waitForElement } from '../../core/dom';
+import { waitForElement } from '../../core/dom';
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { getOlMap, findLayerByName } from '../../core/olMap';
 import type { IOlMap, IOlFeature, IOlVectorSource } from '../../core/olMap';
-import styles from './styles.css?inline';
+import {
+  installPopupSwipe,
+  registerDirection,
+  uninstallPopupSwipe,
+  type ISwipeDirectionHandler,
+  type SwipeOutcome,
+} from '../../core/popupSwipe';
 
 const MODULE_ID = 'nextPointNavigation';
-const BUTTON_CLASS = 'svp-next-point-button';
+const POPUP_SELECTOR = '.info.popup';
 const INTERACTION_RANGE = 45;
 const AUTOZOOM_THRESHOLD = 16;
 const AUTOZOOM_TARGET = 17;
 const AUTOZOOM_TIMEOUT_MS = 3000;
+// Длительность dismiss/return-анимации (мс). Короче дефолтных 300мс из core/popupSwipe:
+// горизонтальный свайп должен ощущаться как мгновенная навигация, а 300мс
+// маскировали бы apiQuery внутри showInfo (round-trip 100-300мс). 120мс — резкий
+// отклик; кратко видна "дыра" между улетающим попапом и приходом нового на
+// медленной сети, но воспринимается как загрузка, не как лаг скрипта.
+const SWIPE_ANIMATION_MS = 120;
 
 let map: IOlMap | null = null;
 let pointsSource: IOlVectorSource | null = null;
@@ -20,10 +32,19 @@ let lastSeenGuid: string | null = null;
 let fakeClickRetries = 0;
 const MAX_FAKE_CLICK_RETRIES = 3;
 let popupObserver: MutationObserver | null = null;
-let playerMoveHandler: (() => void) | null = null;
 let autozoomInProgress = false;
-let onRangeButtonClick: (() => void) | null = null;
-let sourceChangeHandler: (() => void) | null = null;
+let unregisterLeftDirection: (() => void) | null = null;
+let unregisterRightDirection: (() => void) | null = null;
+// Guid точки, выбранной в decide() и ожидающей открытия в finalize() после
+// dismiss-анимации. Сериализован state machine'ом core/popupSwipe (idle ->
+// tracking -> swiping -> animating -> idle), поэтому race между параллельными
+// жестами невозможен.
+let pendingNextGuid: string | null = null;
+// Защита от race-disable: enable содержит await getOlMap(). Если disable
+// вызовется до резолва, текущий generation расходится с myGeneration —
+// выходим до registerDirection и observePopup (иначе остались бы вечные
+// регистрации при логически-disabled модуле).
+let installGeneration = 0;
 
 // ── Геодезическое расстояние ────────────────────────────────────────────────
 
@@ -141,7 +162,7 @@ function getPlayerCoordinates(): number[] | null {
 }
 
 function getPopupPointId(): string | null {
-  const popup = document.querySelector('.info.popup');
+  const popup = document.querySelector(POPUP_SELECTOR);
   if (!popup || popup.classList.contains('hidden')) return null;
   return (popup as HTMLElement).dataset.guid ?? null;
 }
@@ -187,16 +208,22 @@ function openPointPopup(guid: string): void {
   map.dispatchEvent({ type: 'click', pixel, originalEvent: {} });
 }
 
-// ── Навигация: in-range цикл (кнопка →) ─────────────────────────────────────
+// ── Выбор следующей точки в радиусе ─────────────────────────────────────────
 
-function tryNavigateInRange(): boolean {
-  if (!map || !pointsSource) return false;
+/**
+ * Возвращает следующую точку в радиусе взаимодействия для свайпа/finalize.
+ * Не открывает попап — вызывающий код решает что делать с результатом.
+ * Side-effect: помещает текущую точку в rangeVisited (чтобы цикл шёл вперёд),
+ * при пустом множестве — сбрасывает visited и зацикливает.
+ */
+export function pickNextInRange(): IOlFeature | null {
+  if (!map || !pointsSource) return null;
 
   const currentId = getPopupPointId();
-  if (!currentId) return false;
+  if (!currentId) return null;
 
   const playerCoordinates = getPlayerCoordinates();
-  if (!playerCoordinates) return false;
+  if (!playerCoordinates) return null;
 
   rangeVisited.add(currentId);
 
@@ -220,11 +247,14 @@ function tryNavigateInRange(): boolean {
     next = findNextByPriority(playerCoordinates, cycledCandidates);
   }
 
-  if (!next) return false;
+  return next;
+}
 
+function navigateInRange(): boolean {
+  const next = pickNextInRange();
+  if (!next) return false;
   const nextId = next.getId();
   if (nextId === undefined) return false;
-
   openPointPopup(String(nextId));
   return true;
 }
@@ -232,8 +262,8 @@ function tryNavigateInRange(): boolean {
 /**
  * Кратковременный сдвиг viewport к игроку для загрузки ближних точек.
  * Игра автоматически вызывает requestEntities при смене viewport,
- * что загружает точки в новой области. После загрузки обновляет
- * состояние кнопки (disabled/enabled).
+ * что загружает точки в новой области. После загрузки точки появляются
+ * в pointsSource и доступны следующему свайпу.
  */
 function autozoomAndNavigate(): void {
   if (!map || !pointsSource) return;
@@ -265,9 +295,6 @@ function autozoomAndNavigate(): void {
     // Восстанавливаем viewport
     view.setCenter(savedCenter);
     view.setZoom?.(savedZoom);
-
-    // Обновляем состояние кнопки (могли появиться in-range точки)
-    updateButtonStates();
   };
 
   const onSourceChange = (): void => {
@@ -278,103 +305,93 @@ function autozoomAndNavigate(): void {
   setTimeout(finish, AUTOZOOM_TIMEOUT_MS);
 }
 
-function navigateInRange(): void {
-  tryNavigateInRange();
+// ── Свайп-handler через core/popupSwipe ─────────────────────────────────────
+
+/**
+ * Фильтр canStart: исключает свайпы внутри карусели слайдов (cores splide).
+ * Зеркалит логику нативного hammer-handler'а игры (refs/game/script.js:728-738),
+ * чтобы свайп влево/вправо на карусели ядер не открывал следующую точку.
+ */
+function canStartSwipe(event: TouchEvent): boolean {
+  const target = event.target;
+  if (!(target instanceof Element)) return true;
+  if (target.classList.contains('info')) return true;
+  let pointer: Element | null = target.parentElement;
+  while (pointer) {
+    if (pointer.classList.contains('splide')) return false;
+    if (pointer.classList.contains('info')) return true;
+    pointer = pointer.parentElement;
+  }
+  return true;
 }
 
-// ── Инъекция кнопки ─────────────────────────────────────────────────────────
-
-function hasInRangePoints(excludePointId: string | null): boolean {
-  if (!pointsSource) return false;
-  const playerCoordinates = getPlayerCoordinates();
-  if (!playerCoordinates) return false;
-  const features = pointsSource.getFeatures();
-  const inRange = findFeaturesInRange(playerCoordinates, features, INTERACTION_RANGE);
-  return inRange.some((feature) => feature.getId() !== excludePointId);
+function decideSwipeOutcome(): SwipeOutcome {
+  const next = pickNextInRange();
+  if (!next) return 'return';
+  const nextId = next.getId();
+  if (nextId === undefined) return 'return';
+  pendingNextGuid = String(nextId);
+  return 'dismiss';
 }
 
-function injectButton(popup: Element): void {
-  const buttonsContainer = popup.querySelector('.i-buttons');
-  if (!buttonsContainer) return;
-
-  if (!popup.querySelector(`.${BUTTON_CLASS}`)) {
-    const rangeButton = document.createElement('button');
-    rangeButton.className = BUTTON_CLASS;
-    rangeButton.textContent = '→';
-    rangeButton.title = 'Следующая точка в радиусе взаимодействия';
-
-    onRangeButtonClick = () => {
-      navigateInRange();
-    };
-    rangeButton.addEventListener('click', (event) => {
-      event.stopPropagation();
-      onRangeButtonClick?.();
-    });
-
-    buttonsContainer.appendChild(rangeButton);
-  }
-
-  // Кнопка всегда видна, disabled когда других in-range точек нет
-  const inRange = hasInRangePoints(getPopupPointId());
-  const rangeButton = popup.querySelector<HTMLButtonElement>(`.${BUTTON_CLASS}`);
-  if (rangeButton) {
-    rangeButton.disabled = !inRange;
-  }
-
-  // Автозум: если in-range точек нет и зум низкий — подгрузить точки рядом с игроком
-  if (!inRange && !autozoomInProgress) {
-    autozoomAndNavigate();
+function finalizeSwipe(): void {
+  if (pendingNextGuid !== null) {
+    openPointPopup(pendingNextGuid);
+    pendingNextGuid = null;
   }
 }
 
-function updateButtonStates(): void {
-  const popup = document.querySelector('.info.popup');
-  if (!popup || popup.classList.contains('hidden')) return;
-
-  const rangeButton = popup.querySelector<HTMLButtonElement>(`.${BUTTON_CLASS}`);
-  if (rangeButton) {
-    rangeButton.disabled = !hasInRangePoints(getPopupPointId());
-  }
-}
-
-function removeButton(): void {
-  document.querySelector(`.${BUTTON_CLASS}`)?.remove();
-  onRangeButtonClick = null;
-}
+const swipeDirectionHandler: ISwipeDirectionHandler = {
+  canStart: canStartSwipe,
+  decide: decideSwipeOutcome,
+  finalize: finalizeSwipe,
+  animationDurationMs: SWIPE_ANIMATION_MS,
+};
 
 // ── Наблюдение за попапом ───────────────────────────────────────────────────
 
 function onPopupMutation(popup: Element): void {
   const isVisible = !popup.classList.contains('hidden');
-  if (isVisible) {
-    const currentGuid = (popup as HTMLElement).dataset.guid ?? null;
-    if (expectedNextGuid !== null) {
-      if (currentGuid === lastSeenGuid && fakeClickRetries < MAX_FAKE_CLICK_RETRIES) {
-        // Фейковый клик переоткрыл ту же точку — повторить навигацию
-        fakeClickRetries++;
-        expectedNextGuid = null;
-        navigateInRange();
-        return;
-      }
-      // Retry исчерпаны или попап открылся для другой точки.
-      // Если фейковый клик так и не попал в цель — пометить цель как visited,
-      // чтобы следующий клик перешёл к другой точке, а не зациклился.
-      if (currentGuid === lastSeenGuid && expectedNextGuid) {
-        rangeVisited.add(expectedNextGuid);
-      }
-      fakeClickRetries = 0;
-      // Фейковый клик мог попасть в соседнюю точку — принимаем как часть цепочки.
-      if (currentGuid !== expectedNextGuid && currentGuid) {
-        rangeVisited.add(currentGuid);
-      }
+  if (!isVisible) return;
+
+  const currentGuid = (popup as HTMLElement).dataset.guid ?? null;
+  if (expectedNextGuid !== null) {
+    if (currentGuid === lastSeenGuid && fakeClickRetries < MAX_FAKE_CLICK_RETRIES) {
+      // Фейковый клик переоткрыл ту же точку — повторить навигацию
+      fakeClickRetries++;
       expectedNextGuid = null;
-    } else if (currentGuid !== lastSeenGuid) {
-      // Ручное открытие другой точки — сбрасываем цепочку
-      fakeClickRetries = 0;
-      rangeVisited.clear();
+      navigateInRange();
+      return;
     }
-    lastSeenGuid = currentGuid;
-    injectButton(popup);
+    // Retry исчерпаны или попап открылся для другой точки.
+    // Если фейковый клик так и не попал в цель — пометить цель как visited,
+    // чтобы следующий свайп перешёл к другой точке, а не зациклился.
+    if (currentGuid === lastSeenGuid && expectedNextGuid) {
+      rangeVisited.add(expectedNextGuid);
+    }
+    fakeClickRetries = 0;
+    // Фейковый клик мог попасть в соседнюю точку — принимаем как часть цепочки.
+    if (currentGuid !== expectedNextGuid && currentGuid) {
+      rangeVisited.add(currentGuid);
+    }
+    expectedNextGuid = null;
+  } else if (currentGuid !== lastSeenGuid) {
+    // Ручное открытие другой точки — сбрасываем цепочку
+    fakeClickRetries = 0;
+    rangeVisited.clear();
+  }
+  lastSeenGuid = currentGuid;
+
+  // Если в радиусе нет других точек и зум низкий — подгружаем ближние через
+  // кратковременный viewport-зум. После загрузки следующий свайп найдёт цель.
+  const playerCoordinates = getPlayerCoordinates();
+  if (!playerCoordinates || !pointsSource) return;
+  const features = pointsSource.getFeatures();
+  const inRangeOthers = findFeaturesInRange(playerCoordinates, features, INTERACTION_RANGE).filter(
+    (feature) => feature.getId() !== currentGuid,
+  );
+  if (inRangeOthers.length === 0 && !autozoomInProgress) {
+    autozoomAndNavigate();
   }
 }
 
@@ -391,18 +408,18 @@ function startObservingPopup(popup: Element): void {
   });
 
   if (!popup.classList.contains('hidden')) {
-    injectButton(popup);
+    onPopupMutation(popup);
   }
 }
 
 function observePopup(): void {
-  const popup = document.querySelector('.info.popup');
+  const popup = document.querySelector(POPUP_SELECTOR);
   if (popup) {
     startObservingPopup(popup);
     return;
   }
 
-  void waitForElement('.info.popup').then((element) => {
+  void waitForElement(POPUP_SELECTOR).then((element) => {
     if (!map) return;
     startObservingPopup(element);
   });
@@ -414,8 +431,8 @@ export const nextPointNavigation: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Next point navigation', ru: 'Переход к следующей точке' },
   description: {
-    en: 'Cycle through points in interaction range',
-    ru: 'Зацикленная навигация по точкам в радиусе взаимодействия',
+    en: 'Swipe left/right on the point popup to jump to the next point in interaction range, prioritized by usefulness',
+    ru: 'Свайп влево/вправо на попапе точки переходит к следующей точке в радиусе взаимодействия с приоритетом по полезности',
   },
   defaultEnabled: true,
   category: 'feature',
@@ -423,7 +440,11 @@ export const nextPointNavigation: IFeatureModule = {
   init() {},
 
   enable() {
+    installGeneration++;
+    const myGeneration = installGeneration;
     return getOlMap().then((olMap) => {
+      if (myGeneration !== installGeneration) return;
+
       const pointsLayer = findLayerByName(olMap, 'points');
       if (!pointsLayer) return;
 
@@ -437,46 +458,31 @@ export const nextPointNavigation: IFeatureModule = {
       pointsSource = source;
       playerSource = playerLayerSource;
 
-      injectStyles(styles, MODULE_ID);
+      // Регистрируем обработчик и для left, и для right: оба направления зовут
+      // navigateInRange (наша приоритетная навигация одна на оба направления,
+      // в отличие от нативного next/prev). registerDirection бросает на
+      // повторную регистрацию, поэтому unregister-функции хранятся для disable.
+      unregisterLeftDirection = registerDirection('left', swipeDirectionHandler);
+      unregisterRightDirection = registerDirection('right', swipeDirectionHandler);
+      installPopupSwipe(POPUP_SELECTOR);
+
       observePopup();
-
-      // Обновлять disabled-состояние кнопки при изменении набора точек
-      // (сервер подгрузил новые точки после смены viewport)
-      sourceChangeHandler = () => {
-        updateButtonStates();
-      };
-      pointsSource.on('change', sourceChangeHandler);
-
-      // Обновлять disabled-состояние кнопки при движении игрока
-      // (точки входят/выходят из ренжа). Игра диспатчит playermove на .info.
-      const infoElement = document.querySelector('.info');
-      if (infoElement) {
-        playerMoveHandler = () => {
-          updateButtonStates();
-        };
-        infoElement.addEventListener('playermove', playerMoveHandler);
-      }
     });
   },
 
   disable() {
+    installGeneration++;
+
     if (popupObserver) {
       popupObserver.disconnect();
       popupObserver = null;
     }
 
-    if (playerMoveHandler) {
-      document.querySelector('.info')?.removeEventListener('playermove', playerMoveHandler);
-      playerMoveHandler = null;
-    }
-
-    if (pointsSource && sourceChangeHandler) {
-      pointsSource.un('change', sourceChangeHandler);
-      sourceChangeHandler = null;
-    }
-
-    removeButton();
-    removeStyles(MODULE_ID);
+    unregisterLeftDirection?.();
+    unregisterLeftDirection = null;
+    unregisterRightDirection?.();
+    unregisterRightDirection = null;
+    uninstallPopupSwipe();
 
     map = null;
     pointsSource = null;
@@ -486,5 +492,6 @@ export const nextPointNavigation: IFeatureModule = {
     lastSeenGuid = null;
     fakeClickRetries = 0;
     autozoomInProgress = false;
+    pendingNextGuid = null;
   },
 };
