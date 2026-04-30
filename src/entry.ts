@@ -24,6 +24,7 @@ import { drawTools } from './modules/drawTools/drawTools';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
 import { favoritesMigration } from './modules/favoritesMigration/favoritesMigration';
 import { nextPointNavigation } from './modules/nextPointNavigation/nextPointNavigation';
+import { nextPointSwipeFix } from './modules/nextPointSwipeFix/nextPointSwipeFix';
 import { swipeToClosePopup } from './modules/swipeToClosePopup/swipeToClosePopup';
 
 if (!isDisabled()) {
@@ -77,6 +78,7 @@ if (!isDisabled()) {
       betterRefPopoverClosing,
       drawButtonFix,
       repairButtonFix,
+      nextPointSwipeFix,
     ]);
   }
 
