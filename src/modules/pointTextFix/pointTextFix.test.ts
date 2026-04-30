@@ -146,8 +146,8 @@ interface IMockFeature extends IOlFeature {
   _changedCalls: number;
   _eventListeners: Map<string, (() => void)[]>;
   getStyle(): unknown;
-  on(type: string, cb: () => void): void;
-  un(type: string, cb: () => void): void;
+  on(type: string, callback: () => void): void;
+  un(type: string, callback: () => void): void;
   changed(): void;
   get(key: string): unknown;
 }

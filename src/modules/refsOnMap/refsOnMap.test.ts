@@ -146,7 +146,7 @@ function mockOl(): void {
     },
     layer: {
       Vector: jest.fn().mockImplementation(() => makeLayer('svp-refs-on-map')) as unknown as new (
-        opts: Record<string, unknown>,
+        options: Record<string, unknown>,
       ) => IOlLayer,
     },
     Feature: jest.fn().mockImplementation(() => {
@@ -186,27 +186,27 @@ function mockOl(): void {
       Style: jest
         .fn()
         .mockImplementation((options: Record<string, unknown>) => options) as unknown as new (
-        opts: Record<string, unknown>,
+        options: Record<string, unknown>,
       ) => unknown,
       Text: jest
         .fn()
         .mockImplementation((options: Record<string, unknown>) => options) as unknown as new (
-        opts: Record<string, unknown>,
+        options: Record<string, unknown>,
       ) => unknown,
       Fill: jest
         .fn()
         .mockImplementation((options: Record<string, unknown>) => options) as unknown as new (
-        opts: Record<string, unknown>,
+        options: Record<string, unknown>,
       ) => unknown,
       Stroke: jest
         .fn()
         .mockImplementation((options: Record<string, unknown>) => options) as unknown as new (
-        opts: Record<string, unknown>,
+        options: Record<string, unknown>,
       ) => unknown,
       Circle: jest
         .fn()
         .mockImplementation((options: Record<string, unknown>) => options) as unknown as new (
-        opts: Record<string, unknown>,
+        options: Record<string, unknown>,
       ) => unknown,
     },
   };

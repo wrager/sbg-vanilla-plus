@@ -404,7 +404,7 @@ describe('кнопка «Очистить ключи»: disabled при -1/-1', 
     return limits;
   }
 
-  function setSettings(opts: { allied: number; notAllied: number }): void {
+  function setSettings(options: { allied: number; notAllied: number }): void {
     localStorage.setItem(
       'svp_inventoryCleanup',
       JSON.stringify({
@@ -414,8 +414,8 @@ describe('кнопка «Очистить ключи»: disabled при -1/-1', 
           catalysers: fullLevelLimits(),
           referencesMode: 'slow',
           referencesFastLimit: -1,
-          referencesAlliedLimit: opts.allied,
-          referencesNotAlliedLimit: opts.notAllied,
+          referencesAlliedLimit: options.allied,
+          referencesNotAlliedLimit: options.notAllied,
         },
         minFreeSlots: 100,
       }),

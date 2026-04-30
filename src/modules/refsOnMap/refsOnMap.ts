@@ -664,7 +664,10 @@ export const refsOnMap: IFeatureModule = {
           const ol = window.ol;
           const OlVectorSource = ol?.source?.Vector;
           const OlVectorLayer = ol?.layer?.Vector;
-          if (!OlVectorSource || !OlVectorLayer) return;
+          if (!OlVectorSource || !OlVectorLayer) {
+            removeStyles(MODULE_ID);
+            return;
+          }
 
           olMap = map;
           refsSource = new OlVectorSource();

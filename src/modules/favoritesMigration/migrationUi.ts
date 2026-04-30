@@ -212,13 +212,13 @@ function buildIoSection(counterElement: HTMLElement): HTMLElement {
  * требовал бы экранирования, а DOM-API делает это безопасно.
  */
 function appendActionContent(button: HTMLElement, spriteId: string, label: string): void {
-  const svgNs = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(svgNs, 'svg');
+  const svgNamespace = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNamespace, 'svg');
   svg.setAttribute('viewBox', '0 0 576 576');
   svg.setAttribute('width', '1em');
   svg.setAttribute('height', '1em');
   svg.setAttribute('aria-hidden', 'true');
-  const use = document.createElementNS(svgNs, 'use');
+  const use = document.createElementNS(svgNamespace, 'use');
   use.setAttribute('href', `#${spriteId}`);
   svg.appendChild(use);
   const text = document.createElement('span');
@@ -315,14 +315,14 @@ function buildPanel(): HTMLElement {
   // Иконки повторяют data-flag-кнопки игры (refs/game-beta/dom/body.html:418, 422):
   // звёздочка для favorite, замочек для locked. SVG-sprite определены в DOM игры
   // в head'е, ссылка через `<use href="#fas-...">` работает без инлайн-копирования.
-  const favButton = document.createElement('button');
-  favButton.className = 'svp-migration-action';
-  favButton.dataset.flag = 'favorite';
-  appendActionContent(favButton, 'fas-star', t(ACTION_FAVORITE_LABEL));
-  favButton.addEventListener('click', () => {
+  const favoriteButton = document.createElement('button');
+  favoriteButton.className = 'svp-migration-action';
+  favoriteButton.dataset.flag = 'favorite';
+  appendActionContent(favoriteButton, 'fas-star', t(ACTION_FAVORITE_LABEL));
+  favoriteButton.addEventListener('click', () => {
     void runFlow('favorite', element);
   });
-  actions.appendChild(favButton);
+  actions.appendChild(favoriteButton);
 
   const lockButton = document.createElement('button');
   lockButton.className = 'svp-migration-action';

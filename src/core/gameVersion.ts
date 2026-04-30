@@ -149,7 +149,7 @@ export function isSbgGreaterThan(version: string): boolean {
 // по одному id за раз — каждый с обоснованием перекрытия use case в commit
 // message соответствующего коммита. На 0.6.1 список изначально содержал
 // favoritedPoints, inventoryCleanup, keyCountOnPoints (переименован в
-// keyCountFix), singleFingerRotation — после полноценной адаптации модули
+// pointTextFix), singleFingerRotation — после полноценной адаптации модули
 // возвращены (с переосмыслением и/или runtime-детекцией native), сет очищен.
 const DEPRECATED_MODULES_NATIVE: ReadonlySet<string> = new Set<string>([]);
 
