@@ -2,8 +2,8 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 import { getOlMap, findLayerByName } from '../../core/olMap';
 import type { IOlMap, IOlVectorSource, IOlFeature } from '../../core/olMap';
 
-const MODULE_ID = 'improvePointText';
-const WRAPPED_MARKER = Symbol('svp.improvePointText.wrapped');
+const MODULE_ID = 'improvedPointText';
+const WRAPPED_MARKER = Symbol('svp.improvedPointText.wrapped');
 
 interface IRendererState {
   context: CanvasRenderingContext2D;
@@ -407,7 +407,7 @@ export function uninstallDiscoverFetchHookForTest(): void {
 
 let discoverHookEnabled = false;
 
-export const improvePointText: IFeatureModule = {
+export const improvedPointText: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Improved point text', ru: 'Улучшенный текст на точках' },
   description: {
@@ -423,7 +423,7 @@ export const improvePointText: IFeatureModule = {
     // включён ли модуль. Каждый /api/* запрос проходил через нашу обёртку
     // (внутри она быстро no-op'ит при discoverHookEnabled=false), но это
     // глобальный side-effect, невидимый в DevTools. Переносим установку в
-    // enable: если пользователь отключил improvePointText - патч вообще никогда
+    // enable: если пользователь отключил improvedPointText - патч вообще никогда
     // не появляется. Сам патч после первого enable остаётся жить до конца
     // сессии (повторные enable/disable идемпотентны через discoverFetchInstalled),
     // потому что снятие требует проверить, что между install и uninstall
