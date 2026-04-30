@@ -573,6 +573,21 @@ describe('wrapFeature / unwrapFeature', () => {
     expect(feature._changedCalls).toBe(1);
   });
 
+  test('feature.changed is invoked after unwrap to invalidate render plan', () => {
+    // Симметрично wrap: после disable модуля layer execution plan содержит
+    // нашу wrapped renderer и продолжает её использовать до следующего
+    // external trigger (move/zoom карты). Без явного changed() пользователь
+    // видит наш текст на отключённом модуле до ререндера. unwrapFeature
+    // обязан вызвать feature.changed() чтобы native renderer применился сразу.
+    const lightRenderer = jest.fn();
+    const light = makeStyleWithRenderer(lightRenderer as never);
+    const feature = makeFeature([light]);
+    wrapFeature(feature, () => 16);
+    const callsBeforeUnwrap = feature._changedCalls;
+    unwrapFeature(feature);
+    expect(feature._changedCalls).toBe(callsBeforeUnwrap + 1);
+  });
+
   test('wrap flow does not double-fire wrapStyleArray on its own changed()', () => {
     // feature.changed() внутри wrapFeature триггерит наш onChange listener,
     // который снова прогоняет wrapStyleArray. Уже-обёрнутые renderer должны

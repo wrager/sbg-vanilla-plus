@@ -228,6 +228,13 @@ export function unwrapFeature(feature: IOlFeature): void {
     }
   }
   wrappedFeatures.delete(feature);
+  // Invalidate cached render plan: OL держит execution plan с нашим wrapped
+  // renderer и продолжит его использовать пока feature не invalidate-нется
+  // (move/zoom карты, server update). Без явного changed() пользователь после
+  // disable модуля видит наш текст до следующего ререндера. feature.changed()
+  // ставит флаг "нужен фреш plan", и на следующем render OL вызовет уже
+  // оригинальный renderer.
+  feature.changed?.();
 }
 
 // ── refs channel sync (бaгфикс «после discover не обновляется текст») ────────
