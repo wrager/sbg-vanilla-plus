@@ -1,6 +1,6 @@
 # Закрытие меню действий ключа (betterRefPopoverClosing)
 
-Авто-закрытие выпадающего меню действий `.inventory__ref-actions` (Favorite / Lock / Removal menu) после клика по любой из кнопок.
+Авто-закрытие меню действий ключа (Favorite / Lock / Removal) после клика.
 
 ## Возможности для игрока
 

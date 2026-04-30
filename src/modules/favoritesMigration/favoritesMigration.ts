@@ -14,8 +14,8 @@ export const favoritesMigration: IFeatureModule = {
     ru: 'Миграция избранного',
   },
   description: {
-    en: 'One-time migration of the local SVP/CUI favorited points list into native SBG 0.6.1 favorites/locks. Two buttons in module settings: "Migrate the old list to favorites" and "Migrate the old list to locked". The local list is not cleared — migration can be repeated.',
-    ru: 'Однократно переносит локальный список избранных точек SVP/CUI в нативные «звёздочки» или «замочки» SBG 0.6.1. Две кнопки в настройках модуля: «Перенести старый список в избранное» и «Перенести старый список в заблокированное». Локальный список не очищается — миграцию можно повторить.',
+    en: 'Migrates the local SVP/CUI favorited points list into native SBG 0.6.1 favorites or locks.',
+    ru: 'Переносит локальный список избранных точек SVP/CUI в нативные «звёздочки» или «замочки» SBG 0.6.1.',
   },
   defaultEnabled: true,
   category: 'feature',

@@ -66,8 +66,8 @@ export const swipeToClosePopup: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Swipe to close popup', ru: 'Свайп для закрытия попапа' },
   description: {
-    en: 'Closes the point popup with a swipe up gesture: the popup follows the finger, then animates off-screen on release. Anywhere inside the popup except the cores slider, where the swipe stays for the carousel.',
-    ru: 'Закрывает попап точки жестом свайпа вверх: попап едет за пальцем и при отпускании плавно улетает наверх. Работает по всему попапу кроме слайдера ядер, где свайп остаётся за каруселью.',
+    en: 'Closes the point popup with a swipe-up gesture.',
+    ru: 'Закрывает попап точки свайпом вверх.',
   },
   defaultEnabled: true,
   category: 'feature',

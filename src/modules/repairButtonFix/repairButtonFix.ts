@@ -67,8 +67,8 @@ export const repairButtonFix: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Repair button stuck-state fix', ru: 'Фикс залипания кнопки починки' },
   description: {
-    en: 'Recovers the "Repair" button when the game leaves it stuck in disabled state. Symptom: after rapid attack-defend cycles the button stays gray and unclickable until page reload. Defensive timeout: if the locked class persists for over 10 seconds, the class and the disabled attribute are removed automatically.',
-    ru: 'Возвращает кнопку «Починить» из залипшего disabled-состояния. Симптом: после быстрого заряда точек под атакой кнопка остаётся серой и не нажимается до перезагрузки страницы. Защита по таймауту: если класс locked висит больше 10 секунд, класс и атрибут disabled автоматически снимаются.',
+    en: 'Recovers the "Repair" button when the game leaves it stuck in disabled state.',
+    ru: 'Возвращает кнопку «Починить» из залипшего disabled-состояния.',
   },
   defaultEnabled: true,
   category: 'fix',

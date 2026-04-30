@@ -486,8 +486,8 @@ export const pointTextFix: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Point text labels', ru: 'Подписи на точках' },
   description: {
-    en: 'Renders the value of the channel selected in the third Layers > Text slot on a separate overlay layer with adaptive font (10-16px): point Levels, Cores, References, or Guards. Native text of that channel is suppressed to avoid double labels. For the References channel the count is read directly from your inventory and updates immediately after discover/recycle, without waiting for the next map data refresh. The label stays horizontal regardless of map rotation.',
-    ru: 'Показывает на отдельном overlay-слое адаптивным шрифтом (10-16 пикселей) значение канала, выбранного в третьем слоте Layers > Text: уровень точки (Levels), ядра (Cores), ключи (References) или гарды (Guards). Нативный текст этого канала подавляется, чтобы не было двойной подписи. Для канала ключей значение берётся напрямую из инвентаря и обновляется сразу после изучения/переработки точки, без ожидания следующего перезапроса карты. Подпись не вращается вместе с картой.',
+    en: 'Adaptive font for the point text label selected in Layers > Text. The label stays horizontal regardless of map rotation. For the References channel the count is read from your inventory and updates immediately.',
+    ru: 'Адаптивный размер шрифта для текста подсветки точек, выбранного в Layers > Text. Подпись не вращается вместе с картой. Для канала ключей значение берётся из инвентаря и обновляется сразу.',
   },
   defaultEnabled: true,
   category: 'map',

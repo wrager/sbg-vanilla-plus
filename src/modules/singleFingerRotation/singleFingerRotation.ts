@@ -252,8 +252,8 @@ export const singleFingerRotation: IFeatureModule = {
     ru: 'Вращение карты одним пальцем',
   },
   description: {
-    en: 'Rotate map with circular finger gesture in FW mode. Does not activate when the native FixedPointRotate gesture is on, and is suppressed during the native ngrsZoom gesture (double-tap + hold).',
-    ru: 'Вращение карты круговым жестом одного пальца в режиме следования за игроком. Не активируется при нативном жесте вращения FixedPointRotate и подавляется во время нативного ngrsZoom-жеста (двойной тап + удержание).',
+    en: 'Rotate the map with a circular single-finger gesture in follow mode.',
+    ru: 'Вращение карты круговым жестом одного пальца в режиме следования за игроком.',
   },
   defaultEnabled: true,
   category: 'map',
