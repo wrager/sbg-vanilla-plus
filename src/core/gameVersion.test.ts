@@ -286,17 +286,17 @@ describe('isModuleNativeInCurrentGame', () => {
     // runtime-детекцией native), другие удалены физически (repairAtFullCharge,
     // ngrsZoom), swipeToClosePopup возвращён под новым жестом, keyCountOnPoints
     // переименован в pointTextFix (промежуточный rename keyCountFix до публичного
-    // релиза не дошёл), nextPointNavigation заменяет нативный горизонтальный свайп
-    // на нашу версию через text-патч hammer_info в gameScriptPatcher плюс свайп-
-    // handler на left/right через core/popupSwipe (нативный ходил по всем точкам
-    // в зоне видимости, наш - только в радиусе действия по приоритету полезности)
-    // - сет пуст.
+    // релиза не дошёл), nextPointNavigation переосмыслен как betterNextPointSwipe
+    // - заменяет нативный горизонтальный свайп через runtime-override на
+    // Hammer.Manager.prototype.emit + наша приоритетная навигация в радиусе
+    // взаимодействия (нативный ходил по всем точкам в зоне видимости).
+    // Сет пуст.
     setDetectedVersionForTest('0.6.1');
     expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(false);
     expect(isModuleNativeInCurrentGame('inventoryCleanup')).toBe(false);
     expect(isModuleNativeInCurrentGame('pointTextFix')).toBe(false);
     expect(isModuleNativeInCurrentGame('singleFingerRotation')).toBe(false);
-    expect(isModuleNativeInCurrentGame('nextPointNavigation')).toBe(false);
+    expect(isModuleNativeInCurrentGame('betterNextPointSwipe')).toBe(false);
     expect(isModuleNativeInCurrentGame('repairAtFullCharge')).toBe(false);
     expect(isModuleNativeInCurrentGame('ngrsZoom')).toBe(false);
   });

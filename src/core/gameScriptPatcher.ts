@@ -15,39 +15,16 @@
 declare global {
   interface Window {
     showInfo?: (data: string) => void;
-    __svpNativeInfoSwipeDisabled?: boolean;
   }
 }
 
 // mobile-check создаёт: s.src = 'script@' + version + '.' + hash + '.js'
 const GAME_SCRIPT_PATTERN = /^script@/;
 
-// Поисковая строка нативного hammer_info Manager-а (refs/game/script.js:722-726).
-// Собирается из строк через '\n' для устойчивости к line-endings исходного файла:
-// .ts с CRLF не сломает поиск, потому что мы явно используем LF.
-const NATIVE_HAMMER_INFO_SEARCH = [
-  "new Hammer(document.querySelector('.info'), {",
-  '    recognizers: [',
-  '      [Hammer.Swipe, { direction: Hammer.DIRECTION_HORIZONTAL }],',
-  '    ],',
-  '  })',
-].join('\n');
-
-// Замена: comma-expression выставляет sentinel-флаг и возвращает no-op объект.
-// hammer_info становится { on() {} }, поэтому hammer_info.on('swipeleft swiperight', ...)
-// в строке 727 не имеет эффекта. Сам Hammer.Manager не создаётся — нативные
-// touch-listener'ы на .info не привязываются, что освобождает .info для нашего
-// core/popupSwipe без конфликта pointer-cancel.
-const NATIVE_HAMMER_INFO_REPLACE = '(window.__svpNativeInfoSwipeDisabled = true, { on() {} })';
-
 // Патчи: [поисковая строка, замена]. Каждый патч — одна замена.
 const PATCHES: [search: string, replacement: string][] = [
   // Экспозиция showInfo на window для прямого открытия попапа (refs/game/script.js:1687)
   ['class Bitfield', 'window.showInfo = showInfo; class Bitfield'],
-  // Отключение нативного горизонтального свайпа на .info, чтобы наш модуль
-  // nextPointNavigation мог зарегистрировать собственный обработчик через
-  // core/popupSwipe без двойного срабатывания (refs/game/script.js:722-726).
-  [NATIVE_HAMMER_INFO_SEARCH, NATIVE_HAMMER_INFO_REPLACE],
 ];
 
 export function isGameScript(node: Node | string): node is HTMLScriptElement {
