@@ -161,9 +161,11 @@ function openPointPopup(guid: string): void {
 
   // Прямой вызов showInfo — надёжнее fake click (нет промахов, нет retry).
   // Доступен если скрипт игры пропатчен (src/core/gameScriptPatcher.ts).
+  // Попап НЕ скрывается перед вызовом: showInfo сам зовёт removeClass('hidden')
+  // и обновляет содержимое (см. refs/game/script.js:2120). Скрытие даёт визуальное
+  // мерцание в течение await apiQuery (~100-300мс), которого нет в нативном
+  // свайпе игры (refs/game/script.js:751 - просто showInfo(guid) без скрытия).
   if (typeof window.showInfo === 'function') {
-    // Скрыть текущий попап перед открытием нового (как в CUI, refs/cui/index.js:4626)
-    document.querySelector('.info.popup')?.classList.add('hidden');
     window.showInfo(guid);
     return;
   }

@@ -446,7 +446,12 @@ describe('nextPointNavigation enable/disable', () => {
     delete window.showInfo;
   });
 
-  test('hides popup before calling showInfo', async () => {
+  test('does not hide popup before calling showInfo (no flicker)', async () => {
+    // Регрессия: раньше openPointPopup делал classList.add('hidden') перед showInfo
+    // (по мотивам CUI), что давало мерцание попапа в течение await внутри showInfo.
+    // Нативный свайп игры (refs/game/script.js:751) попап не скрывает - showInfo
+    // обновляет содержимое и сам убирает hidden. Тест фиксирует, что попап
+    // остаётся видимым между нашим вызовом и работой showInfo.
     const mockShowInfo = jest.fn();
     window.showInfo = mockShowInfo;
 
@@ -459,7 +464,8 @@ describe('nextPointNavigation enable/disable', () => {
     const button = document.querySelector('.svp-next-point-button') as HTMLElement;
     button.click();
 
-    expect(popup.classList.contains('hidden')).toBe(true);
+    expect(popup.classList.contains('hidden')).toBe(false);
+    expect(mockShowInfo).toHaveBeenCalledWith('p2');
 
     delete window.showInfo;
   });
