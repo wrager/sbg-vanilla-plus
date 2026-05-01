@@ -6,6 +6,7 @@ import {
   readInventoryCache,
 } from '../../core/inventoryCache';
 import { isInventoryItem, isInventoryReference } from '../../core/inventoryTypes';
+import { POINT_POPUP_SELECTOR } from '../../core/pointPopup';
 
 export interface IDeleteResult {
   total: number;
@@ -154,7 +155,7 @@ export function updateDomInventoryCount(total: number): void {
  * После удаления ключей нужно пересчитать #i-ref по актуальному inventory-cache.
  */
 export function updatePointRefCount(): void {
-  const infoPopup = document.querySelector<HTMLElement>('.info.popup');
+  const infoPopup = document.querySelector<HTMLElement>(POINT_POPUP_SELECTOR);
   if (!infoPopup || infoPopup.classList.contains('hidden')) return;
 
   const pointGuid = infoPopup.dataset.guid;

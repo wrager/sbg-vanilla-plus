@@ -1,4 +1,5 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
+import { POINT_POPUP_SELECTOR } from '../../core/pointPopup';
 
 const MODULE_ID = 'drawButtonFix';
 
@@ -52,7 +53,7 @@ export const drawButtonFix: IFeatureModule = {
       });
     }
 
-    const infoPopup = document.querySelector('.info');
+    const infoPopup = document.querySelector(POINT_POPUP_SELECTOR);
     if (infoPopup instanceof HTMLElement) {
       infoGuidObserver = new MutationObserver(invalidateDrawCount);
       infoGuidObserver.observe(infoPopup, {

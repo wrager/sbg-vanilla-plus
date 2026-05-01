@@ -14,7 +14,7 @@
 
 ### Регистрация в core/popupSwipe
 
-Модуль не управляет touch-listener'ами и анимациями напрямую - этим занят общий `src/core/popupSwipe.ts`. swipeToClosePopup на enable вызывает `registerDirection('up', { canStart, decide, finalize })` и `installPopupSwipe('.info')`. На disable - снимает регистрацию через возвращённый unregister и вызывает `uninstallPopupSwipe()`. Параллельный потребитель core/popupSwipe - `nextPointSwipeAnimation` (направления `left`/`right`); ref-counter в core (`installRefs` 0->1 при первом install, 1->0 при последнем uninstall) обеспечивает корректную работу: реальный attach listener-ов происходит при первом install, реальный detach - только при последнем uninstall, поэтому disable одного модуля не сорвёт listener-ы другого.
+Модуль не управляет touch-listener'ами и анимациями напрямую - этим занят общий `src/core/popupSwipe.ts`. swipeToClosePopup на enable вызывает `registerDirection('up', { canStart, decide, finalize })` и `installPopupSwipe(POINT_POPUP_SELECTOR)` (`.info.popup` из `core/pointPopup`). На disable - снимает регистрацию через возвращённый unregister и вызывает `uninstallPopupSwipe()`. Параллельный потребитель core/popupSwipe - `nextPointSwipeAnimation` (направления `left`/`right`); ref-counter в core (`installRefs` 0->1 при первом install, 1->0 при последнем uninstall) обеспечивает корректную работу: реальный attach listener-ов происходит при первом install, реальный detach - только при последнем uninstall, поэтому disable одного модуля не сорвёт listener-ы другого.
 
 ### Handler
 

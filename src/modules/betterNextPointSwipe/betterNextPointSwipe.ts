@@ -3,10 +3,10 @@ import { isModuleActive } from '../../core/moduleRegistry';
 import { getOlMap, findLayerByName } from '../../core/olMap';
 import type { IOlMap, IOlVectorSource } from '../../core/olMap';
 import { pickNextInRange } from '../../core/nextPointPicker';
+import { POINT_POPUP_SELECTOR } from '../../core/pointPopup';
 
 const MODULE_ID = 'betterNextPointSwipe';
 const ANIMATION_MODULE_ID = 'nextPointSwipeAnimation';
-const POPUP_SELECTOR = '.info.popup';
 const INTERACTION_RANGE = 45;
 
 interface IHammerProto {
@@ -44,7 +44,7 @@ function navigateToNextPoint(): void {
   if (typeof window.showInfo !== 'function') return;
   const playerCoords = getPlayerCoords();
   if (!playerCoords) return;
-  const popup = document.querySelector(POPUP_SELECTOR);
+  const popup = document.querySelector(POINT_POPUP_SELECTOR);
   if (!popup || popup.classList.contains('hidden')) return;
   const currentGuid = (popup as HTMLElement).dataset.guid;
   if (!currentGuid) return;
@@ -90,7 +90,7 @@ function installHammerOverride(): void {
       const target = eventData?.target;
       if (
         target instanceof Element &&
-        target.closest('.info') !== null &&
+        target.closest(POINT_POPUP_SELECTOR) !== null &&
         target.closest('.splide') === null
       ) {
         if (!isModuleActive(ANIMATION_MODULE_ID)) {

@@ -10,10 +10,10 @@ import {
   type SwipeOutcome,
 } from '../../core/popupSwipe';
 import { findFeaturesInRange, pickNextInRange } from '../../core/nextPointPicker';
+import { POINT_POPUP_SELECTOR } from '../../core/pointPopup';
 
 const MODULE_ID = 'nextPointSwipeAnimation';
 const FEATURE_MODULE_ID = 'betterNextPointSwipe';
-const POPUP_SELECTOR = '.info.popup';
 const INTERACTION_RANGE = 45;
 // Длительность dismiss/return-анимации (мс). Короче дефолтных 300мс из
 // core/popupSwipe: горизонтальный свайп должен ощущаться мгновенным, а 300мс
@@ -77,7 +77,7 @@ function canStartHorizontalSwipe(event: TouchEvent): boolean {
  */
 function decideSwipe(): SwipeOutcome {
   if (!map || !pointsSource) return 'return';
-  const popup = document.querySelector(POPUP_SELECTOR);
+  const popup = document.querySelector(POINT_POPUP_SELECTOR);
   if (!popup || popup.classList.contains('hidden')) return 'return';
   const currentGuid = (popup as HTMLElement).dataset.guid;
   if (!currentGuid) return 'return';
@@ -165,7 +165,7 @@ export const nextPointSwipeAnimation: IFeatureModule = {
       playerSource = playerLayer?.getSource() ?? null;
       unregisterLeft = registerDirection('left', swipeHandler);
       unregisterRight = registerDirection('right', swipeHandler);
-      installPopupSwipe(POPUP_SELECTOR);
+      installPopupSwipe(POINT_POPUP_SELECTOR);
     });
   },
   disable() {

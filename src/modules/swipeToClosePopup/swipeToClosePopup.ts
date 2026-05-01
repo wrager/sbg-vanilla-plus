@@ -1,5 +1,6 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { injectStyles, removeStyles } from '../../core/dom';
+import { POINT_POPUP_SELECTOR } from '../../core/pointPopup';
 import {
   installPopupSwipe,
   registerDirection,
@@ -10,8 +11,6 @@ import {
 import styles from './styles.css?inline';
 
 const MODULE_ID = 'swipeToClosePopup';
-
-const POPUP_SELECTOR = '.info';
 
 // Длительность dismiss/return-анимации (мс). Вдвое короче дефолтных 300мс
 // в core/popupSwipe: пользователь хочет почувствовать, что попап ушёл сразу,
@@ -44,7 +43,7 @@ function decide(): SwipeOutcome {
 function finalize(): void {
   // Закрываем через игровую кнопку - оригинальный closePopup делает весь
   // нужный cleanup (popovers, info_cooldown/score таймеры, abort draw).
-  const popup = document.querySelector<HTMLElement>(POPUP_SELECTOR);
+  const popup = document.querySelector<HTMLElement>(POINT_POPUP_SELECTOR);
   if (!popup) return;
   const closeButton = popup.querySelector('.popup-close');
   if (closeButton instanceof HTMLElement) {
@@ -79,7 +78,7 @@ export const swipeToClosePopup: IFeatureModule = {
       animationDurationMs: SWIPE_TO_CLOSE_ANIMATION_MS,
     };
     unregister = registerDirection('up', handler);
-    installPopupSwipe(POPUP_SELECTOR);
+    installPopupSwipe(POINT_POPUP_SELECTOR);
   },
   disable() {
     if (unregister) {

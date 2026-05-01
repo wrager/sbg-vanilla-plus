@@ -1,9 +1,9 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { installClickFallback } from '../../core/clickSynthesis';
 import { waitForElement } from '../../core/dom';
+import { POINT_POPUP_SELECTOR } from '../../core/pointPopup';
 
 const MODULE_ID = 'nextPointSwipeFix';
-const POPUP_SELECTOR = '.info.popup';
 
 // WeakMap-style на element -> uninstall. Использовать Map чтобы итерироваться
 // по элементам при disable (WeakMap не итерируется). Ссылки на DOM-узлы
@@ -84,7 +84,7 @@ export const nextPointSwipeFix: IFeatureModule = {
   enable() {
     installGeneration++;
     const myGeneration = installGeneration;
-    return waitForElement(POPUP_SELECTOR).then((popup) => {
+    return waitForElement(POINT_POPUP_SELECTOR).then((popup) => {
       if (myGeneration !== installGeneration) return;
       if (!(popup instanceof HTMLElement)) return;
       startObservingPopup(popup);
