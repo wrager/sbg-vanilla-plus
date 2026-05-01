@@ -67,6 +67,19 @@ interface IFeatureModule {
 
 **Game Script Patcher** — `src/core/gameScriptPatcher.ts`: перехватывает загрузку основного скрипта игры (ES module) и применяет патчи перед инъекцией. Механизм: override `Element.prototype.append` → перехват `<script type="module" src="script@...">` → fetch → text patch → inline module inject. Override одноразовый — снимается сразу после перехвата. При ошибке загружается оригинальный скрипт без патчей. Текущие патчи: экспозиция `window.showInfo` для прямого открытия попапа точки. Подавление нативного горизонтального свайпа на `.info` (раньше было text-патчем) перенесено в модуль `betterNextPointSwipe` через runtime-override `Hammer.Manager.prototype.emit` - менее инвазивно, не требует обновления поисковой строки при минорных правках script.js игры.
 
+## Глобальные runtime-override и их жизненный цикл
+
+Часть модулей при включении ставит monkey-patch на глобальный API (`window.fetch`, `Hammer.Manager.prototype.emit`) или отправляет неотменимый запрос на сервер. Снятие override на `disable` либо технически невозможно (один поток pending fetch может ссылаться на ту же ссылку), либо стоит дороже, чем оставленный override, который просто проверяет флаг и идёт по fast path.
+
+| Модуль                                           | Что устанавливается                                                  | Поведение после `disable`                                                                                                                                                                                                                                             |
+| ------------------------------------------------ | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fixRedrawRefsOnDiscover`                        | Monkey-patch `window.fetch` (lazy install на enable)                 | Сбрасывается флаг `discoverHookEnabled`. Сам patch остаётся до перезагрузки страницы — fast path в patched fetch проверяет флаг и пропускает обработку discover                                                                                                       |
+| `betterNextPointSwipe`                           | Override `Hammer.Manager.prototype.emit`                             | Override остаётся, перехватчик проверяет installed-state и просто вызывает оригинальный emit когда модуль выключен                                                                                                                                                    |
+| `nativeGarbageGuard` (внутри `inventoryCleanup`) | Серверный POST `/api/settings { usegrb: false }` один раз за сессию  | Серверная сторона не откатывается обратно: пользователь сам решает, нужно ли ему включить нативный сборщик после отключения нашей автоочистки. При отказе сети POST первый раз — `usegrbPostedThisSession` остаётся true до перезагрузки страницы (см. README модуля) |
+| `nativeGarbageGuard` (DOM)                       | `disabled` атрибуты на инпутах сборщика, обёртка fieldset с подписью | Полностью снимается на disable: `data-svp-disabled-by-cleanup` маркер позволяет различить наш disabled и игровой                                                                                                                                                      |
+
+Полное снятие — только перезагрузкой страницы. Это сознательное архитектурное решение в пользу простоты install-логики (`installGeneration` race protection остаётся, но fully-clean uninstall не требуется).
+
 ## Скрипты игры SBG
 
 Исходные скрипты игры:
