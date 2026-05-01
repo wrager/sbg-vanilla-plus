@@ -1,7 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { syncRefsCountForPoints } from '../../core/refsCounterSync';
+import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 
-const MODULE_ID = 'fixRedrawRefsOnDiscover';
+const MODULE_ID = 'refsCounterSync';
 
 const DISCOVER_URL_PATTERN = /\/api\/discover(\?|$)/;
 // Задержка перед sync. За это время игра успевает отработать свой continuation
@@ -91,7 +91,7 @@ export function uninstallDiscoverFetchHookForTest(): void {
   discoverFetchInstalled = false;
 }
 
-export const fixRedrawRefsOnDiscover: IFeatureModule = {
+export const refsCounterSync: IFeatureModule = {
   id: MODULE_ID,
   name: {
     en: 'Refs counter redraw on discover fix',

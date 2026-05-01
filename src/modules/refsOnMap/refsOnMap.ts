@@ -11,7 +11,7 @@ import {
 } from '../../core/inventoryCache';
 import type { IInventoryReferenceFull } from '../../core/inventoryTypes';
 import { isInventoryReference } from '../../core/inventoryTypes';
-import { syncRefsCountForPoints } from '../../core/refsCounterSync';
+import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 import { showToast } from '../../core/toast';
 import css from './styles.css?inline';

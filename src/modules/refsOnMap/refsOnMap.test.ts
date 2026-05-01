@@ -251,7 +251,7 @@ jest.mock('../../core/olMap', () => ({
   findLayerByName: jest.requireActual('../../core/olMap').findLayerByName,
 }));
 
-jest.mock('../../core/refsCounterSync', () => ({
+jest.mock('../../core/refsHighlightSync', () => ({
   syncRefsCountForPoints: jest.fn(() => Promise.resolve()),
 }));
 

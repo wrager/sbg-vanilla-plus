@@ -1,18 +1,18 @@
 import {
-  fixRedrawRefsOnDiscover,
+  refsCounterSync,
   installDiscoverFetchHook,
   uninstallDiscoverFetchHookForTest,
-} from './fixRedrawRefsOnDiscover';
+} from './refsCounterSync';
 
-jest.mock('../../core/refsCounterSync', () => ({
+jest.mock('../../core/refsHighlightSync', () => ({
   syncRefsCountForPoints: jest.fn(() => Promise.resolve()),
 }));
 
-import { syncRefsCountForPoints } from '../../core/refsCounterSync';
+import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 
 const mockSync = syncRefsCountForPoints as jest.MockedFunction<typeof syncRefsCountForPoints>;
 
-describe('fixRedrawRefsOnDiscover', () => {
+describe('refsCounterSync', () => {
   let origFetch: typeof window.fetch | undefined;
 
   beforeEach(() => {
@@ -22,7 +22,7 @@ describe('fixRedrawRefsOnDiscover', () => {
   });
 
   afterEach(() => {
-    void fixRedrawRefsOnDiscover.disable();
+    void refsCounterSync.disable();
     uninstallDiscoverFetchHookForTest();
     if (origFetch) window.fetch = origFetch;
     jest.useRealTimers();
@@ -37,7 +37,7 @@ describe('fixRedrawRefsOnDiscover', () => {
       Promise.resolve(makeOkResponse()),
     ) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
-    void fixRedrawRefsOnDiscover.enable();
+    void refsCounterSync.enable();
 
     await window.fetch('/api/discover', {
       method: 'POST',
@@ -60,7 +60,7 @@ describe('fixRedrawRefsOnDiscover', () => {
       Promise.resolve(makeOkResponse()),
     ) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
-    void fixRedrawRefsOnDiscover.enable();
+    void refsCounterSync.enable();
 
     await window.fetch('/api/discover', {
       method: 'POST',
@@ -70,7 +70,7 @@ describe('fixRedrawRefsOnDiscover', () => {
     await Promise.resolve();
 
     // Disable до тика таймера.
-    void fixRedrawRefsOnDiscover.disable();
+    void refsCounterSync.disable();
     jest.advanceTimersByTime(100);
 
     expect(mockSync).not.toHaveBeenCalled();
@@ -81,14 +81,14 @@ describe('fixRedrawRefsOnDiscover', () => {
       Promise.resolve(makeOkResponse()),
     ) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
-    void fixRedrawRefsOnDiscover.enable();
+    void refsCounterSync.enable();
 
     const fetchPromise = window.fetch('/api/discover', {
       method: 'POST',
       body: JSON.stringify({ guid: 'point-a' }),
     });
     // Отключаем модуль ДО того как then-цепочка успеет отработать.
-    void fixRedrawRefsOnDiscover.disable();
+    void refsCounterSync.disable();
     await fetchPromise;
     await Promise.resolve();
     await Promise.resolve();
@@ -102,7 +102,7 @@ describe('fixRedrawRefsOnDiscover', () => {
       Promise.resolve(makeOkResponse()),
     ) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
-    void fixRedrawRefsOnDiscover.enable();
+    void refsCounterSync.enable();
 
     await window.fetch('/api/inview', { method: 'POST', body: '{}' });
     await Promise.resolve();
@@ -117,7 +117,7 @@ describe('fixRedrawRefsOnDiscover', () => {
       Promise.resolve(makeOkResponse()),
     ) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
-    void fixRedrawRefsOnDiscover.enable();
+    void refsCounterSync.enable();
 
     await window.fetch('/api/discover', { method: 'POST', body: JSON.stringify({}) });
     await Promise.resolve();
@@ -131,7 +131,7 @@ describe('fixRedrawRefsOnDiscover', () => {
     const badResponse = { ok: false, status: 500 } as unknown as Response;
     window.fetch = jest.fn(() => Promise.resolve(badResponse)) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
-    void fixRedrawRefsOnDiscover.enable();
+    void refsCounterSync.enable();
 
     await window.fetch('/api/discover', {
       method: 'POST',
@@ -146,23 +146,23 @@ describe('fixRedrawRefsOnDiscover', () => {
 
   test('init не ставит fetch-patch (lazy install)', () => {
     const fetchBefore = window.fetch;
-    void fixRedrawRefsOnDiscover.init();
+    void refsCounterSync.init();
     expect(window.fetch).toBe(fetchBefore);
   });
 
   test('первый enable ставит fetch-patch (lazy install)', () => {
     const fetchBefore = window.fetch;
-    void fixRedrawRefsOnDiscover.enable();
+    void refsCounterSync.enable();
     expect(window.fetch).not.toBe(fetchBefore);
   });
 
   test('metadata: id, category=fix, defaultEnabled=true, локализованные имя/описание', () => {
-    expect(fixRedrawRefsOnDiscover.id).toBe('fixRedrawRefsOnDiscover');
-    expect(fixRedrawRefsOnDiscover.category).toBe('fix');
-    expect(fixRedrawRefsOnDiscover.defaultEnabled).toBe(true);
-    expect(fixRedrawRefsOnDiscover.name.ru).toBeTruthy();
-    expect(fixRedrawRefsOnDiscover.name.en).toBeTruthy();
-    expect(fixRedrawRefsOnDiscover.description.ru).toBeTruthy();
-    expect(fixRedrawRefsOnDiscover.description.en).toBeTruthy();
+    expect(refsCounterSync.id).toBe('refsCounterSync');
+    expect(refsCounterSync.category).toBe('fix');
+    expect(refsCounterSync.defaultEnabled).toBe(true);
+    expect(refsCounterSync.name.ru).toBeTruthy();
+    expect(refsCounterSync.name.en).toBeTruthy();
+    expect(refsCounterSync.description.ru).toBeTruthy();
+    expect(refsCounterSync.description.en).toBeTruthy();
   });
 });

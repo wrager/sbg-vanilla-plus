@@ -1,5 +1,5 @@
 // Временный helper для диагностических alert'ов в бета-сборках. Используется
-// модулями fixRedrawRefsOnDiscover, betterRefPopoverClosing и improvedPointText
+// модулями refsCounterSync, betterRefPopoverClosing и improvedPointText
 // для вывода компактной диагностики на мобильных устройствах, где DevTools
 // недоступен и нельзя посмотреть console.log.
 //

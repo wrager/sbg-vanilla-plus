@@ -1,4 +1,4 @@
-import { resetRefsCounterSyncForTest, syncRefsCountForPoints } from './refsCounterSync';
+import { resetRefsHighlightSyncForTest, syncRefsCountForPoints } from './refsHighlightSync';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from './olMap';
 
 jest.mock('./olMap', () => ({
@@ -85,7 +85,7 @@ function setInventory(items: { g: string; t: number; l: string; a: number; f?: n
 }
 
 beforeEach(() => {
-  resetRefsCounterSyncForTest();
+  resetRefsHighlightSyncForTest();
   mockGetOlMap.mockReset();
   localStorage.clear();
 });

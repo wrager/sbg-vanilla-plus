@@ -1,4 +1,4 @@
-# Фикс обновления счётчика ключей после изучения (fixRedrawRefsOnDiscover)
+# Синхронизация счётчика ключей на карте (refsCounterSync)
 
 Обновляет счётчик ключей на подписи точки на карте сразу после изучения. Нативно игра обновляет счётчик в инвентаре и в попапе, но `prop.highlight` на feature остаётся stale до следующего перезапроса карты.
 
@@ -33,7 +33,7 @@
 
 ### Синхронизация через core-утилиту
 
-Сама логика обновления вынесена в `core/refsCounterSync.ts`. Утилита `syncRefsCountForPoints([targetGuid])`:
+Сама логика обновления вынесена в `core/refsHighlightSync.ts`. Утилита `syncRefsCountForPoints([targetGuid])`:
 
 1. Читает свежий `inventory-cache` (источник истины - количество ключей в инвентаре).
 2. Находит feature по `getFeatureById(targetGuid)` в `points`-layer.
@@ -54,23 +54,23 @@
 
 Модули ортогональны:
 
-- `improvedPointText` ON + `fixRedrawRefsOnDiscover` ON: наш адаптивный текст обновляется после discover.
-- `improvedPointText` OFF + `fixRedrawRefsOnDiscover` ON: нативный 32px-текст обновляется после discover.
-- `improvedPointText` ON + `fixRedrawRefsOnDiscover` OFF: наш адаптивный текст НЕ обновляется (исходный баг игры).
-- `improvedPointText` OFF + `fixRedrawRefsOnDiscover` OFF: нативный 32px-текст НЕ обновляется (исходный баг игры).
+- `improvedPointText` ON + `refsCounterSync` ON: наш адаптивный текст обновляется после discover.
+- `improvedPointText` OFF + `refsCounterSync` ON: нативный 32px-текст обновляется после discover.
+- `improvedPointText` ON + `refsCounterSync` OFF: наш адаптивный текст НЕ обновляется (исходный баг игры).
+- `improvedPointText` OFF + `refsCounterSync` OFF: нативный 32px-текст НЕ обновляется (исходный баг игры).
 
 ## Защита от race-condition
 
 `discoverHookEnabled` проверяется перед обработкой response и перед `setTimeout`-callback применения sync. Disable между перехватом и тиком таймера приведёт к пропуску sync - как и должно быть.
 
-`pointsSource` находится lazy в `core/refsCounterSync.ts` через `getOlMap()`; первый sync ждёт промис, последующие синхронны.
+`pointsSource` находится lazy в `core/refsHighlightSync.ts` через `getOlMap()`; первый sync ждёт промис, последующие синхронны.
 
 ## Файловая структура
 
-| Файл                              | Назначение                                                                                                                                |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `fixRedrawRefsOnDiscover.ts`      | Определение модуля + `installDiscoverFetchHook` + извлечение `guid` из request body. Sync делегируется в `core/refsCounterSync`           |
-| `fixRedrawRefsOnDiscover.test.ts` | Тесты hook-перехвата `/api/discover`, lazy install fetch-патча, disable между response и тиком, фильтрация не-discover URL и не-200 ответ |
+| Файл                      | Назначение                                                                                                                                |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `refsCounterSync.ts`      | Определение модуля + `installDiscoverFetchHook` + извлечение `guid` из request body. Sync делегируется в `core/refsHighlightSync`         |
+| `refsCounterSync.test.ts` | Тесты hook-перехвата `/api/discover`, lazy install fetch-патча, disable между response и тиком, фильтрация не-discover URL и не-200 ответ |
 
 ## Настройки
 

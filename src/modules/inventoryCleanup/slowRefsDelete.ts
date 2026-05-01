@@ -12,7 +12,7 @@ import {
 } from '../../core/inventoryCache';
 import { isInventoryReference } from '../../core/inventoryTypes';
 import { isModuleEnabledByUser } from '../../core/moduleRegistry';
-import { syncRefsCountForPoints } from '../../core/refsCounterSync';
+import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { showToast as showCoreToast } from '../../core/toast';
 import type { IDeletionEntry } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';

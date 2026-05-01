@@ -21,7 +21,7 @@ import {
   updatePointRefCount,
 } from './inventoryApi';
 import { installSlowRefsDelete, uninstallSlowRefsDelete } from './slowRefsDelete';
-import { syncRefsCountForPoints } from '../../core/refsCounterSync';
+import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import { showToast } from '../../core/toast';
 
@@ -131,7 +131,7 @@ async function runCleanupImpl(): Promise<void> {
     updatePointRefCount();
     // Синхронизация счётчика ключей на подписи точек на карте: после удаления
     // ключей `highlight['7']` на feature остаётся stale (как и после discover -
-    // см. fixRedrawRefsOnDiscover). Один вызов с уникальными pointGuid из
+    // см. refsCounterSync). Один вызов с уникальными pointGuid из
     // удалений - агрегатно для всех затронутых точек.
     const refPointGuids = collectRefPointGuids(deletions);
     if (refPointGuids.length > 0) {

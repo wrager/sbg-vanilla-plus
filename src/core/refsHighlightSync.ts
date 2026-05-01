@@ -139,7 +139,7 @@ function emitDiagnostic(
 }
 
 /** Только для тестов: сбрасывает кеш pointsSource и initPromise. */
-export function resetRefsCounterSyncForTest(): void {
+export function resetRefsHighlightSyncForTest(): void {
   pointsSource = null;
   initPromise = null;
 }
