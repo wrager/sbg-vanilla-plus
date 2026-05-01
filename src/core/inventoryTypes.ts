@@ -84,9 +84,10 @@ export function isInventoryReference(value: unknown): value is IInventoryReferen
   ) {
     return false;
   }
-  // f опциональный: на 0.6.0 он отсутствует. Если присутствует — обязан быть
-  // числом, иначе bitwise-операции дадут NaN и сломают логику lock-фильтра.
-  if (value.f !== undefined && typeof value.f !== 'number') return false;
+  // f опциональный: на 0.6.0 он отсутствует. Если присутствует - обязан быть
+  // целым числом: это битовое поле, NaN/Infinity имеют typeof === 'number' но
+  // дают 0 при побитовых операциях, маскируя некорректные данные сервера.
+  if (value.f !== undefined && !Number.isInteger(value.f)) return false;
   return true;
 }
 
