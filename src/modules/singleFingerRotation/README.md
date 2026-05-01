@@ -10,16 +10,6 @@
 
 ## Архитектура
 
-### Runtime-детекция нативного FixedPointRotate
-
-В SBG 0.6.1 был добавлен нативный жест `FixedPointRotate` (refs/game/script.js:711) - drag в режиме Follow вращает карту вокруг позиции игрока. После выпуска 0.6.1 игра откатила FixedPointRotate хотфиксом без bump'а версии. Детект только по версии (`isSbgGreaterThan('0.6.0')`) больше не работает: в одной и той же 0.6.1 у одних пользователей нативный жест есть, у других нет.
-
-Решение - `view.getConstrainRotation()` как сигнал. Дефолт OL - `true` (rotation snap'ится к 0/90/180/270). SBG 0.6.1 явно ставит `false` (refs/game/script.js:746), чтобы FixedPointRotate мог свободно вращать карту. Если хотфикс игры откатил FixedPointRotate, View пересоздан с дефолтным `constrainRotation: true` - наш модуль активируется.
-
-`getConstrainRotation` - публичный API OL, стабильное имя при минификации и в разных версиях библиотеки. Не используется `interaction.constructor.name` - имена при минификации нестабильны.
-
-Детект однократный, по состоянию на момент enable. Если игра в runtime переключит `constrainRotation` (как уже было однажды: SBG 0.6.1 ставил false, потом хотфикс вернул дефолт), модуль не отреагирует без перезапуска. Симптом "модуль не работает" или "работает параллельно с нативом" лечится перезагрузкой страницы.
-
 ### State-machine ngrsZoom-detection
 
 В SBG 0.6.1 ввели `ol.interaction.DblClickDragZoom` (refs/game/script.js:782): двойной тап + удержание второго пальца + вертикальный drag - зум. Раньше у проекта был отдельный модуль `ngrsZoom`, который перехватывал touch-события на capture-фазе и останавливал распространение для `singleFingerRotation`. После удаления модуля `singleFingerRotation` остался без блокировки и мог конфликтовать с нативным жестом.
@@ -43,10 +33,10 @@
 
 ## Файловая структура
 
-| Файл                           | Назначение                                                               |
-| ------------------------------ | ------------------------------------------------------------------------ |
-| `singleFingerRotation.ts`      | Определение модуля + state-machine + native-detect + extent-wrapper      |
-| `singleFingerRotation.test.ts` | Тесты gesture-логики, double-tap suppression, FixedPointRotate detection |
+| Файл                           | Назначение                                          |
+| ------------------------------ | --------------------------------------------------- |
+| `singleFingerRotation.ts`      | Определение модуля + state-machine + extent-wrapper |
+| `singleFingerRotation.test.ts` | Тесты gesture-логики, double-tap suppression        |
 
 ## Настройки
 

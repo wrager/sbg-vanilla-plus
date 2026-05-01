@@ -30,7 +30,7 @@ jest.mock('../../core/olMap', () => {
   };
 });
 
-import { isNativeFixedPointRotateActive, singleFingerRotation } from './singleFingerRotation';
+import { singleFingerRotation } from './singleFingerRotation';
 import { getOlMap } from '../../core/olMap';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
@@ -402,94 +402,6 @@ test('flushes pending rotation on disable', async () => {
   await singleFingerRotation.disable();
 
   expect(realSetRotation).toHaveBeenCalledTimes(1);
-});
-
-// ── runtime-детекция нативного FixedPointRotate ─────────────────────────────
-
-describe('isNativeFixedPointRotateActive', () => {
-  test('view без getConstrainRotation: false (старая версия OL / 0.6.0)', () => {
-    const map: IOlMap = {
-      ...mockMap,
-      getView: () =>
-        ({
-          ...mockView,
-          getConstrainRotation: undefined,
-        }) as IOlView,
-    };
-    expect(isNativeFixedPointRotateActive(map)).toBe(false);
-  });
-
-  test('constrainRotation true (дефолт OL): false', () => {
-    const map: IOlMap = {
-      ...mockMap,
-      getView: () =>
-        ({
-          ...mockView,
-          getConstrainRotation: () => true,
-        }) as IOlView,
-    };
-    expect(isNativeFixedPointRotateActive(map)).toBe(false);
-  });
-
-  test('constrainRotation false (SBG 0.6.1 с FixedPointRotate): true', () => {
-    const map: IOlMap = {
-      ...mockMap,
-      getView: () =>
-        ({
-          ...mockView,
-          getConstrainRotation: () => false,
-        }) as IOlView,
-    };
-    expect(isNativeFixedPointRotateActive(map)).toBe(true);
-  });
-});
-
-describe('singleFingerRotation enable() с native FixedPointRotate', () => {
-  // Перед тестом отключаем стандартный enable из beforeEach, чтобы заново
-  // активировать модуль с подменённым view.
-  beforeEach(async () => {
-    await singleFingerRotation.disable();
-    realSetRotation.mockClear();
-  });
-
-  test('skip enable если detect возвращает true: touchmove не вращает карту', async () => {
-    mockView.getConstrainRotation = () => false;
-    const consoleInfoSpy = jest.spyOn(console, 'info').mockImplementation();
-
-    await singleFingerRotation.enable();
-
-    dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
-    dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
-    flushAnimationFrame();
-
-    expect(realSetRotation).not.toHaveBeenCalled();
-    expect(consoleInfoSpy).toHaveBeenCalledWith(
-      expect.stringContaining('обнаружен нативный FixedPointRotate'),
-    );
-    consoleInfoSpy.mockRestore();
-  });
-
-  test('skip enable идемпотентен с disable: повторный disable не падает', async () => {
-    mockView.getConstrainRotation = () => false;
-    jest.spyOn(console, 'info').mockImplementation();
-
-    await singleFingerRotation.enable();
-    await singleFingerRotation.disable();
-    await singleFingerRotation.disable(); // не должен бросать
-  });
-
-  test('после disable+enable с восстановлённым constrainRotation модуль активируется', async () => {
-    // Сценарий: игра откатила хотфикс, view пересоздан с дефолтом true.
-    mockView.getConstrainRotation = () => true;
-
-    await singleFingerRotation.enable();
-
-    dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
-    dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
-    flushAnimationFrame();
-
-    expect(realSetRotation).toHaveBeenCalled();
-  });
 });
 
 describe('singleFingerRotation: подавление во время нативного жеста ngrsZoom', () => {

@@ -36,27 +36,6 @@ let suppressedAfterDoubleTap = false;
 // Сохранённая ссылка на оригинальный view.calculateExtent, чтобы корректно
 // восстановить его в disable(). null, когда обёртка не установлена.
 let originalCalculateExtent: IOlView['calculateExtent'] | null = null;
-// true, если на enable обнаружили нативный FixedPointRotate и подавились.
-// disable должен пропустить отписку listener'ов и destroy dragPanControl,
-// потому что они никогда не вешались.
-let suppressedByNativeRotation = false;
-
-/**
- * Проверяет, активен ли в игре нативный жест вращения (FixedPointRotate
- * добавлен в SBG 0.6.1 — refs/game/script.js:711). Сигнал — значение
- * `view.constrainRotation === false`: дефолт OL — true (rotation снапится к
- * 0/90/180/270), SBG 0.6.1 ставит false, чтобы FixedPointRotate мог свободно
- * вращать карту. Если хотфикс игры откатил FixedPointRotate, OL `View`
- * пересоздан с дефолтным `constrainRotation: true` — наш модуль активируется.
- *
- * Метод `getConstrainRotation` — публичный API OL, стабильное имя при
- * минификации и в разных версиях библиотеки.
- */
-export function isNativeFixedPointRotateActive(target: IOlMap): boolean {
-  const view = target.getView();
-  if (typeof view.getConstrainRotation !== 'function') return false;
-  return !view.getConstrainRotation();
-}
 
 function isFollowActive(): boolean {
   // Игра считает follow активным по умолчанию (null != 'false'),
@@ -293,23 +272,6 @@ export const singleFingerRotation: IFeatureModule = {
   },
   enable() {
     if (!map) return;
-    if (isNativeFixedPointRotateActive(map)) {
-      // Тихо подавляемся: console.info вместо warn, чтобы не пугать пользователя
-      // в DevTools — это не ошибка, а штатная работа на 0.6.1+ без хотфикса.
-      //
-      // Детект однократный, по состоянию на момент enable. Если игра в runtime
-      // переключит constrainRotation (как уже было однажды: SBG 0.6.1 ставил
-      // false, потом хотфикс откатил FixedPointRotate и вернул дефолт true), мы
-      // не отреагируем без перезапуска модуля. Симптом «модуль не работает» или
-      // «работает параллельно с нативом» лечится перезагрузкой страницы — наш
-      // enable вызовется заново и переоценит состояние.
-      console.info(
-        '[SVP] singleFingerRotation: обнаружен нативный FixedPointRotate, модуль подавлен',
-      );
-      suppressedByNativeRotation = true;
-      return;
-    }
-    suppressedByNativeRotation = false;
     installCalculateExtentWrapper();
     if (dragPanControl === null) {
       dragPanControl = createDragPanControl(map);
@@ -317,11 +279,6 @@ export const singleFingerRotation: IFeatureModule = {
     addListeners();
   },
   disable() {
-    if (suppressedByNativeRotation) {
-      // На enable мы ничего не вешали — нечего и снимать.
-      suppressedByNativeRotation = false;
-      return;
-    }
     removeListeners();
     dragPanControl?.restore();
     dragPanControl = null;
