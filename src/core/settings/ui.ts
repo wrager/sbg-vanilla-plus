@@ -85,14 +85,24 @@ const PANEL_STYLES = `
   box-shadow: inset 0 -12px 8px -8px rgba(0, 0, 0, 0.2);
 }
 
-.svp-settings-panel .svp-settings-close {
+/* Общий крестик закрытия для модальных панелей SVP (settings, favoritesMigration
+   и пр.). Селектор без scope - класс по смыслу cross-module: одна и та же
+   кнопка во всех модалках. Раньше был scoped к .svp-settings-panel и
+   повторно скопирован в .svp-migration-close - оба места стилили одну
+   и ту же кнопку под разными именами; теперь один общий класс. */
+.svp-settings-close {
   position: fixed;
   bottom: 8px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 1;
   font-size: 1.5em;
-  padding: 0 .1em;
+  padding: 0 0.1em;
+}
+
+.svp-settings-close:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .svp-settings-section {

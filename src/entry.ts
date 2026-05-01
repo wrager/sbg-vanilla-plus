@@ -6,25 +6,27 @@ import { initGameVersionDetection, installGameVersionCapture } from './core/game
 import { ensureSbgVersionSupported } from './core/gameVersionPrompt';
 import { initOlMapCapture } from './core/olMap';
 import { installSbgFlavor } from './core/sbgFlavor';
+import { betterRefPopoverClosing } from './modules/betterRefPopoverClosing/betterRefPopoverClosing';
 import { enhancedMainScreen } from './modules/enhancedMainScreen/enhancedMainScreen';
 import { enhancedPointPopupUi } from './modules/enhancedPointPopupUi/enhancedPointPopupUi';
-import { swipeToClosePopup } from './modules/swipeToClosePopup/swipeToClosePopup';
 import { shiftMapCenterDown } from './modules/shiftMapCenterDown/shiftMapCenterDown';
-import { ngrsZoom } from './modules/ngrsZoom/ngrsZoom';
 import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
+import { repairButtonFix } from './modules/repairButtonFix/repairButtonFix';
 import { groupErrorToasts } from './modules/groupErrorToasts/groupErrorToasts';
 import { removeAttackCloseButton } from './modules/removeAttackCloseButton/removeAttackCloseButton';
 import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
-import { keyCountOnPoints } from './modules/keyCountOnPoints/keyCountOnPoints';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
-import { nextPointNavigation } from './modules/nextPointNavigation/nextPointNavigation';
 import { refsOnMap } from './modules/refsOnMap/refsOnMap';
-import { repairAtFullCharge } from './modules/repairAtFullCharge/repairAtFullCharge';
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
 import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { drawTools } from './modules/drawTools/drawTools';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
-import { favoritedPoints } from './modules/favoritedPoints/favoritedPoints';
+import { favoritesMigration } from './modules/favoritesMigration/favoritesMigration';
+import { improvedNextPointSwipe } from './modules/improvedNextPointSwipe/improvedNextPointSwipe';
+import { nextPointSwipeAnimation } from './modules/nextPointSwipeAnimation/nextPointSwipeAnimation';
+import { nextPointSwipeButtonsFix } from './modules/nextPointSwipeButtonsFix/nextPointSwipeButtonsFix';
+import { refsLayerSync } from './modules/refsLayerSync/refsLayerSync';
+import { swipeToClosePopup } from './modules/swipeToClosePopup/swipeToClosePopup';
 
 if (!isDisabled()) {
   // Перехваты, которые должны быть установлены ДО парсинга DOM и
@@ -56,27 +58,29 @@ if (!isDisabled()) {
       // ui
       enhancedMainScreen,
       enhancedPointPopupUi,
-      swipeToClosePopup,
       groupErrorToasts,
       removeAttackCloseButton,
-      // feature (favoritedPoints ПЕРЕД inventoryCleanup — зависимость init)
-      favoritedPoints,
+      nextPointSwipeAnimation,
+      // feature
+      favoritesMigration,
       inventoryCleanup,
       keepScreenOn,
-      repairAtFullCharge,
       // map
       shiftMapCenterDown,
       largerPointTapArea,
-      ngrsZoom,
-      keyCountOnPoints,
       singleFingerRotation,
       mapTileLayers,
       drawTools,
       // feature (map-зависимые)
-      nextPointNavigation,
       refsOnMap,
+      improvedNextPointSwipe,
+      swipeToClosePopup,
       // fix
+      betterRefPopoverClosing,
       drawButtonFix,
+      repairButtonFix,
+      nextPointSwipeButtonsFix,
+      refsLayerSync,
     ]);
   }
 

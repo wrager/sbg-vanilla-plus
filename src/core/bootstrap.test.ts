@@ -330,130 +330,24 @@ describe('bootstrap', () => {
   });
 
   describe('модули, нативные в SBG 0.6.1', () => {
-    test('на 0.6.1 favoritedPoints не enable-ится', () => {
-      // Версия детектится из заголовка x-sbg-version; наш модуль перекрывается
-      // нативным избранным в 0.6.1 и должен быть подавлен.
+    // DEPRECATED_MODULES_NATIVE пустой после полноценной адаптации: все модули, ранее
+    // подавлявшиеся, либо возвращены (с переосмыслением и/или runtime-детекцией
+    // native), либо физически удалены из кодовой базы. Behaviour-проверка
+    // пустого сета — в gameVersion.test.ts; здесь проверяем, что bootstrap
+    // не подавляет ни одного модуля на 0.6.1.
+
+    test('на 0.6.1 любой модуль из settings.modules включается как обычно', () => {
       setDetectedVersionForTest('0.6.1');
       jest.spyOn(storage, 'loadSettings').mockReturnValue({
         version: 2,
-        modules: { favoritedPoints: true },
+        modules: { 'arbitrary-mod': true },
         errors: {},
       });
 
-      const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
-      bootstrap([favoritedPoints]);
+      const mod = createMockModule({ id: 'arbitrary-mod', defaultEnabled: true });
+      bootstrap([mod]);
 
-      expect(favoritedPoints.enable).not.toHaveBeenCalled();
-    });
-
-    test('в 0.6.1 favoritedPoints не перезаписывает пользовательский true в settings', () => {
-      // Runtime-блокировка по версии игры НЕ должна трогать persisted settings:
-      // поведение симметрично host-гейту.
-      setDetectedVersionForTest('0.6.1');
-      let lastSaved: ISvpSettings | undefined;
-      jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
-        lastSaved = s;
-        return true;
-      });
-      jest.spyOn(storage, 'loadSettings').mockReturnValue({
-        version: 2,
-        modules: { favoritedPoints: true },
-        errors: {},
-      });
-
-      const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
-      bootstrap([favoritedPoints]);
-
-      expect(favoritedPoints.enable).not.toHaveBeenCalled();
-      expect(lastSaved?.modules['favoritedPoints']).toBe(true);
-    });
-
-    test('на 0.6.0 favoritedPoints включается как обычно', () => {
-      // На проде (0.6.0) гейт 0.6.1+ не срабатывает, модуль работает штатно.
-      setDetectedVersionForTest('0.6.0');
-      jest.spyOn(storage, 'loadSettings').mockReturnValue({
-        version: 2,
-        modules: { favoritedPoints: true },
-        errors: {},
-      });
-
-      const favoritedPoints = createMockModule({ id: 'favoritedPoints', defaultEnabled: true });
-      bootstrap([favoritedPoints]);
-
-      expect(favoritedPoints.enable).toHaveBeenCalledTimes(1);
-    });
-
-    test('в 0.6.1 другие (не-native) модули работают нормально', () => {
-      setDetectedVersionForTest('0.6.1');
-      jest.spyOn(storage, 'loadSettings').mockReturnValue({
-        version: 2,
-        modules: { 'other-mod': true },
-        errors: {},
-      });
-
-      const other = createMockModule({ id: 'other-mod', defaultEnabled: true });
-      bootstrap([other]);
-
-      expect(other.enable).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('модули, конфликтующие с SBG 0.6.1', () => {
-    test('в 0.6.1 swipeToClosePopup не enable-ится (жест перехватывает игра)', () => {
-      setDetectedVersionForTest('0.6.1');
-      jest.spyOn(storage, 'loadSettings').mockReturnValue({
-        version: 2,
-        modules: { swipeToClosePopup: true },
-        errors: {},
-      });
-
-      const swipeToClosePopup = createMockModule({
-        id: 'swipeToClosePopup',
-        defaultEnabled: true,
-      });
-      bootstrap([swipeToClosePopup]);
-
-      expect(swipeToClosePopup.enable).not.toHaveBeenCalled();
-    });
-
-    test('в 0.6.1 swipeToClosePopup не перезаписывает пользовательский true в settings', () => {
-      setDetectedVersionForTest('0.6.1');
-      let lastSaved: ISvpSettings | undefined;
-      jest.spyOn(storage, 'saveSettings').mockImplementation((s: ISvpSettings) => {
-        lastSaved = s;
-        return true;
-      });
-      jest.spyOn(storage, 'loadSettings').mockReturnValue({
-        version: 2,
-        modules: { swipeToClosePopup: true },
-        errors: {},
-      });
-
-      const swipeToClosePopup = createMockModule({
-        id: 'swipeToClosePopup',
-        defaultEnabled: true,
-      });
-      bootstrap([swipeToClosePopup]);
-
-      expect(swipeToClosePopup.enable).not.toHaveBeenCalled();
-      expect(lastSaved?.modules['swipeToClosePopup']).toBe(true);
-    });
-
-    test('на 0.6.0 swipeToClosePopup включается как обычно', () => {
-      setDetectedVersionForTest('0.6.0');
-      jest.spyOn(storage, 'loadSettings').mockReturnValue({
-        version: 2,
-        modules: { swipeToClosePopup: true },
-        errors: {},
-      });
-
-      const swipeToClosePopup = createMockModule({
-        id: 'swipeToClosePopup',
-        defaultEnabled: true,
-      });
-      bootstrap([swipeToClosePopup]);
-
-      expect(swipeToClosePopup.enable).toHaveBeenCalledTimes(1);
+      expect(mod.enable).toHaveBeenCalledTimes(1);
     });
   });
 });

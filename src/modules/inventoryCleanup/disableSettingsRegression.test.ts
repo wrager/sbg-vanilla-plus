@@ -9,7 +9,7 @@ beforeEach(() => {
     SVP_SETTINGS_KEY,
     JSON.stringify({
       version: 3,
-      modules: { inventoryCleanup: true, favoritedPoints: true },
+      modules: { inventoryCleanup: true, favoritesMigration: true },
       errors: {},
     }),
   );
@@ -36,7 +36,7 @@ describe('inventoryCleanup disable восстанавливает setItem', () =
       SVP_SETTINGS_KEY,
       JSON.stringify({
         version: 3,
-        modules: { inventoryCleanup: false, favoritedPoints: true },
+        modules: { inventoryCleanup: false, favoritesMigration: true },
         errors: {},
       }),
     );
@@ -47,7 +47,7 @@ describe('inventoryCleanup disable восстанавливает setItem', () =
     const raw = localStorage.getItem(SVP_SETTINGS_KEY);
     const parsed = JSON.parse(raw ?? '{}') as { modules: Record<string, boolean> };
     expect(parsed.modules.inventoryCleanup).toBe(false);
-    expect(parsed.modules.favoritedPoints).toBe(true);
+    expect(parsed.modules.favoritesMigration).toBe(true);
   });
 
   test('idempotency: двойной enable не создаёт двойной wrapper', () => {

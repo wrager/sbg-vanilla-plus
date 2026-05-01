@@ -270,48 +270,33 @@ describe('isModuleNativeInCurrentGame', () => {
 
   test('без детекта любой модуль считается нативно не реализованным', () => {
     setDetectedVersionForTest(null);
-    expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(false);
+    expect(isModuleNativeInCurrentGame('any-module-id')).toBe(false);
   });
 
   test('на 0.6.0 native-модули не подавляются', () => {
     setDetectedVersionForTest('0.6.0');
+    expect(isModuleNativeInCurrentGame('any-module-id')).toBe(false);
+  });
+
+  test('на 0.6.1 пустое множество NATIVE_SINCE_061: ни один модуль не помечен как нативный', () => {
+    // Сет изначально содержал id модулей, которые в 0.6.1 минимальной адаптации
+    // подавлялись (favoritedPoints, inventoryCleanup, keyCountOnPoints,
+    // singleFingerRotation, nextPointNavigation, repairAtFullCharge, ngrsZoom).
+    // После полноценной адаптации часть модулей возвращены (с переосмыслением /
+    // runtime-детекцией native), часть удалены физически (repairAtFullCharge,
+    // ngrsZoom, keyCountOnPoints), swipeToClosePopup возвращён под новым жестом,
+    // nextPointNavigation переосмыслен как improvedNextPointSwipe (заменяет
+    // нативный горизонтальный свайп через runtime-override на
+    // Hammer.Manager.prototype.emit + наша приоритетная навигация в радиусе
+    // взаимодействия). Сет пуст.
+    setDetectedVersionForTest('0.6.1');
     expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(false);
-  });
-
-  test('на 0.6.1 favoritedPoints считается нативно реализованным', () => {
-    setDetectedVersionForTest('0.6.1');
-    expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(true);
-  });
-
-  test('на будущей 0.6.2 тоже считается нативно реализованным', () => {
-    setDetectedVersionForTest('0.6.2');
-    expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(true);
-  });
-
-  test('на 0.6.1 модуль вне списка не подавляется', () => {
-    setDetectedVersionForTest('0.6.1');
-    expect(isModuleNativeInCurrentGame('enhancedMainScreen')).toBe(false);
-  });
-
-  test('на 0.6.1 все 7 native-модулей маркированы', () => {
-    setDetectedVersionForTest('0.6.1');
-    const native = [
-      'favoritedPoints',
-      'inventoryCleanup',
-      'keyCountOnPoints',
-      'repairAtFullCharge',
-      'ngrsZoom',
-      'singleFingerRotation',
-      'nextPointNavigation',
-    ];
-    for (const id of native) {
-      expect(isModuleNativeInCurrentGame(id)).toBe(true);
-    }
-  });
-
-  test('на 0.6.1 swipeToClosePopup НЕ native (это конфликт)', () => {
-    setDetectedVersionForTest('0.6.1');
-    expect(isModuleNativeInCurrentGame('swipeToClosePopup')).toBe(false);
+    expect(isModuleNativeInCurrentGame('inventoryCleanup')).toBe(false);
+    expect(isModuleNativeInCurrentGame('keyCountOnPoints')).toBe(false);
+    expect(isModuleNativeInCurrentGame('singleFingerRotation')).toBe(false);
+    expect(isModuleNativeInCurrentGame('improvedNextPointSwipe')).toBe(false);
+    expect(isModuleNativeInCurrentGame('repairAtFullCharge')).toBe(false);
+    expect(isModuleNativeInCurrentGame('ngrsZoom')).toBe(false);
   });
 });
 
@@ -320,23 +305,9 @@ describe('isModuleConflictingWithCurrentGame', () => {
     resetDetectedVersionForTest();
   });
 
-  test('без детекта swipeToClosePopup не конфликтует', () => {
-    setDetectedVersionForTest(null);
-    expect(isModuleConflictingWithCurrentGame('swipeToClosePopup')).toBe(false);
-  });
-
-  test('на 0.6.0 swipeToClosePopup не конфликтует (игра ещё не перехватывает .info)', () => {
-    setDetectedVersionForTest('0.6.0');
-    expect(isModuleConflictingWithCurrentGame('swipeToClosePopup')).toBe(false);
-  });
-
-  test('на 0.6.1 swipeToClosePopup конфликтует', () => {
+  test('пустое множество DEPRECATED_MODULES_CONFLICTED: ни один модуль не помечен как конфликтующий', () => {
     setDetectedVersionForTest('0.6.1');
-    expect(isModuleConflictingWithCurrentGame('swipeToClosePopup')).toBe(true);
-  });
-
-  test('на 0.6.1 native-модули не считаются конфликтующими', () => {
-    setDetectedVersionForTest('0.6.1');
+    expect(isModuleConflictingWithCurrentGame('swipeToClosePopup')).toBe(false);
     expect(isModuleConflictingWithCurrentGame('favoritedPoints')).toBe(false);
   });
 });

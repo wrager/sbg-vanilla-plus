@@ -1,16 +1,25 @@
-/* Блокировать горизонтальный pan браузера на попапе, чтобы свайп не двигал вьюпорт */
-.info.popup {
-  touch-action: pan-y;
-}
+/* CSS-transition для dismiss/return-анимации в core/popupSwipe. Класс
+   svp-swipe-animating включается только во время анимации; в остальное
+   время transition отсутствует - попап едет за пальцем мгновенно.
 
-/* Разрешить горизонтальный свайп карусели простановки ядер (Splide) */
-.info.popup .deploy-slider-wrp {
-  touch-action: manipulation;
-}
+   Длительность 0.3s - дефолт; конкретные модули (например, swipeToClosePopup
+   укорачивает до 150мс) перебивают её через inline transition-duration,
+   выставляемый core/popupSwipe из handler.animationDurationMs. Inline-стиль
+   побеждает CSS-rule по специфичности.
 
+   touch-action на самом попапе теперь устанавливается через JS из
+   core/popupSwipe (touch-action: none), потому что обе оси под нашим
+   контролем. inline-стиль игры (touch-action: pan-y) перебивается там же. */
 .info.popup.svp-swipe-animating {
   transition:
     translate 0.3s ease-out,
-    rotate 0.3s ease-out,
     opacity 0.3s ease-out;
+}
+
+/* Слайдер ядер живёт со своими жестами Splide; touch-action: manipulation
+   разрешает single-tap/double-tap, остальное - Splide. Это нужно даже когда
+   .info.popup имеет touch-action: none: дочерний элемент перебивает родителя
+   через cascade (touch-action не наследуется). */
+.info.popup .deploy-slider-wrp {
+  touch-action: manipulation;
 }

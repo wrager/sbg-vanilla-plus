@@ -34,3 +34,21 @@
   min-width: 48px;
   text-align: center;
 }
+
+.svp-refs-on-map-locked-note {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  background: var(--background-transp);
+  border: 1px solid var(--border-transp);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  pointer-events: none;
+  max-width: calc(100vw - 40px);
+  text-align: center;
+}

@@ -1,4 +1,4 @@
-export const SBG_COMPATIBLE_VERSIONS: readonly string[] = ['0.6.0', '0.6.1'];
+export const SBG_COMPATIBLE_VERSIONS: readonly string[] = ['0.6.1'];
 
 // Сервер SBG ставит заголовок `x-sbg-version` на ответы обычных игровых
 // запросов к /api/*. Игра сама берёт версию именно так: в
@@ -145,32 +145,28 @@ export function isSbgGreaterThan(version: string): boolean {
   return compareVersions(detected, version) > 0;
 }
 
-// Модули, чью функциональность игра реализовала нативно в SBG 0.6.1.
-// Множество заполняется по одному id за раз — каждый с обоснованием
-// перекрытия use case в commit message соответствующего коммита.
-const NATIVE_SINCE_061: ReadonlySet<string> = new Set<string>([
-  'favoritedPoints',
-  'inventoryCleanup',
-  'keyCountOnPoints',
-  'repairAtFullCharge',
-  'ngrsZoom',
-  'singleFingerRotation',
-  'nextPointNavigation',
-]);
+// Модули, чью функциональность игра реализовала нативно. Множество заполняется
+// по одному id за раз — каждый с обоснованием перекрытия use case в commit
+// message соответствующего коммита. На 0.6.1 список изначально содержал
+// favoritedPoints, inventoryCleanup, keyCountOnPoints, singleFingerRotation —
+// после полноценной адаптации часть модулей возвращены (с переосмыслением
+// и/или runtime-детекцией native), часть удалены физически (keyCountOnPoints,
+// repairAtFullCharge, ngrsZoom), сет очищен.
+const DEPRECATED_MODULES_NATIVE: ReadonlySet<string> = new Set<string>([]);
 
 export function isModuleNativeInCurrentGame(moduleId: string): boolean {
-  return isSbgGreaterThan('0.6.0') && NATIVE_SINCE_061.has(moduleId);
+  return isSbgGreaterThan('0.6.0') && DEPRECATED_MODULES_NATIVE.has(moduleId);
 }
 
 // Модули, которые конфликтуют с новой версией SBG: use case у нашей
 // реализации не перекрыт нативом, но новая версия ввела жест/событие
 // на тех же DOM-элементах, что слушает наш модуль — одновременная
 // работа даёт сломанный UX (двойное срабатывание, перехват жеста и т. п.).
-// Отличие от NATIVE_SINCE_061 принципиальное: там игра заменила
+// Отличие от DEPRECATED_MODULES_NATIVE принципиальное: там игра заменила
 // нашу фичу — подпись «Реализовано в игре»; здесь наш функционал
 // пропадает без нативной замены — подпись «Конфликтует с новой версией игры».
-const CONFLICTS_WITH_061: ReadonlySet<string> = new Set<string>(['swipeToClosePopup']);
+const DEPRECATED_MODULES_CONFLICTED: ReadonlySet<string> = new Set<string>([]);
 
 export function isModuleConflictingWithCurrentGame(moduleId: string): boolean {
-  return isSbgGreaterThan('0.6.0') && CONFLICTS_WITH_061.has(moduleId);
+  return isSbgGreaterThan('0.6.0') && DEPRECATED_MODULES_CONFLICTED.has(moduleId);
 }

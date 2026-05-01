@@ -30,7 +30,7 @@ import styles from './styles.css?inline';
 const MODULE_ID = 'drawTools';
 const STORAGE_KEY = 'svp_drawTools';
 const DRAW_LAYER_NAME = 'svp-draw-tools';
-// Поверх всех игровых и SVP-слоёв (refsOnMap топовый = 8, keyCountOnPoints = 5).
+// Поверх всех игровых и SVP-слоёв (refsOnMap топовый = 8).
 const DRAW_LAYER_Z_INDEX = 9;
 const SNAP_THRESHOLD_PX = 100;
 const DEFAULT_COLOR = '#a24ac3';

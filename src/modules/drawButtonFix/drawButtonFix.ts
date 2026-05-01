@@ -2,38 +2,39 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 
 const MODULE_ID = 'drawButtonFix';
 
-let observer: MutationObserver | null = null;
+// Observer подписан на конкретный элемент #draw, не на document.body subtree:
+// `disabled` - частый атрибут в игре, выставляется на множество кнопок (attack,
+// deploy, repair, inventory items). Subtree-observer вызывал бы callback на
+// каждое такое переключение и фильтровал бы вручную - O(всех изменений).
+// #draw присутствует в статическом HTML игры (refs/game/index.html:299), к
+// моменту bootstrap (DOMContentLoaded) уже в DOM. Прямое document.querySelector
+// найдёт его сразу, без waitForElement.
+let drawDisabledObserver: MutationObserver | null = null;
 
 export const drawButtonFix: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Draw Button Fix', ru: 'Фикс кнопки рисования' },
   description: {
-    en: 'Draw button is always enabled — fixes a game bug where the button gets stuck in disabled state',
-    ru: 'Кнопка «Рисовать» всегда активна — исправляет баг игры, когда кнопка зависает в неактивном состоянии',
+    en: 'Keeps the Draw button clickable',
+    ru: 'Кнопка «Рисовать» всегда активна',
   },
   defaultEnabled: true,
   category: 'fix',
   init() {},
   enable() {
-    observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (
-          mutation.type === 'attributes' &&
-          mutation.target instanceof Element &&
-          mutation.target.id === 'draw'
-        ) {
-          mutation.target.removeAttribute('disabled');
-        }
-      }
-    });
-    observer.observe(document.body, {
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['disabled'],
-    });
+    const drawButton = document.querySelector('#draw');
+    if (drawButton instanceof HTMLElement) {
+      drawDisabledObserver = new MutationObserver(() => {
+        drawButton.removeAttribute('disabled');
+      });
+      drawDisabledObserver.observe(drawButton, {
+        attributes: true,
+        attributeFilter: ['disabled'],
+      });
+    }
   },
   disable() {
-    observer?.disconnect();
-    observer = null;
+    drawDisabledObserver?.disconnect();
+    drawDisabledObserver = null;
   },
 };
