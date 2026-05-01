@@ -19,6 +19,12 @@ const LOCKED_CLASS = 'locked';
 const STUCK_LOCKED_TIMEOUT_MS = 10000;
 
 let observer: MutationObserver | null = null;
+// Глобальный (не per-guid) timer корректен по игровому инварианту: click
+// handler #repair (refs/game/script.js:946) делает early-return при наличии
+// класса locked, поэтому пока класс не снят (нашим unstick или штатно
+// игрой), новый репэйр на любой точке невозможен. Если игра снимет
+// этот early-return в будущей версии, инвариант нарушится - тогда
+// потребуется привязка таймера к guid точки.
 let stuckTimer: ReturnType<typeof setTimeout> | null = null;
 
 function clearStuckTimer(): void {
