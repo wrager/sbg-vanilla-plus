@@ -214,9 +214,32 @@ function handleDiscoverResponse(response: Response, targetGuid: string): void {
       }
       const beforeValue = readRefsChannelValue(feature);
       if (beforeValue === null) {
+        // DIAGNOSTIC (beta.14): расширенный output - точный тип highlight
+        // и какие properties у feature вообще. Узнаем, отсутствует ли
+        // highlight целиком, или лежит как null/undefined/string/object,
+        // или формат поменялся (массив -> объект).
+        const props: Record<string, unknown> =
+          typeof feature.getProperties === 'function' ? feature.getProperties() : {};
+        const propsKeys = Object.keys(props).join(',').slice(0, 60);
+        const hl: unknown =
+          typeof feature.get === 'function' ? feature.get('highlight') : undefined;
+        const hlType = hl === null ? 'null' : typeof hl;
+        let hlSample: string;
+        if (typeof hl === 'object' && hl !== null) {
+          try {
+            hlSample = JSON.stringify(hl).slice(0, 50);
+          } catch {
+            hlSample = '<unstringifiable>';
+          }
+        } else {
+          hlSample = String(hl).slice(0, 50);
+        }
         diagAlert(
           `SVP fix-discover\nguid: ${targetGuid.slice(0, 8)}\ngain: ${String(gain)}\n` +
-            `state: highlight NULL (early)`,
+            `state: highlight NULL (early)\n` +
+            `props: ${propsKeys}\n` +
+            `hlType: ${hlType}\n` +
+            `hlSample: ${hlSample}`,
         );
         return;
       }
