@@ -1,3 +1,4 @@
+import { diagAlert } from '../../core/diagAlert';
 import { waitForElement } from '../../core/dom';
 
 /**
@@ -48,6 +49,13 @@ let originalCreatePopper: IPopperGlobal['createPopper'] | null = null;
 // installGeneration защищает от race между waitForElement и быстрым enable->disable->enable.
 let installGeneration = 0;
 
+// DIAGNOSTIC (beta.12): счётчики для детекта "popover пересоздаётся при
+// каждом open, наш listener теряется". Удалить после подтверждения.
+let diagPopperCreateCount = 0;
+let diagFirstPopperElement: Element | null = null;
+let diagHandlerFiredCount = 0;
+let diagSecondOpenAlertShown = false;
+
 function getPopperGlobal(): IPopperGlobal | undefined {
   // window.Popper - глобал, который игра подгружает с npm-пакетом
   // @popperjs/core. Расширять глобальный Window declare можно было бы,
@@ -70,6 +78,27 @@ function installCreatePopperHook(): void {
     const instance = original.call(this, reference, popper, options);
     if (popper instanceof HTMLElement && popper.classList.contains('inventory__ref-actions')) {
       currentPopper = instance;
+      // DIAGNOSTIC (beta.12): на втором open показываем сводку - тот же
+      // элемент или новый, и сколько раз сработал наш handler с момента
+      // первого open. Удалить после подтверждения.
+      diagPopperCreateCount++;
+      if (diagPopperCreateCount === 1) {
+        diagFirstPopperElement = popper;
+      } else if (diagPopperCreateCount === 2 && !diagSecondOpenAlertShown) {
+        diagSecondOpenAlertShown = true;
+        const sameElement = diagFirstPopperElement === popper;
+        const trackedCount = trackedButtons.length;
+        const firstTracked = trackedButtons.length > 0 ? trackedButtons[0] : null;
+        const trackedFirstInDom = firstTracked !== null && document.contains(firstTracked);
+        diagAlert(
+          `SVP popover\n` +
+            `secondOpen detected\n` +
+            `sameElement: ${String(sameElement)}\n` +
+            `trackedButtons: ${String(trackedCount)}\n` +
+            `tracked[0] in DOM: ${String(trackedFirstInDom)}\n` +
+            `handlerFiredBefore: ${String(diagHandlerFiredCount)}`,
+        );
+      }
     }
     return instance;
   };
@@ -100,6 +129,9 @@ function closePopover(): void {
 }
 
 function onActionClick(): void {
+  // DIAGNOSTIC (beta.12): счётчик срабатываний handler'а. Используется в
+  // alert на втором open popover'а. Удалить после подтверждения.
+  diagHandlerFiredCount++;
   // setTimeout(0), не Promise.resolve().then: HTML спецификация event dispatch
   // выполняет microtask checkpoint после КАЖДОГО invocation listener-а на одном
   // target. Если наш onActionClick зарегистрирован в bubble раньше игрового

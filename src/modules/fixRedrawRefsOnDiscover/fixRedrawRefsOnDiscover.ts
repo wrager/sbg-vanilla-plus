@@ -1,4 +1,5 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
+import { diagAlert } from '../../core/diagAlert';
 import { findLayerByName, getOlMap } from '../../core/olMap';
 import type { IOlFeature, IOlVectorSource } from '../../core/olMap';
 
@@ -134,23 +135,52 @@ export function applyRefsGainToFeature(feature: IOlFeature, gain: number): void 
 
 function scheduleApplyRefsGain(targetGuid: string, gain: number, beforeValue: number): void {
   setTimeout(() => {
-    if (!discoverHookEnabled) return;
-    if (!pointsSource) return;
+    // DIAGNOSTIC (beta.12): полная картина flow в одном alert. Удалить
+    // вместе с импортом diagAlert после подтверждения причины бага.
+    const guidShort = targetGuid.slice(0, 8);
+    if (!discoverHookEnabled) {
+      diagAlert(`SVP fix-discover\nguid: ${guidShort}\nstate: hook DISABLED`);
+      return;
+    }
+    if (!pointsSource) {
+      diagAlert(`SVP fix-discover\nguid: ${guidShort}\nstate: NO pointsSource`);
+      return;
+    }
     const feature =
       typeof pointsSource.getFeatureById === 'function'
         ? pointsSource.getFeatureById(targetGuid)
         : null;
-    if (!feature) return;
+    if (!feature) {
+      diagAlert(`SVP fix-discover\nguid: ${guidShort}\ngain: ${String(gain)}\nstate: feature NULL`);
+      return;
+    }
     const currentValue = readRefsChannelValue(feature);
-    if (currentValue === null) return;
+    if (currentValue === null) {
+      diagAlert(
+        `SVP fix-discover\nguid: ${guidShort}\ngain: ${String(gain)}\nstate: highlight NULL`,
+      );
+      return;
+    }
     // Forward-compat защита: если за DETECTION_DELAY_MS значение
     // highlight[REFS_CHANNEL_INDEX] изменилось, его уже обновил кто-то
     // другой - сама игра (когда исправит баг), другой скрипт-фиксер,
     // или вызов feature.changed() с новой prop.highlight ссылкой через
     // showInfo/attack-response. Дублировать gain нельзя - игрок увидит
     // удвоенное значение на карте. Skip и доверяем внешнему обновлению.
-    if (currentValue !== beforeValue) return;
+    if (currentValue !== beforeValue) {
+      diagAlert(
+        `SVP fix-discover\nguid: ${guidShort}\ngain: ${String(gain)}\n` +
+          `before: ${String(beforeValue)} cur: ${String(currentValue)}\n` +
+          `state: SKIP (forward-compat)`,
+      );
+      return;
+    }
     applyRefsGainToFeature(feature, gain);
+    diagAlert(
+      `SVP fix-discover\nguid: ${guidShort}\ngain: ${String(gain)}\n` +
+        `before: ${String(beforeValue)}\n` +
+        `state: APPLIED (changed called)`,
+    );
   }, DETECTION_DELAY_MS);
 }
 
@@ -164,14 +194,32 @@ function handleDiscoverResponse(response: Response, targetGuid: string): void {
       if (!discoverHookEnabled) return;
       if (!pointsSource) return;
       const gain = computeRefsGainFromDiscover(body, targetGuid);
-      if (gain <= 0) return;
+      if (gain <= 0) {
+        // DIAGNOSTIC (beta.12): noop когда в loot нет ключей этой точки.
+        diagAlert(
+          `SVP fix-discover\nguid: ${targetGuid.slice(0, 8)}\nstate: noop (no refs in loot)`,
+        );
+        return;
+      }
       const feature =
         typeof pointsSource.getFeatureById === 'function'
           ? pointsSource.getFeatureById(targetGuid)
           : null;
-      if (!feature) return;
+      if (!feature) {
+        diagAlert(
+          `SVP fix-discover\nguid: ${targetGuid.slice(0, 8)}\ngain: ${String(gain)}\n` +
+            `state: feature NULL (early)`,
+        );
+        return;
+      }
       const beforeValue = readRefsChannelValue(feature);
-      if (beforeValue === null) return;
+      if (beforeValue === null) {
+        diagAlert(
+          `SVP fix-discover\nguid: ${targetGuid.slice(0, 8)}\ngain: ${String(gain)}\n` +
+            `state: highlight NULL (early)`,
+        );
+        return;
+      }
       scheduleApplyRefsGain(targetGuid, gain, beforeValue);
     })
     .catch(() => {
