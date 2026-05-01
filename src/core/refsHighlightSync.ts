@@ -17,8 +17,16 @@
 
 import { diagAlert } from './diagAlert';
 import { readInventoryReferences } from './inventoryCache';
+import { isModuleEnabledByUser } from './moduleRegistry';
 import { findLayerByName, getOlMap } from './olMap';
 import type { IOlVectorSource } from './olMap';
+
+// Модуль-владелец синхронизации. Если пользователь выключил его в настройках,
+// все вызовы syncRefsCountForPoints из любых модулей-каллеров (refsCounterSync
+// после discover, inventoryCleanup после fast-cleanup, slowRefsDelete после
+// slow-cleanup, refsOnMap после viewer-DELETE) silent-return. Один тумблер
+// контролирует весь sync, не разные тумблеры на каждом пути.
+const OWNER_MODULE_ID = 'refsCounterSync';
 
 const REFS_CHANNEL_INDEX = 7;
 const REFS_CHANNEL_KEY = String(REFS_CHANNEL_INDEX);
@@ -76,6 +84,9 @@ function buildAmountByPoint(): Map<string, number> {
  */
 export async function syncRefsCountForPoints(pointGuids: readonly string[]): Promise<void> {
   if (pointGuids.length === 0) return;
+  // Owner-модуль выключен пользователем - silent no-op для всех каллеров.
+  // Это единая точка контроля sync, не отдельные тумблеры на каждом пути.
+  if (!isModuleEnabledByUser(OWNER_MODULE_ID)) return;
   await ensurePointsSource();
   if (!pointsSource) return;
 

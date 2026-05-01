@@ -7,6 +7,11 @@ jest.mock('./olMap', () => ({
   findLayerByName: jest.requireActual('./olMap').findLayerByName,
 }));
 
+let moduleEnabledMock = true;
+jest.mock('./moduleRegistry', () => ({
+  isModuleEnabledByUser: (): boolean => moduleEnabledMock,
+}));
+
 import { getOlMap } from './olMap';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
@@ -88,12 +93,30 @@ beforeEach(() => {
   resetRefsHighlightSyncForTest();
   mockGetOlMap.mockReset();
   localStorage.clear();
+  moduleEnabledMock = true;
 });
 
 describe('syncRefsCountForPoints', () => {
   test('пустой массив pointGuids - silent no-op (getOlMap не вызывается)', async () => {
     await syncRefsCountForPoints([]);
     expect(mockGetOlMap).not.toHaveBeenCalled();
+  });
+
+  test('owner-модуль refsCounterSync выключен пользователем - silent no-op для всех каллеров', async () => {
+    moduleEnabledMock = false;
+    const olMap = makeMap([
+      makeLayer('points', makeSource({ 'point-a': makeFeature({ highlight: { '7': 5 } }) })),
+    ]);
+    mockGetOlMap.mockResolvedValue(olMap);
+    setInventory([{ g: 's1', t: 3, l: 'point-a', a: 99 }]);
+    const alertSpy = jest.spyOn(window, 'alert').mockImplementation();
+
+    await syncRefsCountForPoints(['point-a']);
+
+    // getOlMap не вызывается - sync вышел до lazy init.
+    expect(mockGetOlMap).not.toHaveBeenCalled();
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
   });
 
   test('feature не найдена в pointsSource - silent skip без alert', async () => {
