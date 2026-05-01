@@ -128,6 +128,60 @@ describe('nextPointSwipeFix enable/disable', () => {
     expect(click).not.toHaveBeenCalled();
   });
 
+  test('observer снимает fallback и освобождает Map при удалении кнопки', async () => {
+    await nextPointSwipeFix.enable();
+
+    const popup = document.querySelector('.info.popup');
+    if (!popup) throw new Error('popup not found');
+    const newButton = document.createElement('button');
+    newButton.id = 'temp-button';
+    popup.appendChild(newButton);
+    await Promise.resolve();
+
+    // Кнопка зарегистрирована - polyfill активен.
+    const click = jest.fn();
+    newButton.addEventListener('click', click);
+    dispatchPointer(newButton, 'pointerdown', { x: 10, y: 10, t: 1000 });
+    dispatchPointer(newButton, 'pointerup', { x: 10, y: 10, t: 1050 });
+    jest.advanceTimersByTime(80);
+    expect(click).toHaveBeenCalledTimes(1);
+    click.mockClear();
+
+    // Удаляем кнопку - observer должен снять fallback.
+    popup.removeChild(newButton);
+    await Promise.resolve();
+
+    // После снятия polyfill не должен диспатчить click.
+    dispatchPointer(newButton, 'pointerdown', { x: 10, y: 10, t: 2000 });
+    dispatchPointer(newButton, 'pointerup', { x: 10, y: 10, t: 2050 });
+    jest.advanceTimersByTime(80);
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  test('observer снимает fallback на кнопки внутри удалённого контейнера', async () => {
+    await nextPointSwipeFix.enable();
+
+    const popup = document.querySelector('.info.popup');
+    if (!popup) throw new Error('popup not found');
+    const wrapper = document.createElement('div');
+    const innerButton = document.createElement('button');
+    innerButton.id = 'inner-removed';
+    wrapper.appendChild(innerButton);
+    popup.appendChild(wrapper);
+    await Promise.resolve();
+
+    // Удаляем контейнер - кнопка внутри должна потерять fallback.
+    popup.removeChild(wrapper);
+    await Promise.resolve();
+
+    const click = jest.fn();
+    innerButton.addEventListener('click', click);
+    dispatchPointer(innerButton, 'pointerdown', { x: 10, y: 10, t: 1000 });
+    dispatchPointer(innerButton, 'pointerup', { x: 10, y: 10, t: 1050 });
+    jest.advanceTimersByTime(80);
+    expect(click).not.toHaveBeenCalled();
+  });
+
   test('disable отключает observer - новые кнопки не получают fallback', async () => {
     await nextPointSwipeFix.enable();
     await nextPointSwipeFix.disable();

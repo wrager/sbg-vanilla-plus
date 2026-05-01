@@ -19,9 +19,22 @@ function applyFallback(button: HTMLButtonElement): void {
   installedFallbacks.set(button, installClickFallback(button));
 }
 
+function removeFallback(button: HTMLButtonElement): void {
+  const uninstall = installedFallbacks.get(button);
+  if (!uninstall) return;
+  uninstall();
+  installedFallbacks.delete(button);
+}
+
 function applyToAllButtonsIn(root: ParentNode): void {
   for (const button of root.querySelectorAll<HTMLButtonElement>('button')) {
     applyFallback(button);
+  }
+}
+
+function removeAllFallbacksIn(root: Element): void {
+  for (const button of root.querySelectorAll<HTMLButtonElement>('button')) {
+    removeFallback(button);
   }
 }
 
@@ -31,8 +44,9 @@ function startObservingPopup(popup: HTMLElement): void {
 
   // Кнопки внутри попапа динамически пересоздаются на каждом showInfo:
   // .i-stat__cores empty+append, deploy_slider.refresh пересоздаёт slides и
-  // т. п. Observer догоняет добавление новых button-элементов чтобы fallback
-  // покрыл и их.
+  // т. п. Observer догоняет добавление/удаление button-элементов: добавленные
+  // получают fallback, удалённые - снимают его и уходят из Map (иначе Map
+  // держит ссылки на мёртвые DOM-узлы и fallback не освобождается GC).
   popupObserver = new MutationObserver((records) => {
     for (const record of records) {
       for (const node of record.addedNodes) {
@@ -40,6 +54,13 @@ function startObservingPopup(popup: HTMLElement): void {
           applyFallback(node);
         } else if (node instanceof Element) {
           applyToAllButtonsIn(node);
+        }
+      }
+      for (const node of record.removedNodes) {
+        if (node instanceof HTMLButtonElement) {
+          removeFallback(node);
+        } else if (node instanceof Element) {
+          removeAllFallbacksIn(node);
         }
       }
     }
