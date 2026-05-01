@@ -24,7 +24,7 @@ import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
 import { favoritesMigration } from './modules/favoritesMigration/favoritesMigration';
 import { improvedNextPointSwipe } from './modules/improvedNextPointSwipe/improvedNextPointSwipe';
 import { nextPointSwipeAnimation } from './modules/nextPointSwipeAnimation/nextPointSwipeAnimation';
-import { nextPointSwipeFix } from './modules/nextPointSwipeFix/nextPointSwipeFix';
+import { nextPointSwipeButtonsFix } from './modules/nextPointSwipeButtonsFix/nextPointSwipeButtonsFix';
 import { refsLayerSync } from './modules/refsLayerSync/refsLayerSync';
 import { swipeToClosePopup } from './modules/swipeToClosePopup/swipeToClosePopup';
 
@@ -79,7 +79,7 @@ if (!isDisabled()) {
       betterRefPopoverClosing,
       drawButtonFix,
       repairButtonFix,
-      nextPointSwipeFix,
+      nextPointSwipeButtonsFix,
       refsLayerSync,
     ]);
   }

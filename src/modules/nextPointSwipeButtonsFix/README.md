@@ -1,4 +1,4 @@
-# nextPointSwipeFix
+# nextPointSwipeButtonsFix
 
 Восстанавливает срабатывание кнопок попапа точки после переключения на следующую точку.
 
@@ -24,10 +24,10 @@ Polyfill `core/clickSynthesis.ts`. На pointerup проверяем через 
 
 ## Файловая структура
 
-| Файл                        | Назначение                                                                                                   |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `nextPointSwipeFix.ts`      | Определение модуля + установка `installClickFallback` на все button-узлы попапа + observer на childList      |
-| `nextPointSwipeFix.test.ts` | Тесты на enable/disable, observer на динамические кнопки, идемпотентность, отсутствие дубля при native click |
+| Файл                               | Назначение                                                                                                   |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `nextPointSwipeButtonsFix.ts`      | Определение модуля + установка `installClickFallback` на все button-узлы попапа + observer на childList      |
+| `nextPointSwipeButtonsFix.test.ts` | Тесты на enable/disable, observer на динамические кнопки, идемпотентность, отсутствие дубля при native click |
 
 ## Настройки
 

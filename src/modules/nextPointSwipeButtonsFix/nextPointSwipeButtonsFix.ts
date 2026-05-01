@@ -3,7 +3,7 @@ import { installClickFallback } from '../../core/clickSynthesis';
 import { waitForElement } from '../../core/dom';
 import { POINT_POPUP_SELECTOR } from '../../core/pointPopup';
 
-const MODULE_ID = 'nextPointSwipeFix';
+const MODULE_ID = 'nextPointSwipeButtonsFix';
 
 // WeakMap-style на element -> uninstall. Использовать Map чтобы итерироваться
 // по элементам при disable (WeakMap не итерируется). Ссылки на DOM-узлы
@@ -68,7 +68,7 @@ function startObservingPopup(popup: HTMLElement): void {
   popupObserver.observe(popup, { childList: true, subtree: true });
 }
 
-export const nextPointSwipeFix: IFeatureModule = {
+export const nextPointSwipeButtonsFix: IFeatureModule = {
   id: MODULE_ID,
   name: {
     en: 'Next point swipe fix',

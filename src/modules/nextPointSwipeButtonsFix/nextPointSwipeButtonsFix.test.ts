@@ -1,27 +1,27 @@
-import { nextPointSwipeFix } from './nextPointSwipeFix';
+import { nextPointSwipeButtonsFix } from './nextPointSwipeButtonsFix';
 
-describe('nextPointSwipeFix metadata', () => {
+describe('nextPointSwipeButtonsFix metadata', () => {
   test('has correct id', () => {
-    expect(nextPointSwipeFix.id).toBe('nextPointSwipeFix');
+    expect(nextPointSwipeButtonsFix.id).toBe('nextPointSwipeButtonsFix');
   });
 
   test('is in fix category', () => {
-    expect(nextPointSwipeFix.category).toBe('fix');
+    expect(nextPointSwipeButtonsFix.category).toBe('fix');
   });
 
   test('is enabled by default', () => {
-    expect(nextPointSwipeFix.defaultEnabled).toBe(true);
+    expect(nextPointSwipeButtonsFix.defaultEnabled).toBe(true);
   });
 
   test('has localized name and description', () => {
-    expect(nextPointSwipeFix.name.ru).toBeTruthy();
-    expect(nextPointSwipeFix.name.en).toBeTruthy();
-    expect(nextPointSwipeFix.description.ru).toBeTruthy();
-    expect(nextPointSwipeFix.description.en).toBeTruthy();
+    expect(nextPointSwipeButtonsFix.name.ru).toBeTruthy();
+    expect(nextPointSwipeButtonsFix.name.en).toBeTruthy();
+    expect(nextPointSwipeButtonsFix.description.ru).toBeTruthy();
+    expect(nextPointSwipeButtonsFix.description.en).toBeTruthy();
   });
 });
 
-describe('nextPointSwipeFix enable/disable', () => {
+describe('nextPointSwipeButtonsFix enable/disable', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     document.body.innerHTML = `
@@ -40,7 +40,7 @@ describe('nextPointSwipeFix enable/disable', () => {
   });
 
   afterEach(async () => {
-    await nextPointSwipeFix.disable();
+    await nextPointSwipeButtonsFix.disable();
     jest.useRealTimers();
     document.body.innerHTML = '';
   });
@@ -77,7 +77,7 @@ describe('nextPointSwipeFix enable/disable', () => {
   }
 
   test('enable устанавливает fallback на все кнопки попапа', async () => {
-    await nextPointSwipeFix.enable();
+    await nextPointSwipeButtonsFix.enable();
     expectClickPolyfill('#draw');
     expectClickPolyfill('#discover');
     expectClickPolyfill('#repair');
@@ -86,7 +86,7 @@ describe('nextPointSwipeFix enable/disable', () => {
   });
 
   test('observer ставит fallback на динамически добавленные кнопки', async () => {
-    await nextPointSwipeFix.enable();
+    await nextPointSwipeButtonsFix.enable();
 
     // showInfo пересоздаёт cores list - симулируем добавление новой кнопки.
     const popup = document.querySelector('.info.popup');
@@ -102,7 +102,7 @@ describe('nextPointSwipeFix enable/disable', () => {
   });
 
   test('observer ставит fallback на кнопку внутри добавленного контейнера', async () => {
-    await nextPointSwipeFix.enable();
+    await nextPointSwipeButtonsFix.enable();
 
     const popup = document.querySelector('.info.popup');
     if (!popup) throw new Error('popup not found');
@@ -115,8 +115,8 @@ describe('nextPointSwipeFix enable/disable', () => {
   });
 
   test('disable снимает fallback - polyfill больше не диспатчит', async () => {
-    await nextPointSwipeFix.enable();
-    await nextPointSwipeFix.disable();
+    await nextPointSwipeButtonsFix.enable();
+    await nextPointSwipeButtonsFix.disable();
 
     const draw = document.querySelector<HTMLElement>('#draw');
     if (!draw) throw new Error('#draw not found');
@@ -129,7 +129,7 @@ describe('nextPointSwipeFix enable/disable', () => {
   });
 
   test('observer снимает fallback и освобождает Map при удалении кнопки', async () => {
-    await nextPointSwipeFix.enable();
+    await nextPointSwipeButtonsFix.enable();
 
     const popup = document.querySelector('.info.popup');
     if (!popup) throw new Error('popup not found');
@@ -159,7 +159,7 @@ describe('nextPointSwipeFix enable/disable', () => {
   });
 
   test('observer снимает fallback на кнопки внутри удалённого контейнера', async () => {
-    await nextPointSwipeFix.enable();
+    await nextPointSwipeButtonsFix.enable();
 
     const popup = document.querySelector('.info.popup');
     if (!popup) throw new Error('popup not found');
@@ -183,8 +183,8 @@ describe('nextPointSwipeFix enable/disable', () => {
   });
 
   test('disable отключает observer - новые кнопки не получают fallback', async () => {
-    await nextPointSwipeFix.enable();
-    await nextPointSwipeFix.disable();
+    await nextPointSwipeButtonsFix.enable();
+    await nextPointSwipeButtonsFix.disable();
 
     const popup = document.querySelector('.info.popup');
     if (!popup) throw new Error('popup not found');
@@ -202,8 +202,8 @@ describe('nextPointSwipeFix enable/disable', () => {
   });
 
   test('повторный enable идемпотентен (не дублирует fallback)', async () => {
-    await nextPointSwipeFix.enable();
-    await nextPointSwipeFix.enable();
+    await nextPointSwipeButtonsFix.enable();
+    await nextPointSwipeButtonsFix.enable();
 
     const draw = document.querySelector<HTMLElement>('#draw');
     if (!draw) throw new Error('#draw not found');
@@ -217,7 +217,7 @@ describe('nextPointSwipeFix enable/disable', () => {
   });
 
   test('после нативного click polyfill не дублирует', async () => {
-    await nextPointSwipeFix.enable();
+    await nextPointSwipeButtonsFix.enable();
 
     const draw = document.querySelector<HTMLElement>('#draw');
     if (!draw) throw new Error('#draw not found');
