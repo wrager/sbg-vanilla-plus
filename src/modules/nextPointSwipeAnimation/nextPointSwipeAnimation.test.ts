@@ -199,12 +199,26 @@ describe('nextPointSwipeAnimation behaviour', () => {
     document.body.innerHTML = '';
   });
 
-  test('decide возвращает dismiss и сохраняет guid когда есть следующая точка', async () => {
+  test('decide возвращает dismiss и сохраняет guid когда betterNext active и есть следующая точка', async () => {
+    mockIsModuleActive.mockImplementation((id: string) => id === 'betterNextPointSwipe');
     await nextPointSwipeAnimation.enable();
     const outcome = decideForTest();
     expect(outcome).toBe('dismiss');
     finalizeForTest();
     expect(showInfoMock).toHaveBeenCalledWith('p2');
+    mockIsModuleActive.mockImplementation(() => false);
+  });
+
+  test('decide возвращает dismiss без pendingNextGuid когда betterNext выключен и >= 2 точек в радиусе', async () => {
+    // betterNext выключен по умолчанию (mockIsModuleActive возвращает false).
+    // p1 [10,10] и p2 [20,20] оба в радиусе 45м от player [0,0].
+    // findFeaturesInRange = 2, native handler сделает navigation сам в touchend.
+    await nextPointSwipeAnimation.enable();
+    const outcome = decideForTest();
+    expect(outcome).toBe('dismiss');
+    // finalize не должен вызывать showInfo - native сделает synchronously параллельно.
+    finalizeForTest();
+    expect(showInfoMock).not.toHaveBeenCalled();
   });
 
   test('decide возвращает return когда нет точек кроме текущей и native подавлен', async () => {
@@ -270,7 +284,8 @@ describe('nextPointSwipeAnimation behaviour', () => {
     expect(decideForTest()).toBe('return');
   });
 
-  test('второй свайп выбирает другую точку (visited tracking)', async () => {
+  test('второй свайп выбирает другую точку при betterNext active (visited tracking)', async () => {
+    mockIsModuleActive.mockImplementation((id: string) => id === 'betterNextPointSwipe');
     await nextPointSwipeAnimation.enable();
     decideForTest();
     finalizeForTest();
@@ -282,15 +297,18 @@ describe('nextPointSwipeAnimation behaviour', () => {
     // p1 + p2 visited, в radius (45) только они - цикл сбрасывает visited,
     // оставляя p2, и возвращает p1.
     expect(showInfoMock).toHaveBeenLastCalledWith('p1');
+    mockIsModuleActive.mockImplementation(() => false);
   });
 
   test('finalize no-op без showInfo', async () => {
+    mockIsModuleActive.mockImplementation((id: string) => id === 'betterNextPointSwipe');
     delete window.showInfo;
     await nextPointSwipeAnimation.enable();
     decideForTest();
     expect(() => {
       finalizeForTest();
     }).not.toThrow();
+    mockIsModuleActive.mockImplementation(() => false);
   });
 
   test('disable очищает state - decide после disable возвращает return', async () => {
