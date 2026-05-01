@@ -11,6 +11,7 @@ import {
 } from '../../core/inventoryCache';
 import type { IInventoryReferenceFull } from '../../core/inventoryTypes';
 import { isInventoryReference } from '../../core/inventoryTypes';
+import { syncRefsCountForPoints } from '../../core/refsCounterSync';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 import { showToast } from '../../core/toast';
 import css from './styles.css?inline';
@@ -403,6 +404,24 @@ async function handleDeleteClick(): Promise<void> {
 
     // Update local cache
     removeRefsFromCache(deletedGuids);
+
+    // Sync счётчика ключей на подписи затронутых точек на основной карте.
+    // Хотя refsOnMap viewer прячет нативные слои на время viewer-режима,
+    // после hideViewer() основной points-layer становится видимым - и
+    // highlight['7'] на feature должен отражать актуальное число ключей.
+    const affectedPointGuids = Array.from(
+      new Set(
+        deletable
+          .map((feature) => {
+            const properties = feature.getProperties?.();
+            return typeof properties?.pointGuid === 'string' ? properties.pointGuid : null;
+          })
+          .filter((guid): guid is string => guid !== null),
+      ),
+    );
+    if (affectedPointGuids.length > 0) {
+      void syncRefsCountForPoints(affectedPointGuids);
+    }
 
     // Update inventory counter
     if (typeof response.count?.total === 'number') {

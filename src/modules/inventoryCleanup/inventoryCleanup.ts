@@ -21,6 +21,8 @@ import {
   updatePointRefCount,
 } from './inventoryApi';
 import { installSlowRefsDelete, uninstallSlowRefsDelete } from './slowRefsDelete';
+import { syncRefsCountForPoints } from '../../core/refsCounterSync';
+import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import { showToast } from '../../core/toast';
 
 const MODULE_ID = 'inventoryCleanup';
@@ -127,6 +129,14 @@ async function runCleanupImpl(): Promise<void> {
     const result = await deleteInventoryItems(deletions);
     updateInventoryCache(deletions);
     updatePointRefCount();
+    // Синхронизация счётчика ключей на подписи точек на карте: после удаления
+    // ключей `highlight['7']` на feature остаётся stale (как и после discover -
+    // см. fixRedrawRefsOnDiscover). Один вызов с уникальными pointGuid из
+    // удалений - агрегатно для всех затронутых точек.
+    const refPointGuids = collectRefPointGuids(deletions);
+    if (refPointGuids.length > 0) {
+      void syncRefsCountForPoints(refPointGuids);
+    }
     if (result.total > 0) {
       updateDomInventoryCount(result.total);
     }
@@ -136,6 +146,18 @@ async function runCleanupImpl(): Promise<void> {
     console.error('[SVP inventoryCleanup] Ошибка удаления:', message);
     showToast(`Ошибка очистки: ${message}`);
   }
+}
+
+function collectRefPointGuids(
+  deletions: readonly { type: number; pointGuid?: string }[],
+): string[] {
+  const set = new Set<string>();
+  for (const entry of deletions) {
+    if (entry.type !== ITEM_TYPE_REFERENCE) continue;
+    if (typeof entry.pointGuid !== 'string') continue;
+    set.add(entry.pointGuid);
+  }
+  return Array.from(set);
 }
 
 function isDiscoverButton(target: EventTarget | null): boolean {

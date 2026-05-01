@@ -12,6 +12,7 @@ import {
 } from '../../core/inventoryCache';
 import { isInventoryReference } from '../../core/inventoryTypes';
 import { isModuleEnabledByUser } from '../../core/moduleRegistry';
+import { syncRefsCountForPoints } from '../../core/refsCounterSync';
 import { showToast as showCoreToast } from '../../core/toast';
 import type { IDeletionEntry } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
@@ -368,6 +369,18 @@ async function runSlowDelete(): Promise<void> {
     const result = await deleteInventoryItems(deletions);
     updateInventoryCache(deletions);
     updatePointRefCount();
+    // Sync счётчика ключей на подписи затронутых точек на карте. Slow удаляет
+    // только ключи (по lock-проверке выше), все pointGuid у удалений заданы.
+    const refPointGuids = Array.from(
+      new Set(
+        deletions
+          .map((d) => d.pointGuid)
+          .filter((guid): guid is string => typeof guid === 'string'),
+      ),
+    );
+    if (refPointGuids.length > 0) {
+      void syncRefsCountForPoints(refPointGuids);
+    }
     if (result.total > 0) {
       updateDomInventoryCount(result.total);
     }

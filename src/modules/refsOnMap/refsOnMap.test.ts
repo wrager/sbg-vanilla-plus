@@ -247,6 +247,12 @@ describe('refsOnMap metadata', () => {
 
 jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- requireActual returns any
+  findLayerByName: jest.requireActual('../../core/olMap').findLayerByName,
+}));
+
+jest.mock('../../core/refsCounterSync', () => ({
+  syncRefsCountForPoints: jest.fn(() => Promise.resolve()),
 }));
 
 import { getOlMap } from '../../core/olMap';

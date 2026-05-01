@@ -1,77 +1,19 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { findLayerByName, getOlMap } from '../../core/olMap';
-import type { IOlFeature, IOlVectorSource } from '../../core/olMap';
+import { syncRefsCountForPoints } from '../../core/refsCounterSync';
 
 const MODULE_ID = 'fixRedrawRefsOnDiscover';
 
-// Канал references в маске Text-слоя. Совпадает с option value="7" в
-// refs/game/index.html:289 и case 7 в FeatureStyles.LIGHT renderer
-// (refs/game/script.js:374-377). Сервер кладёт сюда количество ключей
-// игрока на эту точку в момент /api/inview ответа; игра не обновляет
-// значение при последующих изменениях инвентаря (discover, удаление,
-// recycle), поэтому подпись остаётся stale до следующего drawEntities
-// (move >30 м или 5-минутный таймер).
-const REFS_CHANNEL_INDEX = 7;
 const DISCOVER_URL_PATTERN = /\/api\/discover(\?|$)/;
-const REF_ITEM_TYPE = 3;
-// Задержка перед применением нашего gain. За это время игра (или другой
-// скрипт) успевает отработать свой continuation после `await fetch`.
-// Если highlight[REFS_CHANNEL_INDEX] изменился между response и проверкой,
-// кто-то уже обновил значение - наш fix не нужен и не должен дублировать
-// gain. Когда разработчик игры исправит баг (обновит highlight[7] и
-// вызовет feature.changed() после discover), наш модуль автоматически
-// станет no-op.
+// Задержка перед sync. За это время игра успевает отработать свой continuation
+// после `await fetch` и обновить `inventory-cache` (refs/game/script.js:817 -
+// `localStorage.setItem('inventory-cache', ...)`). Sync читает кэш как
+// источник истины для нового значения highlight['7'], поэтому ждём, пока
+// кэш будет актуален.
 const DETECTION_DELAY_MS = 100;
 
-let pointsSource: IOlVectorSource | null = null;
-// installGeneration защищает от race условий между async enable и быстрым
-// disable. enable содержит await getOlMap() - если disable отработал во время
-// await, выходим из enable до записи pointsSource, иначе ссылка на удалённый
-// слой осталась бы вечно.
-let installGeneration = 0;
 let discoverHookEnabled = false;
-
 let discoverFetchInstalled = false;
 let originalFetchBeforePatch: typeof window.fetch | null = null;
-
-interface IDiscoverLootItem {
-  t?: number;
-  l?: string;
-  a?: number;
-}
-
-interface IDiscoverResponseShape {
-  loot?: IDiscoverLootItem[];
-}
-
-function isDiscoverResponseShape(value: unknown): value is IDiscoverResponseShape {
-  return typeof value === 'object' && value !== null;
-}
-
-/**
- * Считает суммарный прирост ключей конкретной точки из массива loot ответа
- * `/api/discover`. Server возвращает body напрямую `{loot, remaining, next, xp}`
- * без обёртки `{response: {...}}` (apiSend в refs/game/script.js:3675-3711
- * парсит body через `request.json()` и присваивает в локальную response,
- * но это уже обёртка apiSend для consumers - на уровне fetch.json() body
- * имеет ключи loot/remaining/next/xp).
- *
- * Refs - элементы с `t === 3` и `l === guid дискаверенной точки`. Тот же
- * предикат, что игра в refs/game/script.js:816 при обновлении inventory-cache.
- */
-export function computeRefsGainFromDiscover(body: unknown, targetGuid: string): number {
-  if (!isDiscoverResponseShape(body)) return 0;
-  const loot = body.loot;
-  if (!Array.isArray(loot)) return 0;
-  let gain = 0;
-  for (const item of loot) {
-    if (item.t !== REF_ITEM_TYPE) continue;
-    if (item.l !== targetGuid) continue;
-    if (typeof item.a !== 'number') continue;
-    gain += item.a;
-  }
-  return gain;
-}
 
 /**
  * Извлекает guid целевой точки из RequestInit body. /api/discover - POST
@@ -103,99 +45,11 @@ function extractUrl(input: RequestInfo | URL): string | null {
 }
 
 /**
- * SBG 0.6.1+ хранит highlight как sparse object, а не массив:
- * {"4": false, "7": 18}. Канал 4 - boolean, канал 7 (refs) - число. И массив
- * (старая форма), и sparse object одинаково индексируются по числовому
- * ключу через `Reflect.get(obj, String(idx))` без cast'а через unknown.
- * Возвращаем 0 при отсутствии значения - как и раньше для пустого слота.
- */
-function readRefsChannelValue(feature: IOlFeature): number | null {
-  if (typeof feature.get !== 'function') return null;
-  const highlight = feature.get('highlight');
-  if (typeof highlight !== 'object' || highlight === null) return null;
-  const value: unknown = Reflect.get(highlight, String(REFS_CHANNEL_INDEX));
-  return typeof value === 'number' ? value : 0;
-}
-
-/**
- * Применяет refsGain к feature: in-place мутация ключа REFS_CHANNEL_INDEX в
- * highlight (массив или sparse object). LIGHT-стиль закрыт closure'ом над
- * тем же контейнером (refs/game/script.js:269-270, 303), поэтому изменение
- * по reference читается следующим вызовом renderer'а (как нативного 32px,
- * так и нашего wrapped в improvedPointText - оба читают values[7] из той
- * же ссылки). feature.changed() инвалидирует execution plan layer'а и
- * запускает ререндер.
- *
- * Если highlight отсутствует или не object - игнорируем: точка нарисована
- * без LIGHT-стиля (или ещё не получила prop через setProperties).
- */
-export function applyRefsGainToFeature(feature: IOlFeature, gain: number): void {
-  if (gain <= 0) return;
-  if (typeof feature.get !== 'function') return;
-  const highlight = feature.get('highlight');
-  if (typeof highlight !== 'object' || highlight === null) return;
-  const key = String(REFS_CHANNEL_INDEX);
-  const existing: unknown = Reflect.get(highlight, key);
-  const current = typeof existing === 'number' ? existing : 0;
-  Reflect.set(highlight, key, current + gain);
-  if (typeof feature.changed === 'function') feature.changed();
-}
-
-function scheduleApplyRefsGain(targetGuid: string, gain: number, beforeValue: number): void {
-  setTimeout(() => {
-    if (!discoverHookEnabled) return;
-    if (!pointsSource) return;
-    const feature =
-      typeof pointsSource.getFeatureById === 'function'
-        ? pointsSource.getFeatureById(targetGuid)
-        : null;
-    if (!feature) return;
-    const currentValue = readRefsChannelValue(feature);
-    if (currentValue === null) return;
-    // Forward-compat защита: если за DETECTION_DELAY_MS значение
-    // highlight[REFS_CHANNEL_INDEX] изменилось, его уже обновил кто-то
-    // другой - сама игра (когда исправит баг), другой скрипт-фиксер,
-    // или вызов feature.changed() с новой prop.highlight ссылкой через
-    // showInfo/attack-response. Дублировать gain нельзя - игрок увидит
-    // удвоенное значение на карте. Skip и доверяем внешнему обновлению.
-    if (currentValue !== beforeValue) return;
-    applyRefsGainToFeature(feature, gain);
-  }, DETECTION_DELAY_MS);
-}
-
-function handleDiscoverResponse(response: Response, targetGuid: string): void {
-  if (!response.ok) return;
-  if (!pointsSource) return;
-  response
-    .clone()
-    .json()
-    .then((body: unknown) => {
-      if (!discoverHookEnabled) return;
-      if (!pointsSource) return;
-      const gain = computeRefsGainFromDiscover(body, targetGuid);
-      if (gain <= 0) return;
-      const feature =
-        typeof pointsSource.getFeatureById === 'function'
-          ? pointsSource.getFeatureById(targetGuid)
-          : null;
-      if (!feature) return;
-      const beforeValue = readRefsChannelValue(feature);
-      if (beforeValue === null) return;
-      scheduleApplyRefsGain(targetGuid, gain, beforeValue);
-    })
-    .catch(() => {
-      // Парсинг JSON упал - игра сама обработает ответ; мы пропускаем
-      // обновление подписи. Подпись обновится при следующем drawEntities.
-    });
-}
-
-/**
  * Ставит monkey-patch на window.fetch один раз за жизнь страницы. Перехват
- * пропускает все запросы кроме /api/discover; для них клонирует Response
- * (чтобы не блокировать игру), парсит loot и через DETECTION_DELAY_MS
- * проверяет: если highlight[REFS_CHANNEL_INDEX] изменился сторонним кодом -
- * skip; иначе применяет gain. Срабатывает только пока модуль enabled - флаг
- * проверяется внутри обработчика.
+ * пропускает все запросы кроме /api/discover; для них через DETECTION_DELAY_MS
+ * запускает sync счётчика ключей по inventory-cache (источник истины).
+ *
+ * Срабатывает только пока модуль enabled - флаг проверяется внутри обработчика.
  */
 export function installDiscoverFetchHook(): void {
   if (discoverFetchInstalled) return;
@@ -214,7 +68,12 @@ export function installDiscoverFetchHook(): void {
     if (!targetGuid) return responsePromise;
     void responsePromise.then(
       (response) => {
-        handleDiscoverResponse(response, targetGuid);
+        if (!response.ok) return;
+        if (!discoverHookEnabled) return;
+        setTimeout(() => {
+          if (!discoverHookEnabled) return;
+          void syncRefsCountForPoints([targetGuid]);
+        }, DETECTION_DELAY_MS);
       },
       () => {
         // Сетевой сбой - игре уже сообщено через rejection основного промиса.
@@ -239,31 +98,20 @@ export const fixRedrawRefsOnDiscover: IFeatureModule = {
     ru: 'Фикс обновления счётчика ключей после изучения',
   },
   description: {
-    en: 'Updates the references counter on the point map label immediately after discover.',
-    ru: 'Обновляет счётчик ключей на подписи точки на карте сразу после изучения.',
+    en: 'Updates the references counter on the point map label immediately after discover. Native game updates the inventory counter but leaves prop.highlight stale until the next requestEntities (move >30m or 5-minute timer).',
+    ru: 'Обновляет счётчик ключей на подписи точки на карте сразу после изучения. Нативно игра обновляет счётчик в инвентаре, но prop.highlight на feature остаётся stale до следующего перезапроса карты (движение >30м или 5-минутный таймер).',
   },
   defaultEnabled: true,
   category: 'fix',
 
   init() {},
 
-  async enable(): Promise<void> {
-    installGeneration++;
-    const myGeneration = installGeneration;
-    const olMap = await getOlMap();
-    if (myGeneration !== installGeneration) return;
-    const pointsLayer = findLayerByName(olMap, 'points');
-    if (!pointsLayer) return;
-    const source = pointsLayer.getSource();
-    if (!source) return;
-    pointsSource = source;
+  enable(): void {
     installDiscoverFetchHook();
     discoverHookEnabled = true;
   },
 
   disable(): void {
-    installGeneration++;
     discoverHookEnabled = false;
-    pointsSource = null;
   },
 };
