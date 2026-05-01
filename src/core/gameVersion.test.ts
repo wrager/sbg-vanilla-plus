@@ -282,19 +282,17 @@ describe('isModuleNativeInCurrentGame', () => {
     // Сет изначально содержал id модулей, которые в 0.6.1 минимальной адаптации
     // подавлялись (favoritedPoints, inventoryCleanup, keyCountOnPoints,
     // singleFingerRotation, nextPointNavigation, repairAtFullCharge, ngrsZoom).
-    // После полноценной адаптации одни модули возвращены (с переосмыслением /
-    // runtime-детекцией native), другие удалены физически (repairAtFullCharge,
-    // ngrsZoom), swipeToClosePopup возвращён под новым жестом, keyCountOnPoints
-    // переименован в improvedPointText (промежуточные rename keyCountFix и
-    // pointTextFix до публичного релиза не дошли), nextPointNavigation переосмыслен как betterNextPointSwipe
-    // - заменяет нативный горизонтальный свайп через runtime-override на
+    // После полноценной адаптации часть модулей возвращены (с переосмыслением /
+    // runtime-детекцией native), часть удалены физически (repairAtFullCharge,
+    // ngrsZoom, keyCountOnPoints), swipeToClosePopup возвращён под новым жестом,
+    // nextPointNavigation переосмыслен как betterNextPointSwipe (заменяет
+    // нативный горизонтальный свайп через runtime-override на
     // Hammer.Manager.prototype.emit + наша приоритетная навигация в радиусе
-    // взаимодействия (нативный ходил по всем точкам в зоне видимости).
-    // Сет пуст.
+    // взаимодействия). Сет пуст.
     setDetectedVersionForTest('0.6.1');
     expect(isModuleNativeInCurrentGame('favoritedPoints')).toBe(false);
     expect(isModuleNativeInCurrentGame('inventoryCleanup')).toBe(false);
-    expect(isModuleNativeInCurrentGame('improvedPointText')).toBe(false);
+    expect(isModuleNativeInCurrentGame('keyCountOnPoints')).toBe(false);
     expect(isModuleNativeInCurrentGame('singleFingerRotation')).toBe(false);
     expect(isModuleNativeInCurrentGame('betterNextPointSwipe')).toBe(false);
     expect(isModuleNativeInCurrentGame('repairAtFullCharge')).toBe(false);
