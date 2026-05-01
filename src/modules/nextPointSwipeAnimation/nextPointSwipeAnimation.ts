@@ -13,7 +13,7 @@ import { findFeaturesInRange, pickNextInRange } from '../../core/nextPointPicker
 import { POINT_POPUP_SELECTOR } from '../../core/pointPopup';
 
 const MODULE_ID = 'nextPointSwipeAnimation';
-const FEATURE_MODULE_ID = 'betterNextPointSwipe';
+const FEATURE_MODULE_ID = 'improvedNextPointSwipe';
 const INTERACTION_RANGE = 45;
 // Длительность dismiss/return-анимации (мс). Короче дефолтных 300мс из
 // core/popupSwipe: горизонтальный свайп должен ощущаться мгновенным, а 300мс
@@ -30,7 +30,7 @@ const rangeVisited = new Set<string | number>();
 // последнего тапа по точке на карте. Игра поддерживает свой near_points через
 // map.singleclick handler (refs/game/script.js:540-560), наш модуль ведёт
 // собственный параллельный снимок, чтобы decideSwipe (в режиме без
-// betterNextPointSwipe) точно предсказывал, переключит ли native handler точку
+// improvedNextPointSwipe) точно предсказывал, переключит ли native handler точку
 // при свайпе. Live-вычисление через findFeaturesInRange расходилось бы с
 // near_points, если игрок успевал двинуться между тапом и свайпом - предиктор
 // тогда давал бы false-positive/false-negative и dismiss-анимация рассинхронилась
@@ -61,7 +61,7 @@ function getPlayerCoords(): number[] | null {
  * игрока. Игра использует это значение в своём horizontal-swipe handler
  * (refs/game/script.js:741-751) - переключает на следующую точку только если
  * `near_points.length > 1`. Воспроизводим то же поведение, чтобы предиктор
- * dismiss-анимации в decideSwipe (когда betterNextPointSwipe выключен) был
+ * dismiss-анимации в decideSwipe (когда improvedNextPointSwipe выключен) был
  * синхронен с тем, что фактически сделает native handler.
  */
 function onMapSingleClick(event: IOlMapEvent): void {
@@ -103,13 +103,13 @@ function canStartHorizontalSwipe(event: TouchEvent): boolean {
 /**
  * Решает, анимировать dismiss (попап улетит) или return (фейковая, отскок).
  *
- * Поведение определяется состоянием betterNextPointSwipe:
+ * Поведение определяется состоянием improvedNextPointSwipe:
  *
- *  - betterNext активен: native handler подавлен через Hammer-override.
+ *  - improvedNextPointSwipe активен: native handler подавлен через Hammer-override.
  *    Используем нашу priority logic (pickNextInRange). Нашли кандидата -
  *    dismiss + pendingNextGuid, finalize вызовет window.showInfo. Не нашли -
  *    return (анимация впустую, переключения не будет).
- *  - betterNext выключен: native handler жив. Наша priority НЕ должна
+ *  - improvedNextPointSwipe выключен: native handler жив. Наша priority НЕ должна
  *    срабатывать - пользователь специально отключил «улучшенный свайп»,
  *    ожидая чисто нативного поведения. Предсказываем native-условие
  *    `near_points.length > 1` через свой `nearPointsSnapshot`, который
@@ -169,7 +169,7 @@ const swipeHandler: ISwipeDirectionHandler = {
   animationDurationMs: SWIPE_ANIMATION_MS,
   // data-guid меняется во время animateDismiss в двух кейсах: либо native
   // game's Hammer-handler синхронно в touchend сделал showInfo (когда
-  // betterNextPointSwipe выключен), либо наш finalize вызовет showInfo
+  // improvedNextPointSwipe выключен), либо наш finalize вызовет showInfo
   // после transitionend. В обоих случаях animation должна досмотреть -
   // popupSwipe observer не должен её рвать через cleanupAnimation.
   keepAnimatingOnDataGuidChange: true,

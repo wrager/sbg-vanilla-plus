@@ -5,7 +5,7 @@ import type { IOlMap, IOlVectorSource } from '../../core/olMap';
 import { pickNextInRange } from '../../core/nextPointPicker';
 import { POINT_POPUP_SELECTOR } from '../../core/pointPopup';
 
-const MODULE_ID = 'betterNextPointSwipe';
+const MODULE_ID = 'improvedNextPointSwipe';
 const ANIMATION_MODULE_ID = 'nextPointSwipeAnimation';
 const INTERACTION_RANGE = 45;
 
@@ -110,10 +110,10 @@ function uninstallHammerOverride(): void {
   originalHammerEmit = null;
 }
 
-export const betterNextPointSwipe: IFeatureModule = {
+export const improvedNextPointSwipe: IFeatureModule = {
   id: MODULE_ID,
   name: {
-    en: 'Better next point swipe',
+    en: 'Improved next point swipe',
     ru: 'Улучшенный свайп к следующей точке',
   },
   description: {

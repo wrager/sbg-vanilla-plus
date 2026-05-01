@@ -231,8 +231,8 @@ describe('nextPointSwipeAnimation behaviour', () => {
     document.body.innerHTML = '';
   });
 
-  test('decide возвращает dismiss и сохраняет guid когда betterNext active и есть следующая точка', async () => {
-    mockIsModuleActive.mockImplementation((id: string) => id === 'betterNextPointSwipe');
+  test('decide возвращает dismiss и сохраняет guid когда improvedNextPointSwipe active и есть следующая точка', async () => {
+    mockIsModuleActive.mockImplementation((id: string) => id === 'improvedNextPointSwipe');
     await nextPointSwipeAnimation.enable();
     const outcome = decideForTest();
     expect(outcome).toBe('dismiss');
@@ -249,8 +249,8 @@ describe('nextPointSwipeAnimation behaviour', () => {
     } as IOlMapEvent);
   }
 
-  test('decide возвращает dismiss без pendingNextGuid когда betterNext выключен и >= 2 точек в снапшоте', async () => {
-    // betterNext выключен по умолчанию (mockIsModuleActive возвращает false).
+  test('decide возвращает dismiss без pendingNextGuid когда improvedNextPointSwipe выключен и >= 2 точек в снапшоте', async () => {
+    // improvedNextPointSwipe выключен по умолчанию (mockIsModuleActive возвращает false).
     // Имитируем тап по точке - снапшот заполняется в onMapSingleClick. p1
     // [10,10] и p2 [20,20] оба в радиусе 45м от player [0,0], попадают в
     // снапшот. native handler сделает navigation сам в touchend.
@@ -263,7 +263,7 @@ describe('nextPointSwipeAnimation behaviour', () => {
     expect(showInfoMock).not.toHaveBeenCalled();
   });
 
-  test('decide возвращает return когда betterNext выключен и снапшот пустой (тапа не было)', async () => {
+  test('decide возвращает return когда improvedNextPointSwipe выключен и снапшот пустой (тапа не было)', async () => {
     // Без singleclick снапшот пустой. decideSwipe возвращает return -
     // native handler в этом случае тоже не переключит, dismiss-анимация
     // улетела бы вхолостую.
@@ -271,7 +271,7 @@ describe('nextPointSwipeAnimation behaviour', () => {
     expect(decideForTest()).toBe('return');
   });
 
-  test('decide возвращает return когда betterNext выключен и в снапшоте только 1 точка', async () => {
+  test('decide возвращает return когда improvedNextPointSwipe выключен и в снапшоте только 1 точка', async () => {
     // В радиусе 45м от player [0,0] только p1 (p2 вне радиуса).
     pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p2', [200, 200])]);
     mockGetOlMap.mockResolvedValue(
@@ -294,7 +294,7 @@ describe('nextPointSwipeAnimation behaviour', () => {
   });
 
   test('decide возвращает return когда нет точек кроме текущей и native подавлен', async () => {
-    mockIsModuleActive.mockImplementation((id: string) => id === 'betterNextPointSwipe');
+    mockIsModuleActive.mockImplementation((id: string) => id === 'improvedNextPointSwipe');
     pointsSrc = makeSource([makeFeature('p1', [10, 10])]); // только текущая
     mockGetOlMap.mockResolvedValue(
       makeMap([makeLayer('points', pointsSrc), makeLayer('player', playerSrc)]),
@@ -307,19 +307,19 @@ describe('nextPointSwipeAnimation behaviour', () => {
     mockIsModuleActive.mockImplementation(() => false);
   });
 
-  test('decide возвращает return когда priority пуст и betterNext active (native подавлен)', async () => {
+  test('decide возвращает return когда priority пуст и improvedNextPointSwipe active (native подавлен)', async () => {
     // Игрок далеко от всех точек: pickNextInRange null.
     playerSrc = makeSource([makeFeature('player', [10000, 10000])]);
     mockGetOlMap.mockResolvedValue(
       makeMap([makeLayer('points', pointsSrc), makeLayer('player', playerSrc)]),
     );
-    mockIsModuleActive.mockImplementation((id: string) => id === 'betterNextPointSwipe');
+    mockIsModuleActive.mockImplementation((id: string) => id === 'improvedNextPointSwipe');
     await nextPointSwipeAnimation.enable();
     expect(decideForTest()).toBe('return');
     mockIsModuleActive.mockImplementation(() => false);
   });
 
-  test('decide возвращает return когда игрок далеко от всех точек и betterNext выключен', async () => {
+  test('decide возвращает return когда игрок далеко от всех точек и improvedNextPointSwipe выключен', async () => {
     // Игрок далеко - нет точек в радиусе 45м: pickNextInRange null И native
     // near_points = visible.filter(isInRange) тоже пуст. Ни мы, ни native не
     // переключат. dismiss-анимация уехала бы вхолостую - правильно return.
@@ -332,7 +332,7 @@ describe('nextPointSwipeAnimation behaviour', () => {
     expect(decideForTest()).toBe('return');
   });
 
-  test('decide возвращает return когда видимая точка только одна и betterNext выключен', async () => {
+  test('decide возвращает return когда видимая точка только одна и improvedNextPointSwipe выключен', async () => {
     // Только одна visible feature: ни native, ни мы переключить не можем.
     pointsSrc = makeSource([makeFeature('p1', [10, 10])]);
     playerSrc = makeSource([makeFeature('player', [10000, 10000])]);
@@ -356,8 +356,8 @@ describe('nextPointSwipeAnimation behaviour', () => {
     expect(decideForTest()).toBe('return');
   });
 
-  test('второй свайп выбирает другую точку при betterNext active (visited tracking)', async () => {
-    mockIsModuleActive.mockImplementation((id: string) => id === 'betterNextPointSwipe');
+  test('второй свайп выбирает другую точку при improvedNextPointSwipe active (visited tracking)', async () => {
+    mockIsModuleActive.mockImplementation((id: string) => id === 'improvedNextPointSwipe');
     await nextPointSwipeAnimation.enable();
     decideForTest();
     finalizeForTest();
@@ -373,7 +373,7 @@ describe('nextPointSwipeAnimation behaviour', () => {
   });
 
   test('finalize no-op без showInfo', async () => {
-    mockIsModuleActive.mockImplementation((id: string) => id === 'betterNextPointSwipe');
+    mockIsModuleActive.mockImplementation((id: string) => id === 'improvedNextPointSwipe');
     delete window.showInfo;
     await nextPointSwipeAnimation.enable();
     decideForTest();

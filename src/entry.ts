@@ -22,7 +22,7 @@ import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { drawTools } from './modules/drawTools/drawTools';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
 import { favoritesMigration } from './modules/favoritesMigration/favoritesMigration';
-import { betterNextPointSwipe } from './modules/betterNextPointSwipe/betterNextPointSwipe';
+import { improvedNextPointSwipe } from './modules/improvedNextPointSwipe/improvedNextPointSwipe';
 import { nextPointSwipeAnimation } from './modules/nextPointSwipeAnimation/nextPointSwipeAnimation';
 import { nextPointSwipeFix } from './modules/nextPointSwipeFix/nextPointSwipeFix';
 import { refsLayerSync } from './modules/refsLayerSync/refsLayerSync';
@@ -73,7 +73,7 @@ if (!isDisabled()) {
       drawTools,
       // feature (map-зависимые)
       refsOnMap,
-      betterNextPointSwipe,
+      improvedNextPointSwipe,
       swipeToClosePopup,
       // fix
       betterRefPopoverClosing,

@@ -1,4 +1,4 @@
-import { betterNextPointSwipe, navigateToNextPointForTest } from './betterNextPointSwipe';
+import { improvedNextPointSwipe, navigateToNextPointForTest } from './improvedNextPointSwipe';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
 
 // ── OL mock ─────────────────────────────────────────────────────────────────
@@ -121,30 +121,30 @@ const mockIsModuleActive = isModuleActive as jest.MockedFunction<typeof isModule
 
 // ── Метаданные ──────────────────────────────────────────────────────────────
 
-describe('betterNextPointSwipe metadata', () => {
+describe('improvedNextPointSwipe metadata', () => {
   test('has correct id', () => {
-    expect(betterNextPointSwipe.id).toBe('betterNextPointSwipe');
+    expect(improvedNextPointSwipe.id).toBe('improvedNextPointSwipe');
   });
 
   test('is feature category', () => {
-    expect(betterNextPointSwipe.category).toBe('feature');
+    expect(improvedNextPointSwipe.category).toBe('feature');
   });
 
   test('is enabled by default', () => {
-    expect(betterNextPointSwipe.defaultEnabled).toBe(true);
+    expect(improvedNextPointSwipe.defaultEnabled).toBe(true);
   });
 
   test('has localized name and description', () => {
-    expect(betterNextPointSwipe.name.ru).toBeTruthy();
-    expect(betterNextPointSwipe.name.en).toBeTruthy();
-    expect(betterNextPointSwipe.description.ru).toBeTruthy();
-    expect(betterNextPointSwipe.description.en).toBeTruthy();
+    expect(improvedNextPointSwipe.name.ru).toBeTruthy();
+    expect(improvedNextPointSwipe.name.en).toBeTruthy();
+    expect(improvedNextPointSwipe.description.ru).toBeTruthy();
+    expect(improvedNextPointSwipe.description.en).toBeTruthy();
   });
 });
 
 // ── Поведение ────────────────────────────────────────────────────────────────
 
-describe('betterNextPointSwipe behaviour', () => {
+describe('improvedNextPointSwipe behaviour', () => {
   let pointsSrc: IOlVectorSource;
   let playerSrc: IOlVectorSource;
   let popup: HTMLElement;
@@ -174,7 +174,7 @@ describe('betterNextPointSwipe behaviour', () => {
   });
 
   afterEach(async () => {
-    await betterNextPointSwipe.disable();
+    await improvedNextPointSwipe.disable();
     resetHammerMock();
     delete window.showInfo;
     document.body.innerHTML = '';
@@ -186,13 +186,13 @@ describe('betterNextPointSwipe behaviour', () => {
   }
 
   test('navigateToNextPointForTest зовёт showInfo с приоритетной точкой', async () => {
-    await betterNextPointSwipe.enable();
+    await improvedNextPointSwipe.enable();
     navigateToNextPointForTest();
     expect(showInfoMock).toHaveBeenCalledWith('p2');
   });
 
   test('Hammer-emit на swipeleft target=.info вызывает navigation', async () => {
-    await betterNextPointSwipe.enable();
+    await improvedNextPointSwipe.enable();
     const emit = getOverriddenEmit();
     emit.call({}, 'swipeleft', { target: popup });
     expect(showInfoMock).toHaveBeenCalledWith('p2');
@@ -201,7 +201,7 @@ describe('betterNextPointSwipe behaviour', () => {
   });
 
   test('Hammer-emit на swiperight тоже вызывает navigation', async () => {
-    await betterNextPointSwipe.enable();
+    await improvedNextPointSwipe.enable();
     const emit = getOverriddenEmit();
     emit.call({}, 'swiperight', { target: popup });
     expect(showInfoMock).toHaveBeenCalledWith('p2');
@@ -209,7 +209,7 @@ describe('betterNextPointSwipe behaviour', () => {
   });
 
   test('Hammer-emit на target внутри .splide пропускается к нативу', async () => {
-    await betterNextPointSwipe.enable();
+    await improvedNextPointSwipe.enable();
     const emit = getOverriddenEmit();
     const slide = popup.querySelector('.splide') as HTMLElement;
     emit.call({}, 'swipeleft', { target: slide });
@@ -218,7 +218,7 @@ describe('betterNextPointSwipe behaviour', () => {
   });
 
   test('другие event names прокидываются нативному handler-у', async () => {
-    await betterNextPointSwipe.enable();
+    await improvedNextPointSwipe.enable();
     const emit = getOverriddenEmit();
     emit.call({}, 'tap', { target: popup });
     emit.call({}, 'panstart', { target: popup });
@@ -227,7 +227,7 @@ describe('betterNextPointSwipe behaviour', () => {
   });
 
   test('второй свайп открывает другую точку (visited tracking)', async () => {
-    await betterNextPointSwipe.enable();
+    await improvedNextPointSwipe.enable();
     const emit = getOverriddenEmit();
     emit.call({}, 'swipeleft', { target: popup });
     expect(showInfoMock).toHaveBeenLastCalledWith('p2');
@@ -241,7 +241,7 @@ describe('betterNextPointSwipe behaviour', () => {
 
   test('пропускает navigation если nextPointSwipeAnimation активен', async () => {
     mockIsModuleActive.mockImplementation((id: string) => id === 'nextPointSwipeAnimation');
-    await betterNextPointSwipe.enable();
+    await improvedNextPointSwipe.enable();
     const emit = getOverriddenEmit();
     emit.call({}, 'swipeleft', { target: popup });
     // showInfo не вызван - предполагается что animation сделает в своём finalize
@@ -257,9 +257,9 @@ describe('betterNextPointSwipe behaviour', () => {
       window as unknown as { Hammer: { Manager: { prototype: { emit: HammerEmitFn } } } }
     ).Hammer.Manager.prototype;
     const originalEmit = proto.emit;
-    await betterNextPointSwipe.enable();
+    await improvedNextPointSwipe.enable();
     expect(proto.emit).not.toBe(originalEmit);
-    await betterNextPointSwipe.disable();
+    await improvedNextPointSwipe.disable();
     expect(proto.emit).toBe(originalEmit);
   });
 
@@ -268,17 +268,17 @@ describe('betterNextPointSwipe behaviour', () => {
       window as unknown as { Hammer: { Manager: { prototype: { emit: HammerEmitFn } } } }
     ).Hammer.Manager.prototype;
     const originalEmit = proto.emit;
-    await betterNextPointSwipe.enable();
+    await improvedNextPointSwipe.enable();
     const overridden = proto.emit;
-    await betterNextPointSwipe.enable();
+    await improvedNextPointSwipe.enable();
     expect(proto.emit).toBe(overridden);
-    await betterNextPointSwipe.disable();
+    await improvedNextPointSwipe.disable();
     expect(proto.emit).toBe(originalEmit);
   });
 
   test('navigation no-op без showInfo', async () => {
     delete window.showInfo;
-    await betterNextPointSwipe.enable();
+    await improvedNextPointSwipe.enable();
     expect(() => {
       const emit = getOverriddenEmit();
       emit.call({}, 'swipeleft', { target: popup });
@@ -287,7 +287,7 @@ describe('betterNextPointSwipe behaviour', () => {
 
   test('navigation no-op если попап скрыт', async () => {
     popup.classList.add('hidden');
-    await betterNextPointSwipe.enable();
+    await improvedNextPointSwipe.enable();
     const emit = getOverriddenEmit();
     emit.call({}, 'swipeleft', { target: popup });
     expect(showInfoMock).not.toHaveBeenCalled();
@@ -295,7 +295,7 @@ describe('betterNextPointSwipe behaviour', () => {
 
   test('navigation no-op если points layer не найден', async () => {
     mockGetOlMap.mockResolvedValue(makeMap([makeLayer('other', null)]));
-    await betterNextPointSwipe.enable();
+    await improvedNextPointSwipe.enable();
     const emit = getOverriddenEmit();
     emit.call({}, 'swipeleft', { target: popup });
     expect(showInfoMock).not.toHaveBeenCalled();
@@ -315,8 +315,8 @@ describe('betterNextPointSwipe behaviour', () => {
         resolveOlMap = resolve;
       }),
     );
-    const enablePromise = betterNextPointSwipe.enable();
-    await betterNextPointSwipe.disable();
+    const enablePromise = improvedNextPointSwipe.enable();
+    await improvedNextPointSwipe.disable();
     resolveOlMap(makeMap([makeLayer('points', pointsSrc), makeLayer('player', playerSrc)]));
     await enablePromise;
     // Override не установлен - emit прокидывается нативу.

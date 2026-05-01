@@ -1,4 +1,4 @@
-# betterNextPointSwipe
+# improvedNextPointSwipe
 
 Заменяет нативный горизонтальный свайп игры на нашу логику переключения между точками с приоритетом по полезности.
 
@@ -44,10 +44,10 @@ Runtime-override на `Hammer.Manager.prototype.emit`. На событии `swip
 
 ## Файловая структура
 
-| Файл                           | Назначение                                                                   |
-| ------------------------------ | ---------------------------------------------------------------------------- |
-| `betterNextPointSwipe.ts`      | Определение модуля + Hammer-override + navigateToNextPoint                   |
-| `betterNextPointSwipe.test.ts` | Тесты на metadata, override-поведение, координацию с animation, race-disable |
+| Файл                             | Назначение                                                                   |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| `improvedNextPointSwipe.ts`      | Определение модуля + Hammer-override + navigateToNextPoint                   |
+| `improvedNextPointSwipe.test.ts` | Тесты на metadata, override-поведение, координацию с animation, race-disable |
 
 ## Настройки
 

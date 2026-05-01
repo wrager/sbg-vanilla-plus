@@ -285,7 +285,7 @@ describe('isModuleNativeInCurrentGame', () => {
     // После полноценной адаптации часть модулей возвращены (с переосмыслением /
     // runtime-детекцией native), часть удалены физически (repairAtFullCharge,
     // ngrsZoom, keyCountOnPoints), swipeToClosePopup возвращён под новым жестом,
-    // nextPointNavigation переосмыслен как betterNextPointSwipe (заменяет
+    // nextPointNavigation переосмыслен как improvedNextPointSwipe (заменяет
     // нативный горизонтальный свайп через runtime-override на
     // Hammer.Manager.prototype.emit + наша приоритетная навигация в радиусе
     // взаимодействия). Сет пуст.
@@ -294,7 +294,7 @@ describe('isModuleNativeInCurrentGame', () => {
     expect(isModuleNativeInCurrentGame('inventoryCleanup')).toBe(false);
     expect(isModuleNativeInCurrentGame('keyCountOnPoints')).toBe(false);
     expect(isModuleNativeInCurrentGame('singleFingerRotation')).toBe(false);
-    expect(isModuleNativeInCurrentGame('betterNextPointSwipe')).toBe(false);
+    expect(isModuleNativeInCurrentGame('improvedNextPointSwipe')).toBe(false);
     expect(isModuleNativeInCurrentGame('repairAtFullCharge')).toBe(false);
     expect(isModuleNativeInCurrentGame('ngrsZoom')).toBe(false);
   });
