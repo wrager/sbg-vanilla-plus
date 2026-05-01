@@ -1,4 +1,4 @@
-export const SBG_COMPATIBLE_VERSIONS: readonly string[] = ['0.6.0', '0.6.1'];
+export const SBG_COMPATIBLE_VERSIONS: readonly string[] = ['0.6.1'];
 
 // Сервер SBG ставит заголовок `x-sbg-version` на ответы обычных игровых
 // запросов к /api/*. Игра сама берёт версию именно так: в
