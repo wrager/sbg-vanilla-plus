@@ -29,7 +29,7 @@ export function readFullInventoryReferences(): IInventoryReferenceFull[] {
 
 /**
  * Возвращает GUID'ы точек, у которых хотя бы одна стопка ключей помечена
- * флагом lock (бит 1 поля `f`, refs/game-beta/script.js:3405). Стопки - деталь
+ * флагом lock (бит 1 поля `f`, refs/game/script.js:3405). Стопки - деталь
  * хранения; в UI игрок видит точку, и lock-семантика пользователю «защитить
  * ключи этой точки от удаления». Поэтому агрегируем per-point: одна locked
  * стопка - вся точка под защитой.

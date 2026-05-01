@@ -2,13 +2,13 @@ import { waitForElement } from '../../core/dom';
 
 /**
  * После клика по нативной кнопке Favorite, Lock или Removal menu в попапе
- * `.inventory__ref-actions` (refs/game-beta/dom/body.html:415) сам popover не
+ * `.inventory__ref-actions` (refs/game/dom/body.html:415) сам popover не
  * закрывается - игра вызывает только `apiSend('marks', 'post', ...)` и
  * перерисовывает иконку, а закрытие меню оставляет на пользователя (нужен
  * клик по троеточию ещё раз). UX-фидбек: после действия меню должно
  * скрываться автоматически.
  *
- * Игровой `destroyPopover` (refs/game-beta/script.js:4516) делает три вещи:
+ * Игровой `destroyPopover` (refs/game/script.js:4516) делает три вещи:
  * (1) `popper.classList.add('hidden')`, (2) `Popper.destroy()`, (3)
  * `popovers.ref_actions = null`. Объект `popovers` лежит в IIFE-замыкании
  * игры, прямого доступа нет. Если просто скрыть popover через `hidden`,

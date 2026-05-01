@@ -42,8 +42,8 @@ function clamp(low: number, value: number, high: number): number {
  * Адаптивный размер шрифта в зависимости от зума. На MIN_ZOOM (13) - 10px,
  * на zoom 18+ - 16px. Линейная интерполяция, фронт-стопы по краям.
  *
- * Нативный игровой LIGHT-renderer (refs/game-beta/script.js:570) пишет
- * `bold 32px Manrope` константой - на zoom 13-14 числа заслоняют сами
+ * Нативный игровой LIGHT-renderer (refs/game/script.js:570) пишет
+ * `bold 46px Manrope` константой - на zoom 13-14 числа заслоняют сами
  * точки. Наш меньший масштабируемый размер остаётся читаемым на любом
  * зуме.
  */
@@ -153,10 +153,10 @@ export function wrapStyleArray(styles: unknown, getZoom: () => number): void {
  * player/lines/regions, которые setStyle тоже могут вызывать.
  *
  * Дополнительно подписываемся на feature 'change' event: игра в showInfo
- * (refs/game-beta/script.js:2789-2796) и attack response мутирует style[1]
+ * (refs/game/script.js:2789-2796) и attack response мутирует style[1]
  * в-место (style[1] = FeatureStyles.LIGHT(...)) и вызывает feature.changed()
  * без setStyle. Без обработки 'change' этот новый LIGHT остаётся с нативным
- * renderer, и текст после открытия/закрытия попапа возвращается к 32px.
+ * renderer, и текст после открытия/закрытия попапа возвращается к 46px.
  * В обработчике повторно прогоняем wrapStyleArray по getStyle() - уже
  * обёрнутые renderer пропускаются по WRAPPED_MARKER, накладные расходы
  * минимальны.
@@ -202,7 +202,7 @@ export function wrapFeature(feature: IOlFeature, getZoom: () => number): void {
  * Снимает обёртку: восстанавливает оригинальный feature.setStyle и заменяет
  * обёрнутый renderer на текущем LIGHT-стиле обратно на нативный (через
  * WeakMap wrapped -> original). После этого следующий рендер выдаст
- * нативный 32px-текст.
+ * нативный 46px-текст.
  */
 export function unwrapFeature(feature: IOlFeature): void {
   if (!wrappedFeatures.has(feature)) return;

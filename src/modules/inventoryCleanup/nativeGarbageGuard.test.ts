@@ -35,7 +35,7 @@ function createGarbageSection(): {
   values: HTMLInputElement[];
   save: HTMLButtonElement;
 } {
-  // Каркас из refs/game-beta/dom/body.html:145-161 — чекбокс usegrb,
+  // Каркас из refs/game/dom/body.html:145-161 — чекбокс usegrb,
   // 20 input.garbage-value (10 уровней × 2 типа), кнопка save.
   const section = document.createElement('div');
 

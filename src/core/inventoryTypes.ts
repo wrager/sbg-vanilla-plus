@@ -27,7 +27,7 @@ export interface IInventoryReference {
   // Bitfield-флаги, проставляемые сервером в ответе /api/inventory (SBG 0.6.1+).
   // Бит 0 — favorite, бит 1 — locked. Поле опциональное: на 0.6.0 сервер его
   // не возвращает, и проверки `(item.f & 0bX)` корректно дают 0 для undefined.
-  // См. refs/game-beta/script.js:3404-3405 — `is_fav = !!(item?.f & 0b1)`.
+  // См. refs/game/script.js:3404-3405 — `is_fav = !!(item?.f & 0b1)`.
   f?: number;
 }
 

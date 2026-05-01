@@ -7,7 +7,7 @@ const MODULE_ID = 'singleFingerRotation';
 
 // Окно double-tap (ms) и максимальный сдвиг между первым и вторым тапом (px),
 // после которого second-touchstart считается началом нативного жеста ngrsZoom
-// (в SBG 0.6.1 — `ol.interaction.DblClickDragZoom`, refs/game-beta/script.js:782).
+// (в SBG 0.6.1 — `ol.interaction.DblClickDragZoom`, refs/game/script.js:782).
 // Значения совпадают с теми, что использовала наша прошлая реализация ngrsZoom
 // (см. удалённый коммит a086ca6).
 const NGRS_DOUBLE_TAP_GAP_MS = 300;
@@ -43,7 +43,7 @@ let suppressedByNativeRotation = false;
 
 /**
  * Проверяет, активен ли в игре нативный жест вращения (FixedPointRotate
- * добавлен в SBG 0.6.1 — refs/game-beta/script.js:711). Сигнал — значение
+ * добавлен в SBG 0.6.1 — refs/game/script.js:711). Сигнал — значение
  * `view.constrainRotation === false`: дефолт OL — true (rotation снапится к
  * 0/90/180/270), SBG 0.6.1 ставит false, чтобы FixedPointRotate мог свободно
  * вращать карту. Если хотфикс игры откатил FixedPointRotate, OL `View`

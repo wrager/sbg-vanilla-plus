@@ -493,7 +493,7 @@ describe('singleFingerRotation enable() с native FixedPointRotate', () => {
 });
 
 describe('singleFingerRotation: подавление во время нативного жеста ngrsZoom', () => {
-  // SBG 0.6.1 встроил `ol.interaction.DblClickDragZoom` (refs/game-beta/script.js:782) —
+  // SBG 0.6.1 встроил `ol.interaction.DblClickDragZoom` (refs/game/script.js:782) —
   // двойной тап с удержанием второго пальца + drag → зум. Чтобы не активировать
   // rotation параллельно с зумом, после второго тапа в окне double-tap (300мс/30px)
   // вся серия touch до touchend полностью игнорируется — независимо от направления

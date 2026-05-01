@@ -21,7 +21,7 @@ export interface IOlView {
   setRotation(rotation: number): void;
   // Доступен через ol.View — возвращает значение опции `constrainRotation`
   // конструктора. Дефолт OL: true (rotation snap'ится к 0/90/180/270). SBG 0.6.1
-  // явно ставит false (refs/game-beta/script.js:746), чтобы FixedPointRotate
+  // явно ставит false (refs/game/script.js:746), чтобы FixedPointRotate
   // мог свободно вращать карту. Используем как сигнал «активен ли native жест
   // вращения» в singleFingerRotation.
   getConstrainRotation?(): boolean;

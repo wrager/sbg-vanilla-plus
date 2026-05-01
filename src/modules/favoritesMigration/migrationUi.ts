@@ -394,7 +394,7 @@ function buildPanel(): HTMLElement {
   const actions = document.createElement('div');
   actions.className = 'svp-migration-actions';
 
-  // Иконки повторяют data-flag-кнопки игры (refs/game-beta/dom/body.html:418, 422):
+  // Иконки повторяют data-flag-кнопки игры (refs/game/dom/body.html:418, 422):
   // звёздочка для favorite, замочек для locked. SVG-sprite определены в DOM игры
   // в head'е, ссылка через `<use href="#fas-...">` работает без инлайн-копирования.
   const favoriteButton = document.createElement('button');

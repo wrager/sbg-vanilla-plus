@@ -11,7 +11,7 @@
 }
 
 .svp-migration-configure-button:hover {
-  /* Игра задаёт --accent в красный (#A00/#F00, refs/game-beta/css/variables.css):
+  /* Игра задаёт --accent в красный (#A00/#F00, refs/game/css/variables.css):
      hover-эффект через accent выглядит как сигнал ошибки. Используем нейтральную
      инверсию text/border. */
   background: var(--text, #ddd);

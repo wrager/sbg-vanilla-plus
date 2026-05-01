@@ -15,7 +15,7 @@ import {
 /**
  * Перевод SVP/CUI-избранных в нативные «звёздочки» / «замочки» SBG 0.6.1
  * через эндпоинт `POST /api/marks` (release-notes 1.3,
- * refs/game-beta/script.js:3416).
+ * refs/game/script.js:3416).
  */
 
 export type MigrationFlag = 'favorite' | 'locked';
@@ -199,7 +199,7 @@ export interface IMarkOutcome {
 
 /**
  * Обновляет бит флага у стопки в `localStorage['inventory-cache']`. Повторяет
- * логику игры (refs/game-beta/script.js:1820-1827): после успешного marks-запроса
+ * логику игры (refs/game/script.js:1820-1827): после успешного marks-запроса
  * через нативную кнопку игра локально пересобирает поле `f` через Bitfield.put.
  * Без нашего собственного обновления при reload игра прочитает устаревший кэш
  * без бита 0b10 — замочек не появится в инвентаре.
