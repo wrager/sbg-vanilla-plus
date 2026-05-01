@@ -98,8 +98,8 @@ export const refsCounterSync: IFeatureModule = {
     ru: 'Синхронизация счётчика ключей на карте',
   },
   description: {
-    en: 'Updates the references counter on the point map label after inventory changes: discover, auto-cleanup (fast and slow), bulk delete via "Refs on map". Native game updates the inventory counter but leaves prop.highlight stale until the next requestEntities (move >30m or 5-minute timer).',
-    ru: 'Обновляет счётчик ключей на подписи точки на карте после изменений инвентаря: изучение, автоочистка (быстрая и медленная), массовое удаление через «Ключи на карте». Нативно игра обновляет счётчик в инвентаре, но prop.highlight на feature остаётся stale до следующего перезапроса карты (движение >30м или 5-минутный таймер).',
+    en: 'Updates the references counter on the point map label after inventory changes (discover, auto-cleanup, bulk delete).',
+    ru: 'Обновляет счётчик ключей на подписи точки на карте после изменений инвентаря (изучение, автоочистка, массовое удаление).',
   },
   defaultEnabled: true,
   category: 'fix',
