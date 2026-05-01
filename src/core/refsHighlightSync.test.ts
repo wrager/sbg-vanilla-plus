@@ -102,30 +102,24 @@ describe('syncRefsCountForPoints', () => {
     expect(mockGetOlMap).not.toHaveBeenCalled();
   });
 
-  test('owner-модуль refsCounterSync выключен пользователем - silent no-op для всех каллеров', async () => {
+  test('owner-модуль refsCounterSync выключен пользователем - silent no-op', async () => {
     moduleEnabledMock = false;
-    const olMap = makeMap([
-      makeLayer('points', makeSource({ 'point-a': makeFeature({ highlight: { '7': 5 } }) })),
-    ]);
+    const feature = makeFeature({ highlight: { '7': 5 } });
+    const olMap = makeMap([makeLayer('points', makeSource({ 'point-a': feature }))]);
     mockGetOlMap.mockResolvedValue(olMap);
     setInventory([{ g: 's1', t: 3, l: 'point-a', a: 99 }]);
-    const alertSpy = jest.spyOn(window, 'alert').mockImplementation();
 
     await syncRefsCountForPoints(['point-a']);
 
     // getOlMap не вызывается - sync вышел до lazy init.
     expect(mockGetOlMap).not.toHaveBeenCalled();
-    expect(alertSpy).not.toHaveBeenCalled();
-    alertSpy.mockRestore();
+    expect(feature._changedCalls).toBe(0);
   });
 
-  test('feature не найдена в pointsSource - silent skip без alert', async () => {
+  test('feature не найдена в pointsSource - silent skip', async () => {
     const olMap = makeMap([makeLayer('points', makeSource({}))]);
     mockGetOlMap.mockResolvedValue(olMap);
-    const alertSpy = jest.spyOn(window, 'alert').mockImplementation();
-    await syncRefsCountForPoints(['missing']);
-    expect(alertSpy).not.toHaveBeenCalled();
-    alertSpy.mockRestore();
+    await expect(syncRefsCountForPoints(['missing'])).resolves.toBeUndefined();
   });
 
   test('SBG 0.6.1+ sparse object - синхронизирует highlight["7"] с amount из кэша', async () => {
@@ -175,48 +169,36 @@ describe('syncRefsCountForPoints', () => {
     const olMap = makeMap([makeLayer('points', makeSource({ 'point-a': feature }))]);
     mockGetOlMap.mockResolvedValue(olMap);
     setInventory([{ g: 's1', t: 3, l: 'point-a', a: 10 }]);
-    const alertSpy = jest.spyOn(window, 'alert').mockImplementation();
 
     await syncRefsCountForPoints(['point-a']);
 
     expect(highlight['7']).toBe(10);
     expect(feature._changedCalls).toBe(0);
-    expect(alertSpy).not.toHaveBeenCalled();
-    alertSpy.mockRestore();
   });
 
-  test('highlight не object (string) - skip с записью в diagnostic', async () => {
+  test('highlight не object (string) - silent skip', async () => {
     const feature = makeFeature({ highlight: 'bad' });
     const olMap = makeMap([makeLayer('points', makeSource({ 'point-a': feature }))]);
     mockGetOlMap.mockResolvedValue(olMap);
     setInventory([{ g: 's1', t: 3, l: 'point-a', a: 10 }]);
-    const alertSpy = jest.spyOn(window, 'alert').mockImplementation();
 
     await syncRefsCountForPoints(['point-a']);
 
     expect(feature._changedCalls).toBe(0);
-    // Diagnostic alert содержит skip-список с reason "no-highlight".
-    expect(alertSpy).toHaveBeenCalledTimes(1);
-    expect(String(alertSpy.mock.calls[0][0])).toContain('no-highlight');
-    alertSpy.mockRestore();
   });
 
-  test('highlight = null - skip с записью в diagnostic', async () => {
+  test('highlight = null - silent skip', async () => {
     const feature = makeFeature({ highlight: null });
     const olMap = makeMap([makeLayer('points', makeSource({ 'point-a': feature }))]);
     mockGetOlMap.mockResolvedValue(olMap);
     setInventory([]);
-    const alertSpy = jest.spyOn(window, 'alert').mockImplementation();
 
     await syncRefsCountForPoints(['point-a']);
 
     expect(feature._changedCalls).toBe(0);
-    expect(alertSpy).toHaveBeenCalledTimes(1);
-    expect(String(alertSpy.mock.calls[0][0])).toContain('no-highlight');
-    alertSpy.mockRestore();
   });
 
-  test('aggregate diagnostic alert: один alert на весь вызов с несколькими точками', async () => {
+  test('несколько точек: каждая получает feature.changed() при изменении', async () => {
     const f1 = makeFeature({ highlight: { '7': 1 } as Record<string, unknown> });
     const f2 = makeFeature({ highlight: { '7': 2 } as Record<string, unknown> });
     const f3 = makeFeature({ highlight: { '7': 3 } as Record<string, unknown> });
@@ -227,18 +209,12 @@ describe('syncRefsCountForPoints', () => {
       { g: 's2', t: 3, l: 'p-2', a: 22 },
       { g: 's3', t: 3, l: 'p-3', a: 33 },
     ]);
-    const alertSpy = jest.spyOn(window, 'alert').mockImplementation();
 
     await syncRefsCountForPoints(['p-1', 'p-2', 'p-3']);
 
     expect(f1._changedCalls).toBe(1);
     expect(f2._changedCalls).toBe(1);
     expect(f3._changedCalls).toBe(1);
-    // Один alert суммарно, не три.
-    expect(alertSpy).toHaveBeenCalledTimes(1);
-    const message = String(alertSpy.mock.calls[0][0]);
-    expect(message).toContain('upd: 3');
-    alertSpy.mockRestore();
   });
 
   test('lazy init pointsSource: getOlMap вызывается один раз на серию вызовов', async () => {
@@ -258,12 +234,9 @@ describe('syncRefsCountForPoints', () => {
     const olMap = makeMap([makeLayer('points', makeSource({ 'point-a': feature }))]);
     mockGetOlMap.mockResolvedValue(olMap);
     setInventory([]);
-    const alertSpy = jest.spyOn(window, 'alert').mockImplementation();
 
     await syncRefsCountForPoints(['point-a']);
 
     expect(feature._changedCalls).toBe(0);
-    expect(alertSpy).not.toHaveBeenCalled();
-    alertSpy.mockRestore();
   });
 });
