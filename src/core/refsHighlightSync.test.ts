@@ -102,7 +102,7 @@ describe('syncRefsCountForPoints', () => {
     expect(mockGetOlMap).not.toHaveBeenCalled();
   });
 
-  test('owner-модуль refsCounterSync выключен пользователем - silent no-op', async () => {
+  test('owner-модуль refsLayerSync выключен пользователем - silent no-op', async () => {
     moduleEnabledMock = false;
     const feature = makeFeature({ highlight: { '7': 5 } });
     const olMap = makeMap([makeLayer('points', makeSource({ 'point-a': feature }))]);

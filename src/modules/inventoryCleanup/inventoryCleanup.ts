@@ -131,7 +131,7 @@ async function runCleanupImpl(): Promise<void> {
     updatePointRefCount();
     // Синхронизация счётчика ключей на подписи точек на карте: после удаления
     // ключей `highlight['7']` на feature остаётся stale (как и после discover -
-    // см. refsCounterSync). Один вызов с уникальными pointGuid из
+    // см. refsLayerSync). Один вызов с уникальными pointGuid из
     // удалений - агрегатно для всех затронутых точек.
     const refPointGuids = collectRefPointGuids(deletions);
     if (refPointGuids.length > 0) {

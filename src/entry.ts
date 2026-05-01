@@ -25,7 +25,7 @@ import { favoritesMigration } from './modules/favoritesMigration/favoritesMigrat
 import { betterNextPointSwipe } from './modules/betterNextPointSwipe/betterNextPointSwipe';
 import { nextPointSwipeAnimation } from './modules/nextPointSwipeAnimation/nextPointSwipeAnimation';
 import { nextPointSwipeFix } from './modules/nextPointSwipeFix/nextPointSwipeFix';
-import { refsCounterSync } from './modules/refsCounterSync/refsCounterSync';
+import { refsLayerSync } from './modules/refsLayerSync/refsLayerSync';
 import { swipeToClosePopup } from './modules/swipeToClosePopup/swipeToClosePopup';
 
 if (!isDisabled()) {
@@ -80,7 +80,7 @@ if (!isDisabled()) {
       drawButtonFix,
       repairButtonFix,
       nextPointSwipeFix,
-      refsCounterSync,
+      refsLayerSync,
     ]);
   }
 

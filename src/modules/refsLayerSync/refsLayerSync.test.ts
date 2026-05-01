@@ -1,8 +1,8 @@
 import {
-  refsCounterSync,
+  refsLayerSync,
   installDiscoverFetchHook,
   uninstallDiscoverFetchHookForTest,
-} from './refsCounterSync';
+} from './refsLayerSync';
 
 jest.mock('../../core/refsHighlightSync', () => ({
   syncRefsCountForPoints: jest.fn(() => Promise.resolve()),
@@ -12,7 +12,7 @@ import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 
 const mockSync = syncRefsCountForPoints as jest.MockedFunction<typeof syncRefsCountForPoints>;
 
-describe('refsCounterSync', () => {
+describe('refsLayerSync', () => {
   let origFetch: typeof window.fetch | undefined;
 
   beforeEach(() => {
@@ -22,7 +22,7 @@ describe('refsCounterSync', () => {
   });
 
   afterEach(() => {
-    void refsCounterSync.disable();
+    void refsLayerSync.disable();
     uninstallDiscoverFetchHookForTest();
     if (origFetch) window.fetch = origFetch;
     jest.useRealTimers();
@@ -37,7 +37,7 @@ describe('refsCounterSync', () => {
       Promise.resolve(makeOkResponse()),
     ) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
-    void refsCounterSync.enable();
+    void refsLayerSync.enable();
 
     await window.fetch('/api/discover', {
       method: 'POST',
@@ -60,7 +60,7 @@ describe('refsCounterSync', () => {
       Promise.resolve(makeOkResponse()),
     ) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
-    void refsCounterSync.enable();
+    void refsLayerSync.enable();
 
     await window.fetch('/api/discover', {
       method: 'POST',
@@ -70,7 +70,7 @@ describe('refsCounterSync', () => {
     await Promise.resolve();
 
     // Disable до тика таймера.
-    void refsCounterSync.disable();
+    void refsLayerSync.disable();
     jest.advanceTimersByTime(100);
 
     expect(mockSync).not.toHaveBeenCalled();
@@ -81,14 +81,14 @@ describe('refsCounterSync', () => {
       Promise.resolve(makeOkResponse()),
     ) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
-    void refsCounterSync.enable();
+    void refsLayerSync.enable();
 
     const fetchPromise = window.fetch('/api/discover', {
       method: 'POST',
       body: JSON.stringify({ guid: 'point-a' }),
     });
     // Отключаем модуль ДО того как then-цепочка успеет отработать.
-    void refsCounterSync.disable();
+    void refsLayerSync.disable();
     await fetchPromise;
     await Promise.resolve();
     await Promise.resolve();
@@ -102,7 +102,7 @@ describe('refsCounterSync', () => {
       Promise.resolve(makeOkResponse()),
     ) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
-    void refsCounterSync.enable();
+    void refsLayerSync.enable();
 
     await window.fetch('/api/inview', { method: 'POST', body: '{}' });
     await Promise.resolve();
@@ -117,7 +117,7 @@ describe('refsCounterSync', () => {
       Promise.resolve(makeOkResponse()),
     ) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
-    void refsCounterSync.enable();
+    void refsLayerSync.enable();
 
     await window.fetch('/api/discover', { method: 'POST', body: JSON.stringify({}) });
     await Promise.resolve();
@@ -131,7 +131,7 @@ describe('refsCounterSync', () => {
     const badResponse = { ok: false, status: 500 } as unknown as Response;
     window.fetch = jest.fn(() => Promise.resolve(badResponse)) as unknown as typeof window.fetch;
     installDiscoverFetchHook();
-    void refsCounterSync.enable();
+    void refsLayerSync.enable();
 
     await window.fetch('/api/discover', {
       method: 'POST',
@@ -146,23 +146,23 @@ describe('refsCounterSync', () => {
 
   test('init не ставит fetch-patch (lazy install)', () => {
     const fetchBefore = window.fetch;
-    void refsCounterSync.init();
+    void refsLayerSync.init();
     expect(window.fetch).toBe(fetchBefore);
   });
 
   test('первый enable ставит fetch-patch (lazy install)', () => {
     const fetchBefore = window.fetch;
-    void refsCounterSync.enable();
+    void refsLayerSync.enable();
     expect(window.fetch).not.toBe(fetchBefore);
   });
 
   test('metadata: id, category=fix, defaultEnabled=true, локализованные имя/описание', () => {
-    expect(refsCounterSync.id).toBe('refsCounterSync');
-    expect(refsCounterSync.category).toBe('fix');
-    expect(refsCounterSync.defaultEnabled).toBe(true);
-    expect(refsCounterSync.name.ru).toBeTruthy();
-    expect(refsCounterSync.name.en).toBeTruthy();
-    expect(refsCounterSync.description.ru).toBeTruthy();
-    expect(refsCounterSync.description.en).toBeTruthy();
+    expect(refsLayerSync.id).toBe('refsLayerSync');
+    expect(refsLayerSync.category).toBe('fix');
+    expect(refsLayerSync.defaultEnabled).toBe(true);
+    expect(refsLayerSync.name.ru).toBeTruthy();
+    expect(refsLayerSync.name.en).toBeTruthy();
+    expect(refsLayerSync.description.ru).toBeTruthy();
+    expect(refsLayerSync.description.en).toBeTruthy();
   });
 });

@@ -1,4 +1,4 @@
-# Подпись точки на карте отражает текущий инвентарь (refsCounterSync)
+# Фикс текста количества ключей (refsLayerSync)
 
 Поддерживает счётчик ключей в подписи точки на карте в актуальном состоянии после любых изменений инвентаря: изучение точки, автоочистка инвентаря (быстрая и медленная), массовое удаление через «Ключи на карте». Игра нативно меняет инвентарь, но не трогает значение на feature, и подпись на карте остаётся stale до следующего перезапроса карты.
 
@@ -31,7 +31,7 @@
 
 Модуль — единая точка контроля для всех путей синхронизации. Когда модуль выключен пользователем, sync silent-no-op для любого источника. Не нужно отдельных тумблеров на каждом пути.
 
-Сам перехват /api/discover (см. ниже) живёт в этом модуле. Остальные пути (cleanup-fast, cleanup-slow, refsOnMap-delete) вызывают core-утилиту синхронизации напрямую из своих модулей; утилита проверяет `isModuleEnabledByUser('refsCounterSync')` и пропускает работу, если owner выключен.
+Сам перехват /api/discover (см. ниже) живёт в этом модуле. Остальные пути (cleanup-fast, cleanup-slow, refsOnMap-delete) вызывают core-утилиту синхронизации напрямую из своих модулей; утилита проверяет `isModuleEnabledByUser('refsLayerSync')` и пропускает работу, если owner выключен.
 
 ### Перехват /api/discover
 
@@ -41,7 +41,7 @@
 
 Сама логика обновления вынесена в `core/refsHighlightSync.ts`. Утилита `syncRefsCountForPoints(pointGuids)`:
 
-1. Проверяет `isModuleEnabledByUser('refsCounterSync')` — если выключен, silent return.
+1. Проверяет `isModuleEnabledByUser('refsLayerSync')` — если выключен, silent return.
 2. Читает свежий `inventory-cache` (источник истины — количество ключей в инвентаре).
 3. Для каждой точки находит feature по `getFeatureById(guid)` в `points`-layer.
 4. Если `highlight['7']` уже совпадает с amount из кэша — silent skip.
@@ -67,10 +67,10 @@
 
 ## Файловая структура
 
-| Файл                      | Назначение                                                                                                                                |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `refsCounterSync.ts`      | Определение модуля + `installDiscoverFetchHook` + извлечение `guid` из request body. Sync делегируется в `core/refsHighlightSync`         |
-| `refsCounterSync.test.ts` | Тесты hook-перехвата `/api/discover`, lazy install fetch-патча, disable между response и тиком, фильтрация не-discover URL и не-200 ответ |
+| Файл                    | Назначение                                                                                                                                |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `refsLayerSync.ts`      | Определение модуля + `installDiscoverFetchHook` + извлечение `guid` из request body. Sync делегируется в `core/refsHighlightSync`         |
+| `refsLayerSync.test.ts` | Тесты hook-перехвата `/api/discover`, lazy install fetch-патча, disable между response и тиком, фильтрация не-discover URL и не-200 ответ |
 
 ## Настройки
 

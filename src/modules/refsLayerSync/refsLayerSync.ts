@@ -1,7 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 
-const MODULE_ID = 'refsCounterSync';
+const MODULE_ID = 'refsLayerSync';
 
 const DISCOVER_URL_PATTERN = /\/api\/discover(\?|$)/;
 // Задержка перед sync. За это время игра успевает отработать свой continuation
@@ -91,15 +91,15 @@ export function uninstallDiscoverFetchHookForTest(): void {
   discoverFetchInstalled = false;
 }
 
-export const refsCounterSync: IFeatureModule = {
+export const refsLayerSync: IFeatureModule = {
   id: MODULE_ID,
   name: {
-    en: 'Map labels stay in sync with inventory',
-    ru: 'Подпись точки на карте отражает текущий инвентарь',
+    en: 'Key count label fix',
+    ru: 'Фикс текста количества ключей',
   },
   description: {
-    en: 'Keeps the references counter on the point map label up to date after any inventory change: discover, auto-cleanup (fast and slow), bulk delete via "Refs on map". This is the owner of all sync paths — disabling the module stops sync from every source, the label freezes until the next map redraw.',
-    ru: 'Поддерживает счётчик ключей в подписи точки на карте в актуальном состоянии после любых изменений инвентаря: изучение точки, автоочистка (быстрая и медленная), массовое удаление через «Ключи на карте». Модуль управляет всеми путями синхронизации — при отключении подпись перестаёт обновляться от любого источника и замирает до следующей перерисовки карты.',
+    en: 'Keeps the references counter on the point map label up to date after any inventory change.',
+    ru: 'Поддерживает счётчик ключей в подписи точки на карте в актуальном состоянии после любых изменений инвентаря.',
   },
   defaultEnabled: true,
   category: 'fix',

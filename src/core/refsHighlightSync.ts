@@ -21,11 +21,11 @@ import { findLayerByName, getOlMap } from './olMap';
 import type { IOlVectorSource } from './olMap';
 
 // Модуль-владелец синхронизации. Если пользователь выключил его в настройках,
-// все вызовы syncRefsCountForPoints из любых модулей-каллеров (refsCounterSync
+// все вызовы syncRefsCountForPoints из любых модулей-каллеров (refsLayerSync
 // после discover, inventoryCleanup после fast-cleanup, slowRefsDelete после
 // slow-cleanup, refsOnMap после viewer-DELETE) silent-return. Один тумблер
 // контролирует весь sync, не разные тумблеры на каждом пути.
-const OWNER_MODULE_ID = 'refsCounterSync';
+const OWNER_MODULE_ID = 'refsLayerSync';
 
 const REFS_CHANNEL_INDEX = 7;
 const REFS_CHANNEL_KEY = String(REFS_CHANNEL_INDEX);
