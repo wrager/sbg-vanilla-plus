@@ -30,13 +30,13 @@ const GARBAGE_WRAPPER_CLASS = 'svp-garbage-disabled-content';
 
 let domObserver: MutationObserver | null = null;
 let installGeneration = 0;
-// Серверный POST /api/settings выполняется один раз за жизнь страницы.
-// Если пользователь часто переключает модуль через настройки (или модуль
-// сам флаппится из-за чужого скрипта), без флага мы спамили бы /api/settings
-// на каждый enable. Сервер всё равно дросселирует, но клиентский лишний
-// вызов выглядит как ошибка рантайма; флаг убирает шум в логах сервера и
-// в DevTools Network. Сбросить флаг можно только через перезагрузку страницы:
-// модуль сам не "размигрировывает" usegrb=true, см. комментарий вверху файла.
+// Серверный POST /api/settings выполняется один раз за активную фазу
+// модуля. Двойной install подряд (например, bootstrap-race или флаппинг
+// под чужим скриптом) не шлёт дубликат - флаг ставится синхронно ДО fetch.
+// На uninstall флаг сбрасывается: после disable пользователь мог сам
+// поставить usegrb=true через UI игры, и при повторном enable нам нужно
+// заново отправить usegrb=false, иначе серверная сторона остаётся в
+// предыдущем состоянии.
 let usegrbPostedThisSession = false;
 
 function applyDisabledToNativeInputs(): void {
@@ -151,14 +151,13 @@ async function postUsegrbFalse(): Promise<void> {
   if (usegrbPostedThisSession) return;
   const token = localStorage.getItem('auth');
   if (!token) return;
-  // Помечаем "отправлено" ДО fetch: если пользователь успеет повторно
-  // toggle модуля до резолва Promise, второй вызов всё равно увидит
-  // флаг и не пошлёт дубликат. Сетевой сбой не сбрасывает флаг -
-  // сервер всё равно дросселирует, и клиентский retry в этом сценарии
-  // только добавил бы шума в Network. Если usegrb окажется true на
-  // сервере (наш fetch упал, или другой клиент выставил true) - это
-  // лечится перезагрузкой страницы, на следующем page-load флаг сессии
-  // сбросится и POST уйдёт заново.
+  // Помечаем "отправлено" ДО fetch: если в той же активной фазе модуля
+  // придёт второй install (bootstrap-race), он увидит флаг и не пошлёт
+  // дубликат. Сетевой сбой флаг не сбрасывает - сервер дросселирует,
+  // клиентский retry только добавил бы шума. Между фазами флаг сбрасывает
+  // uninstallNativeGarbageGuard, чтобы повторный enable снова отправил
+  // usegrb=false (пользователь мог сам поставить true через UI игры за
+  // время disable).
   usegrbPostedThisSession = true;
   try {
     await fetch('/api/settings', {
@@ -212,4 +211,9 @@ export function uninstallNativeGarbageGuard(): void {
   domObserver = null;
   removeDisabledFromNativeInputs();
   unwrapGarbageFieldset();
+  // Между фазами флаг сбрасывается: следующий install отправит usegrb=false
+  // заново. Пользователь во время disable мог сам поставить usegrb=true через
+  // настройки игры, и без сброса серверная сторона осталась бы в этом
+  // состоянии до перезагрузки страницы.
+  usegrbPostedThisSession = false;
 }

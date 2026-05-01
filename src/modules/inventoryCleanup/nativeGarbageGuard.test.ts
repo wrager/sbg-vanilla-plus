@@ -164,31 +164,41 @@ describe('installNativeGarbageGuard — сторона API', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  test('повторный install за сессию не шлёт второй POST', () => {
-    // Пользователь часто toggle модуля через настройки или модуль сам
-    // флаппится из-за чужого скрипта - без session-once флага мы спамили
-    // бы /api/settings на каждый enable. Сервер всё равно дросселирует,
-    // но клиентский лишний вызов выглядит как ошибка рантайма; флаг
-    // убирает шум в логах сервера и в DevTools Network.
+  test('install -> uninstall -> install шлёт второй POST', () => {
+    // На uninstall флаг session-once сбрасывается. Это закрывает сценарий:
+    // пользователь disable inventoryCleanup, через UI игры включил usegrb=true,
+    // re-enable inventoryCleanup - наш модуль обязан отправить usegrb=false
+    // заново. Без сброса серверный usegrb остался бы true и нативный сборщик
+    // мусора работал параллельно с нашей автоочисткой.
     createGarbageSection();
     installNativeGarbageGuard();
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
     uninstallNativeGarbageGuard();
+    installNativeGarbageGuard();
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  test('двойной install подряд (без uninstall между ними) не шлёт второй POST', () => {
+    // Защита от bootstrap-race и флаппинга под чужим скриптом: пока модуль в
+    // активной фазе, повторный install не должен спамить /api/settings.
+    // Флаг session-once сбрасывается ТОЛЬКО на uninstall.
+    createGarbageSection();
+    installNativeGarbageGuard();
     installNativeGarbageGuard();
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   test('после resetUsegrbPostedFlagForTest install шлёт POST заново', () => {
-    // Контр-тест к session-once: симуляция перезагрузки страницы
-    // (resetUsegrbPostedFlagForTest имитирует свежий page-load).
-    // Без этого механизма пользователь, наткнувшийся на сетевую ошибку
-    // при первом fetch, не смог бы переотправить POST даже после reload.
+    // Контр-тест: resetUsegrbPostedFlagForTest имитирует свежий page-load
+    // в тестах (когда uninstall не вызывался, например, тест начинается
+    // с предполагаемо чистого состояния). В продакшене эту роль играет
+    // uninstallNativeGarbageGuard, который тоже сбрасывает флаг.
     createGarbageSection();
     installNativeGarbageGuard();
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    uninstallNativeGarbageGuard();
 
     resetUsegrbPostedFlagForTest();
     installNativeGarbageGuard();
