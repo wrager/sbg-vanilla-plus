@@ -56,4 +56,5 @@ export const <name>: IFeatureModule = {
 - [ ] Тесты написаны (рядом с исходником)
 - [ ] Добавлен в `bootstrap()` в `entry.ts`
 - [ ] README.md обновлён (`name.ru`, `description.ru`, правильная категория, правильный порядок)
+- [ ] `description` краткий и описывает ЧТО, не КАК (детали реализации - в JSDoc и архитектурном README модуля, не в user-facing description)
 - [ ] CI проходит
