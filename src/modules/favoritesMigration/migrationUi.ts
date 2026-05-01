@@ -125,12 +125,12 @@ const ALREADY_APPLIED_TOAST: ILocalizedString = {
 };
 
 // Modal alert: точки из легаси-списка, которые невозможно пометить замочком,
-// потому что у них сейчас нет стопок ключей в инвентаре. Title таких точек
+// потому что у них нет стопок ключей в инвентаре. Title таких точек
 // недоступен (legacy IDB хранит только {guid, cooldown}; inventory-cache
 // без стопки тоже не содержит title) - показываем сокращённый GUID.
 const WITHOUT_KEYS_ALERT_TEMPLATE: ILocalizedString = {
-  en: '{n} favorited points were not marked with a lock: they have no keys in your inventory right now. When you collect their keys, mark the new stacks with the native lock button manually.\n\nGUIDs: {list}',
-  ru: '{n} избранных точек не помечены замочком, потому что у них сейчас нет ключей в инвентаре. Когда наберёшь ключи, пометь новые стопки нативной кнопкой замочка вручную.\n\nGUIDы: {list}',
+  en: '{n} favorited points were not marked with a lock: they have no keys in your inventory. When you collect their keys, mark the new stacks with the native lock button manually.\n\nGUIDs: {list}',
+  ru: '{n} избранных точек не помечены замочком, потому что у них нет ключей в инвентаре. Когда наберёшь ключи, пометь новые стопки нативной кнопкой замочка вручную.\n\nGUIDы: {list}',
 };
 
 // Modal alert: миграция завершилась частично, часть стопок не помечена.
