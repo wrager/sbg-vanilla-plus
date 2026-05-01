@@ -1,5 +1,4 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { diagAlert } from '../../core/diagAlert';
 import { getOlMap, findLayerByName } from '../../core/olMap';
 import type { IOlMap, IOlVectorSource, IOlFeature } from '../../core/olMap';
 
@@ -28,13 +27,6 @@ const featureChangeListeners = new WeakMap<IOlFeature, () => void>();
 let map: IOlMap | null = null;
 let pointsSource: IOlVectorSource | null = null;
 let onAddFeature: ((...args: unknown[]) => void) | null = null;
-
-// DIAGNOSTIC (beta.12): счётчик создания Proxy в wrapped renderer для оценки
-// перформанс-нагрузки. Один alert через 5 сек после первого render frame с
-// rate Proxy/sec. Удалить после анализа.
-let diagProxyCount = 0;
-let diagProxyStartedAt = 0;
-let diagProxyAlertShown = false;
 // installGeneration защищает от race условий между async enable и быстрым
 // disable. enable содержит await getOlMap() - если disable отработал во время
 // await, мы должны выйти из enable до записи map/pointsSource и подписки на
@@ -98,25 +90,6 @@ export function wrapLightRenderer(original: RendererFn, getZoom: () => number): 
     const rotation = state.rotation ?? 0;
     const pixelRatio = state.pixelRatio ?? 1;
     const fontPx = Math.round(fontSizeForZoom(getZoom()) * pixelRatio);
-
-    // DIAGNOSTIC (beta.12): первая запись стартует таймер; через 5 сек один
-    // alert с накопленным count и rate. Удалить после анализа.
-    diagProxyCount++;
-    if (diagProxyStartedAt === 0) {
-      diagProxyStartedAt = Date.now();
-      setTimeout(() => {
-        if (diagProxyAlertShown) return;
-        diagProxyAlertShown = true;
-        const elapsed = Date.now() - diagProxyStartedAt;
-        const rate = elapsed > 0 ? Math.round((diagProxyCount * 1000) / elapsed) : 0;
-        diagAlert(
-          `SVP improvedPointText\n` +
-            `proxies: ${String(diagProxyCount)}\n` +
-            `elapsed: ${String(elapsed)}ms\n` +
-            `rate: ${String(rate)}/sec`,
-        );
-      }, 5000);
-    }
 
     const proxyCtx = new Proxy(realCtx, {
       set(target, prop, value: unknown): boolean {
