@@ -73,9 +73,8 @@ function getScreenCenter(): { x: number; y: number } {
   };
 }
 
-function angleFromCenter(clientX: number, clientY: number): number {
-  const center = getScreenCenter();
-  return Math.atan2(clientY - center.y, clientX - center.x);
+function angleFromCenter(clientX: number, clientY: number, cx: number, cy: number): number {
+  return Math.atan2(clientY - cy, clientX - cx);
 }
 
 function normalizeAngleDelta(delta: number): number {
@@ -169,8 +168,11 @@ function onTouchMove(event: TouchEvent): void {
   event.preventDefault();
 
   const touch = event.targetTouches[0];
-  const currentAngle = angleFromCenter(touch.clientX, touch.clientY);
-  const previousAngle = angleFromCenter(latestPoint[0], latestPoint[1]);
+  // Один getScreenCenter на touchmove: padding из view + чтение window.innerWidth/Height
+  // одно и то же для current и previous углов, кэшируем локально.
+  const center = getScreenCenter();
+  const currentAngle = angleFromCenter(touch.clientX, touch.clientY, center.x, center.y);
+  const previousAngle = angleFromCenter(latestPoint[0], latestPoint[1], center.x, center.y);
   const delta = normalizeAngleDelta(currentAngle - previousAngle);
 
   pendingDelta += delta;
@@ -221,6 +223,10 @@ function removeListeners(): void {
  * enable/disable наращивал бы слой bound-обёрток, и disable() не
  * восстанавливал бы исходную функцию by-reference. Контекст передаётся
  * через .call(view, ...) в самом wrapper'е.
+ *
+ * diagonal-расчёт мемоизируется по парам [w, h]: размер вьюпорта меняется
+ * только при ресайзе окна, а calculateExtent игра зовёт на каждый
+ * pan/zoom/rotate. Math.sqrt + Math.ceil на каждом вызове - лишняя работа.
  */
 function installCalculateExtentWrapper(): void {
   if (!map || originalCalculateExtent !== null) return;
@@ -228,10 +234,20 @@ function installCalculateExtentWrapper(): void {
   // eslint-disable-next-line @typescript-eslint/unbound-method -- см. комментарий выше, контекст явно передаётся через .call(view, ...)
   const original = view.calculateExtent;
   originalCalculateExtent = original;
+  let cachedW = -1;
+  let cachedH = -1;
+  let cachedDiagonalSize: [number, number] = [0, 0];
   view.calculateExtent = (size?: number[]) => {
     if (size) {
-      const diagonal = Math.ceil(Math.sqrt(size[0] ** 2 + size[1] ** 2));
-      return original.call(view, [diagonal, diagonal]);
+      const w = size[0];
+      const h = size[1];
+      if (w !== cachedW || h !== cachedH) {
+        const diagonal = Math.ceil(Math.sqrt(w ** 2 + h ** 2));
+        cachedDiagonalSize = [diagonal, diagonal];
+        cachedW = w;
+        cachedH = h;
+      }
+      return original.call(view, cachedDiagonalSize);
     }
     return original.call(view, size);
   };
