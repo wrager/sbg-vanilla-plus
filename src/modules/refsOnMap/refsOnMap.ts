@@ -647,8 +647,8 @@ export const refsOnMap: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Refs on map', ru: 'Ключи на карте' },
   description: {
-    en: 'View and manage points with collected keys on the map at any zoom level. Keys of points marked with the native lock (SBG 0.6.1+) are protected and not deleted - same semantics as in the inventoryCleanup module.',
-    ru: 'Просмотр и управление точками с ключами на карте на любом масштабе. Ключи точек, помеченных нативным замочком (SBG 0.6.1+), защищены и не удаляются - та же семантика, что и в модуле inventoryCleanup.',
+    en: 'View and manage points with collected keys on the map at any zoom level. Keys of points marked with the native SBG lock are protected.',
+    ru: 'Просмотр и управление точками с ключами на карте на любом масштабе. Ключи точек, помеченных нативным замочком SBG, защищены.',
   },
   defaultEnabled: true,
   category: 'feature',
