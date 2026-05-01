@@ -2,7 +2,18 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 
 const MODULE_ID = 'drawButtonFix';
 
-let observer: MutationObserver | null = null;
+// Каждый observer подписан на свой конкретный элемент (а не на document.body
+// subtree), потому что:
+// 1. `disabled` и `data-guid` - частые атрибуты в игре. `disabled` ставится на
+//    множество кнопок (attack, deploy, repair, inventory items), `data-guid`
+//    кроме .info живёт на .draw-slider-wrp, .attack-slider-wrp и в инвентаре.
+//    Subtree-observer на document.body вызывал бы callback на каждый такой
+//    переключение и фильтровал бы вручную - O(всех изменений).
+// 2. #draw и .info присутствуют в статическом HTML игры (refs/game/index.html:
+//    299, 360), к моменту bootstrap (DOMContentLoaded) уже в DOM. Прямое
+//    document.querySelector найдёт их сразу, без waitForElement.
+let drawDisabledObserver: MutationObserver | null = null;
+let infoGuidObserver: MutationObserver | null = null;
 
 /**
  * Сбрасывает текст счётчика #draw-count в '[...]'. Игра в showInfo
@@ -30,28 +41,30 @@ export const drawButtonFix: IFeatureModule = {
   category: 'fix',
   init() {},
   enable() {
-    observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type !== 'attributes') continue;
-        if (!(mutation.target instanceof HTMLElement)) continue;
-        if (mutation.attributeName === 'disabled' && mutation.target.id === 'draw') {
-          mutation.target.removeAttribute('disabled');
-        } else if (
-          mutation.attributeName === 'data-guid' &&
-          mutation.target.classList.contains('info')
-        ) {
-          invalidateDrawCount();
-        }
-      }
-    });
-    observer.observe(document.body, {
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['disabled', 'data-guid'],
-    });
+    const drawButton = document.querySelector('#draw');
+    if (drawButton instanceof HTMLElement) {
+      drawDisabledObserver = new MutationObserver(() => {
+        drawButton.removeAttribute('disabled');
+      });
+      drawDisabledObserver.observe(drawButton, {
+        attributes: true,
+        attributeFilter: ['disabled'],
+      });
+    }
+
+    const infoPopup = document.querySelector('.info');
+    if (infoPopup instanceof HTMLElement) {
+      infoGuidObserver = new MutationObserver(invalidateDrawCount);
+      infoGuidObserver.observe(infoPopup, {
+        attributes: true,
+        attributeFilter: ['data-guid'],
+      });
+    }
   },
   disable() {
-    observer?.disconnect();
-    observer = null;
+    drawDisabledObserver?.disconnect();
+    drawDisabledObserver = null;
+    infoGuidObserver?.disconnect();
+    infoGuidObserver = null;
   },
 };

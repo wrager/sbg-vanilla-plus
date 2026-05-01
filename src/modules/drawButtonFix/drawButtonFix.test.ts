@@ -27,14 +27,15 @@ describe('drawButtonFix', () => {
   });
 
   test('removes disabled from #draw when attribute is set', async () => {
-    await drawButtonFix.enable();
     const btn = createDrawButton(false);
+    await drawButtonFix.enable();
     btn.setAttribute('disabled', '');
     await Promise.resolve();
     expect(btn.hasAttribute('disabled')).toBe(false);
   });
 
   test('does not affect disabled on other buttons', async () => {
+    createDrawButton(false);
     await drawButtonFix.enable();
     const other = document.createElement('button');
     other.id = 'other';
@@ -45,17 +46,17 @@ describe('drawButtonFix', () => {
   });
 
   test('disable stops removing the attribute', async () => {
+    const btn = createDrawButton(false);
     await drawButtonFix.enable();
     await drawButtonFix.disable();
-    const btn = createDrawButton(false);
     btn.setAttribute('disabled', '');
     await Promise.resolve();
     expect(btn.hasAttribute('disabled')).toBe(true);
   });
 
   test('сбрасывает #draw-count при смене data-guid на .info', async () => {
-    await drawButtonFix.enable();
     const popup = createInfoPopup('guid-a', '[3]');
+    await drawButtonFix.enable();
     popup.dataset.guid = 'guid-b';
     await Promise.resolve();
     const counter = document.querySelector('#draw-count');
@@ -63,7 +64,6 @@ describe('drawButtonFix', () => {
   });
 
   test('не сбрасывает #draw-count при смене data-guid на других элементах', async () => {
-    await drawButtonFix.enable();
     createInfoPopup('guid-a', '[3]');
     // .draw-slider-wrp тоже хранит data-guid (refs/game/script.js:1011),
     // но это не должно триггерить инвалидацию #draw-count.
@@ -71,6 +71,7 @@ describe('drawButtonFix', () => {
     slider.className = 'draw-slider-wrp';
     slider.dataset.guid = 'guid-x';
     document.body.appendChild(slider);
+    await drawButtonFix.enable();
     slider.dataset.guid = 'guid-y';
     await Promise.resolve();
     const counter = document.querySelector('#draw-count');
@@ -78,8 +79,8 @@ describe('drawButtonFix', () => {
   });
 
   test('disable отключает инвалидацию #draw-count', async () => {
-    await drawButtonFix.enable();
     const popup = createInfoPopup('guid-a', '[3]');
+    await drawButtonFix.enable();
     await drawButtonFix.disable();
     popup.dataset.guid = 'guid-b';
     await Promise.resolve();
