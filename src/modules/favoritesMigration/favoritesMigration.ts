@@ -14,8 +14,8 @@ export const favoritesMigration: IFeatureModule = {
     ru: 'Миграция избранного',
   },
   description: {
-    en: 'Migrates the local SVP/CUI favorited points list into native SBG 0.6.1 favorites or locks.',
-    ru: 'Переносит локальный список избранных точек SVP/CUI в нативные «звёздочки» или «замочки» SBG 0.6.1.',
+    en: 'Migrates the local SVP/CUI favorited points list into native SBG 0.6.1 favorites or locks. Points without keys in inventory right now cannot be marked: the native flag lives on the key stack, not on the point as an entity.',
+    ru: 'Переносит локальный список избранных точек SVP/CUI в нативные «звёздочки» или «замочки» SBG 0.6.1. Точки без ключей в инвентаре сейчас пометить нельзя — нативный флаг живёт на стопке ключей, а не на точке как сущности.',
   },
   defaultEnabled: true,
   category: 'feature',

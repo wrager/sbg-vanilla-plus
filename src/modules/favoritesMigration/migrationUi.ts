@@ -1,3 +1,4 @@
+import { readFullInventoryReferences } from '../../core/inventoryCache';
 import { t } from '../../core/l10n';
 import type { ILocalizedString } from '../../core/l10n';
 import { showToast } from '../../core/toast';
@@ -10,6 +11,7 @@ import {
 import {
   buildCandidates,
   runMigration,
+  type IMigrationItem,
   type IMigrationProgress,
   type MigrationFlag,
 } from './migrationApi';
@@ -103,10 +105,13 @@ const SUCCESS_STATUS_LABEL: ILocalizedString = {
   en: 'All stacks marked successfully',
   ru: 'Все стопки помечены успешно',
 };
+// Короткий текст под прогресс-баром при partial. Длинный текст с инструкцией
+// "повтори через пару минут" и список затронутых точек выводятся через modal
+// alert (alertPartial), чтобы пользователь точно увидел сигнал на мобильном
+// устройстве, где toast мог бы пройти незамеченным.
 const PARTIAL_STATUS_TEMPLATE: ILocalizedString = {
-  // {n} заменим в runtime на оставшееся количество.
-  en: 'Marked {ok} of {total}. {n} could not be marked — try running migration again in a couple of minutes',
-  ru: 'Помечено {ok} из {total}. {n} не удалось — попробуй запустить миграцию ещё раз через пару минут',
+  en: 'Marked {ok} of {total}. {n} not marked',
+  ru: 'Помечено {ok} из {total}. {n} не удалось',
 };
 
 const NO_KEYS_TOAST: ILocalizedString = {
@@ -118,6 +123,83 @@ const ALREADY_APPLIED_TOAST: ILocalizedString = {
   en: 'All stacks already have this flag — nothing to do',
   ru: 'У всех стопок уже стоит этот флаг — делать нечего',
 };
+
+// Modal alert: точки из легаси-списка, которые невозможно пометить замочком,
+// потому что у них сейчас нет стопок ключей в инвентаре. Title таких точек
+// недоступен (legacy IDB хранит только {guid, cooldown}; inventory-cache
+// без стопки тоже не содержит title) - показываем сокращённый GUID.
+const WITHOUT_KEYS_ALERT_TEMPLATE: ILocalizedString = {
+  en: '{n} favorited points were not marked with a lock: they have no keys in your inventory right now. When you collect their keys, mark the new stacks with the native lock button manually.\n\nGUIDs: {list}',
+  ru: '{n} избранных точек не помечены замочком, потому что у них сейчас нет ключей в инвентаре. Когда наберёшь ключи, пометь новые стопки нативной кнопкой замочка вручную.\n\nGUIDы: {list}',
+};
+
+// Modal alert: миграция завершилась частично, часть стопок не помечена.
+// Используем точки (а не стопки) - у одной точки может быть несколько стопок,
+// пользователь думает в терминах точек. Title точки берётся из inventory-cache:
+// у failed-стопок есть запись в кэше (мы их именно из кэша и доставали).
+const PARTIAL_ALERT_TEMPLATE: ILocalizedString = {
+  en: 'Marked {ok} of {total} stacks. {n} could not be marked - try running migration again in a couple of minutes.\n\nAffected points: {list}',
+  ru: 'Помечено {ok} из {total} стопок. {n} не удалось - попробуй запустить миграцию ещё раз через пару минут.\n\nЗатронутые точки: {list}',
+};
+
+const ALERT_LIST_INLINE_LIMIT = 5;
+const ALERT_LIST_HEAD_LIMIT = 4;
+
+/**
+ * Форматирует список идентификаторов для показа в modal alert по правилу:
+ * - до 5 элементов включительно: все через запятую,
+ * - больше: "{N}: a, b, c, d, ...".
+ *
+ * Сами элементы не сокращаются - вызывающая сторона решает, какой источник
+ * (title, GUID-prefix) использовать.
+ */
+export function formatBriefList(items: readonly string[]): string {
+  if (items.length <= ALERT_LIST_INLINE_LIMIT) return items.join(', ');
+  const head = items.slice(0, ALERT_LIST_HEAD_LIMIT).join(', ');
+  return `${String(items.length)}: ${head}, ...`;
+}
+
+function shortenGuids(guids: readonly string[]): string[] {
+  return guids.map((g) => g.slice(0, 8)).sort();
+}
+
+/**
+ * Уникальные titles точек, у которых хотя бы одна стопка попала в failed.
+ * Title берётся из inventory-cache (`IInventoryReferenceFull.ti`); failed-стопки
+ * гарантированно есть в кэше - мы их именно оттуда доставали через
+ * buildCandidates. Если по какой-то причине title не найден (точка пропала
+ * из кэша между migration и alert) - её guid тихо пропускается.
+ */
+export function collectFailedPointTitles(failed: readonly IMigrationItem[]): string[] {
+  const refs = readFullInventoryReferences();
+  const titleByPoint = new Map<string, string>();
+  for (const ref of refs) titleByPoint.set(ref.l, ref.ti);
+  const titles = new Set<string>();
+  for (const stack of failed) {
+    const title = titleByPoint.get(stack.pointGuid);
+    if (title !== undefined) titles.add(title);
+  }
+  return Array.from(titles).sort();
+}
+
+function alertWithoutKeys(guids: readonly string[]): void {
+  const list = formatBriefList(shortenGuids(guids));
+  const message = t(WITHOUT_KEYS_ALERT_TEMPLATE)
+    .replace('{n}', String(guids.length))
+    .replace('{list}', list);
+  alert(message);
+}
+
+function alertPartial(succeeded: number, total: number, failed: readonly IMigrationItem[]): void {
+  const remaining = total - succeeded;
+  const list = formatBriefList(collectFailedPointTitles(failed));
+  const message = t(PARTIAL_ALERT_TEMPLATE)
+    .replace('{ok}', String(succeeded))
+    .replace('{total}', String(total))
+    .replace('{n}', String(remaining))
+    .replace('{list}', list);
+  alert(message);
+}
 
 let panel: HTMLElement | null = null;
 let configureButton: HTMLElement | null = null;
@@ -468,19 +550,28 @@ async function runFlow(flag: MigrationFlag, panelElement: HTMLElement): Promise<
       // Для locked: если у всех легаси-точек либо стопки уже помечены, либо
       // стопок ключей вовсе нет - защита фактически полная (нечего блокировать
       // или всё уже locked). Ставим lock-migration-done, чтобы inventoryCleanup
-      // перестал блокировать удаление ключей. Без условия `withoutKeys > 0`
+      // перестал блокировать удаление ключей. Без условия `withoutKeysGuids` >0
       // пользователь, у которого все легаси-точки без ключей в инвентаре, нажал
       // бы "Перенести в заблокированное", получил toast "нечего мигрировать", и
       // блок остался бы до перезагрузки страницы (когда inferAndPersist в init
       // выставит флаг автоматически).
       // Для favorite ничего не ставим: favorite не защищает от удаления.
       const lockComplete =
-        flag === 'locked' && (candidates.alreadyApplied > 0 || candidates.withoutKeys > 0);
+        flag === 'locked' &&
+        (candidates.alreadyApplied > 0 || candidates.withoutKeysGuids.length > 0);
       if (lockComplete) {
         setLockMigrationDone();
       }
-      const message = candidates.alreadyApplied > 0 ? t(ALREADY_APPLIED_TOAST) : t(NO_KEYS_TOAST);
-      showToast(message);
+      // Modal alert при наличии непокрытых точек: пользователь должен явно
+      // знать, что часть избранных осталась без замочка, иначе при сборе
+      // ключей таких точек они не будут защищены автоочисткой. Toast на
+      // мобильном устройстве может пройти незамеченным.
+      if (candidates.withoutKeysGuids.length > 0) {
+        alertWithoutKeys(candidates.withoutKeysGuids);
+      } else {
+        const message = candidates.alreadyApplied > 0 ? t(ALREADY_APPLIED_TOAST) : t(NO_KEYS_TOAST);
+        showToast(message);
+      }
       return;
     }
 
@@ -526,14 +617,24 @@ async function runFlow(flag: MigrationFlag, panelElement: HTMLElement): Promise<
       }
       markProgressTerminal(panelElement, 'success', t(SUCCESS_STATUS_LABEL));
       showToast(t(SUCCESS_STATUS_LABEL));
+      // Если у части легаси-точек нет ключей в инвентаре - они не были и не
+      // могли быть помечены замочком. Сообщаем явно, иначе пользователь
+      // решит, что миграция полностью покрыла его список.
+      if (candidates.withoutKeysGuids.length > 0) {
+        alertWithoutKeys(candidates.withoutKeysGuids);
+      }
     } else {
       const remaining = candidates.toSend.length - result.succeeded.length;
-      const partialText = t(PARTIAL_STATUS_TEMPLATE)
+      const statusText = t(PARTIAL_STATUS_TEMPLATE)
         .replace('{ok}', String(result.succeeded.length))
         .replace('{total}', String(candidates.toSend.length))
         .replace('{n}', String(remaining));
-      markProgressTerminal(panelElement, 'partial', partialText);
-      showToast(partialText);
+      markProgressTerminal(panelElement, 'partial', statusText);
+      // Modal alert вместо toast: на мобильном устройстве toast может пройти
+      // незамеченным, а partial - сигнал, что миграция не завершена и нужно
+      // повторить через пару минут. Список затронутых точек по их title.
+      const failedStacks = [...result.networkFailed, ...result.toggleStuck];
+      alertPartial(result.succeeded.length, candidates.toSend.length, failedStacks);
     }
   } finally {
     migrationInProgress = false;

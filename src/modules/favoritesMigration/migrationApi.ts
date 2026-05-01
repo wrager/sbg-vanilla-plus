@@ -68,8 +68,18 @@ export interface IMigrationItem {
 export interface IMigrationCandidates {
   /** Точки из локального списка SVP/CUI, для которых в инвентаре есть ключи. */
   toSend: IMigrationItem[];
-  /** Точки из локального списка, у которых в инвентаре нет стопок ключей. */
-  withoutKeys: number;
+  /**
+   * GUIDы точек из локального списка, у которых в инвентаре нет стопок ключей.
+   * Lock-флаг в SBG живёт на стопке (бит в `item.f`), не на точке как
+   * сущности: пометить точку без стопок физически нельзя - сервер не на чем
+   * ставить бит. Когда пользователь позже наберёт ключи такой точки, новая
+   * стопка придёт с `f=0` (без lock); защитить эти ключи можно только руками
+   * через нативную кнопку игры.
+   *
+   * runFlow в migrationUi показывает modal alert со списком этих GUIDов,
+   * чтобы пользователь явно знал, какие точки остались без защиты.
+   */
+  withoutKeysGuids: string[];
   /** Стопки, которые УЖЕ имеют нужный флаг (предварительный фильтр по item.f). */
   alreadyApplied: number;
 }
@@ -156,12 +166,12 @@ export function buildCandidates(flag: MigrationFlag): IMigrationCandidates {
     }
   }
 
-  let withoutKeys = 0;
+  const withoutKeysGuids: string[] = [];
   for (const guid of favoritedGuids) {
-    if (!refsByPoint.has(guid)) withoutKeys++;
+    if (!refsByPoint.has(guid)) withoutKeysGuids.push(guid);
   }
 
-  return { toSend, withoutKeys, alreadyApplied };
+  return { toSend, withoutKeysGuids, alreadyApplied };
 }
 
 /**

@@ -74,16 +74,16 @@ describe('buildCandidates', () => {
     setInventory([{ g: 's1', t: 3, l: 'p-other', a: 1, f: 0 }]);
     const candidates = buildCandidates('favorite');
     expect(candidates.toSend).toHaveLength(0);
-    expect(candidates.withoutKeys).toBe(0);
+    expect(candidates.withoutKeysGuids).toEqual([]);
     expect(candidates.alreadyApplied).toBe(0);
   });
 
-  test('точка из избранных без ключей в инвентаре считается в withoutKeys', () => {
+  test('точка из избранных без ключей в инвентаре попадает в withoutKeysGuids', () => {
     favoritedGuidsMock = new Set(['p-fav']);
     setInventory([]);
     const candidates = buildCandidates('favorite');
     expect(candidates.toSend).toHaveLength(0);
-    expect(candidates.withoutKeys).toBe(1);
+    expect(candidates.withoutKeysGuids).toEqual(['p-fav']);
   });
 
   test('две стопки одной точки — обе попадают в toSend (per-stack обработка)', () => {
