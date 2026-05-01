@@ -49,6 +49,8 @@ interface IFeatureModule {
 
 **Свайп-жесты на попапе точки** — `src/core/popupSwipe.ts`: общая инфраструктура свайп-жестов на `.info`. Модули регистрируют направление (`up`/`down`/`left`/`right`) и handler (`canStart` + sync `decide` + `finalize`) через `registerDirection`; touch-listener'ы, state machine `idle -> tracking -> swiping -> animating`, `applySwipeStyles` (translate + opacity по доминирующей оси), `animateDismiss` (попап улетает к `±innerWidth`/`±innerHeight` по направлению с opacity 0) и `animateReturn` (translate в 0, opacity в 1) живут в core, не дублируются в модулях. Установка/снятие listener'ов через ref-counter `installRefs`: реальный attach на первом `installPopupSwipe` (refs 0->1), реальный detach на последнем `uninstallPopupSwipe` (refs 1->0). `decide` сознательно sync (не Promise) - чтобы анимация началась без задержки и пользователь получал моментальную обратную связь; async-работа handler-а делается в `finalize()` после `transitionend`. `touch-action: none` ставится на `.info` для блокировки нативного browser-pan. Нативный Hammer-свайп игры (refs/game/script.js:722-752) подавляется отдельно через runtime-override `Hammer.Manager.prototype.emit` в модуле `betterNextPointSwipe` (не text-патчем) - см. ниже про gameScriptPatcher. Popup observer на `class` и `data-guid` чистит stale-стили при переходе `hidden -> visible` и при смене точки во время animating. Сейчас регистрируются три направления: `up` модулем `swipeToClosePopup` (canStart исключает cores-slider, decide=dismiss, finalize=клик popup-close), `left` и `right` модулем `nextPointSwipeAnimation` (один handler на оба направления, canStart исключает cores-slider, decide пробует pickNextInRange и возвращает `dismiss` если есть следующая или `return` если нет, finalize зовёт `window.showInfo`). Ref-counter защищает от срыва listener-ов одного модуля при disable другого.
 
+**Click-синтез (clickSynthesis)** — `src/core/clickSynthesis.ts`: polyfill для кнопок попапа точки, когда WebView не синтезирует `click` из touch-последовательности. Симптом: `pointerdown`/`pointerup` fire нормально, но click handler не срабатывает - воспроизводится после `showInfo` (refs/game/script.js:2084), который за один тик делает 300+ DOM-mutation (splide.refresh, обновление текстов попапа, layout shifts). `installClickFallback(element)`: на `pointerup` через 80мс проверяет, fire-нулся ли click; если нет и элемент не `disabled` - dispatches `new MouseEvent('click')`. Защита от двойного срабатывания: временный click-listener в capture phase + повторная `disabled`-проверка перед dispatch. Используется в `nextPointSwipeFix`.
+
 **Лог ошибок** — `src/core/errorLog.ts`: перехват `console.error`/`console.warn` и глобальных ошибок, хранение последних 50 записей.
 
 **Баг-репорты** — `src/core/bugReport.ts`: формирование отчёта с версиями, настройками и логом ошибок.
@@ -154,17 +156,24 @@ src/
 │   ├── killswitch.ts        # Отключение скрипта
 │   ├── moduleRegistry.ts    # Интерфейс и lifecycle модулей
 │   ├── dom.ts               # DOM-утилиты ($, $$, waitForElement, injectStyles)
+│   ├── clickSynthesis.ts    # Click-polyfill для touch-кнопок после DOM-burst
 │   ├── olMap.ts             # OL Map capture + утилиты (findLayerByName, DragPan)
 │   ├── gameConstants.ts     # Константы игры (типы предметов)
 │   ├── inventoryTypes.ts    # Типы предметов инвентаря + type guards
 │   ├── inventoryCache.ts    # Чтение inventory-cache из localStorage
+│   ├── refsHighlightSync.ts # Синхронизация highlight['7'] на feature-точке
 │   ├── favoritesStore.ts    # IDB CUI/favorites (read-only) + lock-migration-done flag
 │   ├── popupSwipe.ts        # Общая инфраструктура свайп-жестов на .info
+│   ├── nextPointPicker.ts   # Выбор следующей точки для свайп-навигации
 │   ├── themeColors.ts       # Чтение CSS custom properties темы
 │   ├── gameEvents.ts        # Наблюдение за DOM-событиями игры
 │   ├── gameVersion.ts       # Проверка совместимости версий
+│   ├── gameVersionPrompt.ts # Confirm-диалог при несовместимой версии игры
+│   ├── gameScriptPatcher.ts # Перехват и патчинг загрузки скрипта игры
 │   ├── sbgFlavor.ts         # Заголовок x-sbg-flavor
+│   ├── host.ts              # Определение хоста (SBG Scout)
 │   ├── errorLog.ts          # Перехват и хранение ошибок
+│   ├── toast.ts             # Тост-уведомления поверх игры
 │   ├── bugReport.ts         # Формирование баг-репортов
 │   ├── l10n.ts              # Локализация (en/ru)
 │   └── settings/
