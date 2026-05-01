@@ -94,12 +94,12 @@ export function uninstallDiscoverFetchHookForTest(): void {
 export const refsCounterSync: IFeatureModule = {
   id: MODULE_ID,
   name: {
-    en: 'Refs counter redraw on discover fix',
-    ru: 'Фикс обновления счётчика ключей после изучения',
+    en: 'Refs counter sync on the map',
+    ru: 'Синхронизация счётчика ключей на карте',
   },
   description: {
-    en: 'Updates the references counter on the point map label immediately after discover. Native game updates the inventory counter but leaves prop.highlight stale until the next requestEntities (move >30m or 5-minute timer).',
-    ru: 'Обновляет счётчик ключей на подписи точки на карте сразу после изучения. Нативно игра обновляет счётчик в инвентаре, но prop.highlight на feature остаётся stale до следующего перезапроса карты (движение >30м или 5-минутный таймер).',
+    en: 'Updates the references counter on the point map label after inventory changes: discover, auto-cleanup (fast and slow), bulk delete via "Refs on map". Native game updates the inventory counter but leaves prop.highlight stale until the next requestEntities (move >30m or 5-minute timer).',
+    ru: 'Обновляет счётчик ключей на подписи точки на карте после изменений инвентаря: изучение, автоочистка (быстрая и медленная), массовое удаление через «Ключи на карте». Нативно игра обновляет счётчик в инвентаре, но prop.highlight на feature остаётся stale до следующего перезапроса карты (движение >30м или 5-минутный таймер).',
   },
   defaultEnabled: true,
   category: 'fix',
