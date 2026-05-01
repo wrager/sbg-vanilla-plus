@@ -15,10 +15,10 @@
 
 **`betterNextPointSwipe` выключен** (нативный handler жив):
 
-3. В радиусе игрока (45 м) есть >= 2 видимых точек (`findFeaturesInRange(playerCoords, features, 45).length > 1`) - dismiss без pending guid. Анимация идёт параллельно нативному handler-у игры, который синхронно в touchend сделает navigation через `near_points`. Наш `finalize` ничего не делает.
+3. В нашем `nearPointsSnapshot` есть >= 2 точек - dismiss без pending guid. Анимация идёт параллельно нативному handler-у игры, который синхронно в touchend сделает navigation через свой `near_points`. Наш `finalize` ничего не делает.
 4. Иначе - return. Ни native не переключит, ни мы не должны.
 
-В пункте 3 проверка `findFeaturesInRange(playerCoords, features, 45).length > 1` - точное соответствие native-условия `near_points.length > 1`, потому что игра заполняет `near_points` через `visible.filter(isInRange(player))` (`refs/game/script.js:559`). Если в радиусе игрока < 2 точек, native handler в touchend сделает no-op - dismiss-анимация уехала бы вхолостую, поэтому возвращаем return.
+`nearPointsSnapshot` - наша копия игрового `near_points`. Игра обновляет `near_points` в `map.singleclick`-handler-е (`refs/game/script.js:540-560`): если клик пришёл по фиче слоя `points`, она перезаписывает массив на `visible.filter(isInRange(player))` - снимок точек в радиусе игрока на момент тапа. Native swipe handler на touchend читает уже этот снимок (`refs/game/script.js:741`), не пересчитывая на месте: если игрок успел двинуться между тапом и свайпом, native всё равно использует старый снимок. Мы подписываемся на тот же `map.singleclick` и поддерживаем зеркальный `nearPointsSnapshot`, чтобы предиктор dismiss/return совпадал с фактическим решением native handler-а на 100%, без расхождений из-за движения игрока.
 
 Когда `betterNextPointSwipe` выключен, наша priority logic (`pickNextInRange`) НЕ срабатывает - пользователь специально отключил «улучшенный свайп», ожидая чисто нативного поведения. Иначе модуль анимации продолжал бы тихо делать work `betterNextPointSwipe` под видом "только анимации".
 
@@ -33,7 +33,7 @@
 Через `core/popupSwipe` (общая инфраструктура свайп-жестов на `.info`). Регистрируем направления `left` и `right` с одним handler-ом:
 
 - `canStart` - исключает touch внутри `.splide` (карусель ядер).
-- `decide` - решает по `isModuleActive('betterNextPointSwipe')`: если активен - использует `pickNextInRange` из `core/nextPointPicker` и сохраняет guid в `pendingNextGuid` для последующего `window.showInfo`; если неактивен - предсказывает `near_points.length > 1` через `findFeaturesInRange` и возвращает `dismiss` без pending guid (native сам сделает navigation).
+- `decide` - решает по `isModuleActive('betterNextPointSwipe')`: если активен - использует `pickNextInRange` из `core/nextPointPicker` и сохраняет guid в `pendingNextGuid` для последующего `window.showInfo`; если неактивен - проверяет наш `nearPointsSnapshot.size > 1` (зеркало игрового `near_points`) и возвращает `dismiss` без pending guid (native сам сделает navigation).
 - `finalize` - вызывается после dismiss-анимации (transitionend). Если `pendingNextGuid` есть - открывает точку через `window.showInfo`; если нет - no-op (native handler уже открыл точку).
 - `animationDurationMs: 120` - короче дефолтных 300 мс из core: горизонтальный жест должен ощущаться мгновенным.
 

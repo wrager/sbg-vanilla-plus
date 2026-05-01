@@ -3,8 +3,16 @@ import {
   decideForTest,
   finalizeForTest,
   canStartForTest,
+  dispatchSingleClickForTest,
 } from './nextPointSwipeAnimation';
-import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
+import type {
+  IOlFeature,
+  IOlLayer,
+  IOlMap,
+  IOlMapEvent,
+  IOlVectorSource,
+  IOlView,
+} from '../../core/olMap';
 
 // ── OL mock ─────────────────────────────────────────────────────────────────
 
@@ -77,6 +85,30 @@ function makeMap(layers: IOlLayer[]): IOlMap {
     addLayer: jest.fn(),
     removeLayer: jest.fn(),
     updateSize: jest.fn(),
+    on: jest.fn(),
+    un: jest.fn(),
+    // По умолчанию имитируем клик по первой feature слоя `points`. Тестам,
+    // которым нужно проверить «клик мимо точки», передавать map через
+    // makeMapWithoutPointHit ниже.
+    forEachFeatureAtPixel: (
+      _pixel: number[],
+      callback: (feature: IOlFeature, layer: IOlLayer) => void,
+    ) => {
+      const pointsLayer = layers.find((layer) => layer.get('name') === 'points');
+      const features = pointsLayer?.getSource()?.getFeatures() ?? [];
+      if (pointsLayer && features.length > 0) {
+        callback(features[0], pointsLayer);
+      }
+    },
+  };
+}
+
+function makeMapWithoutPointHit(layers: IOlLayer[]): IOlMap {
+  return {
+    ...makeMap(layers),
+    forEachFeatureAtPixel: () => {
+      // Клик мимо точки - callback не вызывается.
+    },
   };
 }
 
@@ -209,16 +241,56 @@ describe('nextPointSwipeAnimation behaviour', () => {
     mockIsModuleActive.mockImplementation(() => false);
   });
 
-  test('decide возвращает dismiss без pendingNextGuid когда betterNext выключен и >= 2 точек в радиусе', async () => {
+  function fireSingleClick(): void {
+    dispatchSingleClickForTest({
+      type: 'singleclick',
+      pixel: [400, 300],
+      originalEvent: {},
+    } as IOlMapEvent);
+  }
+
+  test('decide возвращает dismiss без pendingNextGuid когда betterNext выключен и >= 2 точек в снапшоте', async () => {
     // betterNext выключен по умолчанию (mockIsModuleActive возвращает false).
-    // p1 [10,10] и p2 [20,20] оба в радиусе 45м от player [0,0].
-    // findFeaturesInRange = 2, native handler сделает navigation сам в touchend.
+    // Имитируем тап по точке - снапшот заполняется в onMapSingleClick. p1
+    // [10,10] и p2 [20,20] оба в радиусе 45м от player [0,0], попадают в
+    // снапшот. native handler сделает navigation сам в touchend.
     await nextPointSwipeAnimation.enable();
+    fireSingleClick();
     const outcome = decideForTest();
     expect(outcome).toBe('dismiss');
     // finalize не должен вызывать showInfo - native сделает synchronously параллельно.
     finalizeForTest();
     expect(showInfoMock).not.toHaveBeenCalled();
+  });
+
+  test('decide возвращает return когда betterNext выключен и снапшот пустой (тапа не было)', async () => {
+    // Без singleclick снапшот пустой. decideSwipe возвращает return -
+    // native handler в этом случае тоже не переключит, dismiss-анимация
+    // улетела бы вхолостую.
+    await nextPointSwipeAnimation.enable();
+    expect(decideForTest()).toBe('return');
+  });
+
+  test('decide возвращает return когда betterNext выключен и в снапшоте только 1 точка', async () => {
+    // В радиусе 45м от player [0,0] только p1 (p2 вне радиуса).
+    pointsSrc = makeSource([makeFeature('p1', [10, 10]), makeFeature('p2', [200, 200])]);
+    mockGetOlMap.mockResolvedValue(
+      makeMap([makeLayer('points', pointsSrc), makeLayer('player', playerSrc)]),
+    );
+    await nextPointSwipeAnimation.enable();
+    fireSingleClick();
+    expect(decideForTest()).toBe('return');
+  });
+
+  test('singleclick мимо точки не обновляет снапшот', async () => {
+    // Если клик не пришёл по точке (forEachFeatureAtPixel callback не вызван),
+    // онMapSingleClick не должен трогать снапшот - он пустой и остаётся таким.
+    mockGetOlMap.mockResolvedValue(
+      makeMapWithoutPointHit([makeLayer('points', pointsSrc), makeLayer('player', playerSrc)]),
+    );
+    await nextPointSwipeAnimation.enable();
+    fireSingleClick();
+    expect(decideForTest()).toBe('return');
   });
 
   test('decide возвращает return когда нет точек кроме текущей и native подавлен', async () => {

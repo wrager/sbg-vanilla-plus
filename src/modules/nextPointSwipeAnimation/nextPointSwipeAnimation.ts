@@ -1,7 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { isModuleActive } from '../../core/moduleRegistry';
 import { getOlMap, findLayerByName } from '../../core/olMap';
-import type { IOlMap, IOlVectorSource } from '../../core/olMap';
+import type { IOlFeature, IOlMap, IOlMapEvent, IOlVectorSource } from '../../core/olMap';
 import {
   installPopupSwipe,
   registerDirection,
@@ -26,12 +26,23 @@ let map: IOlMap | null = null;
 let pointsSource: IOlVectorSource | null = null;
 let playerSource: IOlVectorSource | null = null;
 const rangeVisited = new Set<string | number>();
+// Снапшот near_points игры: id точек, бывших в радиусе игрока на момент
+// последнего тапа по точке на карте. Игра поддерживает свой near_points через
+// map.singleclick handler (refs/game/script.js:540-560), наш модуль ведёт
+// собственный параллельный снимок, чтобы decideSwipe (в режиме без
+// betterNextPointSwipe) точно предсказывал, переключит ли native handler точку
+// при свайпе. Live-вычисление через findFeaturesInRange расходилось бы с
+// near_points, если игрок успевал двинуться между тапом и свайпом - предиктор
+// тогда давал бы false-positive/false-negative и dismiss-анимация рассинхронилась
+// бы с native showInfo.
+let nearPointsSnapshot = new Set<string | number>();
 // Guid точки, выбранной в decide() и ожидающей открытия в finalize() после
 // dismiss-анимации. Сериализован state machine'ом core/popupSwipe (idle ->
 // tracking -> swiping -> animating -> idle) - race между жестами невозможен.
 let pendingNextGuid: string | null = null;
 let unregisterLeft: (() => void) | null = null;
 let unregisterRight: (() => void) | null = null;
+let onMapSingleClickRef: ((event: IOlMapEvent) => void) | null = null;
 // Защита от race-disable: enable содержит await getOlMap. Если disable
 // вызовется до резолва, текущий generation расходится с myGeneration -
 // выходим до registerDirection.
@@ -42,6 +53,39 @@ function getPlayerCoords(): number[] | null {
   const features = playerSource.getFeatures();
   if (features.length === 0) return null;
   return features[0].getGeometry().getCoordinates();
+}
+
+/**
+ * Реплика игрового map.singleclick-handler (refs/game/script.js:540-560):
+ * если клик пришёл по фиче слоя `points`, обновляем снапшот точек в радиусе
+ * игрока. Игра использует это значение в своём horizontal-swipe handler
+ * (refs/game/script.js:741-751) - переключает на следующую точку только если
+ * `near_points.length > 1`. Воспроизводим то же поведение, чтобы предиктор
+ * dismiss-анимации в decideSwipe (когда betterNextPointSwipe выключен) был
+ * синхронен с тем, что фактически сделает native handler.
+ */
+function onMapSingleClick(event: IOlMapEvent): void {
+  if (!map || !pointsSource) return;
+  if (typeof map.forEachFeatureAtPixel !== 'function') return;
+  // Игра в singleclick собирает попадания в массив `piv` (refs/game/script.js:540)
+  // и проверяет .length > 0; повторяем тот же паттерн.
+  const hits: IOlFeature[] = [];
+  map.forEachFeatureAtPixel(event.pixel, (feature, layer) => {
+    if (layer.get('name') === 'points') hits.push(feature);
+  });
+  if (hits.length === 0) return;
+  const playerCoords = getPlayerCoords();
+  if (!playerCoords) {
+    nearPointsSnapshot.clear();
+    return;
+  }
+  const inRange = findFeaturesInRange(playerCoords, pointsSource.getFeatures(), INTERACTION_RANGE);
+  const nextSnapshot = new Set<string | number>();
+  for (const feature of inRange) {
+    const id = feature.getId();
+    if (id !== undefined) nextSnapshot.add(id);
+  }
+  nearPointsSnapshot = nextSnapshot;
 }
 
 /**
@@ -68,12 +112,11 @@ function canStartHorizontalSwipe(event: TouchEvent): boolean {
  *  - betterNext выключен: native handler жив. Наша priority НЕ должна
  *    срабатывать - пользователь специально отключил «улучшенный свайп»,
  *    ожидая чисто нативного поведения. Предсказываем native-условие
- *    `near_points.length > 1`, где `near_points` заполняется через
- *    `visible.filter(isInRange(player))` (refs/game/script.js:559) - это
- *    точное соответствие `findFeaturesInRange(playerCoords, features, 45)`.
- *    Если >= 2 точек в радиусе - dismiss без pendingNextGuid: native showInfo
- *    сработает синхронно в touchend, наш finalize ничего не делает. Иначе -
- *    return (native не переключит, анимация уехала бы вхолостую).
+ *    `near_points.length > 1` через свой `nearPointsSnapshot`, который
+ *    обновляется в `onMapSingleClick`-handler-е по той же логике, что и
+ *    игровой near_points (refs/game/script.js:540-560). >= 2 точек в снапшоте -
+ *    dismiss без pendingNextGuid: native showInfo сработает синхронно в
+ *    touchend, наш finalize ничего не делает. Иначе - return.
  */
 function decideSwipe(): SwipeOutcome {
   if (!map || !pointsSource) return 'return';
@@ -82,14 +125,12 @@ function decideSwipe(): SwipeOutcome {
   const currentGuid = (popup as HTMLElement).dataset.guid;
   if (!currentGuid) return 'return';
 
-  const features = pointsSource.getFeatures();
-  const playerCoords = getPlayerCoords();
-
   if (isModuleActive(FEATURE_MODULE_ID)) {
+    const playerCoords = getPlayerCoords();
     if (playerCoords) {
       const next = pickNextInRange({
         playerCoords,
-        features,
+        features: pointsSource.getFeatures(),
         currentGuid,
         visited: rangeVisited,
         radiusMeters: INTERACTION_RANGE,
@@ -105,12 +146,9 @@ function decideSwipe(): SwipeOutcome {
     return 'return';
   }
 
-  if (playerCoords) {
-    const inRange = findFeaturesInRange(playerCoords, features, INTERACTION_RANGE);
-    if (inRange.length > 1) {
-      pendingNextGuid = null;
-      return 'dismiss';
-    }
+  if (nearPointsSnapshot.size > 1) {
+    pendingNextGuid = null;
+    return 'dismiss';
   }
   return 'return';
 }
@@ -166,10 +204,18 @@ export const nextPointSwipeAnimation: IFeatureModule = {
       unregisterLeft = registerDirection('left', swipeHandler);
       unregisterRight = registerDirection('right', swipeHandler);
       installPopupSwipe(POINT_POPUP_SELECTOR);
+      if (typeof olMap.on === 'function') {
+        onMapSingleClickRef = onMapSingleClick;
+        olMap.on('singleclick', onMapSingleClickRef);
+      }
     });
   },
   disable() {
     installGeneration++;
+    if (map && onMapSingleClickRef && typeof map.un === 'function') {
+      map.un('singleclick', onMapSingleClickRef);
+    }
+    onMapSingleClickRef = null;
     unregisterLeft?.();
     unregisterLeft = null;
     unregisterRight?.();
@@ -179,6 +225,7 @@ export const nextPointSwipeAnimation: IFeatureModule = {
     pointsSource = null;
     playerSource = null;
     rangeVisited.clear();
+    nearPointsSnapshot.clear();
     pendingNextGuid = null;
   },
 };
@@ -195,4 +242,8 @@ export function finalizeForTest(): void {
 
 export function canStartForTest(target: EventTarget | null): boolean {
   return canStartHorizontalSwipe({ target } as TouchEvent);
+}
+
+export function dispatchSingleClickForTest(event: IOlMapEvent): void {
+  onMapSingleClick(event);
 }
