@@ -191,10 +191,36 @@ describe('applyRefsGainToFeature', () => {
     expect(feature._changedCalls).toBe(0);
   });
 
-  test('игнорирует non-array highlight', () => {
+  test('игнорирует non-object highlight', () => {
     const feature = makeFeature({ highlight: 'bad' });
     applyRefsGainToFeature(feature, 3);
     expect(feature._changedCalls).toBe(0);
+  });
+
+  test('игнорирует null highlight (typeof null === object, но это не контейнер)', () => {
+    const feature = makeFeature({ highlight: null });
+    applyRefsGainToFeature(feature, 3);
+    expect(feature._changedCalls).toBe(0);
+  });
+
+  test('SBG 0.6.1+ sparse object формат: мутирует highlight["7"] in-place', () => {
+    // Игра в SBG 0.6.1+ хранит highlight как sparse object {"4":false,"7":N}
+    // вместо массива [v0,v1,...,v9]. Доступ через числовой ключ работает
+    // одинаково для обеих форм - поэтому реализация не различает.
+    const highlight: Record<string, unknown> = { '4': false, '7': 18 };
+    const feature = makeFeature({ highlight });
+    applyRefsGainToFeature(feature, 5);
+    expect(highlight['7']).toBe(23);
+    expect(feature.get('highlight')).toBe(highlight);
+    expect(feature._changedCalls).toBe(1);
+  });
+
+  test('SBG 0.6.1+ sparse object без ключа "7": инициализирует с 0', () => {
+    const highlight: Record<string, unknown> = { '4': false };
+    const feature = makeFeature({ highlight });
+    applyRefsGainToFeature(feature, 3);
+    expect(highlight['7']).toBe(3);
+    expect(feature._changedCalls).toBe(1);
   });
 });
 

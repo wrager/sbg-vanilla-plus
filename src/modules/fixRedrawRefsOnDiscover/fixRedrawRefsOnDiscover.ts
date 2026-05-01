@@ -1,5 +1,4 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { diagAlert } from '../../core/diagAlert';
 import { findLayerByName, getOlMap } from '../../core/olMap';
 import type { IOlFeature, IOlVectorSource } from '../../core/olMap';
 
@@ -103,84 +102,64 @@ function extractUrl(input: RequestInfo | URL): string | null {
   return typeof input.url === 'string' ? input.url : null;
 }
 
+/**
+ * SBG 0.6.1+ хранит highlight как sparse object, а не массив:
+ * {"4": false, "7": 18}. Канал 4 - boolean, канал 7 (refs) - число. И массив
+ * (старая форма), и sparse object одинаково индексируются по числовому
+ * ключу через `Reflect.get(obj, String(idx))` без cast'а через unknown.
+ * Возвращаем 0 при отсутствии значения - как и раньше для пустого слота.
+ */
 function readRefsChannelValue(feature: IOlFeature): number | null {
   if (typeof feature.get !== 'function') return null;
   const highlight = feature.get('highlight');
-  if (!Array.isArray(highlight)) return null;
-  const value: unknown = highlight[REFS_CHANNEL_INDEX];
+  if (typeof highlight !== 'object' || highlight === null) return null;
+  const value: unknown = Reflect.get(highlight, String(REFS_CHANNEL_INDEX));
   return typeof value === 'number' ? value : 0;
 }
 
 /**
- * Применяет refsGain к feature: in-place мутация массива highlight по
- * индексу REFS_CHANNEL_INDEX. LIGHT-стиль закрыт closure'ом над тем же
- * массивом (refs/game/script.js:269-270, 303), поэтому изменение по reference
- * читается следующим вызовом renderer'а (как нативного 32px, так и нашего
- * wrapped в improvedPointText - оба читают values[7] из той же ссылки).
- * feature.changed() инвалидирует execution plan layer'а и запускает ререндер.
+ * Применяет refsGain к feature: in-place мутация ключа REFS_CHANNEL_INDEX в
+ * highlight (массив или sparse object). LIGHT-стиль закрыт closure'ом над
+ * тем же контейнером (refs/game/script.js:269-270, 303), поэтому изменение
+ * по reference читается следующим вызовом renderer'а (как нативного 32px,
+ * так и нашего wrapped в improvedPointText - оба читают values[7] из той
+ * же ссылки). feature.changed() инвалидирует execution plan layer'а и
+ * запускает ререндер.
  *
- * Если highlight отсутствует или не массив - игнорируем: точка нарисована
+ * Если highlight отсутствует или не object - игнорируем: точка нарисована
  * без LIGHT-стиля (или ещё не получила prop через setProperties).
  */
 export function applyRefsGainToFeature(feature: IOlFeature, gain: number): void {
   if (gain <= 0) return;
   if (typeof feature.get !== 'function') return;
   const highlight = feature.get('highlight');
-  if (!Array.isArray(highlight)) return;
-  const current =
-    typeof highlight[REFS_CHANNEL_INDEX] === 'number' ? highlight[REFS_CHANNEL_INDEX] : 0;
-  highlight[REFS_CHANNEL_INDEX] = current + gain;
+  if (typeof highlight !== 'object' || highlight === null) return;
+  const key = String(REFS_CHANNEL_INDEX);
+  const existing: unknown = Reflect.get(highlight, key);
+  const current = typeof existing === 'number' ? existing : 0;
+  Reflect.set(highlight, key, current + gain);
   if (typeof feature.changed === 'function') feature.changed();
 }
 
 function scheduleApplyRefsGain(targetGuid: string, gain: number, beforeValue: number): void {
   setTimeout(() => {
-    // DIAGNOSTIC (beta.12): полная картина flow в одном alert. Удалить
-    // вместе с импортом diagAlert после подтверждения причины бага.
-    const guidShort = targetGuid.slice(0, 8);
-    if (!discoverHookEnabled) {
-      diagAlert(`SVP fix-discover\nguid: ${guidShort}\nstate: hook DISABLED`);
-      return;
-    }
-    if (!pointsSource) {
-      diagAlert(`SVP fix-discover\nguid: ${guidShort}\nstate: NO pointsSource`);
-      return;
-    }
+    if (!discoverHookEnabled) return;
+    if (!pointsSource) return;
     const feature =
       typeof pointsSource.getFeatureById === 'function'
         ? pointsSource.getFeatureById(targetGuid)
         : null;
-    if (!feature) {
-      diagAlert(`SVP fix-discover\nguid: ${guidShort}\ngain: ${String(gain)}\nstate: feature NULL`);
-      return;
-    }
+    if (!feature) return;
     const currentValue = readRefsChannelValue(feature);
-    if (currentValue === null) {
-      diagAlert(
-        `SVP fix-discover\nguid: ${guidShort}\ngain: ${String(gain)}\nstate: highlight NULL`,
-      );
-      return;
-    }
+    if (currentValue === null) return;
     // Forward-compat защита: если за DETECTION_DELAY_MS значение
     // highlight[REFS_CHANNEL_INDEX] изменилось, его уже обновил кто-то
     // другой - сама игра (когда исправит баг), другой скрипт-фиксер,
     // или вызов feature.changed() с новой prop.highlight ссылкой через
     // showInfo/attack-response. Дублировать gain нельзя - игрок увидит
     // удвоенное значение на карте. Skip и доверяем внешнему обновлению.
-    if (currentValue !== beforeValue) {
-      diagAlert(
-        `SVP fix-discover\nguid: ${guidShort}\ngain: ${String(gain)}\n` +
-          `before: ${String(beforeValue)} cur: ${String(currentValue)}\n` +
-          `state: SKIP (forward-compat)`,
-      );
-      return;
-    }
+    if (currentValue !== beforeValue) return;
     applyRefsGainToFeature(feature, gain);
-    diagAlert(
-      `SVP fix-discover\nguid: ${guidShort}\ngain: ${String(gain)}\n` +
-        `before: ${String(beforeValue)}\n` +
-        `state: APPLIED (changed called)`,
-    );
   }, DETECTION_DELAY_MS);
 }
 
@@ -194,55 +173,14 @@ function handleDiscoverResponse(response: Response, targetGuid: string): void {
       if (!discoverHookEnabled) return;
       if (!pointsSource) return;
       const gain = computeRefsGainFromDiscover(body, targetGuid);
-      if (gain <= 0) {
-        // DIAGNOSTIC (beta.12): noop когда в loot нет ключей этой точки.
-        diagAlert(
-          `SVP fix-discover\nguid: ${targetGuid.slice(0, 8)}\nstate: noop (no refs in loot)`,
-        );
-        return;
-      }
+      if (gain <= 0) return;
       const feature =
         typeof pointsSource.getFeatureById === 'function'
           ? pointsSource.getFeatureById(targetGuid)
           : null;
-      if (!feature) {
-        diagAlert(
-          `SVP fix-discover\nguid: ${targetGuid.slice(0, 8)}\ngain: ${String(gain)}\n` +
-            `state: feature NULL (early)`,
-        );
-        return;
-      }
+      if (!feature) return;
       const beforeValue = readRefsChannelValue(feature);
-      if (beforeValue === null) {
-        // DIAGNOSTIC (beta.14): расширенный output - точный тип highlight
-        // и какие properties у feature вообще. Узнаем, отсутствует ли
-        // highlight целиком, или лежит как null/undefined/string/object,
-        // или формат поменялся (массив -> объект).
-        const props: Record<string, unknown> =
-          typeof feature.getProperties === 'function' ? feature.getProperties() : {};
-        const propsKeys = Object.keys(props).join(',').slice(0, 60);
-        const hl: unknown =
-          typeof feature.get === 'function' ? feature.get('highlight') : undefined;
-        const hlType = hl === null ? 'null' : typeof hl;
-        let hlSample: string;
-        if (typeof hl === 'object' && hl !== null) {
-          try {
-            hlSample = JSON.stringify(hl).slice(0, 50);
-          } catch {
-            hlSample = '<unstringifiable>';
-          }
-        } else {
-          hlSample = String(hl).slice(0, 50);
-        }
-        diagAlert(
-          `SVP fix-discover\nguid: ${targetGuid.slice(0, 8)}\ngain: ${String(gain)}\n` +
-            `state: highlight NULL (early)\n` +
-            `props: ${propsKeys}\n` +
-            `hlType: ${hlType}\n` +
-            `hlSample: ${hlSample}`,
-        );
-        return;
-      }
+      if (beforeValue === null) return;
       scheduleApplyRefsGain(targetGuid, gain, beforeValue);
     })
     .catch(() => {
