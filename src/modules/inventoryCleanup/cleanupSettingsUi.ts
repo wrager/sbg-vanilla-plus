@@ -1,7 +1,12 @@
 import { injectStyles, removeStyles } from '../../core/dom';
 import { t } from '../../core/l10n';
 import type { ILocalizedString } from '../../core/l10n';
-import { isModuleActive } from '../../core/moduleRegistry';
+import { isModuleEnabledByUser } from '../../core/moduleRegistry';
+import {
+  getFavoritedGuids,
+  isFavoritesSnapshotReady,
+  isLockMigrationDone,
+} from '../../core/favoritesStore';
 import type { ICleanupSettings, ReferencesMode } from './cleanupSettings';
 import { loadCleanupSettings, saveCleanupSettings } from './cleanupSettings';
 import styles from './styles.css?inline';
@@ -47,9 +52,9 @@ const REF_NOT_ALLIED_LIMIT_LABEL: ILocalizedString = {
   en: 'Not allied keys limit',
   ru: 'Лимит несоюзных',
 };
-const REF_DISABLED_HINT: ILocalizedString = {
-  en: 'Enable "Favorited points" module to manage key deletion',
-  ru: 'Включите модуль «Избранные точки», чтобы настроить удаление ключей',
+const REF_MIGRATION_PENDING_HINT: ILocalizedString = {
+  en: 'Run favorites migration first (favoritesMigration module) to manage key deletion',
+  ru: 'Сначала проведите миграцию избранного через модуль favoritesMigration, чтобы настроить удаление ключей',
 };
 const REF_SLOW_HINT: ILocalizedString = {
   en: 'Slow cleanup runs manually from the references OPS tab',
@@ -147,7 +152,7 @@ function createReferencesSection(draft: ICleanupSettings, refsEnabled: boolean):
   if (!refsEnabled) {
     const hint = document.createElement('div');
     hint.className = 'svp-cleanup-hint svp-cleanup-hint-warning';
-    hint.textContent = t(REF_DISABLED_HINT);
+    hint.textContent = t(REF_MIGRATION_PENDING_HINT);
     section.appendChild(hint);
     return section;
   }
@@ -272,7 +277,16 @@ function buildPanel(
     draft.limits.catalysers[level] = value;
   });
 
-  const refsEnabled = isModuleActive('favoritedPoints');
+  // Секция References задизейблена, пока пользователь не подтвердил миграцию
+  // SVP/CUI-избранных в native lock - до этого автоочистка ключей всё равно
+  // блокируется на уровне runCleanup, а возможность менять настройки запутала
+  // бы пользователя. Подтверждение - флаг isLockMigrationDone (см. подробный
+  // разбор в inventoryCleanup.runCleanupImpl).
+  const migrationPending =
+    !isLockMigrationDone() &&
+    isModuleEnabledByUser('favoritesMigration') &&
+    (!isFavoritesSnapshotReady() || getFavoritedGuids().size > 0);
+  const refsEnabled = !migrationPending;
   content.appendChild(createReferencesSection(draft, refsEnabled));
 
   element.appendChild(content);

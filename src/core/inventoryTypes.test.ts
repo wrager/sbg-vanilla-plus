@@ -71,6 +71,29 @@ describe('inventoryTypes', () => {
     it('returns false for wrong type', () => {
       expect(isInventoryReference({ ...validReference, t: ITEM_TYPE_CORE })).toBe(false);
     });
+
+    it('returns true when f is valid integer bitfield', () => {
+      expect(isInventoryReference({ ...validReference, f: 0 })).toBe(true);
+      expect(isInventoryReference({ ...validReference, f: 1 })).toBe(true);
+      expect(isInventoryReference({ ...validReference, f: 3 })).toBe(true);
+    });
+
+    it('returns false when f is NaN (typeof === number but not integer)', () => {
+      expect(isInventoryReference({ ...validReference, f: NaN })).toBe(false);
+    });
+
+    it('returns false when f is Infinity', () => {
+      expect(isInventoryReference({ ...validReference, f: Infinity })).toBe(false);
+      expect(isInventoryReference({ ...validReference, f: -Infinity })).toBe(false);
+    });
+
+    it('returns false when f is a float', () => {
+      expect(isInventoryReference({ ...validReference, f: 1.5 })).toBe(false);
+    });
+
+    it('returns false when f is a string', () => {
+      expect(isInventoryReference({ ...validReference, f: '1' })).toBe(false);
+    });
   });
 
   describe('isInventoryReferenceFull', () => {

@@ -5,12 +5,34 @@ import { $ } from '../../core/dom';
 
 const MODULE_ID = 'singleFingerRotation';
 
+// Окно double-tap (ms) и максимальный сдвиг между первым и вторым тапом (px),
+// после которого second-touchstart считается началом нативного жеста ngrsZoom
+// (в SBG 0.6.1 — `ol.interaction.DblClickDragZoom`, refs/game/script.js:782).
+// Значения совпадают с теми, что использовала наша прошлая реализация ngrsZoom
+// (см. удалённый коммит a086ca6).
+const NGRS_DOUBLE_TAP_GAP_MS = 300;
+const NGRS_DOUBLE_TAP_DISTANCE_PX = 30;
+
 let viewport: HTMLElement | null = null;
 let map: IOlMap | null = null;
 let dragPanControl: IDragPanControl | null = null;
 let latestPoint: [number, number] | null = null;
 let pendingDelta = 0;
 let frameRequestId: number | null = null;
+// State machine для подавления rotation во время нативного жеста ngrsZoom:
+// `lastTapEndTime`/`lastTapEndX/Y` — момент и координата последнего touchend.
+// Когда новый touchstart попадает в окно double-tap (и близко к месту), ставим
+// `suppressedAfterDoubleTap = true` — вся последующая серия touch до touchend
+// игнорируется: ни rotation, ни DragPan-disable. Это повторяет поведение нашей
+// прошлой реализации (ngrsZoom + singleFingerRotation), где после двойного тапа
+// карту нельзя было поворачивать в принципе. Анализ направления первого move
+// (вертикаль/горизонталь) ненадёжен: пользовательский drag для зума может
+// начинаться с лёгкого горизонтального дрейфа пальца, и late-активация rotation
+// тогда срабатывает ошибочно.
+let lastTapEndTime = 0;
+let lastTapEndX = 0;
+let lastTapEndY = 0;
+let suppressedAfterDoubleTap = false;
 // Сохранённая ссылка на оригинальный view.calculateExtent, чтобы корректно
 // восстановить его в disable(). null, когда обёртка не установлена.
 let originalCalculateExtent: IOlView['calculateExtent'] | null = null;
@@ -30,9 +52,8 @@ function getScreenCenter(): { x: number; y: number } {
   };
 }
 
-function angleFromCenter(clientX: number, clientY: number): number {
-  const center = getScreenCenter();
-  return Math.atan2(clientY - center.y, clientX - center.x);
+function angleFromCenter(clientX: number, clientY: number, cx: number, cy: number): number {
+  return Math.atan2(clientY - cy, clientX - cx);
 }
 
 function normalizeAngleDelta(delta: number): number {
@@ -79,27 +100,58 @@ function resetGesture(): void {
   dragPanControl?.restore();
 }
 
+function activateRotationFromPoint(x: number, y: number): void {
+  latestPoint = [x, y];
+  dragPanControl?.disable();
+}
+
 function onTouchStart(event: TouchEvent): void {
   if (event.targetTouches.length > 1) {
     resetGesture();
+    suppressedAfterDoubleTap = false;
     return;
   }
   if (!isFollowActive()) return;
   if (!(event.target instanceof HTMLCanvasElement)) return;
 
   const touch = event.targetTouches[0];
-  latestPoint = [touch.clientX, touch.clientY];
-  dragPanControl?.disable();
+  // Date.now() вместо event.timeStamp: jest fake timers не контролируют
+  // performance.now() / event.timeStamp (read-only), а Date.now() — да.
+  const dt = Date.now() - lastTapEndTime;
+  const distance = Math.hypot(touch.clientX - lastTapEndX, touch.clientY - lastTapEndY);
+
+  if (dt <= NGRS_DOUBLE_TAP_GAP_MS && distance <= NGRS_DOUBLE_TAP_DISTANCE_PX) {
+    // Второй тап в окне double-tap: вся последующая серия touch — это
+    // нативный ngrsZoom (или одиночный двойной тап без drag). Rotation НЕ
+    // активируется ни в каком сценарии. Ранее была попытка late-активации
+    // при горизонтальном drag, но первый ход пальца при зуме часто имеет
+    // лёгкий горизонтальный дрейф — late-rotation срабатывала ошибочно.
+    // Прошлая реализация (ngrsZoom + singleFingerRotation) подавляла серию
+    // целиком, и пользователю это было ожидаемо.
+    suppressedAfterDoubleTap = true;
+    return;
+  }
+
+  suppressedAfterDoubleTap = false;
+  activateRotationFromPoint(touch.clientX, touch.clientY);
 }
 
 function onTouchMove(event: TouchEvent): void {
+  if (suppressedAfterDoubleTap) {
+    // Серия после double-tap — отдаём управление нативному жесту полностью.
+    return;
+  }
+
   if (!latestPoint) return;
 
   event.preventDefault();
 
   const touch = event.targetTouches[0];
-  const currentAngle = angleFromCenter(touch.clientX, touch.clientY);
-  const previousAngle = angleFromCenter(latestPoint[0], latestPoint[1]);
+  // Один getScreenCenter на touchmove: padding из view + чтение window.innerWidth/Height
+  // одно и то же для current и previous углов, кэшируем локально.
+  const center = getScreenCenter();
+  const currentAngle = angleFromCenter(touch.clientX, touch.clientY, center.x, center.y);
+  const previousAngle = angleFromCenter(latestPoint[0], latestPoint[1], center.x, center.y);
   const delta = normalizeAngleDelta(currentAngle - previousAngle);
 
   pendingDelta += delta;
@@ -108,6 +160,20 @@ function onTouchMove(event: TouchEvent): void {
 }
 
 function onTouchEnd(): void {
+  // Date.now() вместо event.timeStamp — см. комментарий в onTouchStart.
+  if (suppressedAfterDoubleTap) {
+    // Двойной тап завершён — цепочка double-tap-detection «использована».
+    // Сбрасываем lastTapEndTime в 0, чтобы следующий touchstart НЕ попал в
+    // double-tap-окно как «третий тап» от того же события.
+    suppressedAfterDoubleTap = false;
+    lastTapEndTime = 0;
+  } else if (latestPoint) {
+    // Одиночный тап (с rotation или без) — запоминаем для следующего
+    // double-tap detection на новом touchstart.
+    lastTapEndTime = Date.now();
+    lastTapEndX = latestPoint[0];
+    lastTapEndY = latestPoint[1];
+  }
   resetGesture();
 }
 
@@ -136,6 +202,10 @@ function removeListeners(): void {
  * enable/disable наращивал бы слой bound-обёрток, и disable() не
  * восстанавливал бы исходную функцию by-reference. Контекст передаётся
  * через .call(view, ...) в самом wrapper'е.
+ *
+ * diagonal-расчёт мемоизируется по парам [w, h]: размер вьюпорта меняется
+ * только при ресайзе окна, а calculateExtent игра зовёт на каждый
+ * pan/zoom/rotate. Math.sqrt + Math.ceil на каждом вызове - лишняя работа.
  */
 function installCalculateExtentWrapper(): void {
   if (!map || originalCalculateExtent !== null) return;
@@ -143,10 +213,20 @@ function installCalculateExtentWrapper(): void {
   // eslint-disable-next-line @typescript-eslint/unbound-method -- см. комментарий выше, контекст явно передаётся через .call(view, ...)
   const original = view.calculateExtent;
   originalCalculateExtent = original;
+  let cachedW = -1;
+  let cachedH = -1;
+  let cachedDiagonalSize: [number, number] = [0, 0];
   view.calculateExtent = (size?: number[]) => {
     if (size) {
-      const diagonal = Math.ceil(Math.sqrt(size[0] ** 2 + size[1] ** 2));
-      return original.call(view, [diagonal, diagonal]);
+      const w = size[0];
+      const h = size[1];
+      if (w !== cachedW || h !== cachedH) {
+        const diagonal = Math.ceil(Math.sqrt(w ** 2 + h ** 2));
+        cachedDiagonalSize = [diagonal, diagonal];
+        cachedW = w;
+        cachedH = h;
+      }
+      return original.call(view, cachedDiagonalSize);
     }
     return original.call(view, size);
   };
@@ -167,8 +247,8 @@ export const singleFingerRotation: IFeatureModule = {
     ru: 'Вращение карты одним пальцем',
   },
   description: {
-    en: 'Rotate map with circular finger gesture in FW mode',
-    ru: 'Вращение карты круговым жестом одного пальца в режиме следования за игроком',
+    en: 'Rotate the map with a circular single-finger gesture in follow mode.',
+    ru: 'Вращение карты круговым жестом одного пальца в режиме следования за игроком.',
   },
   defaultEnabled: true,
   category: 'map',
@@ -204,5 +284,12 @@ export const singleFingerRotation: IFeatureModule = {
     dragPanControl = null;
     resetGesture();
     restoreCalculateExtentWrapper();
+    // Сбрасываем state-machine ngrsZoom detection: при повторном enable первый
+    // touchstart должен активировать rotation без задержки на «возможный
+    // double-tap», чьё первое касание было до disable.
+    suppressedAfterDoubleTap = false;
+    lastTapEndTime = 0;
+    lastTapEndX = 0;
+    lastTapEndY = 0;
   },
 };

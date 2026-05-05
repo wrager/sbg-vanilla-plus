@@ -1,4 +1,5 @@
 import { bootstrap, resetBootstrapForTest } from './bootstrap';
+import { resetDetectedVersionForTest, setDetectedVersionForTest } from './gameVersion';
 import type { IFeatureModule } from './moduleRegistry';
 import type { ISvpSettings } from './settings/types';
 import * as storage from './settings/storage';
@@ -32,6 +33,7 @@ describe('bootstrap', () => {
     localStorage.clear();
     jest.restoreAllMocks();
     resetBootstrapForTest();
+    resetDetectedVersionForTest();
     setUserAgent(ORIGINAL_USER_AGENT);
   });
 
@@ -324,6 +326,28 @@ describe('bootstrap', () => {
       bootstrap([keepScreenOnBrowser]);
 
       expect(keepScreenOnBrowser.enable).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('модули, нативные в SBG 0.6.1', () => {
+    // DEPRECATED_MODULES_NATIVE пустой после полноценной адаптации: все модули, ранее
+    // подавлявшиеся, либо возвращены (с переосмыслением и/или runtime-детекцией
+    // native), либо физически удалены из кодовой базы. Behaviour-проверка
+    // пустого сета — в gameVersion.test.ts; здесь проверяем, что bootstrap
+    // не подавляет ни одного модуля на 0.6.1.
+
+    test('на 0.6.1 любой модуль из settings.modules включается как обычно', () => {
+      setDetectedVersionForTest('0.6.1');
+      jest.spyOn(storage, 'loadSettings').mockReturnValue({
+        version: 2,
+        modules: { 'arbitrary-mod': true },
+        errors: {},
+      });
+
+      const mod = createMockModule({ id: 'arbitrary-mod', defaultEnabled: true });
+      bootstrap([mod]);
+
+      expect(mod.enable).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -20,15 +20,11 @@ jest.mock('./olMap', () => {
   };
 });
 
-import { createDragPanControl, getOlMap } from './olMap';
-import { ngrsZoom } from '../modules/ngrsZoom/ngrsZoom';
+import { getOlMap } from './olMap';
 import { shiftMapCenterDown } from '../modules/shiftMapCenterDown/shiftMapCenterDown';
 import { singleFingerRotation } from '../modules/singleFingerRotation/singleFingerRotation';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
-const mockCreateDragPanControl = createDragPanControl as jest.MockedFunction<
-  typeof createDragPanControl
->;
 
 class StubInteraction implements IOlInteraction {
   private active = true;
@@ -187,69 +183,5 @@ describe('module contract: init() не должен навешивать side-ef
     }
 
     expect(view.calculateExtent).toBe(originalExtent);
-  });
-
-  // ── ngrsZoom ──────────────────────────────────────────────────────────────
-  test('ngrsZoom.init() не вызывает createDragPanControl', async () => {
-    const { map } = createMockMap();
-    mockGetOlMap.mockResolvedValue(map);
-    mockCreateDragPanControl.mockClear();
-
-    await ngrsZoom.init();
-
-    expect(mockCreateDragPanControl).not.toHaveBeenCalled();
-  });
-
-  test('ngrsZoom.init() не отключает DoubleClickZoom interaction', async () => {
-    const doubleClickZoom = new StubInteraction();
-    const { map } = createMockMap();
-    map.getInteractions = () => ({ getArray: () => [doubleClickZoom] });
-    mockGetOlMap.mockResolvedValue(map);
-
-    await ngrsZoom.init();
-
-    expect(doubleClickZoom.getActive()).toBe(true);
-  });
-
-  test('ngrsZoom.enable() создаёт DragPan control после init', async () => {
-    const { map } = createMockMap();
-    mockGetOlMap.mockResolvedValue(map);
-    mockCreateDragPanControl.mockClear();
-
-    await ngrsZoom.init();
-    await ngrsZoom.enable();
-
-    expect(mockCreateDragPanControl).toHaveBeenCalledTimes(1);
-    await ngrsZoom.disable();
-  });
-
-  test('ngrsZoom.disable() вызывает restore и обнуляет ссылку на DragPan control', async () => {
-    const restoreSpy = jest.fn();
-    mockCreateDragPanControl.mockReturnValueOnce({
-      disable: jest.fn(),
-      restore: restoreSpy,
-    });
-    const { map } = createMockMap();
-    mockGetOlMap.mockResolvedValue(map);
-
-    await ngrsZoom.init();
-    await ngrsZoom.enable();
-    await ngrsZoom.disable();
-
-    expect(restoreSpy).toHaveBeenCalledTimes(1);
-  });
-
-  test('ngrsZoom переживает несколько enable/disable циклов — каждый создаёт свой DragPan control', async () => {
-    const { map } = createMockMap();
-    mockGetOlMap.mockResolvedValue(map);
-    mockCreateDragPanControl.mockClear();
-
-    await ngrsZoom.init();
-    for (let i = 0; i < 3; i++) {
-      await ngrsZoom.enable();
-      await ngrsZoom.disable();
-    }
-
-    expect(mockCreateDragPanControl).toHaveBeenCalledTimes(3);
   });
 });

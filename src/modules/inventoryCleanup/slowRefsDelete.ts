@@ -1,8 +1,19 @@
-import { getFavoritedGuids } from '../../core/favoritesStore';
+import {
+  getFavoritedGuids,
+  isFavoritesSnapshotReady,
+  isLockMigrationDone,
+} from '../../core/favoritesStore';
 import { t } from '../../core/l10n';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
-import { readInventoryReferences } from '../../core/inventoryCache';
-import { isModuleActive } from '../../core/moduleRegistry';
+import {
+  buildLockedPointGuids,
+  readInventoryCache,
+  readInventoryReferences,
+} from '../../core/inventoryCache';
+import { isInventoryReference } from '../../core/inventoryTypes';
+import { isModuleEnabledByUser } from '../../core/moduleRegistry';
+import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
+import { showToast as showCoreToast } from '../../core/toast';
 import type { IDeletionEntry } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
 import {
@@ -14,11 +25,14 @@ import {
 
 const BUTTON_CLASS = 'svp-cleanup-slow-refs-button';
 const MODAL_CLASS = 'svp-cleanup-slow-modal';
-// Кнопка монтируется внутрь .svp-fav-filter-bar (создаётся модулем favoritedPoints),
-// чтобы чекбокс «Только избранные» и кнопка «Очистить ключи» были в одной строке.
-// Это DOM-зависимость от элемента другого модуля, но не TS-импорт.
-const FILTER_BAR_SELECTOR = '.svp-fav-filter-bar';
+// Кнопка вставляется в .inventory__controls перед нативной #inventory-delete -
+// так пара "выделить / очистить ключи" живёт в одном слоте. Раньше монтировалась
+// в .svp-fav-filter-bar из удалённого модуля favoritedPoints; после его удаления
+// контейнер пропал. Видимость управляется CSS :has() от data-tab="3" на
+// .inventory__content - кнопка показывается только на вкладке ключей.
+const TARGET_SELECTOR = '#inventory-delete';
 export const FETCH_CONCURRENCY = 3;
+const BROOM_ICON = '\u{1F9F9}';
 
 let bodyObserver: MutationObserver | null = null;
 
@@ -202,8 +216,6 @@ export function collectOverLimit(
 // slowRefsDelete использует длинный duration (5 сек) — пользователь должен
 // успеть прочитать результат удаления. Обёртка не переименовывает showToast,
 // чтобы вызовы остались читаемыми.
-import { showToast as showCoreToast } from '../../core/toast';
-
 const SLOW_TOAST_DURATION = 5000;
 
 function showSlowToast(message: string): void {
@@ -215,6 +227,23 @@ async function runSlowDelete(): Promise<void> {
   if (settings.limits.referencesMode !== 'slow') {
     showSlowToast(
       t({ en: 'Key cleanup mode is not "Slow"', ru: 'Режим очистки ключей не «Медленно»' }),
+    );
+    return;
+  }
+  // Fail-safe на случай если кнопка показана во время гонки snapshot-неготов.
+  // shouldShowButton уже прячет её, но прямой вызов функции (тест, будущая
+  // подмена обработчика) не должен обойти блокировку. См. комментарий в
+  // shouldShowButton и в inventoryCleanup.runCleanupImpl.
+  if (
+    !isLockMigrationDone() &&
+    isModuleEnabledByUser('favoritesMigration') &&
+    !isFavoritesSnapshotReady()
+  ) {
+    showSlowToast(
+      t({
+        en: 'Favorites snapshot not loaded yet — wait a moment and try again',
+        ru: 'Снимок избранного ещё не загружен — подожди немного и попробуй снова',
+      }),
     );
     return;
   }
@@ -232,29 +261,45 @@ async function runSlowDelete(): Promise<void> {
     return;
   }
 
-  const favoritedGuids = getFavoritedGuids();
-  if (favoritedGuids.size === 0) {
+  // Защитный слой: только нативные lock-флаги в `inventory-cache` (0.6.1+).
+  // Legacy SVP/CUI-список в логике защиты не участвует - он только источник
+  // миграции. Если у пользователя есть непустой legacy список и миграция не
+  // сделана - кнопка slow cleanup скрыта (см. shouldShowButton).
+  //
+  // lockSupportAvailable проверяется через every: ВСЕ реф-стопки должны иметь
+  // поле `f`. При mix-кэше (часть с `f`, часть без) стопки без `f` не попадают
+  // в lockedPointGuids и могли бы быть удалены даже у фактически защищённой
+  // точки. Симметрично с финальным guard в inventoryApi.deleteInventoryItems.
+  const cache = readInventoryCache();
+  const lockedPointGuids = buildLockedPointGuids(cache);
+  const refStacks = cache.filter(isInventoryReference);
+  const lockSupportAvailable =
+    refStacks.length > 0 && refStacks.every((item) => item.f !== undefined);
+  if (!lockSupportAvailable) {
     showSlowToast(
       t({
-        en: 'Add at least one favorited point before cleaning keys',
-        ru: 'Добавьте хотя бы одну избранную точку перед очисткой ключей',
+        en: 'Native lock support unavailable: server returned no f-flags. Cleanup blocked.',
+        ru: 'Нативный lock недоступен (сервер не отдал поле f). Очистка заблокирована.',
       }),
     );
     return;
   }
   const invRefs = readInventoryReferences();
-  const nonFavRefs: IRefByGuid[] = invRefs
-    .filter((ref) => ref.a > 0 && !favoritedGuids.has(ref.l))
+  const protectedRefs: IRefByGuid[] = invRefs
+    .filter((ref) => ref.a > 0 && !lockedPointGuids.has(ref.l))
     .map((ref) => ({ itemGuid: ref.g, pointGuid: ref.l, amount: ref.a }));
 
-  if (nonFavRefs.length === 0) {
+  if (protectedRefs.length === 0) {
     showSlowToast(
-      t({ en: 'No non-favorited keys to process', ru: 'Нет не-избранных ключей для обработки' }),
+      t({
+        en: 'No unprotected keys to process',
+        ru: 'Нет незащищённых ключей для обработки',
+      }),
     );
     return;
   }
 
-  const uniquePointGuids = Array.from(new Set(nonFavRefs.map((ref) => ref.pointGuid)));
+  const uniquePointGuids = Array.from(new Set(protectedRefs.map((ref) => ref.pointGuid)));
 
   const confirmed = confirm(
     t({
@@ -283,7 +328,7 @@ async function runSlowDelete(): Promise<void> {
   progress.setStatus(t({ en: 'Calculating deletions…', ru: 'Расчёт удаления…' }));
 
   const deletions = calculateSlowDeletions(
-    nonFavRefs,
+    protectedRefs,
     teams,
     playerTeam,
     referencesAlliedLimit,
@@ -321,12 +366,21 @@ async function runSlowDelete(): Promise<void> {
   progress.setStatus(t({ en: 'Deleting: ', ru: 'Удаление: ' }) + summaryText);
 
   try {
-    const result = await deleteInventoryItems(deletions, {
-      favoritedGuids: getFavoritedGuids(),
-      favoritedPointsActive: isModuleActive('favoritedPoints'),
-    });
+    const result = await deleteInventoryItems(deletions);
     updateInventoryCache(deletions);
     updatePointRefCount();
+    // Sync счётчика ключей на подписи затронутых точек на карте. Slow удаляет
+    // только ключи (по lock-проверке выше), все pointGuid у удалений заданы.
+    const refPointGuids = Array.from(
+      new Set(
+        deletions
+          .map((d) => d.pointGuid)
+          .filter((guid): guid is string => typeof guid === 'string'),
+      ),
+    );
+    if (refPointGuids.length > 0) {
+      void syncRefsCountForPoints(refPointGuids);
+    }
     if (result.total > 0) {
       updateDomInventoryCount(result.total);
     }
@@ -348,10 +402,11 @@ function updateButtonLabel(button: HTMLButtonElement): void {
   const settings = loadCleanupSettings();
   const allied = formatLimit(settings.limits.referencesAlliedLimit);
   const notAllied = formatLimit(settings.limits.referencesNotAlliedLimit);
-  const label = t({
-    en: `Cleanup (limits: ${allied}/${notAllied})`,
-    ru: `Очистить (лимиты: ${allied}/${notAllied})`,
-  });
+  // Иконка веника + лимиты allied/notAllied. Без слова "Очистить" / "Cleanup":
+  // иконка считывается как "очистка" самостоятельно, текст оставлен только
+  // для лимитов как машиночитаемого статуса кнопки. Title не выставляем -
+  // им управляет syncDisabledState (объясняет причину disabled).
+  const label = `${BROOM_ICON} ${allied}/${notAllied}`;
   // Не записывать textContent если текст не изменился — иначе DOM-мутация
   // тригерит body MutationObserver → checkAndInject → updateButtonLabel → цикл.
   if (button.textContent !== label) {
@@ -361,17 +416,51 @@ function updateButtonLabel(button: HTMLButtonElement): void {
 
 function shouldShowButton(): boolean {
   const settings = loadCleanupSettings();
-  return settings.limits.referencesMode === 'slow' && isModuleActive('favoritedPoints');
+  if (settings.limits.referencesMode !== 'slow') return false;
+  // Кнопка скрыта, пока пользователь не подтвердил миграцию SVP/CUI-избранных
+  // в native lock и в IDB остаются legacy-точки. Подтверждение - флаг
+  // isLockMigrationDone, выставляемый при success миграции в locked. Когда
+  // флаг есть, legacy становится архивом, защиту берёт нативный lock - кнопка
+  // показывается. Подробный разбор в inventoryCleanup.runCleanupImpl.
+  if (isLockMigrationDone()) return true;
+  if (!isModuleEnabledByUser('favoritesMigration')) return true;
+  if (!isFavoritesSnapshotReady()) return false;
+  return getFavoritedGuids().size === 0;
 }
 
-function ensureButton(bar: Element): void {
+/**
+ * Кнопка disabled, если оба лимита -1 (allied/notAllied) — slow-режим в этом
+ * случае ничего не удалит, клик бессмысленен. Пользователь видит причину через
+ * tooltip.
+ */
+function shouldDisableButton(): boolean {
+  const { referencesAlliedLimit, referencesNotAlliedLimit } = loadCleanupSettings().limits;
+  return referencesAlliedLimit === -1 && referencesNotAlliedLimit === -1;
+}
+
+function syncDisabledState(button: HTMLButtonElement): void {
+  const disabled = shouldDisableButton();
+  if (button.disabled !== disabled) button.disabled = disabled;
+  const title = disabled
+    ? t({
+        en: 'Both limits are -1 (allied/not allied) — set at least one limit to enable cleanup',
+        ru: 'Оба лимита -1 (союзные/несоюзные) — задайте хотя бы один лимит, чтобы включить очистку',
+      })
+    : '';
+  if (button.title !== title) button.title = title;
+}
+
+function ensureButton(deleteSibling: Element): void {
+  const parent = deleteSibling.parentElement;
+  if (!parent) return;
+  const existing = parent.querySelector<HTMLButtonElement>(`.${BUTTON_CLASS}`);
   if (!shouldShowButton()) {
-    bar.querySelector(`.${BUTTON_CLASS}`)?.remove();
+    existing?.remove();
     return;
   }
-  const existing = bar.querySelector<HTMLButtonElement>(`.${BUTTON_CLASS}`);
   if (existing) {
     updateButtonLabel(existing);
+    syncDisabledState(existing);
     return;
   }
 
@@ -379,11 +468,13 @@ function ensureButton(bar: Element): void {
   button.type = 'button';
   button.className = BUTTON_CLASS;
   updateButtonLabel(button);
+  syncDisabledState(button);
   button.addEventListener('click', (event) => {
     event.preventDefault();
+    if (button.disabled) return;
     void runSlowDelete();
   });
-  bar.appendChild(button);
+  parent.insertBefore(button, deleteSibling);
 }
 
 function removeButton(): void {
@@ -391,12 +482,12 @@ function removeButton(): void {
 }
 
 function checkAndInject(): void {
-  const bar = document.querySelector(FILTER_BAR_SELECTOR);
-  if (!bar) {
+  const target = document.querySelector(TARGET_SELECTOR);
+  if (!target) {
     removeButton();
     return;
   }
-  ensureButton(bar);
+  ensureButton(target);
 }
 
 let rafId: number | null = null;

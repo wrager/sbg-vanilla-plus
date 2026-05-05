@@ -1,0 +1,211 @@
+/* Кнопка «Настроить» в строке модуля favoritesMigration в панели настроек SVP. */
+.svp-migration-configure-button {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.2));
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text, #ddd);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.svp-migration-configure-button:hover {
+  /* Игра задаёт --accent в красный (#A00/#F00, refs/game/css/variables.css):
+     hover-эффект через accent выглядит как сигнал ошибки. Используем нейтральную
+     инверсию text/border. */
+  background: var(--text, #ddd);
+  color: var(--background, #1a1a1a);
+}
+
+/* Модалка миграции */
+.svp-migration-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 10011;
+  display: flex;
+  flex-direction: column;
+  background: var(--background, #1a1a1a);
+  color: var(--text, #ddd);
+  padding: 16px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.svp-migration-header {
+  font-size: 14px;
+  font-weight: bold;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border, #444);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.svp-migration-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-size: 13px;
+}
+
+/* Секции legacy (импорт/экспорт + счётчик) и native (миграция в нативные
+   звёздочки/замочки + прогресс). Заголовки разделяют функции на устаревшие
+   и новые, чтобы пользователь понимал что чем управляет. */
+.svp-migration-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.svp-migration-section-header {
+  font-size: 13px;
+  font-weight: bold;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border, #444);
+}
+
+/* Параграфы пояснений под заголовком секции. Margin сбрасываем, чтобы gap
+   у .svp-migration-section управлял расстоянием между блоками. */
+.svp-migration-section-text {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-faint, #aaa);
+  line-height: 1.4;
+}
+
+.svp-migration-section-text-warning {
+  color: var(--text, #ddd);
+}
+
+.svp-migration-counter {
+  color: var(--text-disabled, #888);
+  font-size: 12px;
+}
+
+/* IO-секция (экспорт/импорт legacy IDB) в начале панели до счётчика. Кнопки
+   импорта и экспорта располагаются горизонтально, занимая равные доли ширины
+   (flex: 1) - пара симметричных операций над одним списком. */
+.svp-migration-io {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.svp-migration-io-button {
+  flex: 1;
+  padding: 6px 12px;
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text, #ddd);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.svp-migration-io-button:hover {
+  background: var(--text, #ddd);
+  color: var(--background, #1a1a1a);
+  border-color: var(--text, #ddd);
+}
+
+.svp-migration-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.svp-migration-action {
+  flex: 1;
+  min-width: 200px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #444);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text, #ddd);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.svp-migration-action:hover:not(:disabled) {
+  /* См. комментарий в .svp-migration-configure-button:hover — нейтральный hover. */
+  background: var(--text, #ddd);
+  color: var(--background, #1a1a1a);
+  border-color: var(--text, #ddd);
+}
+
+.svp-migration-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.svp-migration-action svg {
+  vertical-align: middle;
+  margin-left: 6px;
+  fill: currentColor;
+}
+
+/* Прогресс */
+.svp-migration-progress {
+  margin-top: 8px;
+  display: none;
+}
+
+.svp-migration-progress.svp-active {
+  display: block;
+}
+
+.svp-migration-progress-status {
+  margin-bottom: 4px;
+}
+
+.svp-migration-progress-bar-wrap {
+  width: 100%;
+  height: 8px;
+  background: var(--border, #333);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.svp-migration-progress-bar {
+  height: 100%;
+  width: 0%;
+  /* В процессе фазы — нейтральный цвет (text-faint), а не красный --accent игры:
+     индикатор «работает», не «ошибка». Финальные состояния задаются через
+     модификаторы .svp-success / .svp-partial. */
+  background: var(--text-faint, #aaa);
+  transition:
+    width 0.2s ease,
+    background 0.2s ease;
+}
+
+.svp-migration-progress.svp-success .svp-migration-progress-bar {
+  background: #4caf50;
+}
+
+.svp-migration-progress.svp-success .svp-migration-progress-status {
+  color: #4caf50;
+}
+
+.svp-migration-progress.svp-partial .svp-migration-progress-bar {
+  /* Нейтральный жёлтый — не «ошибка», а «не всё прошло, нужно повторить через
+     пару минут». Текст финального статуса даёт пользователю понятное действие. */
+  background: #e0a020;
+}
+
+.svp-migration-progress.svp-partial .svp-migration-progress-status {
+  color: #e0a020;
+}
+
+.svp-migration-progress-counter {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-disabled, #888);
+}

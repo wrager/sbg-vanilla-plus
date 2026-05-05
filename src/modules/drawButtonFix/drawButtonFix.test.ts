@@ -15,14 +15,15 @@ describe('drawButtonFix', () => {
   });
 
   test('removes disabled from #draw when attribute is set', async () => {
-    await drawButtonFix.enable();
     const btn = createDrawButton(false);
+    await drawButtonFix.enable();
     btn.setAttribute('disabled', '');
     await Promise.resolve();
     expect(btn.hasAttribute('disabled')).toBe(false);
   });
 
   test('does not affect disabled on other buttons', async () => {
+    createDrawButton(false);
     await drawButtonFix.enable();
     const other = document.createElement('button');
     other.id = 'other';
@@ -33,9 +34,9 @@ describe('drawButtonFix', () => {
   });
 
   test('disable stops removing the attribute', async () => {
+    const btn = createDrawButton(false);
     await drawButtonFix.enable();
     await drawButtonFix.disable();
-    const btn = createDrawButton(false);
     btn.setAttribute('disabled', '');
     await Promise.resolve();
     expect(btn.hasAttribute('disabled')).toBe(true);

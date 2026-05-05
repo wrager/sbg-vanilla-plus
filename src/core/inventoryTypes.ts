@@ -24,6 +24,11 @@ export interface IInventoryReference {
   t: typeof ITEM_TYPE_REFERENCE;
   l: string;
   a: number;
+  // Bitfield-флаги, проставляемые сервером в ответе /api/inventory (SBG 0.6.1+).
+  // Бит 0 — favorite, бит 1 — locked. Поле опциональное: на 0.6.0 сервер его
+  // не возвращает, и проверки `(item.f & 0bX)` корректно дают 0 для undefined.
+  // См. refs/game/script.js:3404-3405 — `is_fav = !!(item?.f & 0b1)`.
+  f?: number;
 }
 
 /** Полные данные ключа из inventory-cache (включая координаты и название точки). */
@@ -70,13 +75,20 @@ export function isInventoryCatalyser(value: unknown): value is IInventoryCatalys
 }
 
 export function isInventoryReference(value: unknown): value is IInventoryReference {
-  return (
-    isRecord(value) &&
-    typeof value.g === 'string' &&
-    value.t === ITEM_TYPE_REFERENCE &&
-    typeof value.l === 'string' &&
-    typeof value.a === 'number'
-  );
+  if (
+    !isRecord(value) ||
+    typeof value.g !== 'string' ||
+    value.t !== ITEM_TYPE_REFERENCE ||
+    typeof value.l !== 'string' ||
+    typeof value.a !== 'number'
+  ) {
+    return false;
+  }
+  // f опциональный: на 0.6.0 он отсутствует. Если присутствует - обязан быть
+  // целым числом: это битовое поле, NaN/Infinity имеют typeof === 'number' но
+  // дают 0 при побитовых операциях, маскируя некорректные данные сервера.
+  if (value.f !== undefined && !Number.isInteger(value.f)) return false;
+  return true;
 }
 
 export function isInventoryReferenceFull(value: unknown): value is IInventoryReferenceFull {

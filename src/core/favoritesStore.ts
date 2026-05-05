@@ -1,25 +1,34 @@
 // Хранилище избранных точек совместимо с CUI: та же база `CUI`, тот же objectStore
 // `favorites` (keyPath='guid'). Запись — { guid, cooldown }. Поле cooldown нужно
-// только CUI (таймер остывания точки); наш модуль его не использует, но обязан
-// сохранять существующие значения при upsert, чтобы не затереть данные CUI.
+// только CUI (таймер остывания точки); наш модуль его не использует.
+//
+// До 0.6.1 модуль favoritedPoints добавлял/удалял записи (звезда в попапе,
+// фильтр инвентаря). В 0.6.1 эту функциональность взяла на себя игра нативно
+// (поле `f` на стопках инвентаря, см. release-notes 1.3). После переименования
+// модуля в favoritesMigration write-операции стали не нужны: модуль ТОЛЬКО
+// читает локальный список и переносит точки в нативные «звёздочки»/«замочки»
+// игры через POST /api/marks. Поэтому хранилище упрощено до read-only API.
 
 import { t } from './l10n';
-
-export const FAVORITES_CHANGED_EVENT = 'svp:favorites-changed';
-
-function emitChange(): void {
-  document.dispatchEvent(new CustomEvent(FAVORITES_CHANGED_EVENT));
-}
 
 const DB_NAME = 'CUI';
 const STORE_NAME = 'favorites';
 const CUI_DB_VERSION = 9;
 
-// Count seal: количество избранных записывается в localStorage при каждом
-// изменении. При loadFavorites() если IDB пуста, а seal > 0 — значит данные
-// потеряны (Android IDB wipe). В этом случае snapshotLoaded = false, удаление
-// ключей заблокировано, пользователь получает alert.
+// Count seal: количество избранных записывается в localStorage при первой
+// успешной loadFavorites(). При следующем старте, если IDB пуста, а seal > 0 —
+// данные потеряны (Android IDB wipe). В этом случае snapshotLoaded = false,
+// удаление ключей в inventoryCleanup заблокировано, пользователь получает alert.
 export const SEAL_KEY = 'svp_favorites_seal';
+
+// Lock-migration done flag: после первого успешного прогона миграции в native
+// `locked` (или его одноразовой инициализации в favoritesMigration.init для
+// существующих пользователей) ставится в '1'. Пока флаг не выставлен и в IDB
+// есть legacy SVP/CUI-избранные, удаление ключей в inventoryCleanup
+// заблокировано - пользователь ещё не подтвердил миграцию. После выставления
+// флага legacy-список становится архивом: защиту обеспечивает нативный
+// lock-флаг (`inventory-cache[i].f & 0b10`), legacy не учитывается.
+export const LOCK_MIGRATION_DONE_KEY = 'svp_lock_migration_done';
 
 function updateSeal(): void {
   try {
@@ -46,12 +55,11 @@ export interface IFavoriteRecord {
 }
 
 let memoryGuids: Set<string> = new Set();
-let cooldownByGuid: Map<string, number | null> = new Map();
 let dbPromise: Promise<IDBDatabase> | null = null;
 // true после успешного loadFavorites() — означает, что memoryGuids содержит
 // достоверный снимок IDB (даже если Set пуст — пользователь просто не добавлял
 // избранных). false — IDB не читалась или чтение упало. Используется в
-// cleanupCalculator как guard вместо size > 0 (коммит 8a1c2b4).
+// inventoryCleanup как guard: на 0.6.0 без этого снимка ключи не удаляются.
 let snapshotLoaded = false;
 
 function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
@@ -65,22 +73,16 @@ function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
-/**
- * Ждёт фактического коммита транзакции IDB. request.onsuccess не гарантирует,
- * что транзакция закоммичена — она может быть отменена (abort) после успеха
- * отдельного запроса (квота, системное давление, crash). Обновлять in-memory
- * состояние безопасно только после oncomplete.
- */
 function waitForTransaction(tx: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     tx.oncomplete = (): void => {
       resolve();
     };
+    tx.onerror = (): void => {
+      reject(tx.error ?? new Error('IDB transaction failed'));
+    };
     tx.onabort = (): void => {
       reject(tx.error ?? new Error('IDB transaction aborted'));
-    };
-    tx.onerror = (): void => {
-      reject(tx.error ?? new Error('IDB transaction error'));
     };
   });
 }
@@ -120,7 +122,8 @@ function initializeCuiDb(database: IDBDatabase, transaction: IDBTransaction): vo
     isDarkMode =
       typeof settings === 'object' &&
       settings !== null &&
-      (settings as Record<string, unknown>).theme === 'dark';
+      'theme' in settings &&
+      settings.theme === 'dark';
   } catch {
     // Невалидный JSON — используем светлую тему по умолчанию.
   }
@@ -216,8 +219,11 @@ function openDb(): Promise<IDBDatabase> {
       const targetVersion = Math.max(db.version + 1, CUI_DB_VERSION);
       db.close();
       const upgrade = indexedDB.open(DB_NAME, targetVersion);
-      upgrade.onupgradeneeded = (event): void => {
-        const upgradeTransaction = (event.target as IDBOpenDBRequest).transaction;
+      upgrade.onupgradeneeded = (): void => {
+        // upgrade - локальный IDBOpenDBRequest, transaction в event.target тот же,
+        // что и upgrade.transaction; используем именованную ссылку, чтобы не
+        // кастовать event.target из EventTarget в IDBOpenDBRequest.
+        const upgradeTransaction = upgrade.transaction;
         if (!upgradeTransaction) {
           reject(new Error('IDB upgrade transaction is null'));
           return;
@@ -245,9 +251,9 @@ function openDb(): Promise<IDBDatabase> {
 
 function isFavoriteRecord(value: unknown): value is IFavoriteRecord {
   if (typeof value !== 'object' || value === null) return false;
-  const record = value as Record<string, unknown>;
-  if (typeof record.guid !== 'string') return false;
-  return record.cooldown === null || typeof record.cooldown === 'number';
+  if (!('guid' in value) || typeof value.guid !== 'string') return false;
+  if (!('cooldown' in value)) return false;
+  return value.cooldown === null || typeof value.cooldown === 'number';
 }
 
 /** Загружает все записи из IDB в memory cache. Вызывается один раз в `init()`. */
@@ -258,11 +264,9 @@ export async function loadFavorites(): Promise<void> {
   const records: unknown[] = await promisifyRequest(store.getAll());
 
   memoryGuids = new Set();
-  cooldownByGuid = new Map();
   for (const record of records) {
     if (!isFavoriteRecord(record)) continue;
     memoryGuids.add(record.guid);
-    cooldownByGuid.set(record.guid, record.cooldown);
   }
 
   // Count seal: если IDB пуста, а seal говорит что были избранные —
@@ -272,8 +276,8 @@ export async function loadFavorites(): Promise<void> {
     snapshotLoaded = false;
     alert(
       t({
-        en: 'Favorited points data may have been lost (storage cleared). Key auto-cleanup is blocked. Re-import favorites via module settings.',
-        ru: 'Данные избранных точек могли быть потеряны (хранилище очищено). Автоочистка ключей заблокирована. Импортируйте избранные через настройки модуля.',
+        en: 'Favorited points data may have been lost (storage cleared). Key auto-cleanup is blocked. Re-add favorites in CUI or reinstall the script.',
+        ru: 'Данные избранных точек могли быть потеряны (хранилище очищено). Автоочистка ключей заблокирована. Добавьте избранные снова в CUI или переустановите скрипт.',
       }),
     );
     return;
@@ -283,7 +287,7 @@ export async function loadFavorites(): Promise<void> {
   updateSeal();
 }
 
-/** Синхронная проверка — используется из hot path автоочистки. */
+/** Синхронная проверка — для будущих use case'ов, остаётся в публичном API. */
 export function isFavorited(pointGuid: string): boolean {
   return memoryGuids.has(pointGuid);
 }
@@ -304,43 +308,18 @@ export function getFavoritesCount(): number {
   return memoryGuids.size;
 }
 
-/** Добавляет GUID в избранные. Сохраняет существующий cooldown (CUI может писать его). */
-export async function addFavorite(pointGuid: string): Promise<void> {
-  const db = await openDb();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  const store = tx.objectStore(STORE_NAME);
-  // Регистрируем ожидание коммита ДО выполнения запросов — tx.oncomplete
-  // может сработать сразу после последнего request.onsuccess.
-  const committed = waitForTransaction(tx);
-  const existing: unknown = await promisifyRequest(store.get(pointGuid));
-  const cooldown = isFavoriteRecord(existing) ? existing.cooldown : null;
-  const record: IFavoriteRecord = { guid: pointGuid, cooldown };
-  await promisifyRequest(store.put(record));
-  // Обновляем память только после фактического коммита транзакции.
-  // promisifyRequest резолвится на request.onsuccess, но транзакция может
-  // быть отменена после этого (квота, системное давление).
-  await committed;
-  memoryGuids.add(pointGuid);
-  cooldownByGuid.set(pointGuid, cooldown);
-  updateSeal();
-  emitChange();
-}
-
-export async function removeFavorite(pointGuid: string): Promise<void> {
-  const db = await openDb();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  const store = tx.objectStore(STORE_NAME);
-  const committed = waitForTransaction(tx);
-  await promisifyRequest(store.delete(pointGuid));
-  await committed;
-  memoryGuids.delete(pointGuid);
-  cooldownByGuid.delete(pointGuid);
-  updateSeal();
-  emitChange();
-}
-
-/** Экспорт: простой массив GUID'ов точек (формат для миграции между браузерами). */
-export async function exportToJson(): Promise<string> {
+/**
+ * Экспорт legacy-списка SVP/CUI-избранных в JSON. Формат - массив GUID-строк,
+ * отсортированный для стабильного diff'а и хранения в репозитории/бэкапе.
+ * Совместим с прежней (до ребрандинга в favoritesMigration) версией скрипта,
+ * чтобы файлы из старых установок продолжали импортироваться без миграции
+ * формата.
+ *
+ * Cooldown в экспорт не попадает: его пишет CUI как кэш таймера остывания,
+ * между устройствами он не имеет смысла. При импорте новые записи создаются
+ * с `cooldown=null`, CUI заполнит при следующем взаимодействии с точкой.
+ */
+export async function exportFavoritesToJson(): Promise<string> {
   const db = await openDb();
   const tx = db.transaction(STORE_NAME, 'readonly');
   const store = tx.objectStore(STORE_NAME);
@@ -357,11 +336,17 @@ function isGuidArray(value: unknown): value is string[] {
 }
 
 /**
- * Импорт в режиме REPLACE: удаляет ВСЕ существующие избранные, затем добавляет
- * записи из массива. Cooldown существующих записей теряется (формат хранит
- * только GUID). Новые записи создаются с cooldown=null.
+ * Импорт в режиме REPLACE: удаляет ВСЕ существующие записи, затем вставляет
+ * GUID'ы из JSON. Cooldown существующих теряется (формат хранит только GUID),
+ * новые записи создаются с `cooldown=null`. Возвращает количество
+ * импортированных GUID.
+ *
+ * Сбрасывает флаг lock-migration-done: импорт - это новые legacy-точки,
+ * которые ещё не помечены нативным замочком. До их явной миграции автоочистка
+ * ключей должна снова блокироваться, иначе свежеимпортированные ключи могут
+ * быть удалены до того как пользователь нажмёт "Сделать заблокированными".
  */
-export async function importFromJson(json: string): Promise<number> {
+export async function importFavoritesFromJson(json: string): Promise<number> {
   const parsed: unknown = JSON.parse(json);
   if (!isGuidArray(parsed)) {
     throw new Error('Некорректный формат JSON: ожидается массив GUID-строк');
@@ -377,18 +362,22 @@ export async function importFromJson(json: string): Promise<number> {
   }
   await committed;
   memoryGuids = new Set(parsed);
-  cooldownByGuid = new Map(parsed.map((guid) => [guid, null]));
+  snapshotLoaded = true;
   updateSeal();
-  emitChange();
+  try {
+    localStorage.removeItem(LOCK_MIGRATION_DONE_KEY);
+  } catch {
+    // localStorage недоступен - флаг и так нельзя было выставить, no-op.
+  }
   return parsed.length;
 }
 
 /** Только для тестов: сбрасывает кеш и закрывает БД. */
 export function resetForTests(): void {
   memoryGuids = new Set();
-  cooldownByGuid = new Map();
   snapshotLoaded = false;
   localStorage.removeItem(SEAL_KEY);
+  localStorage.removeItem(LOCK_MIGRATION_DONE_KEY);
   if (dbPromise) {
     void dbPromise.then((db) => {
       db.close();
@@ -396,3 +385,67 @@ export function resetForTests(): void {
   }
   dbPromise = null;
 }
+
+/**
+ * true - после первого успешного прогона миграции в native `locked` (или
+ * one-time инициализации флага в favoritesMigration.init для существующих
+ * пользователей). Пока false и legacy-список непуст, удаление ключей в
+ * inventoryCleanup блокируется. После выставления legacy-список становится
+ * архивом: защиту обеспечивает нативный lock-флаг.
+ */
+export function isLockMigrationDone(): boolean {
+  try {
+    return localStorage.getItem(LOCK_MIGRATION_DONE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setLockMigrationDone(): void {
+  try {
+    localStorage.setItem(LOCK_MIGRATION_DONE_KEY, '1');
+  } catch {
+    // localStorage может быть недоступен (private mode, quota). Не критично:
+    // блокировка просто продолжит срабатывать до следующего успешного запуска
+    // миграции.
+  }
+}
+
+// Legacy write-API: используется модулем `favoritedPoints` (локальный список
+// избранных SVP/CUI). Сохранён до переработки drawingRestrictions/favoritedPoints
+// под нативные звёздочки SBG 0.6.1.
+export const FAVORITES_CHANGED_EVENT = 'svp:favorites-changed';
+
+function emitFavoritesChange(): void {
+  document.dispatchEvent(new CustomEvent(FAVORITES_CHANGED_EVENT));
+}
+
+export async function addFavorite(pointGuid: string): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  const store = tx.objectStore(STORE_NAME);
+  const committed = waitForTransaction(tx);
+  const existing: unknown = await promisifyRequest(store.get(pointGuid));
+  const cooldown = isFavoriteRecord(existing) ? existing.cooldown : null;
+  const record: IFavoriteRecord = { guid: pointGuid, cooldown };
+  await promisifyRequest(store.put(record));
+  await committed;
+  memoryGuids.add(pointGuid);
+  updateSeal();
+  emitFavoritesChange();
+}
+
+export async function removeFavorite(pointGuid: string): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  const store = tx.objectStore(STORE_NAME);
+  const committed = waitForTransaction(tx);
+  await promisifyRequest(store.delete(pointGuid));
+  await committed;
+  memoryGuids.delete(pointGuid);
+  updateSeal();
+  emitFavoritesChange();
+}
+
+export const exportToJson = exportFavoritesToJson;
+export const importFromJson = importFavoritesFromJson;

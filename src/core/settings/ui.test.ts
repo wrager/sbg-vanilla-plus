@@ -1,3 +1,4 @@
+import { resetDetectedVersionForTest, setDetectedVersionForTest } from '../gameVersion';
 import type { IFeatureModule } from '../moduleRegistry';
 import type { ILocalizedString } from '../l10n';
 import { initSettingsUI } from './ui';
@@ -670,6 +671,132 @@ describe('initSettingsUI — модули, несовместимые с хос�
     if (!toggleAll) throw new Error('toggle-all checkbox not rendered');
     expect(toggleAll.checked).toBe(true);
     expect(toggleAll.indeterminate).toBe(false);
+  });
+});
+
+describe('initSettingsUI — модули, нативные в SBG 0.6.1', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('style[id^="svp-"]').forEach((node) => {
+      node.remove();
+    });
+  });
+
+  afterEach(() => {
+    resetDetectedVersionForTest();
+  });
+
+  function getRowByModuleId(moduleId: string): HTMLElement {
+    const panel = document.getElementById('svp-settings-panel');
+    if (!panel) throw new Error('svp-settings-panel not rendered');
+    const rows = panel.querySelectorAll<HTMLElement>('.svp-module-row');
+    for (const row of rows) {
+      const id = row.querySelector('.svp-module-id')?.textContent;
+      if (id === moduleId) return row;
+    }
+    throw new Error(`row for ${moduleId} not found`);
+  }
+
+  // DEPRECATED_MODULES_NATIVE пуст (см. gameVersion.ts) — после полноценной адаптации
+  // 0.6.1 ни один модуль не помечен как «native-in-game». UI-инфраструктура
+  // рендеринга строки native-модуля (CSS-класс svp-module-row-native-in-game,
+  // лейбл, отсутствие чекбокса) остаётся в коде ui.ts: тесты добавим заново,
+  // когда в DEPRECATED_MODULES_NATIVE появится новый id.
+
+  test('в 0.6.0 произвольный модуль рендерится с чекбоксом', () => {
+    setDetectedVersionForTest('0.6.0');
+    localStorage.setItem(
+      'svp_settings',
+      JSON.stringify({ version: 4, modules: { 'arbitrary-mod': true }, errors: {} }),
+    );
+    const mod = createMockModule({ id: 'arbitrary-mod', defaultEnabled: true });
+
+    initSettingsUI([mod], new Map());
+
+    const row = getRowByModuleId('arbitrary-mod');
+    const checkbox = row.querySelector<HTMLInputElement>('.svp-module-checkbox');
+    expect(checkbox).not.toBeNull();
+    expect(checkbox?.checked).toBe(true);
+  });
+});
+
+describe('initSettingsUI — раздел «Недоступные» в конце экрана настроек', () => {
+  const SCOUT_UA = 'Mozilla/5.0 (Linux; Android 13) SbgScout/1.2.3';
+  const BROWSER_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0';
+  const ORIGINAL_USER_AGENT = navigator.userAgent;
+
+  function setUserAgent(value: string): void {
+    Object.defineProperty(navigator, 'userAgent', { value, configurable: true });
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('style[id^="svp-"]').forEach((node) => {
+      node.remove();
+    });
+    setUserAgent(BROWSER_UA);
+  });
+
+  afterEach(() => {
+    resetDetectedVersionForTest();
+    setUserAgent(ORIGINAL_USER_AGENT);
+  });
+
+  function getSectionOfRow(moduleId: string): HTMLElement {
+    const panel = document.getElementById('svp-settings-panel');
+    if (!panel) throw new Error('svp-settings-panel not rendered');
+    const rows = panel.querySelectorAll<HTMLElement>('.svp-module-row');
+    for (const row of rows) {
+      const id = row.querySelector('.svp-module-id')?.textContent;
+      if (id === moduleId) {
+        const section = row.closest<HTMLElement>('.svp-settings-section');
+        if (!section) throw new Error(`module "${moduleId}" row is not inside a section`);
+        return section;
+      }
+    }
+    throw new Error(`row for "${moduleId}" not found`);
+  }
+
+  test('если нет недоступных модулей — раздел «Недоступные» не создаётся', () => {
+    initSettingsUI([createMockModule({ id: 'alpha', category: 'ui' })], new Map());
+    const panel = document.getElementById('svp-settings-panel');
+    expect(panel?.querySelector('.svp-settings-section-unavailable')).toBeNull();
+  });
+
+  test('host-provided (keepScreenOn в Scout) попадает в раздел «Недоступные», не в свою категорию', () => {
+    setUserAgent(SCOUT_UA);
+    const keepScreenOn = createMockModule({
+      id: 'keepScreenOn',
+      category: 'feature',
+      defaultEnabled: true,
+    });
+
+    initSettingsUI([keepScreenOn], new Map());
+
+    const section = getSectionOfRow('keepScreenOn');
+    expect(section.classList.contains('svp-settings-section-unavailable')).toBe(true);
+  });
+
+  test('раздел «Недоступные» рендерится ПОСЛЕ категорных секций', () => {
+    setUserAgent(SCOUT_UA);
+    const keepScreenOn = createMockModule({
+      id: 'keepScreenOn',
+      category: 'feature',
+      defaultEnabled: true,
+    });
+    const alpha = createMockModule({ id: 'alpha', category: 'ui' });
+    const beta = createMockModule({ id: 'beta', category: 'fix' });
+
+    initSettingsUI([keepScreenOn, alpha, beta], new Map());
+
+    const panel = document.getElementById('svp-settings-panel');
+    const sections = [...(panel?.querySelectorAll('.svp-settings-section') ?? [])];
+    const unavailableIndex = sections.findIndex((s) =>
+      s.classList.contains('svp-settings-section-unavailable'),
+    );
+    expect(unavailableIndex).toBe(sections.length - 1);
   });
 });
 

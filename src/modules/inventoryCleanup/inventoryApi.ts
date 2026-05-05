@@ -1,14 +1,36 @@
 import type { IDeletionEntry } from './cleanupCalculator';
 import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
-import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
+import {
+  INVENTORY_CACHE_KEY,
+  buildLockedPointGuids,
+  readInventoryCache,
+} from '../../core/inventoryCache';
+import { isInventoryItem, isInventoryReference } from '../../core/inventoryTypes';
+import { POINT_POPUP_SELECTOR } from '../../core/pointPopup';
 
 export interface IDeleteResult {
   total: number;
 }
 
-interface IApiResponse {
-  count?: { total?: number };
-  error?: string;
+/**
+ * Сервер возвращает либо `{ error: string }`, либо `{ count: { total: number } }`.
+ * Парсер игнорирует посторонние поля и валидирует структуру в runtime - тип
+ * хранения в `unknown` плюс проверки `in`/`typeof` дешевле чем кастовать в
+ * интерфейс без проверки и узнавать о расхождении в проде.
+ */
+function readApiError(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return null;
+  if (!('error' in value) || typeof value.error !== 'string') return null;
+  return value.error;
+}
+
+function readApiCountTotal(value: unknown): number | null {
+  if (typeof value !== 'object' || value === null) return null;
+  if (!('count' in value)) return null;
+  const count = value.count;
+  if (typeof count !== 'object' || count === null) return null;
+  if (!('total' in count) || typeof count.total !== 'number') return null;
+  return count.total;
 }
 
 function buildAuthHeaders(): Record<string, string> {
@@ -38,31 +60,33 @@ function groupByType(deletions: readonly IDeletionEntry[]): Map<number, Record<s
 /** Типы предметов, удаление которых разрешено. Спецпредметы (вёники) защищены. */
 const DELETABLE_TYPES = new Set([ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE]);
 
-export interface IDeleteInventoryOptions {
-  /**
-   * Снимок GUID избранных точек на момент вызова — финальный guard перед DELETE.
-   * Даже если ключ прошёл фильтрацию в calculateDeletions, перед отправкой
-   * запроса мы ещё раз проверяем, что его pointGuid нет в этом наборе.
-   */
-  favoritedGuids: ReadonlySet<string>;
-  /**
-   * true, если модуль favoritedPoints включён И готов. Передаётся вызывающим кодом
-   * (inventoryCleanup, slowRefsDelete) через isModuleActive('favoritedPoints').
-   * Если false и в батче есть ключи — бросается ошибка, удаление не происходит.
-   */
-  favoritedPointsActive: boolean;
-}
-
 export async function deleteInventoryItems(
   deletions: readonly IDeletionEntry[],
-  options: IDeleteInventoryOptions,
 ): Promise<IDeleteResult> {
-  // Финальный guard: ключи могут удаляться ТОЛЬКО если модуль favoritedPoints
-  // активен (включён + готов). Проверяем непосредственно перед DELETE, чтобы
-  // ни один баг в цепочке выше не мог обойти эту защиту.
   const hasReferences = deletions.some((entry) => entry.type === ITEM_TYPE_REFERENCE);
-  if (hasReferences && !options.favoritedPointsActive) {
-    throw new Error('Удаление ключей запрещено: модуль favoritedPoints не активен (guard)');
+
+  // Финальный guard для lock-флагов: перечитываем СВЕЖИЙ inventory-cache (он
+  // мог обновиться между расчётом deletions и этим вызовом — пользователь
+  // нажал замок прямо во время cleanup'а, или сервер вернул новые `f` в
+  // ответе на discover). Если точка теперь locked — удаление её ключей
+  // блокируется.
+  const freshCache = hasReferences ? readInventoryCache() : [];
+  const freshLockedPointGuids = hasReferences
+    ? buildLockedPointGuids(freshCache)
+    : new Set<string>();
+  // Удаление ключей разрешено только если ВСЕ реф-стопки в свежем кэше имеют
+  // поле `f`. Раньше проверялось `some` (хотя бы одна), но при mix-кэше (часть
+  // стопок с `f`, часть без) стопки без `f` не попадают в `lockedPointGuids`
+  // (там `if (item.f === undefined) continue`) и могли быть удалены, даже если
+  // их точка по логике должна быть защищена. На 0.6.1+ сервер всегда отдаёт `f`
+  // для всех refs, mix маловероятен, но `every` исключает класс ошибки целиком,
+  // не полагаясь на неявные предположения о поведении сервера.
+  const refStacks = freshCache.filter(isInventoryReference);
+  const lockSupportAvailable =
+    refStacks.length > 0 && refStacks.every((item) => item.f !== undefined);
+
+  if (hasReferences && !lockSupportAvailable) {
+    throw new Error('Удаление ключей запрещено: нативный lock недоступен (guard)');
   }
 
   for (const entry of deletions) {
@@ -71,11 +95,11 @@ export async function deleteInventoryItems(
     }
     if (entry.type === ITEM_TYPE_REFERENCE) {
       if (entry.pointGuid === undefined) {
-        throw new Error(`Ключ ${entry.guid} без pointGuid не может быть удалён (guard избранных)`);
+        throw new Error(`Ключ ${entry.guid} без pointGuid не может быть удалён (guard lock)`);
       }
-      if (options.favoritedGuids.has(entry.pointGuid)) {
+      if (freshLockedPointGuids.has(entry.pointGuid)) {
         throw new Error(
-          `Ключ от избранной точки ${entry.pointGuid} не может быть удалён (guard избранных)`,
+          `Ключ от заблокированной точки ${entry.pointGuid} не может быть удалён (guard lock)`,
         );
       }
     }
@@ -95,22 +119,24 @@ export async function deleteInventoryItems(
       throw new Error(`HTTP ${response.status}`);
     }
 
-    let parsed: IApiResponse;
+    let parsed: unknown;
     try {
-      parsed = (await response.json()) as IApiResponse;
+      parsed = await response.json();
     } catch {
       throw new Error('Invalid response from server');
     }
 
-    if (parsed.error) {
-      throw new Error(parsed.error);
+    const errorMessage = readApiError(parsed);
+    if (errorMessage !== null) {
+      throw new Error(errorMessage);
     }
 
-    if (!parsed.count || typeof parsed.count.total !== 'number') {
+    const total = readApiCountTotal(parsed);
+    if (total === null) {
       throw new Error('Response missing inventory count');
     }
 
-    lastTotal = parsed.count.total;
+    lastTotal = total;
   }
 
   return { total: lastTotal };
@@ -129,7 +155,7 @@ export function updateDomInventoryCount(total: number): void {
  * После удаления ключей нужно пересчитать #i-ref по актуальному inventory-cache.
  */
 export function updatePointRefCount(): void {
-  const infoPopup = document.querySelector<HTMLElement>('.info.popup');
+  const infoPopup = document.querySelector<HTMLElement>(POINT_POPUP_SELECTOR);
   if (!infoPopup || infoPopup.classList.contains('hidden')) return;
 
   const pointGuid = infoPopup.dataset.guid;
@@ -150,15 +176,8 @@ export function updatePointRefCount(): void {
     return;
   }
 
-  const ref = cache.find(
-    (item) =>
-      typeof item === 'object' &&
-      item !== null &&
-      (item as Record<string, unknown>).t === ITEM_TYPE_REFERENCE &&
-      (item as Record<string, unknown>).l === pointGuid,
-  ) as { a: number } | undefined;
-
-  const count = ref?.a ?? 0;
+  const ref = cache.find((item) => isInventoryReference(item) && item.l === pointGuid);
+  const count = isInventoryReference(ref) ? ref.a : 0;
 
   // Формат #i-ref: "КЛЮЧ N/100" (ru) или "REF N/100" (en) — число перед "/" всегда
   // совпадает с количеством. Заменяем через regex, чтобы не зависеть от i18next.
@@ -179,7 +198,7 @@ export function updateInventoryCache(deletions: readonly IDeletionEntry[]): void
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = JSON.parse(raw);
   } catch {
     console.warn('[SVP inventoryCleanup] inventory-cache содержит невалидный JSON');
     return;
@@ -189,17 +208,20 @@ export function updateInventoryCache(deletions: readonly IDeletionEntry[]): void
     console.warn('[SVP inventoryCleanup] inventory-cache не является массивом');
     return;
   }
-  // as — после Array.isArray; TS сужает до unknown[], но не до конкретного типа
-  // элемента. Структура элементов (g, a) проверяется неявно: find по g, мутация a.
-  let cache = parsed as { g: string; a: number; [key: string]: unknown }[];
+
+  // Фильтруем валидные предметы через тайпгард - даёт типизированный массив
+  // без cast'а. Потенциально не-IInventoryItem записи (которых в реальном
+  // кэше игры быть не должно) дропаются здесь же; прежняя реализация дропала
+  // их позже, через item.a > 0 на undefined - результат тот же, путь чище.
+  const items = parsed.filter(isInventoryItem);
 
   for (const entry of deletions) {
-    const cached = cache.find((item) => item.g === entry.guid);
+    const cached = items.find((item) => item.g === entry.guid);
     if (cached) {
       cached.a -= entry.amount;
     }
   }
 
-  cache = cache.filter((item) => item.a > 0);
-  localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(cache));
+  const remaining = items.filter((item) => item.a > 0);
+  localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(remaining));
 }

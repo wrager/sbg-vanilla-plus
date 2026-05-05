@@ -35,18 +35,41 @@ export interface IOlFeature {
   getId(): string | number | undefined;
   setId(id: string): void;
   setStyle(style: unknown): void;
+  // Возвращает текущий стиль фичи. На момент создания фичи может быть null,
+  // далее - то, что передавалось в setStyle (одиночный Style, массив или
+  // function). Тип unknown - стиль это структура из ol.style.* без устойчивого
+  // публичного TS-интерфейса в этом проекте.
+  getStyle?(): unknown;
   get?(key: string): unknown;
   set?(key: string, value: unknown): void;
   getProperties?(): Record<string, unknown>;
+  // Методы EventTarget OL (унаследованы от ol.events.Target). Любая фича их
+  // имеет; объявлены опциональными на случай моков в тестах, где их нет.
+  on?(type: string, listener: () => void): void;
+  un?(type: string, listener: () => void): void;
+  // Уведомляет OL renderer-cache об инвалидации feature: следующий render
+  // пересчитает execution plan и применит свежие style/renderer. Без явного
+  // вызова мутации, не идущие через setStyle (например, style.setRenderer
+  // in-place), не попадают в plan до внешнего trigger'а (move, zoom).
+  changed?(): void;
 }
 
 export interface IOlVectorSource {
   getFeatures(): IOlFeature[];
   addFeature(feature: IOlFeature): void;
   removeFeature?(feature: IOlFeature): void;
+  // Поиск feature по идентификатору; в OL API стандартный метод VectorSource.
+  // Используется при адресном обновлении state одной точки (после discover,
+  // showInfo и т. п.) - O(1) против O(n) перебора getFeatures().
+  getFeatureById?(id: string | number): IOlFeature | null;
   clear(): void;
-  on(type: string, listener: () => void): void;
-  un(type: string, listener: () => void): void;
+  // Сигнатура обработчика - `(...args: unknown[]) => void`, чтобы принимать
+  // как listener'ы без параметров (`change`-event), так и с event-объектом
+  // (`addfeature` передаёт `{type, feature}`). Контравариантность по
+  // параметрам: обработчик с `unknown[]` совместим с любой более узкой
+  // подписью без cast'а на стороне вызывающего.
+  on(type: string, listener: (...args: unknown[]) => void): void;
+  un(type: string, listener: (...args: unknown[]) => void): void;
 }
 
 export interface IOlTileSource {
@@ -84,6 +107,8 @@ export interface IOlMap {
   getInteractions(): { getArray(): IOlInteraction[] };
   addLayer(layer: IOlLayer): void;
   removeLayer(layer: IOlLayer): void;
+  addInteraction?(interaction: IOlInteraction): void;
+  removeInteraction?(interaction: IOlInteraction): void;
   updateSize(): void;
   getPixelFromCoordinate?(coordinate: number[]): number[];
   getCoordinateFromPixel?(pixel: number[]): number[];
@@ -119,12 +144,19 @@ interface IOlGlobal {
   geom?: {
     Point?: new (coords: number[]) => { getCoordinates(): number[] };
     LineString?: new (coords: number[][]) => { getCoordinates(): number[][] };
+    Polygon?: new (coords: number[][][]) => { getCoordinates(): number[][][] };
   };
   sphere?: { getLength(geometry: unknown): number };
-  proj?: { fromLonLat?(coordinate: number[]): number[] };
+  proj?: {
+    fromLonLat?(coordinate: number[]): number[];
+    toLonLat?(coordinate: number[]): number[];
+  };
   interaction?: {
     DoubleClickZoom?: new () => IOlInteraction;
     DragPan?: new () => IOlInteraction;
+    Draw?: new (opts: Record<string, unknown>) => IOlInteraction;
+    Modify?: new (opts: Record<string, unknown>) => IOlInteraction;
+    Snap?: new (opts: Record<string, unknown>) => IOlInteraction;
   };
 }
 

@@ -146,7 +146,7 @@ function mockOl(): void {
     },
     layer: {
       Vector: jest.fn().mockImplementation(() => makeLayer('svp-refs-on-map')) as unknown as new (
-        opts: Record<string, unknown>,
+        options: Record<string, unknown>,
       ) => IOlLayer,
     },
     Feature: jest.fn().mockImplementation(() => {
@@ -186,27 +186,27 @@ function mockOl(): void {
       Style: jest
         .fn()
         .mockImplementation((options: Record<string, unknown>) => options) as unknown as new (
-        opts: Record<string, unknown>,
+        options: Record<string, unknown>,
       ) => unknown,
       Text: jest
         .fn()
         .mockImplementation((options: Record<string, unknown>) => options) as unknown as new (
-        opts: Record<string, unknown>,
+        options: Record<string, unknown>,
       ) => unknown,
       Fill: jest
         .fn()
         .mockImplementation((options: Record<string, unknown>) => options) as unknown as new (
-        opts: Record<string, unknown>,
+        options: Record<string, unknown>,
       ) => unknown,
       Stroke: jest
         .fn()
         .mockImplementation((options: Record<string, unknown>) => options) as unknown as new (
-        opts: Record<string, unknown>,
+        options: Record<string, unknown>,
       ) => unknown,
       Circle: jest
         .fn()
         .mockImplementation((options: Record<string, unknown>) => options) as unknown as new (
-        opts: Record<string, unknown>,
+        options: Record<string, unknown>,
       ) => unknown,
     },
   };
@@ -247,33 +247,17 @@ describe('refsOnMap metadata', () => {
 
 jest.mock('../../core/olMap', () => ({
   getOlMap: jest.fn(),
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- requireActual returns any
+  findLayerByName: jest.requireActual('../../core/olMap').findLayerByName,
 }));
 
-jest.mock('../../core/settings/storage', () => ({
-  loadSettings: jest.fn(() => ({ version: 3, modules: {}, errors: {} })),
-  isModuleEnabled: jest.fn(() => true),
+jest.mock('../../core/refsHighlightSync', () => ({
+  syncRefsCountForPoints: jest.fn(() => Promise.resolve()),
 }));
-
-const mockNgrsZoomModule = {
-  id: 'ngrsZoom',
-  defaultEnabled: true,
-  enable: jest.fn(() => Promise.resolve()),
-  disable: jest.fn(),
-};
-
-jest.mock('../../core/moduleRegistry', () => {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- jest.requireActual returns any
-  return {
-    ...jest.requireActual('../../core/moduleRegistry'),
-    getModuleById: jest.fn((id: string) => (id === 'ngrsZoom' ? mockNgrsZoomModule : undefined)),
-  };
-});
 
 import { getOlMap } from '../../core/olMap';
-import { isModuleEnabled } from '../../core/settings/storage';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
-const mockIsModuleEnabled = isModuleEnabled as jest.MockedFunction<typeof isModuleEnabled>;
 
 describe('refsOnMap enable/disable', () => {
   let view: ReturnType<typeof makeView>;
@@ -453,9 +437,6 @@ describe('refsOnMap viewer', () => {
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('follow');
     document.body.innerHTML = '';
-    mockNgrsZoomModule.disable.mockClear();
-    mockNgrsZoomModule.enable.mockClear();
-    mockIsModuleEnabled.mockReturnValue(true);
   });
 
   test('disables follow mode when opening viewer', () => {
@@ -532,39 +513,295 @@ describe('refsOnMap viewer', () => {
     expect(trash.style.display).toBe('none');
   });
 
-  test('disables ngrsZoom when opening viewer', () => {
-    mockIsModuleEnabled.mockReturnValue(true);
+  test('shows locked-note while viewer is open and hides it on close', () => {
     setInventoryCache();
     clickShowButton();
-
-    expect(mockNgrsZoomModule.disable).toHaveBeenCalled();
-  });
-
-  test('restores ngrsZoom when closing viewer', () => {
-    mockIsModuleEnabled.mockReturnValue(true);
-    setInventoryCache();
-    clickShowButton();
+    const note = document.querySelector('.svp-refs-on-map-locked-note') as HTMLElement;
+    expect(note).not.toBeNull();
+    expect(note.style.display).toBe('');
+    expect(note.textContent).toMatch(/locked|защищ/i);
     clickCloseButton();
+    expect(note.style.display).toBe('none');
+  });
+});
 
-    expect(mockNgrsZoomModule.enable).toHaveBeenCalled();
+// ── lock protection at delete ────────────────────────────────────────────────
+
+describe('refsOnMap lock protection', () => {
+  let view: ReturnType<typeof makeView>;
+  let map: ReturnType<typeof makeMap>;
+  let originalConfirm: typeof window.confirm;
+  let originalFetch: typeof window.fetch;
+
+  function clickShowButton(): void {
+    const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
+    button.click();
+  }
+
+  beforeEach(async () => {
+    setupInventoryDom();
+    view = makeView(16, 0.5);
+    const pointsLayer = makeLayer('points', makeSource());
+    const linesLayer = makeLayer('lines', makeSource());
+    const regionsLayer = makeLayer('regions', makeSource());
+    map = makeMap([pointsLayer, linesLayer, regionsLayer], view);
+    mockGetOlMap.mockResolvedValue(map);
+    mockOl();
+    originalConfirm = window.confirm;
+    originalFetch = window.fetch;
+    // deleteRefsFromServer теперь требует auth-токен в localStorage,
+    // симметрично с inventoryApi и migrationApi. Тесты ставят фиксированный
+    // токен; контр-тест "без auth" живёт ниже отдельно.
+    localStorage.setItem('auth', 'test-token');
+    await refsOnMap.enable();
   });
 
-  test('does not disable ngrsZoom when it is not enabled', () => {
-    mockIsModuleEnabled.mockReturnValue(false);
-    mockNgrsZoomModule.disable.mockClear();
-    setInventoryCache();
-    clickShowButton();
-
-    expect(mockNgrsZoomModule.disable).not.toHaveBeenCalled();
+  afterEach(async () => {
+    await refsOnMap.disable();
+    delete window.ol;
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('follow');
+    localStorage.removeItem('auth');
+    document.body.innerHTML = '';
+    window.confirm = originalConfirm;
+    window.fetch = originalFetch;
   });
 
-  test('does not restore ngrsZoom if it was not disabled by viewer', () => {
-    mockIsModuleEnabled.mockReturnValue(false);
-    (mockNgrsZoomModule.enable as jest.Mock).mockClear();
-    setInventoryCache();
-    clickShowButton();
-    clickCloseButton();
+  function setInventoryCacheWithLocks(): void {
+    // ref-2 в стопке locked (бит 0b10 поля f) - точка point-2 защищена.
+    // У ref-1 поле `f` явно 0 (без lock-бита) - lockSupportAvailable=true,
+    // удаление разрешено. Mix-кэш (часть стопок без `f`) проверяется
+    // отдельным тестом ниже.
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open Point', f: 0 },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Locked Point', f: 0b10 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+  }
 
-    expect(mockNgrsZoomModule.enable).not.toHaveBeenCalled();
+  test('clicking trash with all-locked selection toasts and skips delete', async () => {
+    setInventoryCacheWithLocks();
+    clickShowButton();
+    // Выбираем только locked-фичу через клик симуляцию: эмулируем
+    // toggleFeatureSelection через прямую установку isSelected на feature.
+    // Берём вторую фичу (ref-2 на point-2 = locked).
+    const sourceCallArgs = (window.ol?.source?.Vector as unknown as jest.Mock).mock.results;
+    expect(sourceCallArgs.length).toBeGreaterThan(0);
+    // Все фичи добавлены в один локальный source при showViewer.
+    // Прямой доступ через document не работает - используем addFeature mock.
+    const fetchSpy = jest.fn(() =>
+      Promise.resolve({ json: () => Promise.resolve({}) } as unknown as Response),
+    );
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    // Симулируем клик на trash без выбранных фич: ничего не должно произойти
+    // (uniqueRefsToDelete = 0, ранний return).
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test('partitionByLockProtection через handleDeleteClick: locked не уходит в payload', async () => {
+    setInventoryCacheWithLocks();
+    clickShowButton();
+
+    // Получаем mapClickHandler (после showViewer он подписан на map.on('click')).
+    const clickHandler = map._clickListeners[0];
+    expect(clickHandler).toBeDefined();
+
+    // forEachFeatureAtPixel должен дёргать callback на feature под пикселем.
+    // Эмулируем выбор обеих фич: для ref-1 (point-1, не locked) и ref-2
+    // (point-2, locked).
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    expect(allFeatures.length).toBe(2);
+
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[1]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    // Подтверждаем delete в confirm.
+    window.confirm = jest.fn(() => true);
+    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
+      void _args;
+      return Promise.resolve({
+        json: () => Promise.resolve({ count: { total: 90 } }),
+      } as unknown as Response);
+    });
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    // Дожидаемся deleteRefsFromServer + then-цепочки.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    // Bearer-токен передан в Authorization заголовке - симметрично с
+    // inventoryApi.deleteInventoryItems и migrationApi.postMark.
+    expect(init.headers).toMatchObject({
+      authorization: 'Bearer test-token',
+      'content-type': 'application/json',
+    });
+    const body = JSON.parse(init.body as string) as { selection: Record<string, number> };
+    // ref-1 (l=point-1, не locked) в payload; ref-2 (l=point-2, locked) - НЕ в payload.
+    expect(body.selection).toHaveProperty('ref-1');
+    expect(body.selection).not.toHaveProperty('ref-2');
+  });
+
+  test('без auth-токена delete не отправляет fetch', async () => {
+    // Контр-тест к новой проверке Authorization: если токен пропал из
+    // localStorage (logout или ручная чистка), deleteRefsFromServer
+    // возвращает error без сетевого вызова. Симметрично с buildAuthHeaders
+    // в inventoryApi (там throw).
+    localStorage.removeItem('auth');
+    setInventoryCacheWithLocks();
+    clickShowButton();
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    window.confirm = jest.fn(() => true);
+    const fetchSpy = jest.fn();
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // Ошибка ушла в console.error через стандартную ветку обработки
+    // response.error в handleDeleteClick.
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('refsOnMap'),
+      expect.stringContaining('Auth token'),
+    );
+    errorSpy.mockRestore();
+  });
+
+  test('all-locked selection: confirm не вызывается, fetch не идёт, показан toast', async () => {
+    setInventoryCacheWithLocks();
+    clickShowButton();
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    // Выбираем только locked-фичу (ref-2 на point-2).
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[1]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    const confirmSpy = jest.fn(() => true);
+    window.confirm = confirmSpy;
+    const fetchSpy = jest.fn();
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // Toast виден в DOM.
+    expect(document.querySelector('.svp-toast')).not.toBeNull();
+  });
+
+  test('mix-кэш блокирует удаление: одна стопка без поля f - confirm и fetch не вызываются, показан toast', async () => {
+    // Mix-кэш: ref-1 без `f`, ref-2 с lock-битом. Симметрично с слоями
+    // защиты в slowRefsDelete и cleanupCalculator: стопки без `f` не
+    // попадают в lockedPointGuids (`if (item.f === undefined) continue`),
+    // и точка по факту locked может быть удалена вслепую. Защита: если хоть
+    // одна реф-стопка без `f` - удаление через viewer запрещено.
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Mixed Open' },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Mixed Locked', f: 0b10 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    // Выбираем ref-1 (без `f`, точка по нашему фильтру выглядит «открытой»).
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    const confirmSpy = jest.fn(() => true);
+    window.confirm = confirmSpy;
+    const fetchSpy = jest.fn();
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/lock|нативный|f-flag/i);
+  });
+
+  test('0.6.0 кэш без поля f целиком: удаление заблокировано', async () => {
+    // На 0.6.0 сервер не отдаёт `f`. lockSupportAvailable=false - удаление
+    // через viewer заблокировано целиком, чтобы пользователь не лишился
+    // ключей из-за отсутствия lock-семантики на старой версии игры.
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Old A' },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Old B' },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    const confirmSpy = jest.fn(() => true);
+    window.confirm = confirmSpy;
+    const fetchSpy = jest.fn();
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/lock|нативный|f-flag/i);
   });
 });

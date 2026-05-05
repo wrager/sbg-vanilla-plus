@@ -12,10 +12,10 @@
   z-index: 10002;
   opacity: 1;
   transition: opacity 0.3s ease;
-  pointer-events: none;
   max-width: 90vw;
   text-align: center;
   box-sizing: border-box;
+  cursor: pointer;
 }
 
 .svp-toast-hide {

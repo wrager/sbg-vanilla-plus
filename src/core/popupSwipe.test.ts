@@ -1,0 +1,719 @@
+import {
+  ANIMATION_DURATION,
+  ANIMATION_SAFETY_MARGIN,
+  DIRECTION_THRESHOLD,
+  DISMISS_THRESHOLD,
+  OPACITY_DISTANCE,
+  VELOCITY_THRESHOLD,
+  dispatchMultiTouchMoveForTest,
+  dispatchMultiTouchStartForTest,
+  dispatchTouchCancelForTest,
+  dispatchTouchEndForTest,
+  dispatchTouchMoveForTest,
+  dispatchTouchStartForTest,
+  getStateForTest,
+  installPopupSwipe,
+  registerDirection,
+  resetForTest,
+  setPopupForTest,
+  setStateForTest,
+  uninstallPopupSwipe,
+  type ISwipeDirectionHandler,
+  type SwipeDirection,
+} from './popupSwipe';
+
+function makePopup(extraClasses = ''): HTMLElement {
+  const element = document.createElement('div');
+  element.className = `info popup ${extraClasses}`.trim();
+  element.dataset.guid = 'point-a';
+  document.body.appendChild(element);
+  return element;
+}
+
+interface IHandlerSpy {
+  handler: ISwipeDirectionHandler;
+  decideSpy: jest.Mock;
+  finalizeSpy: jest.Mock;
+  canStartSpy: jest.Mock | null;
+}
+
+function makeHandler(
+  decideOutcome: 'dismiss' | 'return' = 'dismiss',
+  canStart: ((event: TouchEvent) => boolean) | null = null,
+): IHandlerSpy {
+  const decideSpy: jest.Mock = jest.fn(() => decideOutcome);
+  const finalizeSpy: jest.Mock = jest.fn();
+  const canStartSpy: jest.Mock | null = canStart ? jest.fn(canStart) : null;
+  return {
+    handler: {
+      decide: decideSpy as () => 'dismiss' | 'return',
+      finalize: finalizeSpy as () => void,
+      ...(canStartSpy ? { canStart: canStartSpy as (event: TouchEvent) => boolean } : {}),
+    },
+    decideSpy,
+    finalizeSpy,
+    canStartSpy,
+  };
+}
+
+beforeEach(() => {
+  document.body.innerHTML = '';
+  resetForTest();
+  jest.useFakeTimers();
+});
+
+afterEach(() => {
+  jest.useRealTimers();
+  resetForTest();
+});
+
+describe('registerDirection', () => {
+  test('возвращает unregister, повторный register того же direction после unregister работает', () => {
+    const popup = makePopup();
+    setPopupForTest(popup);
+
+    const a = makeHandler();
+    const unregister = registerDirection('up', a.handler);
+    unregister();
+
+    const b = makeHandler();
+    expect(() => registerDirection('up', b.handler)).not.toThrow();
+  });
+
+  test('двойная регистрация одного direction без unregister бросает', () => {
+    const a = makeHandler();
+    const b = makeHandler();
+    registerDirection('up', a.handler);
+    expect(() => registerDirection('up', b.handler)).toThrow(/уже зарегистрирован/);
+  });
+});
+
+describe('idle -> tracking', () => {
+  test('1 touch + один зарегистрированный direction: переход в tracking', () => {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    const up = makeHandler();
+    registerDirection('up', up.handler);
+
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+
+    expect(getStateForTest().state).toBe('tracking');
+  });
+
+  test('multi-touch: state остаётся idle', () => {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    registerDirection('up', makeHandler().handler);
+
+    dispatchMultiTouchStartForTest(0);
+
+    expect(getStateForTest().state).toBe('idle');
+  });
+
+  test('нет зарегистрированных handler: state остаётся idle', () => {
+    const popup = makePopup();
+    setPopupForTest(popup);
+
+    dispatchTouchStartForTest({ clientX: 0, clientY: 0, target: popup }, 0);
+
+    expect(getStateForTest().state).toBe('idle');
+  });
+
+  test('все canStart возвращают false: state остаётся idle', () => {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    const up = makeHandler('dismiss', () => false);
+    registerDirection('up', up.handler);
+
+    dispatchTouchStartForTest({ clientX: 0, clientY: 0, target: popup }, 0);
+
+    expect(getStateForTest().state).toBe('idle');
+  });
+
+  test('хотя бы один canStart=true принимает touch', () => {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    registerDirection('up', makeHandler('dismiss', () => false).handler);
+    registerDirection('left', makeHandler('dismiss', () => true).handler);
+
+    dispatchTouchStartForTest({ clientX: 0, clientY: 0, target: popup }, 0);
+
+    expect(getStateForTest().state).toBe('tracking');
+  });
+});
+
+describe('tracking -> swiping', () => {
+  test('delta пересекла DIRECTION_THRESHOLD в зарегистрированном направлении: swiping', () => {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    registerDirection('up', makeHandler().handler);
+
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DIRECTION_THRESHOLD - 1, target: popup },
+      50,
+    );
+
+    expect(getStateForTest().state).toBe('swiping');
+    expect(getStateForTest().activeDirection).toBe('up');
+  });
+
+  test('движение в незарегистрированном направлении: idle', () => {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    registerDirection('up', makeHandler().handler);
+
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    // Тащим вниз - direction='down' не зарегистрирован.
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 + DIRECTION_THRESHOLD + 1, target: popup },
+      50,
+    );
+
+    expect(getStateForTest().state).toBe('idle');
+  });
+
+  test('canStart handler-а возвращает false для этого touchmove: idle', () => {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    // canStart=true для touchstart, но false для touchmove (target поменялся).
+    let canStartCallCount = 0;
+    const up = makeHandler('dismiss', () => {
+      canStartCallCount++;
+      return canStartCallCount === 1;
+    });
+    registerDirection('up', up.handler);
+
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    expect(getStateForTest().state).toBe('tracking');
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DIRECTION_THRESHOLD - 1, target: popup },
+      50,
+    );
+
+    expect(getStateForTest().state).toBe('idle');
+  });
+
+  test('cancelable=true в swiping: preventDefault вызван', () => {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    registerDirection('up', makeHandler().handler);
+
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    const preventDefault = jest.fn();
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DIRECTION_THRESHOLD - 1, target: popup },
+      50,
+      { cancelable: true, preventDefault },
+    );
+
+    expect(preventDefault).toHaveBeenCalled();
+  });
+
+  test('cancelable=false в swiping: preventDefault НЕ вызван (избегаем [Intervention] спама)', () => {
+    // Браузер делает touchmove non-cancelable когда уже начал обрабатывать
+    // touch как скролл (типичный сценарий: свайп вверх в попапе с прокручиваемым
+    // контентом - браузер скроллит и спамит [Intervention] на каждый
+    // preventDefault от нас).
+    const popup = makePopup();
+    setPopupForTest(popup);
+    registerDirection('up', makeHandler().handler);
+
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    const preventDefault = jest.fn();
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DIRECTION_THRESHOLD - 1, target: popup },
+      50,
+      { cancelable: false, preventDefault },
+    );
+
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+});
+
+describe('swiping: applySwipeStyles', () => {
+  function setupSwiping(direction: SwipeDirection): {
+    popup: HTMLElement;
+    setSpy: jest.SpyInstance;
+  } {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    // jsdom не поддерживает чтение style.translate / getPropertyValue('translate')
+    // даже после style.setProperty('translate', ...) - проверяем через spy
+    // на сам setProperty, как в swipeToClosePopup.test.
+    const setSpy = jest.spyOn(popup.style, 'setProperty');
+    registerDirection(direction, makeHandler().handler);
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    return { popup, setSpy };
+  }
+
+  test('up: translate-Y отрицательный, opacity падает', () => {
+    const { popup, setSpy } = setupSwiping('up');
+    dispatchTouchMoveForTest({ clientX: 100, clientY: 200 - 50, target: popup }, 50);
+    expect(setSpy).toHaveBeenCalledWith('translate', '0 -50px');
+    expect(parseFloat(popup.style.opacity)).toBeCloseTo(1 - 50 / OPACITY_DISTANCE);
+  });
+
+  test('down: translate-Y положительный', () => {
+    const { popup, setSpy } = setupSwiping('down');
+    dispatchTouchMoveForTest({ clientX: 100, clientY: 200 + 50, target: popup }, 50);
+    expect(setSpy).toHaveBeenCalledWith('translate', '0 50px');
+  });
+
+  test('left: translate-X отрицательный', () => {
+    const { popup, setSpy } = setupSwiping('left');
+    dispatchTouchMoveForTest({ clientX: 100 - 60, clientY: 200, target: popup }, 50);
+    expect(setSpy).toHaveBeenCalledWith('translate', '-60px 0');
+  });
+
+  test('right: translate-X положительный', () => {
+    const { popup, setSpy } = setupSwiping('right');
+    dispatchTouchMoveForTest({ clientX: 100 + 60, clientY: 200, target: popup }, 50);
+    expect(setSpy).toHaveBeenCalledWith('translate', '60px 0');
+  });
+});
+
+describe('swiping -> animating', () => {
+  function setupSwiping(direction: SwipeDirection, handler: IHandlerSpy): HTMLElement {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    registerDirection(direction, handler.handler);
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    return popup;
+  }
+
+  test('delta >= DISMISS_THRESHOLD + decide=dismiss: animating, finalize вызывается после transitionend', () => {
+    const up = makeHandler('dismiss');
+    const popup = setupSwiping('up', up);
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DISMISS_THRESHOLD - 1, target: popup },
+      50,
+    );
+    dispatchTouchEndForTest(100);
+
+    expect(up.decideSpy).toHaveBeenCalledTimes(1);
+    expect(getStateForTest().state).toBe('animating');
+    expect(up.finalizeSpy).not.toHaveBeenCalled();
+
+    // Эмулируем transitionend.
+    popup.dispatchEvent(new Event('transitionend'));
+    expect(up.finalizeSpy).toHaveBeenCalledTimes(1);
+    expect(getStateForTest().state).toBe('idle');
+  });
+
+  test('delta >= DISMISS_THRESHOLD + decide=return: animating, finalize НЕ вызывается', () => {
+    const up = makeHandler('return');
+    const popup = setupSwiping('up', up);
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DISMISS_THRESHOLD - 1, target: popup },
+      50,
+    );
+    dispatchTouchEndForTest(100);
+
+    expect(up.decideSpy).toHaveBeenCalledTimes(1);
+    expect(getStateForTest().state).toBe('animating');
+
+    popup.dispatchEvent(new Event('transitionend'));
+    expect(up.finalizeSpy).not.toHaveBeenCalled();
+    expect(getStateForTest().state).toBe('idle');
+  });
+
+  test('delta < threshold + velocity мала: animateReturn, decide НЕ вызывается', () => {
+    const up = makeHandler('dismiss');
+    const popup = setupSwiping('up', up);
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DIRECTION_THRESHOLD - 5, target: popup },
+      // Большой elapsed -> velocity мала.
+      1000,
+    );
+    dispatchTouchEndForTest(2000);
+
+    expect(up.decideSpy).not.toHaveBeenCalled();
+    expect(getStateForTest().state).toBe('animating');
+
+    popup.dispatchEvent(new Event('transitionend'));
+    expect(up.finalizeSpy).not.toHaveBeenCalled();
+    expect(getStateForTest().state).toBe('idle');
+  });
+
+  test('velocity > VELOCITY_THRESHOLD при малой delta: dismiss', () => {
+    const up = makeHandler('dismiss');
+    const popup = setupSwiping('up', up);
+    // delta=20px (< DISMISS_THRESHOLD=100), но за 10мс -> velocity=2 (>0.5).
+    dispatchTouchMoveForTest({ clientX: 100, clientY: 180, target: popup }, 5);
+    dispatchTouchEndForTest(10);
+
+    expect(getStateForTest().state).toBe('animating');
+    const elapsed = 10 - 0;
+    const velocity = 20 / elapsed;
+    expect(velocity).toBeGreaterThan(VELOCITY_THRESHOLD);
+    expect(up.decideSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('safety timer добивает animation, если transitionend не пришёл', () => {
+    const up = makeHandler('dismiss');
+    const popup = setupSwiping('up', up);
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DISMISS_THRESHOLD - 1, target: popup },
+      50,
+    );
+    dispatchTouchEndForTest(100);
+
+    jest.advanceTimersByTime(ANIMATION_DURATION + ANIMATION_SAFETY_MARGIN + 10);
+
+    expect(up.finalizeSpy).toHaveBeenCalledTimes(1);
+    expect(getStateForTest().state).toBe('idle');
+  });
+});
+
+describe('per-handler animationDurationMs', () => {
+  function setupSwiping(direction: SwipeDirection, handler: ISwipeDirectionHandler): HTMLElement {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    registerDirection(direction, handler);
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    return popup;
+  }
+
+  test('animateDismiss с handler.animationDurationMs ставит inline transition-duration', () => {
+    const handler: ISwipeDirectionHandler = {
+      decide: () => 'dismiss',
+      finalize: jest.fn(),
+      animationDurationMs: 150,
+    };
+    const popup = setupSwiping('up', handler);
+    const setSpy = jest.spyOn(popup.style, 'setProperty');
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DISMISS_THRESHOLD - 1, target: popup },
+      50,
+    );
+    dispatchTouchEndForTest(100);
+
+    expect(setSpy).toHaveBeenCalledWith('transition-duration', '150ms');
+  });
+
+  test('animateReturn с handler.animationDurationMs ставит inline transition-duration', () => {
+    const handler: ISwipeDirectionHandler = {
+      decide: () => 'return',
+      finalize: jest.fn(),
+      animationDurationMs: 150,
+    };
+    const popup = setupSwiping('up', handler);
+    const setSpy = jest.spyOn(popup.style, 'setProperty');
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DISMISS_THRESHOLD - 1, target: popup },
+      50,
+    );
+    dispatchTouchEndForTest(100);
+
+    expect(setSpy).toHaveBeenCalledWith('transition-duration', '150ms');
+  });
+
+  test('animateReturn без декларации в handler использует дефолт ANIMATION_DURATION', () => {
+    const handler: ISwipeDirectionHandler = {
+      decide: () => 'return',
+      finalize: jest.fn(),
+    };
+    const popup = setupSwiping('up', handler);
+    const setSpy = jest.spyOn(popup.style, 'setProperty');
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DISMISS_THRESHOLD - 1, target: popup },
+      50,
+    );
+    dispatchTouchEndForTest(100);
+
+    expect(setSpy).toHaveBeenCalledWith('transition-duration', `${String(ANIMATION_DURATION)}ms`);
+  });
+
+  test('safety timer длится duration + safety margin (короткая анимация заканчивается раньше)', () => {
+    const finalize = jest.fn();
+    const handler: ISwipeDirectionHandler = {
+      decide: () => 'dismiss',
+      finalize,
+      animationDurationMs: 150,
+    };
+    const popup = setupSwiping('up', handler);
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DISMISS_THRESHOLD - 1, target: popup },
+      50,
+    );
+    dispatchTouchEndForTest(100);
+
+    // 150ms + safety margin: после 200ms timer срабатывает.
+    jest.advanceTimersByTime(150 + ANIMATION_SAFETY_MARGIN + 10);
+    expect(finalize).toHaveBeenCalledTimes(1);
+  });
+
+  test('два handler с разными duration: каждый использует свой', () => {
+    const handlerA: ISwipeDirectionHandler = {
+      decide: () => 'dismiss',
+      finalize: jest.fn(),
+      animationDurationMs: 150,
+    };
+    const handlerB: ISwipeDirectionHandler = {
+      decide: () => 'dismiss',
+      finalize: jest.fn(),
+      animationDurationMs: 600,
+    };
+    const popup = makePopup();
+    setPopupForTest(popup);
+    registerDirection('up', handlerA);
+    registerDirection('left', handlerB);
+
+    const setSpy = jest.spyOn(popup.style, 'setProperty');
+
+    // Свайп вверх через handlerA: 150ms.
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    dispatchTouchMoveForTest(
+      { clientX: 100, clientY: 200 - DISMISS_THRESHOLD - 1, target: popup },
+      50,
+    );
+    dispatchTouchEndForTest(100);
+    expect(setSpy).toHaveBeenCalledWith('transition-duration', '150ms');
+    popup.dispatchEvent(new Event('transitionend'));
+
+    setSpy.mockClear();
+
+    // Свайп влево через handlerB: 600ms.
+    dispatchTouchStartForTest({ clientX: 200, clientY: 200, target: popup }, 200);
+    dispatchTouchMoveForTest(
+      { clientX: 200 - DISMISS_THRESHOLD - 1, clientY: 200, target: popup },
+      250,
+    );
+    dispatchTouchEndForTest(300);
+    expect(setSpy).toHaveBeenCalledWith('transition-duration', '600ms');
+  });
+});
+
+describe('multi-touch / cancel посреди swiping', () => {
+  test('multi-touch посреди swiping: state -> idle с reset styles', () => {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    const removeSpy = jest.spyOn(popup.style, 'removeProperty');
+    registerDirection('up', makeHandler().handler);
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    dispatchTouchMoveForTest({ clientX: 100, clientY: 100, target: popup }, 50);
+    expect(getStateForTest().state).toBe('swiping');
+
+    dispatchMultiTouchMoveForTest(60);
+
+    expect(getStateForTest().state).toBe('idle');
+    // resetElementStyles делает removeProperty('translate') и opacity=''.
+    expect(removeSpy).toHaveBeenCalledWith('translate');
+    expect(popup.style.opacity).toBe('');
+  });
+
+  test('touchcancel посреди swiping -> animateReturn', () => {
+    const popup = makePopup();
+    setPopupForTest(popup);
+    const up = makeHandler('dismiss');
+    registerDirection('up', up.handler);
+    dispatchTouchStartForTest({ clientX: 100, clientY: 200, target: popup }, 0);
+    dispatchTouchMoveForTest({ clientX: 100, clientY: 100, target: popup }, 50);
+    expect(getStateForTest().state).toBe('swiping');
+
+    dispatchTouchCancelForTest();
+    expect(getStateForTest().state).toBe('animating');
+
+    popup.dispatchEvent(new Event('transitionend'));
+    expect(up.finalizeSpy).not.toHaveBeenCalled();
+    expect(getStateForTest().state).toBe('idle');
+  });
+});
+
+describe('install / uninstall lifecycle', () => {
+  test('install ставит touch-action: none, uninstall возвращает оригинальное', () => {
+    const popup = makePopup();
+    popup.style.touchAction = 'pan-y';
+
+    installPopupSwipe('.info.popup');
+    expect(popup.style.touchAction).toBe('none');
+
+    uninstallPopupSwipe();
+    expect(popup.style.touchAction).toBe('pan-y');
+  });
+
+  test('два install + один uninstall: listeners остаются (ref-counter)', () => {
+    const popup = makePopup();
+    installPopupSwipe('.info.popup');
+    installPopupSwipe('.info.popup');
+    registerDirection('up', makeHandler().handler);
+
+    // Один uninstall - listener'ы должны остаться (другой модуль ещё пользуется).
+    uninstallPopupSwipe();
+
+    const touchEvent = new Event('touchstart', { bubbles: true }) as unknown as TouchEvent;
+    Object.defineProperty(touchEvent, 'targetTouches', {
+      value: [{ clientX: 100, clientY: 200, target: popup }],
+    });
+    Object.defineProperty(touchEvent, 'timeStamp', { value: 0 });
+    Object.defineProperty(touchEvent, 'preventDefault', { value: () => {} });
+    popup.dispatchEvent(touchEvent);
+
+    expect(getStateForTest().state).toBe('tracking');
+  });
+
+  test('два install + два uninstall: listeners сняты, touch-action восстановлен', () => {
+    const popup = makePopup();
+    popup.style.touchAction = 'pan-y';
+    installPopupSwipe('.info.popup');
+    installPopupSwipe('.info.popup');
+
+    uninstallPopupSwipe();
+    expect(popup.style.touchAction).toBe('none');
+    uninstallPopupSwipe();
+    expect(popup.style.touchAction).toBe('pan-y');
+  });
+
+  test('лишний uninstall (без install) - no-op, не уходит в минус', () => {
+    const popup = makePopup();
+    popup.style.touchAction = 'pan-y';
+
+    uninstallPopupSwipe();
+    uninstallPopupSwipe();
+
+    installPopupSwipe('.info.popup');
+    expect(popup.style.touchAction).toBe('none');
+    uninstallPopupSwipe();
+    expect(popup.style.touchAction).toBe('pan-y');
+  });
+
+  test('install подключает listeners, после uninstall touchstart на popup state не меняет', () => {
+    const popup = makePopup();
+    installPopupSwipe('.info.popup');
+    registerDirection('up', makeHandler().handler);
+
+    const touchEvent = new Event('touchstart', { bubbles: true }) as unknown as TouchEvent;
+    Object.defineProperty(touchEvent, 'targetTouches', {
+      value: [{ clientX: 100, clientY: 200, target: popup }],
+    });
+    Object.defineProperty(touchEvent, 'timeStamp', { value: 0 });
+    Object.defineProperty(touchEvent, 'preventDefault', { value: () => {} });
+    popup.dispatchEvent(touchEvent);
+    expect(getStateForTest().state).toBe('tracking');
+
+    // Сбрасываем state чтобы проверить, что после uninstall listener больше не дёрнется.
+    resetForTest();
+    installPopupSwipe('.info.popup');
+    uninstallPopupSwipe();
+    registerDirection('up', makeHandler().handler);
+
+    const touchEvent2 = new Event('touchstart', { bubbles: true }) as unknown as TouchEvent;
+    Object.defineProperty(touchEvent2, 'targetTouches', {
+      value: [{ clientX: 100, clientY: 200, target: popup }],
+    });
+    Object.defineProperty(touchEvent2, 'timeStamp', { value: 0 });
+    Object.defineProperty(touchEvent2, 'preventDefault', { value: () => {} });
+    popup.dispatchEvent(touchEvent2);
+
+    expect(getStateForTest().state).toBe('idle');
+  });
+});
+
+describe('popup observer', () => {
+  test('переход hidden -> visible с другим guid: state -> idle с reset styles', () => {
+    const popup = makePopup('hidden');
+    document.body.appendChild(popup);
+    installPopupSwipe('.info.popup');
+
+    const up = makeHandler('dismiss');
+    registerDirection('up', up.handler);
+
+    // Имитируем stale styles (как от прерванного жеста).
+    popup.style.setProperty('translate', '0 -50px');
+    popup.style.opacity = '0.5';
+    popup.classList.add('svp-swipe-animating');
+
+    // Открываем попап заново на новой точке.
+    popup.classList.remove('hidden');
+    popup.dataset.guid = 'point-b';
+
+    // Observer асинхронный - даём микротик обработать.
+    return Promise.resolve().then(() => {
+      expect(popup.style.getPropertyValue('translate')).toBe('');
+      expect(popup.style.opacity).toBe('');
+      expect(popup.classList.contains('svp-swipe-animating')).toBe(false);
+    });
+  });
+
+  test('data-guid change в state=animating без флага handler: cleanupAnimation вызван', async () => {
+    // Default behaviour для swipeToClosePopup-style direction: смена guid
+    // mid-animation - это аномалия (попап только что закрывали, кто-то
+    // открыл другую точку), нужно сбросить stale-стили.
+    const popup = makePopup();
+    installPopupSwipe('.info.popup');
+
+    const up = makeHandler('dismiss');
+    registerDirection('up', up.handler);
+
+    // Имитируем активную animation: state=animating + activeDirection=up
+    // + stale-стили на попапе.
+    setStateForTest('animating', 'up');
+    popup.style.opacity = '0';
+    popup.classList.add('svp-swipe-animating');
+
+    popup.dataset.guid = 'point-b';
+
+    await Promise.resolve();
+
+    // cleanupAnimation сработал: styles сброшены, state=idle.
+    expect(popup.style.opacity).toBe('');
+    expect(popup.classList.contains('svp-swipe-animating')).toBe(false);
+    expect(getStateForTest().state).toBe('idle');
+  });
+
+  test('data-guid change в state=animating с keepAnimatingOnDataGuidChange: animation не отменена', async () => {
+    // Для горизонтального свайпа смена guid mid-animation ожидаема:
+    // native game's Hammer-handler синхронно вызвал showInfo во время
+    // нашей animateDismiss. Animation должна досмотреть до конца -
+    // observer не должен её рвать.
+    const popup = makePopup();
+    installPopupSwipe('.info.popup');
+
+    const handler: ISwipeDirectionHandler = {
+      decide: () => 'dismiss',
+      finalize: jest.fn(),
+      keepAnimatingOnDataGuidChange: true,
+    };
+    registerDirection('left', handler);
+
+    setStateForTest('animating', 'left');
+    popup.style.opacity = '0';
+    popup.classList.add('svp-swipe-animating');
+
+    popup.dataset.guid = 'point-b';
+
+    await Promise.resolve();
+
+    // styles остались, state остался animating - animation продолжается.
+    expect(popup.style.opacity).toBe('0');
+    expect(popup.classList.contains('svp-swipe-animating')).toBe(true);
+    expect(getStateForTest().state).toBe('animating');
+  });
+
+  test('флаг keepAnimatingOnDataGuidChange не блокирует cleanup в state=swiping', async () => {
+    // Защита проверяется только в state=animating. В других state-ах
+    // (например, swiping - пользователь ещё держит палец) логика остаётся
+    // штатной: data-guid change остановит трекинг.
+    const popup = makePopup();
+    installPopupSwipe('.info.popup');
+
+    const handler: ISwipeDirectionHandler = {
+      decide: () => 'dismiss',
+      finalize: jest.fn(),
+      keepAnimatingOnDataGuidChange: true,
+    };
+    registerDirection('left', handler);
+
+    setStateForTest('swiping', 'left');
+    popup.style.opacity = '0.8';
+
+    popup.dataset.guid = 'point-b';
+
+    await Promise.resolve();
+
+    // cleanupAnimation сработал.
+    expect(popup.style.opacity).toBe('');
+    expect(getStateForTest().state).toBe('idle');
+  });
+});

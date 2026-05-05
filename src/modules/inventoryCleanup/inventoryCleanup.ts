@@ -1,11 +1,19 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { isModuleActive } from '../../core/moduleRegistry';
+import { isModuleEnabledByUser } from '../../core/moduleRegistry';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
-import { getFavoritedGuids, isFavoritesSnapshotReady } from '../../core/favoritesStore';
+import {
+  getFavoritedGuids,
+  isFavoritesSnapshotReady,
+  isLockMigrationDone,
+} from '../../core/favoritesStore';
+// favoritesStore импортируется только для определения migrationPending — сам
+// legacy список SVP/CUI участвует только в favoritesMigration. inventoryCleanup
+// здесь использует список только как сигнал «миграция ещё не сделана».
 import { parseInventoryCache } from './inventoryParser';
 import { shouldRunCleanup, calculateDeletions, formatDeletionSummary } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
 import { initCleanupSettingsUi, destroyCleanupSettingsUi } from './cleanupSettingsUi';
+import { installNativeGarbageGuard, uninstallNativeGarbageGuard } from './nativeGarbageGuard';
 import {
   deleteInventoryItems,
   updateInventoryCache,
@@ -13,6 +21,8 @@ import {
   updatePointRefCount,
 } from './inventoryApi';
 import { installSlowRefsDelete, uninstallSlowRefsDelete } from './slowRefsDelete';
+import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
+import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import { showToast } from '../../core/toast';
 
 const MODULE_ID = 'inventoryCleanup';
@@ -72,16 +82,37 @@ async function runCleanupImpl(): Promise<void> {
   const items = parseInventoryCache();
   if (items.length === 0) return;
 
-  // Ключи удаляются только если модуль favoritedPoints активен (включён + готов).
-  // Если модуль выключен — защита избранных не гарантирована, автоочистка ключи
-  // не трогает, даже если memory cache избранных загружен (init() всегда выполняется).
-  const referencesEnabled = isModuleActive('favoritedPoints');
-  const favoritedGuids = referencesEnabled ? getFavoritedGuids() : new Set<string>();
-  const deletions = calculateDeletions(items, settings.limits, {
-    favoritedGuids,
-    referencesEnabled,
-    favoritesSnapshotReady: isFavoritesSnapshotReady(),
-  });
+  // Защита ключей: нативные locked точки (item.f & 0b10) защищены
+  // calculateDeletions/inventoryApi-guard'ами безусловно. Дополнительная
+  // блокировка удаления ключей нужна, пока пользователь не подтвердил
+  // миграцию SVP/CUI-избранных в native lock - иначе автоочистка удалила бы
+  // legacy-favorited ключи, которые ещё не помечены замочком в игре.
+  //
+  // Подтверждение - флаг isLockMigrationDone, выставляемый при success
+  // миграции в locked (в migrationUi.runFlow) или ретроактивно для
+  // существующих пользователей (inferAndPersistLockMigrationDone в init).
+  // Когда флаг выставлен, legacy-список становится архивом: защиту берёт на
+  // себя нативный lock, наш блок не нужен.
+  //
+  // Когда флаг НЕ выставлен:
+  // - модуль миграции отключён пользователем - блок снимаем, его выбор;
+  // - модуль активен, snapshot не готов (init ещё крутит loadFavorites или
+  //   loadFavorites упал) - блок ставим, мы не знаем содержимое legacy и не
+  //   рискуем удалять ключи вслепую;
+  // - модуль активен, snapshot готов, legacy непустой - блок ставим, есть что
+  //   мигрировать;
+  // - модуль активен, snapshot готов, legacy пустой - блок снимаем, нечего
+  //   защищать.
+  const migrationModuleEnabled = isModuleEnabledByUser('favoritesMigration');
+  const snapshotReady = isFavoritesSnapshotReady();
+  const blockReferences =
+    !isLockMigrationDone() &&
+    migrationModuleEnabled &&
+    (!snapshotReady || getFavoritedGuids().size > 0);
+  const limitsForRun = blockReferences
+    ? { ...settings.limits, referencesMode: 'off' as const }
+    : settings.limits;
+  const deletions = calculateDeletions(items, limitsForRun);
   if (deletions.length === 0) return;
 
   const totalAmount = deletions.reduce((sum, entry) => sum + entry.amount, 0);
@@ -93,14 +124,19 @@ async function runCleanupImpl(): Promise<void> {
   );
 
   try {
-    // Финальный guard: перечитываем избранные из memory cache ПЕРЕД отправкой
-    // DELETE-запроса, чтобы учесть изменения с момента calculateDeletions.
-    const result = await deleteInventoryItems(deletions, {
-      favoritedGuids: getFavoritedGuids(),
-      favoritedPointsActive: isModuleActive('favoritedPoints'),
-    });
+    // Финальный guard: deleteInventoryItems перечитает свежий inventory-cache
+    // и проверит, что все удаляемые ключи всё ещё не locked (бит 0b10 поля f).
+    const result = await deleteInventoryItems(deletions);
     updateInventoryCache(deletions);
     updatePointRefCount();
+    // Синхронизация счётчика ключей на подписи точек на карте: после удаления
+    // ключей `highlight['7']` на feature остаётся stale (как и после discover -
+    // см. refsLayerSync). Один вызов с уникальными pointGuid из
+    // удалений - агрегатно для всех затронутых точек.
+    const refPointGuids = collectRefPointGuids(deletions);
+    if (refPointGuids.length > 0) {
+      void syncRefsCountForPoints(refPointGuids);
+    }
     if (result.total > 0) {
       updateDomInventoryCount(result.total);
     }
@@ -110,6 +146,18 @@ async function runCleanupImpl(): Promise<void> {
     console.error('[SVP inventoryCleanup] Ошибка удаления:', message);
     showToast(`Ошибка очистки: ${message}`);
   }
+}
+
+function collectRefPointGuids(
+  deletions: readonly { type: number; pointGuid?: string }[],
+): string[] {
+  const set = new Set<string>();
+  for (const entry of deletions) {
+    if (entry.type !== ITEM_TYPE_REFERENCE) continue;
+    if (typeof entry.pointGuid !== 'string') continue;
+    set.add(entry.pointGuid);
+  }
+  return Array.from(set);
 }
 
 function isDiscoverButton(target: EventTarget | null): boolean {
@@ -182,8 +230,8 @@ export const inventoryCleanup: IFeatureModule = {
     ru: 'Автоочистка инвентаря',
   },
   description: {
-    en: 'Automatically removes excess items when discovering points. Slow cleanup runs manually from the references OPS tab',
-    ru: 'Автоматически удаляет лишние предметы при изучении точек. Медленная очистка запускается вручную через кнопку во вкладке ключей в ОРПЦ',
+    en: 'Automatically removes excess items when discovering points. Protects keys of points marked with native lock.',
+    ru: 'Автоматически удаляет лишние предметы при изучении точек. Защищает ключи точек, помеченных нативным замочком.',
   },
   defaultEnabled: true,
   category: 'feature',
@@ -195,6 +243,7 @@ export const inventoryCleanup: IFeatureModule = {
     installSetItemInterceptor();
     initCleanupSettingsUi();
     installSlowRefsDelete();
+    installNativeGarbageGuard();
   },
 
   disable() {
@@ -203,5 +252,6 @@ export const inventoryCleanup: IFeatureModule = {
     discoverPending = false;
     destroyCleanupSettingsUi();
     uninstallSlowRefsDelete();
+    uninstallNativeGarbageGuard();
   },
 };

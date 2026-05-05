@@ -9,6 +9,12 @@ import {
 } from './slowRefsDelete';
 import type { IDeletionEntry } from './cleanupCalculator';
 import { calculateDeletions } from './cleanupCalculator';
+import { registerModules as registerModulesForTest } from '../../core/moduleRegistry';
+import {
+  loadFavorites as loadFavoritesForTest,
+  resetForTests as resetFavoritesStoreForTests,
+  setLockMigrationDone,
+} from '../../core/favoritesStore';
 
 // --- collectOverLimit ---
 
@@ -258,26 +264,12 @@ describe('регрессия: calculateDeletions с empty favorites и snapshotR
     };
   }
 
-  test('referencesEnabled=true + empty favoritedGuids + snapshotReady=true: ключи НЕ удаляются (защита от потери IDB)', () => {
+  test('кэш без поля f во всех стопках: ключи НЕ удаляются (lock недоступен)', () => {
     const items = [
       { g: 'r1', t: 3 as const, l: 'p1', a: 5 },
       { g: 'r2', t: 3 as const, l: 'p2', a: 1 },
     ];
-    const result = calculateDeletions(items, unlimitedLimits(), {
-      favoritedGuids: new Set<string>(),
-      referencesEnabled: true,
-      favoritesSnapshotReady: true,
-    });
-    expect(result).toEqual([]);
-  });
-
-  test('referencesEnabled=true + empty favoritedGuids + snapshotReady=false: ключи НЕ удаляются', () => {
-    const items = [{ g: 'r1', t: 3 as const, l: 'p1', a: 100 }];
-    const result = calculateDeletions(items, unlimitedLimits(), {
-      favoritedGuids: new Set<string>(),
-      referencesEnabled: true,
-      favoritesSnapshotReady: false,
-    });
+    const result = calculateDeletions(items, unlimitedLimits());
     expect(result).toEqual([]);
   });
 });
@@ -396,5 +388,396 @@ describe('fetchTeamsForGuids', () => {
     const result = await fetchTeamsForGuids([], jest.fn());
     expect(result.size).toBe(0);
     expect(mockFetchFunction).not.toHaveBeenCalled();
+  });
+});
+
+// --- кнопка «Очистить ключи»: disabled при лимитах -1/-1 ---
+
+import { installSlowRefsDelete, uninstallSlowRefsDelete } from './slowRefsDelete';
+
+describe('кнопка «Очистить ключи»: disabled при -1/-1', () => {
+  function fullLevelLimits(): Record<number, number> {
+    // type guard isLevelLimits требует поля 1..10 типа number — иначе loadCleanupSettings
+    // возвращает дефолт (mode='off') и кнопка не показывается, ломая тест.
+    const limits: Record<number, number> = {};
+    for (let level = 1; level <= 10; level++) limits[level] = -1;
+    return limits;
+  }
+
+  function setSettings(options: { allied: number; notAllied: number }): void {
+    localStorage.setItem(
+      'svp_inventoryCleanup',
+      JSON.stringify({
+        version: 2,
+        limits: {
+          cores: fullLevelLimits(),
+          catalysers: fullLevelLimits(),
+          referencesMode: 'slow',
+          referencesFastLimit: -1,
+          referencesAlliedLimit: options.allied,
+          referencesNotAlliedLimit: options.notAllied,
+        },
+        minFreeSlots: 100,
+      }),
+    );
+  }
+
+  function makeBar(): HTMLElement {
+    // Кнопка инжектируется в .inventory__controls перед нативной
+    // #inventory-delete. Минимальная DOM-обвязка: создаём controls с
+    // delete-кнопкой внутри, как в реальном инвентаре.
+    const controls = document.createElement('div');
+    controls.className = 'inventory__controls';
+    const deleteSlot = document.createElement('div');
+    const deleteButton = document.createElement('button');
+    deleteButton.id = 'inventory-delete';
+    deleteSlot.appendChild(deleteButton);
+    controls.appendChild(deleteSlot);
+    document.body.appendChild(controls);
+    return controls;
+  }
+
+  function getButton(): HTMLButtonElement | null {
+    return document.querySelector<HTMLButtonElement>('.svp-cleanup-slow-refs-button');
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+  });
+
+  afterEach(() => {
+    uninstallSlowRefsDelete();
+    document.body.innerHTML = '';
+    localStorage.clear();
+  });
+
+  test('лимиты -1/-1: кнопка disabled', () => {
+    setSettings({ allied: -1, notAllied: -1 });
+    makeBar();
+
+    installSlowRefsDelete();
+    const button = getButton();
+    expect(button).not.toBeNull();
+    expect(button?.disabled).toBe(true);
+    expect(button?.title).toMatch(/-1.*allied|allied.*-1|союзные/i);
+  });
+
+  test('хотя бы один лимит задан (allied=5, notAllied=-1): кнопка активна', () => {
+    setSettings({ allied: 5, notAllied: -1 });
+    makeBar();
+
+    installSlowRefsDelete();
+    const button = getButton();
+    expect(button?.disabled).toBe(false);
+    expect(button?.title).toBe('');
+  });
+
+  test('хотя бы один лимит задан (allied=-1, notAllied=10): кнопка активна', () => {
+    setSettings({ allied: -1, notAllied: 10 });
+    makeBar();
+
+    installSlowRefsDelete();
+    const button = getButton();
+    expect(button?.disabled).toBe(false);
+  });
+
+  test('клик по disabled кнопке не запускает runSlowDelete', () => {
+    setSettings({ allied: -1, notAllied: -1 });
+    makeBar();
+
+    installSlowRefsDelete();
+    const button = getButton();
+    if (!button) throw new Error('button missing');
+
+    // confirm() вызывается внутри runSlowDelete (если бы он запустился).
+    // Подменяем глобальный confirm на счётчик — он не должен дёрнуться.
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    button.click();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+});
+
+// --- Регрессия: кнопка скрыта пока snapshot favorites не загружен ---
+
+describe('кнопка «Очистить ключи»: snapshot guard', () => {
+  function fullLevelLimits(): Record<number, number> {
+    const limits: Record<number, number> = {};
+    for (let level = 1; level <= 10; level++) limits[level] = -1;
+    return limits;
+  }
+
+  function setSlowSettings(): void {
+    localStorage.setItem(
+      'svp_inventoryCleanup',
+      JSON.stringify({
+        version: 2,
+        limits: {
+          cores: fullLevelLimits(),
+          catalysers: fullLevelLimits(),
+          referencesMode: 'slow',
+          referencesFastLimit: -1,
+          referencesAlliedLimit: 5,
+          referencesNotAlliedLimit: 5,
+        },
+        minFreeSlots: 100,
+      }),
+    );
+  }
+
+  function makeBar(): HTMLElement {
+    const controls = document.createElement('div');
+    controls.className = 'inventory__controls';
+    const deleteSlot = document.createElement('div');
+    const deleteButton = document.createElement('button');
+    deleteButton.id = 'inventory-delete';
+    deleteSlot.appendChild(deleteButton);
+    controls.appendChild(deleteSlot);
+    document.body.appendChild(controls);
+    return controls;
+  }
+
+  function getButton(): HTMLButtonElement | null {
+    return document.querySelector<HTMLButtonElement>('.svp-cleanup-slow-refs-button');
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    resetFavoritesStoreForTests();
+  });
+
+  afterEach(() => {
+    uninstallSlowRefsDelete();
+    document.body.innerHTML = '';
+    localStorage.clear();
+    registerModulesForTest([]);
+    resetFavoritesStoreForTests();
+  });
+
+  test('snapshot не загружен и модуль миграции активен → кнопка не показывается', () => {
+    setSlowSettings();
+    makeBar();
+    registerModulesForTest([
+      {
+        id: 'favoritesMigration',
+        name: { en: '', ru: '' },
+        description: { en: '', ru: '' },
+        defaultEnabled: true,
+        category: 'utility',
+        status: 'ready',
+        init() {},
+        enable() {},
+        disable() {},
+      },
+    ]);
+
+    installSlowRefsDelete();
+    expect(getButton()).toBeNull();
+  });
+
+  test('snapshot загружен и легаси-список пуст → кнопка показывается', async () => {
+    setSlowSettings();
+    makeBar();
+    registerModulesForTest([
+      {
+        id: 'favoritesMigration',
+        name: { en: '', ru: '' },
+        description: { en: '', ru: '' },
+        defaultEnabled: true,
+        category: 'utility',
+        status: 'ready',
+        init() {},
+        enable() {},
+        disable() {},
+      },
+    ]);
+    await loadFavoritesForTest();
+
+    installSlowRefsDelete();
+    expect(getButton()).not.toBeNull();
+    expect(getButton()?.disabled).toBe(false);
+  });
+
+  test('модуль миграции отключён → snapshot нерелевантен, кнопка показывается', () => {
+    setSlowSettings();
+    makeBar();
+    registerModulesForTest([]);
+
+    installSlowRefsDelete();
+    expect(getButton()).not.toBeNull();
+  });
+
+  test('lock-migration-done выставлен → кнопка показывается даже при race-snapshot', () => {
+    // После миграции пользователь нажал Mark as locked, флаг выставлен. Даже
+    // если snapshot ещё не готов (init модуля favoritesMigration параллельный),
+    // кнопка должна показываться - блокировка снята признанием миграции.
+    setSlowSettings();
+    makeBar();
+    registerModulesForTest([
+      {
+        id: 'favoritesMigration',
+        name: { en: '', ru: '' },
+        description: { en: '', ru: '' },
+        defaultEnabled: true,
+        category: 'utility',
+        status: 'ready',
+        init() {},
+        enable() {},
+        disable() {},
+      },
+    ]);
+    setLockMigrationDone();
+
+    installSlowRefsDelete();
+    expect(getButton()).not.toBeNull();
+  });
+});
+
+// --- Регрессия: runSlowDelete блокирует удаление при lockSupportAvailable=false ---
+//
+// Логика every(item.f !== undefined) в runSlowDelete дублирует ту же проверку
+// в cleanupCalculator. Если в каком-то рефакторинге slowRefsDelete её ослабят
+// (например, заменят every на some), unit-тесты cleanupCalculator останутся
+// зелёными - там покрытие fast-режима. e2e-тест на сам runSlowDelete нужен,
+// чтобы рассинхронизация лок-чек-логики между fast и slow была поймана сразу.
+
+describe('runSlowDelete: lockSupportAvailable=false блокирует удаление', () => {
+  function fullLevelLimits(): Record<number, number> {
+    const limits: Record<number, number> = {};
+    for (let level = 1; level <= 10; level++) limits[level] = -1;
+    return limits;
+  }
+
+  function setSlowSettings(): void {
+    localStorage.setItem(
+      'svp_inventoryCleanup',
+      JSON.stringify({
+        version: 2,
+        limits: {
+          cores: fullLevelLimits(),
+          catalysers: fullLevelLimits(),
+          referencesMode: 'slow',
+          referencesFastLimit: -1,
+          referencesAlliedLimit: 5,
+          referencesNotAlliedLimit: 5,
+        },
+        minFreeSlots: 100,
+      }),
+    );
+  }
+
+  function makeBar(): HTMLElement {
+    const controls = document.createElement('div');
+    controls.className = 'inventory__controls';
+    const deleteSlot = document.createElement('div');
+    const deleteButton = document.createElement('button');
+    deleteButton.id = 'inventory-delete';
+    deleteSlot.appendChild(deleteButton);
+    controls.appendChild(deleteSlot);
+    document.body.appendChild(controls);
+    return controls;
+  }
+
+  function setPlayerTeam(team: number): void {
+    // getPlayerTeam парсит var(--team-N) из inline-стиля #self-info__name.
+    const nameElement = document.createElement('div');
+    nameElement.id = 'self-info__name';
+    nameElement.style.color = `var(--team-${team})`;
+    document.body.appendChild(nameElement);
+  }
+
+  function getButton(): HTMLButtonElement | null {
+    return document.querySelector<HTMLButtonElement>('.svp-cleanup-slow-refs-button');
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    resetFavoritesStoreForTests();
+  });
+
+  afterEach(() => {
+    uninstallSlowRefsDelete();
+    document.body.innerHTML = '';
+    localStorage.clear();
+    registerModulesForTest([]);
+    resetFavoritesStoreForTests();
+  });
+
+  test('mix-кэш (часть стопок без f): кнопка кликается, но runSlowDelete отбивается до confirm', async () => {
+    // Все предусловия для запуска runSlowDelete присутствуют: режим slow,
+    // лимиты ненулевые, команда игрока известна, snapshot загружен. Только
+    // mix-кэш должен блокировать - покрываем именно эту ветку, а не любую
+    // другую раннюю остановку.
+    setSlowSettings();
+    setPlayerTeam(1);
+    setLockMigrationDone();
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { g: 'r1', t: 3, l: 'p1', a: 1, f: 0 },
+        { g: 'r2', t: 3, l: 'p2', a: 1 }, // без f
+      ]),
+    );
+    makeBar();
+    await loadFavoritesForTest();
+
+    const fetchSpy = jest.spyOn(window, 'fetch');
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    installSlowRefsDelete();
+    const button = getButton();
+    if (!button) throw new Error('button missing');
+    expect(button.disabled).toBe(false);
+    button.click();
+
+    // Микротаски для async runSlowDelete.
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+    fetchSpy.mockRestore();
+  });
+
+  test('пустой кэш ключей: lockSupportAvailable=false (refStacks.length=0), runSlowDelete отбивается до confirm', async () => {
+    // length=0 ветка проверки `refStacks.length > 0 && every(...)` - тоже
+    // считается lockSupportAvailable=false. Без теста замена condition'а на
+    // голый every прошла бы мимо, потому что every на пустом массиве вернёт true.
+    setSlowSettings();
+    setPlayerTeam(1);
+    setLockMigrationDone();
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { g: 'c1', t: 1, l: 5, a: 3 }, // только cores, без рефов
+      ]),
+    );
+    makeBar();
+    await loadFavoritesForTest();
+
+    const fetchSpy = jest.spyOn(window, 'fetch');
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+
+    installSlowRefsDelete();
+    const button = getButton();
+    if (!button) throw new Error('button missing');
+    button.click();
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+    fetchSpy.mockRestore();
   });
 });

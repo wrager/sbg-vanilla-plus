@@ -1,10 +1,10 @@
 import { defineConfig } from 'vite';
 import monkey from 'vite-plugin-monkey';
 import { version } from './package.json';
-import { SBG_COMPATIBLE_VERSION } from './src/core/gameVersion';
+import { SBG_COMPATIBLE_VERSIONS } from './src/core/gameVersion';
 
 const NAMESPACE = 'https://github.com/wrager/sbg-vanilla-plus';
-const MATCH = 'https://sbg-game.ru/app/*';
+const MATCHES = ['https://sbg-game.ru/app/*', 'https://beta.sbg-game.ru/app/*'];
 const DOWNLOAD_BASE = 'https://github.com/wrager/sbg-vanilla-plus/releases/latest/download';
 const FILENAME = 'sbg-vanilla-plus';
 
@@ -12,7 +12,7 @@ export default defineConfig(({ command }) => {
   const isDev = command === 'serve';
 
   const name = 'SBG Vanilla+';
-  const description = `UI/UX enhancements for SBG (SBG v${SBG_COMPATIBLE_VERSION})`;
+  const description = `UI/UX enhancements for SBG (SBG v${SBG_COMPATIBLE_VERSIONS.join(' / ')})`;
 
   return {
     define: {
@@ -31,7 +31,7 @@ export default defineConfig(({ command }) => {
           version,
           description,
           author: 'wrager',
-          match: [MATCH],
+          match: MATCHES,
           'run-at': 'document-start',
           grant: 'none',
           license: 'MIT',

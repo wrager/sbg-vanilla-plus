@@ -403,3 +403,110 @@ test('flushes pending rotation on disable', async () => {
 
   expect(realSetRotation).toHaveBeenCalledTimes(1);
 });
+
+describe('singleFingerRotation: подавление во время нативного жеста ngrsZoom', () => {
+  // SBG 0.6.1 встроил `ol.interaction.DblClickDragZoom` (refs/game/script.js:782) —
+  // двойной тап с удержанием второго пальца + drag → зум. Чтобы не активировать
+  // rotation параллельно с зумом, после второго тапа в окне double-tap (300мс/30px)
+  // вся серия touch до touchend полностью игнорируется — независимо от направления
+  // drag. Прошлая реализация (модуль ngrsZoom + singleFingerRotation) делала так
+  // же: после двойного тапа карту нельзя было поворачивать.
+
+  function simulateDoubleTapStart(secondTapX = 100, secondTapY = 100): void {
+    // Первый тап: touchstart → touchend на одной точке (без drag).
+    dispatchTouch('touchstart', { clientX: secondTapX, clientY: secondTapY });
+    dispatchTouch('touchend', { clientX: secondTapX, clientY: secondTapY });
+    // Второй тап в окне double-tap: новый touchstart почти на том же месте.
+    dispatchTouch('touchstart', { clientX: secondTapX, clientY: secondTapY });
+  }
+
+  test('одиночный тап → drag активирует rotation (текущее поведение не сломано)', () => {
+    realSetRotation.mockClear();
+    dispatchTouch('touchstart', { clientX: 100, clientY: 100 });
+    dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
+    flushAnimationFrame();
+    expect(realSetRotation).toHaveBeenCalled();
+  });
+
+  test('double-tap + вертикальный drag: rotation НЕ активируется', () => {
+    realSetRotation.mockClear();
+    simulateDoubleTapStart(100, 100);
+    dispatchTouch('touchmove', { clientX: 100, clientY: 200 });
+    flushAnimationFrame();
+    expect(realSetRotation).not.toHaveBeenCalled();
+    expect(dragPan.getActive()).toBe(true); // dragPan не отключался
+  });
+
+  test('double-tap + горизонтальный drag: rotation тоже НЕ активируется', () => {
+    // Раньше горизонтальный drag после double-tap пытался late-стартовать rotation,
+    // что ошибочно срабатывало для зум-жестов с лёгким горизонтальным дрейфом.
+    realSetRotation.mockClear();
+    simulateDoubleTapStart(100, 100);
+    dispatchTouch('touchmove', { clientX: 200, clientY: 100 });
+    flushAnimationFrame();
+    expect(realSetRotation).not.toHaveBeenCalled();
+    expect(dragPan.getActive()).toBe(true);
+  });
+
+  test('double-tap + диагональный drag: rotation тоже НЕ активируется', () => {
+    realSetRotation.mockClear();
+    simulateDoubleTapStart(100, 100);
+    dispatchTouch('touchmove', { clientX: 150, clientY: 150 });
+    flushAnimationFrame();
+    expect(realSetRotation).not.toHaveBeenCalled();
+    expect(dragPan.getActive()).toBe(true);
+  });
+
+  test('tap → пауза > 300мс → tap → drag: окно double-tap истекло, rotation активируется', () => {
+    realSetRotation.mockClear();
+    dispatchTouch('touchstart', { clientX: 100, clientY: 100 });
+    dispatchTouch('touchend', { clientX: 100, clientY: 100 });
+
+    // Прошло 350мс — окно истекло.
+    jest.setSystemTime(Date.now() + 350);
+
+    dispatchTouch('touchstart', { clientX: 100, clientY: 100 });
+    dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
+    flushAnimationFrame();
+    expect(realSetRotation).toHaveBeenCalled();
+  });
+
+  test('tap → tap > 30px от первого: НЕ считается double-tap, rotation активируется сразу', () => {
+    // Активацию rotation проверяем через `dragPan.getActive() === false` —
+    // singleFingerRotation отключает DragPan ровно в момент start-rotation.
+    dispatchTouch('touchstart', { clientX: 100, clientY: 100 });
+    dispatchTouch('touchend', { clientX: 100, clientY: 100 });
+    // Второй тап на 100px правее — слишком далеко для double-tap.
+    dispatchTouch('touchstart', { clientX: 200, clientY: 100 });
+    expect(dragPan.getActive()).toBe(false);
+  });
+
+  test('после double-tap touchend: следующий одиночный тап не считается «третьим тапом»', () => {
+    realSetRotation.mockClear();
+    // Полный двойной тап + drag (зум).
+    simulateDoubleTapStart(100, 100);
+    dispatchTouch('touchmove', { clientX: 100, clientY: 200 });
+    dispatchTouch('touchend', { clientX: 100, clientY: 200 });
+
+    // Сразу после — новый одиночный тап + drag должен активировать rotation.
+    dispatchTouch('touchstart', { clientX: 100, clientY: 200 });
+    dispatchTouch('touchmove', { clientX: 200, clientY: 100 });
+    flushAnimationFrame();
+    expect(realSetRotation).toHaveBeenCalled();
+  });
+
+  test('после disable+enable: первый touchstart активирует rotation сразу (state сброшен)', async () => {
+    realSetRotation.mockClear();
+    // Создаём «след» прошлого touchend, который мог бы вызвать double-tap.
+    dispatchTouch('touchstart', { clientX: 100, clientY: 100 });
+    dispatchTouch('touchend', { clientX: 100, clientY: 100 });
+
+    await singleFingerRotation.disable();
+    await singleFingerRotation.enable();
+
+    dispatchTouch('touchstart', { clientX: 100, clientY: 100 });
+    dispatchTouch('touchmove', { clientX: 200, clientY: 200 });
+    flushAnimationFrame();
+    expect(realSetRotation).toHaveBeenCalled();
+  });
+});
