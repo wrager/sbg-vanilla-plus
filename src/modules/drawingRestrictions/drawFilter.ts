@@ -1,4 +1,4 @@
-import { getFavoritedGuids } from '../../core/favoritesStore';
+import { buildLockedPointGuids, readInventoryCache } from '../../core/inventoryCache';
 import { t } from '../../core/l10n';
 import { showToast } from '../../core/toast';
 import {
@@ -50,12 +50,12 @@ function lastKeyMessage(hidden: number): string {
   return t(
     hidden === 1
       ? {
-          en: `Hidden last key from a favorited point`,
-          ru: `Скрыт последний ключ от избранной точки`,
+          en: `Hidden last key from a locked point`,
+          ru: `Скрыт последний ключ от защищённой точки`,
         }
       : {
-          en: `Hidden last ${hidden} keys from favorited points`,
-          ru: `Скрыты последние ${hidden} ${hidden < 5 ? 'ключа' : 'ключей'} от избранных точек`,
+          en: `Hidden last ${hidden} keys from locked points`,
+          ru: `Скрыты последние ${hidden} ${hidden < 5 ? 'ключа' : 'ключей'} от защищённых точек`,
         },
   );
 }
@@ -83,15 +83,15 @@ function starAndDistanceMessage(totalHidden: number): string {
 
 function starAndLastKeyMessage(star: number, lastKey: number): string {
   return t({
-    en: `Hidden: ${star} in star mode, ${lastKey} last key(s) of favorited points`,
-    ru: `Скрыто: ${star} в режиме "Звезда", ${lastKey} последних ключ(а/ей) избранных точек`,
+    en: `Hidden: ${star} in star mode, ${lastKey} last key(s) of locked points`,
+    ru: `Скрыто: ${star} в режиме "Звезда", ${lastKey} последних ключ(а/ей) защищённых точек`,
   });
 }
 
 function distanceAndLastKeyMessage(distance: number, lastKey: number, maxMeters: number): string {
   return t({
-    en: `Hidden: ${distance} beyond ${maxMeters} m, ${lastKey} last key(s) of favorited points`,
-    ru: `Скрыто: ${distance} за ${maxMeters} м, ${lastKey} последних ключ(а/ей) избранных точек`,
+    en: `Hidden: ${distance} beyond ${maxMeters} m, ${lastKey} last key(s) of locked points`,
+    ru: `Скрыто: ${distance} за ${maxMeters} м, ${lastKey} последних ключ(а/ей) защищённых точек`,
   });
 }
 
@@ -161,13 +161,17 @@ function getCurrentPopupGuid(): string | null {
 
 async function filterDrawResponse(response: Response): Promise<Response> {
   const settings = loadDrawingRestrictionsSettings();
-  const favorites = getFavoritedGuids();
+  // Lock-флаг живёт на стопке (поле `f`, бит 0b10) в `inventory-cache`.
+  // Перечитываем кэш на каждом ответе — чтобы фильтр сразу видел свежие
+  // замочки/звёздочки, проставленные пользователем нативной кнопкой игры или
+  // массовой миграцией из favoritesMigration.
+  const lockedPoints = buildLockedPointGuids(readInventoryCache());
   const starCenterGuid = getStarCenterGuid();
   const currentPopupGuid = getCurrentPopupGuid();
 
   const predicates = buildPredicates({
     settings,
-    favorites,
+    lockedPoints,
     starCenterGuid,
     currentPopupGuid,
   });
@@ -188,7 +192,7 @@ async function filterDrawResponse(response: Response): Promise<Response> {
   const message = pickToastMessage({
     hiddenByStar: countHiddenByStar(original, starCenterGuid, currentPopupGuid),
     hiddenByDistance: countHiddenByDistance(original, settings.maxDistanceMeters),
-    hiddenByLastKey: countHiddenByLastKey(original, favorites, settings.favProtectionMode),
+    hiddenByLastKey: countHiddenByLastKey(original, lockedPoints, settings.favProtectionMode),
     totalHidden: original.length - parsed.data.length,
     maxDistanceMeters: settings.maxDistanceMeters,
   });

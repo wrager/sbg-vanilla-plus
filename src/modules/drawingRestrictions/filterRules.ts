@@ -10,31 +10,37 @@ export type DrawPredicate = (entry: IDrawEntry) => boolean;
 
 export interface IBuildPredicatesDeps {
   settings: IDrawingRestrictionsSettings;
-  favorites: ReadonlySet<string>;
+  /**
+   * GUID'ы точек, у которых хотя бы одна стопка ключей помечена нативным
+   * lock-битом (`item.f & 0b10`). Семантика — «ключи этой точки защищены от
+   * удаления»; в drawingRestrictions используется как сигнал «ключи этой точки
+   * ценны игроку, не давать рисовать линии, расходующие их».
+   */
+  lockedPoints: ReadonlySet<string>;
   starCenterGuid: string | null;
   /** GUID точки в открытом попапе — точка, с которой уходит /api/draw. */
   currentPopupGuid: string | null;
 }
 
-function keepByFavMode(
+function keepByLockMode(
   mode: IDrawingRestrictionsSettings['favProtectionMode'],
-  favorites: ReadonlySet<string>,
+  lockedPoints: ReadonlySet<string>,
 ): DrawPredicate | null {
   if (mode === 'off') return null;
-  if (favorites.size === 0) return null;
+  if (lockedPoints.size === 0) return null;
   if (mode === 'protectLastKey') {
     return (entry) => {
       const pointGuid = entry.p;
       const amount = entry.a;
       if (typeof pointGuid !== 'string' || typeof amount !== 'number') return true;
-      return !(favorites.has(pointGuid) && amount === 1);
+      return !(lockedPoints.has(pointGuid) && amount === 1);
     };
   }
-  // hideAllFavorites
+  // hideAllFavorites — историческое имя режима, теперь «скрыть все locked-точки».
   return (entry) => {
     const pointGuid = entry.p;
     if (typeof pointGuid !== 'string') return true;
-    return !favorites.has(pointGuid);
+    return !lockedPoints.has(pointGuid);
   };
 }
 
@@ -61,8 +67,8 @@ function keepByStar(
 
 export function buildPredicates(deps: IBuildPredicatesDeps): DrawPredicate[] {
   const predicates: DrawPredicate[] = [];
-  const favPredicate = keepByFavMode(deps.settings.favProtectionMode, deps.favorites);
-  if (favPredicate) predicates.push(favPredicate);
+  const lockPredicate = keepByLockMode(deps.settings.favProtectionMode, deps.lockedPoints);
+  if (lockPredicate) predicates.push(lockPredicate);
   const distancePredicate = keepByDistance(deps.settings.maxDistanceMeters);
   if (distancePredicate) predicates.push(distancePredicate);
   const starPredicate = keepByStar(deps.starCenterGuid, deps.currentPopupGuid);
@@ -85,14 +91,14 @@ export function applyPredicates<T extends IDrawEntry>(
  */
 export function countHiddenByLastKey(
   entries: readonly IDrawEntry[],
-  favorites: ReadonlySet<string>,
+  lockedPoints: ReadonlySet<string>,
   mode: IDrawingRestrictionsSettings['favProtectionMode'],
 ): number {
-  if (mode !== 'protectLastKey' || favorites.size === 0) return 0;
+  if (mode !== 'protectLastKey' || lockedPoints.size === 0) return 0;
   let hidden = 0;
   for (const entry of entries) {
     if (typeof entry.p !== 'string' || typeof entry.a !== 'number') continue;
-    if (favorites.has(entry.p) && entry.a === 1) hidden += 1;
+    if (lockedPoints.has(entry.p) && entry.a === 1) hidden += 1;
   }
   return hidden;
 }

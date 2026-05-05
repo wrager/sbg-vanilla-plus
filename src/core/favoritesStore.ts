@@ -2,12 +2,11 @@
 // `favorites` (keyPath='guid'). Запись — { guid, cooldown }. Поле cooldown нужно
 // только CUI (таймер остывания точки); наш модуль его не использует.
 //
-// До 0.6.1 модуль favoritedPoints добавлял/удалял записи (звезда в попапе,
-// фильтр инвентаря). В 0.6.1 эту функциональность взяла на себя игра нативно
-// (поле `f` на стопках инвентаря, см. release-notes 1.3). После переименования
-// модуля в favoritesMigration write-операции стали не нужны: модуль ТОЛЬКО
+// В 0.6.1 функциональность избранного перешла в игру нативно (поле `f` на
+// стопках инвентаря, см. release-notes 1.3). Хранилище в SVP осталось как
+// read-only архив legacy SVP/CUI-списка для модуля favoritesMigration: он
 // читает локальный список и переносит точки в нативные «звёздочки»/«замочки»
-// игры через POST /api/marks. Поэтому хранилище упрощено до read-only API.
+// игры через POST /api/marks.
 
 import { t } from './l10n';
 
@@ -410,42 +409,3 @@ export function setLockMigrationDone(): void {
     // миграции.
   }
 }
-
-// Legacy write-API: используется модулем `favoritedPoints` (локальный список
-// избранных SVP/CUI). Сохранён до переработки drawingRestrictions/favoritedPoints
-// под нативные звёздочки SBG 0.6.1.
-export const FAVORITES_CHANGED_EVENT = 'svp:favorites-changed';
-
-function emitFavoritesChange(): void {
-  document.dispatchEvent(new CustomEvent(FAVORITES_CHANGED_EVENT));
-}
-
-export async function addFavorite(pointGuid: string): Promise<void> {
-  const db = await openDb();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  const store = tx.objectStore(STORE_NAME);
-  const committed = waitForTransaction(tx);
-  const existing: unknown = await promisifyRequest(store.get(pointGuid));
-  const cooldown = isFavoriteRecord(existing) ? existing.cooldown : null;
-  const record: IFavoriteRecord = { guid: pointGuid, cooldown };
-  await promisifyRequest(store.put(record));
-  await committed;
-  memoryGuids.add(pointGuid);
-  updateSeal();
-  emitFavoritesChange();
-}
-
-export async function removeFavorite(pointGuid: string): Promise<void> {
-  const db = await openDb();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  const store = tx.objectStore(STORE_NAME);
-  const committed = waitForTransaction(tx);
-  await promisifyRequest(store.delete(pointGuid));
-  await committed;
-  memoryGuids.delete(pointGuid);
-  updateSeal();
-  emitFavoritesChange();
-}
-
-export const exportToJson = exportFavoritesToJson;
-export const importFromJson = importFavoritesFromJson;

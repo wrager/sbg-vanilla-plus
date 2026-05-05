@@ -20,8 +20,8 @@ export const drawingRestrictions: IFeatureModule = {
     ru: 'Ограничения рисования',
   },
   description: {
-    en: 'Hide favorited targets, too-far targets, and non-center targets (star mode) from the draw list. Prevents accidental line drawing to unwanted points.',
-    ru: 'Скрывает из списка рисования избранные цели, слишком далёкие цели и все цели кроме центра звезды. Предотвращает случайное рисование линий на нежелательные точки.',
+    en: 'Hide locked targets, too-far targets, and non-center targets (star mode) from the draw list. Prevents accidental line drawing to unwanted points.',
+    ru: 'Скрывает из списка рисования цели с замочком, слишком далёкие цели и все цели кроме центра звезды. Предотвращает случайное рисование линий на нежелательные точки.',
   },
   defaultEnabled: true,
   category: 'feature',

@@ -1,5 +1,6 @@
 import { installDrawFilter, uninstallDrawFilter } from './drawFilter';
-import { addFavorite, loadFavorites, resetForTests } from '../../core/favoritesStore';
+import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
+import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import { saveDrawingRestrictionsSettings } from './settings';
 import { clearStarCenter, setStarCenter } from './starCenter';
 
@@ -18,20 +19,21 @@ function lastToastMessage(): string {
   return typeof first === 'string' ? first : '';
 }
 
-async function resetIdb(): Promise<void> {
-  resetForTests();
-  await new Promise<void>((resolve, reject) => {
-    const request = indexedDB.deleteDatabase('CUI');
-    request.onsuccess = (): void => {
-      resolve();
-    };
-    request.onerror = (): void => {
-      reject(request.error instanceof Error ? request.error : new Error('delete failed'));
-    };
-    request.onblocked = (): void => {
-      resolve();
-    };
-  });
+/**
+ * Записывает в `localStorage['inventory-cache']` стопки ключей с lock-битом
+ * (`f & 0b10`) для каждой переданной точки. Фильтр drawingRestrictions
+ * читает кэш на каждом ответе через `buildLockedPointGuids`, поэтому это —
+ * единственный способ имитировать «эта точка с замочком» в тесте.
+ */
+function setLockedPoints(pointGuids: string[]): void {
+  const cache = pointGuids.map((guid, index) => ({
+    g: `stack-${guid}-${index}`,
+    t: ITEM_TYPE_REFERENCE,
+    l: guid,
+    a: 1,
+    f: 0b10,
+  }));
+  localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(cache));
 }
 
 function buildResponse(body: unknown, status = 200): Response {
@@ -51,9 +53,7 @@ function createPopup(guid: string, hidden = false): HTMLElement {
   return popup;
 }
 
-beforeEach(async () => {
-  await resetIdb();
-  await loadFavorites();
+beforeEach(() => {
   localStorage.clear();
   clearStarCenter();
   localStorage.clear();
@@ -77,7 +77,7 @@ describe('drawFilter', () => {
       maxDistanceMeters: 0,
     });
     window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'fav1', a: 1 }] }));
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     installDrawFilter();
 
     const response = await window.fetch('/api/point?guid=x');
@@ -85,7 +85,7 @@ describe('drawFilter', () => {
     expect(body.data).toHaveLength(1);
   });
 
-  test('protectLastKey скрывает последний ключ избранной точки', async () => {
+  test('protectLastKey скрывает последний ключ locked-точки', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
       favProtectionMode: 'protectLastKey',
@@ -100,8 +100,7 @@ describe('drawFilter', () => {
         ],
       }),
     );
-    await addFavorite('fav1');
-    await addFavorite('fav2');
+    setLockedPoints(['fav1', 'fav2']);
     installDrawFilter();
 
     const response = await window.fetch('/api/draw?from=x');
@@ -110,7 +109,7 @@ describe('drawFilter', () => {
     expect(body.data.find((entry) => entry.p === 'fav1')).toBeUndefined();
   });
 
-  test('hideAllFavorites скрывает все избранные независимо от amount', async () => {
+  test('hideAllFavorites скрывает все locked-точки независимо от amount', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
       favProtectionMode: 'hideAllFavorites',
@@ -125,13 +124,44 @@ describe('drawFilter', () => {
         ],
       }),
     );
-    await addFavorite('fav1');
-    await addFavorite('fav2');
+    setLockedPoints(['fav1', 'fav2']);
     installDrawFilter();
 
     const response = await window.fetch('/api/draw');
     const body = (await response.json()) as { data: { p: string }[] };
     expect(body.data.map((entry) => entry.p)).toEqual(['other']);
+  });
+
+  test('точка с lock-битом 0 не считается защищённой', async () => {
+    // Lock-флаг — `item.f & 0b10`. Стопка с `f=0` (не помечена замочком) не
+    // должна попадать под protectLastKey, даже если точка та же что у
+    // locked-стопки в другом инвентаре.
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'hideAllFavorites',
+      maxDistanceMeters: 0,
+    });
+    localStorage.setItem(
+      INVENTORY_CACHE_KEY,
+      JSON.stringify([
+        { g: 'stack1', t: ITEM_TYPE_REFERENCE, l: 'p1', a: 5, f: 0 },
+        { g: 'stack2', t: ITEM_TYPE_REFERENCE, l: 'p2', a: 5, f: 0b01 },
+      ]),
+    );
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        data: [
+          { p: 'p1', a: 1 },
+          { p: 'p2', a: 1 },
+        ],
+      }),
+    );
+    installDrawFilter();
+
+    const response = await window.fetch('/api/draw');
+    const body = (await response.json()) as { data: { p: string }[] };
+    // Ни p1 (f=0), ни p2 (f=0b01 — favorite-бит, не lock-бит) не скрываются.
+    expect(body.data.map((entry) => entry.p)).toEqual(['p1', 'p2']);
   });
 
   test('maxDistanceMeters скрывает цели дальше порога', async () => {
@@ -163,7 +193,7 @@ describe('drawFilter', () => {
       maxDistanceMeters: 0,
     });
     window.fetch = jest.fn().mockResolvedValue(buildResponse({ line: { id: 123 } }));
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     installDrawFilter();
 
     const response = await window.fetch('/api/draw', { method: 'POST' });
@@ -177,7 +207,7 @@ describe('drawFilter', () => {
       favProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     window.fetch = jest.fn().mockResolvedValue(new Response('not json', { status: 200 }));
     installDrawFilter();
     const response = await window.fetch('/api/draw');
@@ -191,7 +221,7 @@ describe('drawFilter', () => {
       favProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     const originalResponse = buildResponse('just-a-string');
     window.fetch = jest.fn().mockResolvedValue(originalResponse);
     installDrawFilter();
@@ -205,7 +235,7 @@ describe('drawFilter', () => {
       favProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     const originalResponse = buildResponse(null);
     window.fetch = jest.fn().mockResolvedValue(originalResponse);
     installDrawFilter();
@@ -219,7 +249,7 @@ describe('drawFilter', () => {
       favProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     const originalResponse = buildResponse({ other: 1 });
     window.fetch = jest.fn().mockResolvedValue(originalResponse);
     installDrawFilter();
@@ -233,7 +263,7 @@ describe('drawFilter', () => {
       favProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     const originalResponse = buildResponse({ data: null });
     window.fetch = jest.fn().mockResolvedValue(originalResponse);
     installDrawFilter();
@@ -247,7 +277,7 @@ describe('drawFilter', () => {
       favProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     const originalResponse = buildResponse({ data: 'not-an-array' });
     window.fetch = jest.fn().mockResolvedValue(originalResponse);
     installDrawFilter();
@@ -263,7 +293,7 @@ describe('drawFilter', () => {
     });
     const originalResponse = buildResponse({ data: [{ p: 'fav1', a: 1 }] });
     window.fetch = jest.fn().mockResolvedValue(originalResponse);
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     installDrawFilter();
 
     const response = await window.fetch('/api/draw');
@@ -280,7 +310,7 @@ describe('drawFilter', () => {
     });
     const mockFetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'fav1', a: 1 }] }));
     window.fetch = mockFetch;
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     installDrawFilter();
     uninstallDrawFilter();
 
@@ -377,7 +407,7 @@ describe('drawFilter', () => {
       favProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'fav1', a: 1 }] }));
     installDrawFilter();
 
@@ -407,7 +437,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
       favProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
-    // Избранные не добавлены → last-key не сработает. Центра нет, distance=0.
+    // Locked-точек нет → last-key не сработает. Центра нет, distance=0.
     window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'a', a: 3 }] }));
     installDrawFilter();
     await window.fetch('/api/draw');
@@ -470,7 +500,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
       favProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
         data: [
@@ -521,7 +551,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
       favProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     setStarCenter('center', '');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
@@ -547,7 +577,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
       favProtectionMode: 'protectLastKey',
       maxDistanceMeters: 500,
     });
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
         data: [
@@ -572,7 +602,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
       favProtectionMode: 'protectLastKey',
       maxDistanceMeters: 500,
     });
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     setStarCenter('center', '');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
@@ -599,7 +629,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
       favProtectionMode: 'protectLastKey',
       maxDistanceMeters: 500,
     });
-    await addFavorite('fav1');
+    setLockedPoints(['fav1']);
     setStarCenter('center', '');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(

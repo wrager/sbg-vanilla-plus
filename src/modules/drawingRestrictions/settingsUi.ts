@@ -57,12 +57,12 @@ function buildPanel(): HTMLElement {
   const content = document.createElement('div');
   content.className = 'svp-dr-settings-content';
 
-  // Группа radio — защита избранных
+  // Группа radio — защита точек с нативным замочком (item.f & 0b10)
   const favGroupTitle = document.createElement('div');
   favGroupTitle.className = 'svp-dr-settings-group-title';
   favGroupTitle.textContent = t({
-    en: 'Favorited points protection',
-    ru: 'Защита избранных точек',
+    en: 'Locked points protection',
+    ru: 'Защита точек с замочком',
   });
   content.appendChild(favGroupTitle);
 
@@ -89,8 +89,8 @@ function buildPanel(): HTMLElement {
   content.appendChild(
     buildFavRow(
       t({
-        en: 'Hide all favorited targets',
-        ru: 'Скрывать все избранные цели',
+        en: 'Hide all locked targets',
+        ru: 'Скрывать все цели с замочком',
       }),
       'hideAllFavorites',
       settings.favProtectionMode,
@@ -172,7 +172,9 @@ function injectConfigureButton(): void {
 export function installSettingsUi(): void {
   injectConfigureButton();
   moduleRowObserver = new MutationObserver(() => {
-    // Debounce через rAF — аналогично favoritedPoints/settingsUi.ts.
+    // Debounce через rAF: реинжект кнопки требуется только когда панель
+    // настроек целиком пересобрана, а это редкое событие; за один тик может
+    // прилететь множество мутаций, объединяем их в один проход.
     if (rafId !== null) return;
     rafId = requestAnimationFrame(() => {
       rafId = null;

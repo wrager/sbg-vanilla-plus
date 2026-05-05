@@ -12,7 +12,6 @@ import { showCenterAssignedToast, showCenterClearedToast } from './starCenterToa
 
 const TOGGLE_CLASS = 'svp-star-center-btn';
 const POPUP_ACTION_BUTTON_CLASS = 'svp-popup-action-button';
-const NEXT_POINT_CLASS = 'svp-next-point-button';
 const POPUP_SELECTOR = '.info.popup';
 const POPUP_CLOSE_SELECTOR = '.info .popup-close';
 const BUTTONS_SELECTOR = '.i-buttons';
@@ -99,19 +98,6 @@ function createButton(
   return button;
 }
 
-/**
- * Вставить кнопку в `.i-buttons` слева от `.svp-next-point-button` (если есть)
- * либо в конец контейнера.
- */
-function insertIntoButtons(buttons: Element, button: HTMLButtonElement): void {
-  const nextPoint = buttons.querySelector(`.${NEXT_POINT_CLASS}`);
-  if (nextPoint) {
-    nextPoint.before(button);
-  } else {
-    buttons.appendChild(button);
-  }
-}
-
 function updateButtons(popup: Element): void {
   const buttons = popup.querySelector(BUTTONS_SELECTOR);
   if (!buttons) return;
@@ -129,7 +115,7 @@ function updateButtons(popup: Element): void {
       toggle = createButton(TOGGLE_CLASS, STAR_ICON_SVG, () => {
         void onToggleClick(popup);
       });
-      insertIntoButtons(buttons, toggle);
+      buttons.appendChild(toggle);
     }
     toggle.disabled = false;
     toggle.classList.toggle('is-active', isCurrentCenter);
@@ -213,9 +199,8 @@ function startObserving(popup: Element): void {
     updateButtons(popup);
   });
   // Наблюдаем и за атрибутами попапа (смена data-guid/class), и за subtree —
-  // игра пересоздаёт `.i-buttons` при открытии новой точки, и кнопку
-  // `.svp-next-point-button` инжектит отдельный модуль; нам нужно успевать
-  // переставляться относительно неё.
+  // игра пересоздаёт `.i-buttons` при открытии новой точки, наша кнопка
+  // должна каждый раз заново вставляться в свежий контейнер.
   popupObserver.observe(popup, {
     attributes: true,
     attributeFilter: ['class', 'data-guid'],

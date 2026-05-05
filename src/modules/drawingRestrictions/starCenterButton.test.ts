@@ -73,22 +73,6 @@ describe('starCenterButton — базовая инъекция', () => {
     const buttons = popup.querySelector('.i-buttons');
     expect(buttons?.querySelector(`.${TOGGLE_CLASS}`)).not.toBeNull();
   });
-
-  test('toggle вставляется слева от .svp-next-point-button', () => {
-    const popup = createPopupDom('p1');
-    const buttons = popup.querySelector('.i-buttons');
-    if (!buttons) throw new Error('.i-buttons not found');
-    const nextPoint = document.createElement('button');
-    nextPoint.className = 'svp-next-point-button';
-    buttons.appendChild(nextPoint);
-
-    installStarCenterButton();
-    const toggle = getToggle(popup);
-    expect(toggle).not.toBeNull();
-    if (!toggle) throw new Error('toggle not found');
-    const children = Array.from(buttons.children);
-    expect(children.indexOf(toggle)).toBeLessThan(children.indexOf(nextPoint));
-  });
 });
 
 describe('starCenterButton — состояние', () => {

@@ -1,16 +1,11 @@
-/* Общий размер и оформление обеих кнопок действий в попапе (toggle + соседние
-   модули) задаётся в core/popupActionButton.css через класс
-   .svp-popup-action-button. Здесь — только специфичное для toggle:
-   позиционирование в правом нижнем углу попапа (повторяет .svp-next-point-button)
-   и is-active окраска. */
+/* Общий размер и оформление SVP-кнопок действий в попапе задаётся в
+   core/popupActionButton.css через класс .svp-popup-action-button. Здесь —
+   только специфичное для toggle: позиционирование в правом нижнем углу
+   попапа и is-active окраска. */
 .info.popup .i-buttons .svp-star-center-btn {
   position: fixed;
   bottom: 5px;
   right: 5px;
-}
-
-.info.popup:has(.svp-next-point-button) .i-buttons .svp-star-center-btn {
-  right: 42px;
 }
 
 .info.popup .i-buttons .svp-star-center-btn.is-active {
