@@ -10,7 +10,7 @@
   - _Скрывать все цели с замочком_ — из списка убираются любые защищённые цели, независимо от количества ключей.
 - **Ограничение по расстоянию** — числовое поле в метрах (0 = без лимита). Цели дальше порога скрываются из списка.
 - **Режим «звезда»** — одна точка фиксируется как центр звезды. Когда открыт попап самого центра, список рисования не фильтруется (все линии из центра — часть звезды). Когда открыт попап любой другой точки, в списке остаётся только центр звезды — нельзя случайно нарисовать «не звёздную» линию. Центр **дополнительно** обводится жёлтым кольцом на карте (стандартный вид точки сохраняется — иконка, цвет команды). Управление:
-  - **Кнопка в попапе точки** (лучи из точки, рядом с кнопкой перехода к следующей точке если она есть) — «назначить центром» / «снять центр» / «переназначить центр на эту точку» в зависимости от состояния
+  - **Кнопка в попапе точки** (лучи из точки, в правом нижнем углу `.i-buttons`) — «назначить центром» / «снять центр» / «переназначить центр на эту точку» в зависимости от состояния
   - **Кнопка-control на карте** (под стандартной `.region-picker`) — «сбросить центр звезды»; видна только когда центр назначен. При клике показывается toast с названием снятой точки-центра
 
 ## Toast-уведомления о скрытии
@@ -33,25 +33,25 @@
 
 - `drawingRestrictions.ts` — определение модуля. В `init()` один раз вызывается `migrateDrawingRestrictionsSettings()` для переноса `hideLastFavRef`; в `enable()` ставятся все перехватчики и observers.
 - `drawFilter.ts` — единственный перехватчик `GET /api/draw`. На `enable()` оборачивает `window.fetch`, на `disable()` восстанавливает оригинал. Двойная установка идемпотентна. При пустом массиве предикатов отдаёт оригинальный Response без парсинга JSON. На каждом ответе перечитывает `inventory-cache` через `buildLockedPointGuids` — фильтр сразу видит свежие замочки, проставленные пользователем нативной кнопкой игры или массовой миграцией. После применения предикатов считает три counter'а (`star/distance/lastKey`) и выбирает toast через `pickToastMessage` (bitmask-селектор на 8 ячеек).
-- `filterRules.ts` — чистые предикаты и counter'ы. `buildPredicates({ settings, lockedPoints, starCenterGuid, currentPopupGuid })` возвращает активные правила, `applyPredicates()` — композиция AND. `countHiddenByStar` / `countHiddenByDistance` / `countHiddenByLastKey` — для toast-breakdown. Имя `favProtectionMode` в settings сохранилось из совместимости с migration; семантически это «режим защиты locked-точек».
+- `filterRules.ts` — чистые предикаты и counter'ы. `buildPredicates({ settings, lockedPoints, starCenterGuid, currentPopupGuid })` возвращает активные правила, `applyPredicates()` — композиция AND. `countHiddenByStar` / `countHiddenByDistance` / `countHiddenByLastKey` — для toast-breakdown.
 - `starCenter*` — компоненты режима звезды: `starCenter.ts` (хранилище + событие), `starCenterButton.ts` (кнопка в попапе), `starCenterClearControl.ts` (OL-control на карте), `starCenterHighlight.ts` (overlay-слой с жёлтым кольцом), `starCenterIcon.ts` (SVG иконок), `starCenterToasts.ts` (общие toast-функции «центр назначен» / «центр снят» — используются и попапом, и clear-control'ом).
 - `starCenterButton.ts` и `starCenterHighlight.ts` используют флаг `pendingInstall` для защиты от race при async-установке через `waitForElement` / `getOlMap`.
 
 ## Настройки
 
-- `favProtectionMode: 'off' | 'protectLastKey' | 'hideAllFavorites'` — режим защиты избранных (default: `protectLastKey`)
+- `favProtectionMode: 'off' | 'protectLastKey' | 'hideAllFavorites'` — режим защиты locked-точек (default: `protectLastKey`)
 - `maxDistanceMeters: number` — максимальная дистанция в метрах, 0 отключает фильтр (default: `0`)
 - localStorage key: `svp_drawingRestrictions`
 
-### Миграция из favoritedPoints
+### Совместимость с legacy-ключом `svp_favoritedPoints`
 
-`migrateDrawingRestrictionsSettings()` вызывается один раз из `init()` модуля. При отсутствии `svp_drawingRestrictions` читает `svp_favoritedPoints.hideLastFavRef` и сохраняет новый ключ:
+У пользователей предыдущих версий SVP в localStorage может лежать ключ `svp_favoritedPoints` с полем `hideLastFavRef: boolean`. `migrateDrawingRestrictionsSettings()` вызывается один раз из `init()` модуля и при отсутствии `svp_drawingRestrictions` инициализирует свежий ключ из legacy-значения:
 
-- `true` → `favProtectionMode: 'protectLastKey'` (прежнее поведение сохраняется)
+- `true` → `favProtectionMode: 'protectLastKey'`
 - `false` → `favProtectionMode: 'off'`
-- значение не-boolean / legacy ключ отсутствует → defaults с `protectLastKey`
+- значение не-boolean / legacy-ключ отсутствует → defaults с `protectLastKey`
 
-После сохранения `svp_drawingRestrictions` миграция больше не срабатывает. `loadDrawingRestrictionsSettings()` — чистый геттер, без side effect'ов.
+После создания `svp_drawingRestrictions` миграция больше не срабатывает. `loadDrawingRestrictionsSettings()` — чистый геттер, без side effect'ов.
 
 ## Файловая структура
 
