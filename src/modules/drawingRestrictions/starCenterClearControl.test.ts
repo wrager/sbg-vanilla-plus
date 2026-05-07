@@ -425,6 +425,33 @@ describe('starCenterClearControl — ResizeObserver', () => {
     uninstallStarCenterClearControl();
     expect(disconnectSpy).toHaveBeenCalled();
   });
+
+  // Игра пересоздаёт picker (смена режима, ререндер) - ResizeObserver должен
+  // переподписаться на новый узел, иначе наблюдает за zombie-нодой.
+  test('picker пересоздан после install — ResizeObserver наблюдает за новым', async () => {
+    const container = createMapWithRegionPicker();
+    installStarCenterClearControl();
+    const firstPicker = container.querySelector('.region-picker');
+    const firstObserver = lastObserver;
+    expect(firstObserver?.observe).toHaveBeenCalledWith(firstPicker);
+
+    // Эмулируем пересоздание picker'а игрой.
+    firstPicker?.remove();
+    const newPicker = document.createElement('div');
+    newPicker.className = 'region-picker ol-unselectable ol-control';
+    container.appendChild(newPicker);
+
+    // control тоже удалили (как часть пересоздания DOM вокруг карты),
+    // observer по мутации body вызовет tryAttach.
+    document.querySelector(`.${CONTROL_CLASS}`)?.remove();
+    document.body.appendChild(document.createElement('div'));
+    await flushMutations();
+
+    // Тот же ResizeObserver instance, но теперь наблюдает за новым picker.
+    expect(lastObserver).toBe(firstObserver);
+    expect(firstObserver?.disconnect).toHaveBeenCalled();
+    expect(firstObserver?.observe).toHaveBeenLastCalledWith(newPicker);
+  });
 });
 
 describe('starCenterClearControl — ResizeObserver недоступен', () => {

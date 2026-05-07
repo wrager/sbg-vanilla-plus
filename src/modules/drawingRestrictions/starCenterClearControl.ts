@@ -84,6 +84,15 @@ function tryAttach(): boolean {
   if (controlElement && controlElement.isConnected) return true;
   const picker = document.querySelector<HTMLElement>(REGION_PICKER_SELECTOR);
   if (!picker) return false;
+  // Если игра пересоздала picker (например, при смене режима), наш
+  // ResizeObserver наблюдает за DOM-узлом, которого уже нет в дереве.
+  // Переподписываемся на свежий picker, чтобы syncPosition реагировал на его
+  // resize, а не висел на zombie-ноде.
+  const pickerChanged = pickerElement !== null && pickerElement !== picker;
+  if (pickerChanged && resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver.observe(picker);
+  }
   pickerElement = picker;
   if (!controlElement) controlElement = createControl();
   picker.after(controlElement);
