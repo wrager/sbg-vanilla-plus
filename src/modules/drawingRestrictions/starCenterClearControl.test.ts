@@ -29,9 +29,13 @@ function getControl(): HTMLElement | null {
 }
 
 async function flushMutations(): Promise<void> {
+  // MutationObserver callback - microtask, затем внутри callback'а через rAF
+  // вызывается tryAttach (debounce). Сначала flush microtasks, потом ждём
+  // следующий rAF tick (jsdom rAF ~ setTimeout 0/16ms).
   for (let i = 0; i < 5; i++) {
     await Promise.resolve();
   }
+  await new Promise<void>((resolve) => setTimeout(resolve, 16));
 }
 
 beforeEach(() => {
@@ -454,6 +458,37 @@ describe('starCenterClearControl — реакция MutationObserver', () => {
     await flushMutations();
 
     expect(getControl()).not.toBeNull();
+  });
+
+  // rAF-debounce: множественные мутации за один тик дают один проход reattach.
+  test('массовые мутации за один тик — один rAF, один reattach', async () => {
+    createMapWithRegionPicker();
+    installStarCenterClearControl();
+    getControl()?.remove();
+
+    // Несколько синхронных мутаций - все должны сложиться в один rAF.
+    for (let i = 0; i < 10; i++) {
+      document.body.appendChild(document.createElement('div'));
+    }
+    await flushMutations();
+
+    // После единственного rAF-tick'a control реаттачен ровно один раз.
+    expect(document.querySelectorAll(`.${CONTROL_CLASS}`).length).toBe(1);
+  });
+
+  // uninstall во время запланированного rAF отменяет reattach (cancelAnimationFrame).
+  test('uninstall до резолва rAF — reattach не выполняется', async () => {
+    createMapWithRegionPicker();
+    installStarCenterClearControl();
+    getControl()?.remove();
+
+    // Планируем rAF через мутацию.
+    document.body.appendChild(document.createElement('div'));
+    // Сразу uninstall, не дожидаясь rAF.
+    uninstallStarCenterClearControl();
+
+    await flushMutations();
+    expect(getControl()).toBeNull();
   });
 
   // 8.J обе FALSE: control на месте → syncPosition (не reattach).

@@ -14,6 +14,7 @@ let changeHandler: (() => void) | null = null;
 let domObserver: MutationObserver | null = null;
 let resizeObserver: ResizeObserver | null = null;
 let windowResizeHandler: (() => void) | null = null;
+let rafId: number | null = null;
 
 /**
  * Позиционирует control прямо под `.region-picker`. Координаты читаем через
@@ -99,14 +100,22 @@ function tryAttach(): boolean {
 
 export function installStarCenterClearControl(): void {
   if (domObserver) return;
-  // Наблюдатель отслеживает появление/исчезновение .region-picker — control
+  // Наблюдатель отслеживает появление/исчезновение .region-picker - control
   // перевставляется автоматически, если игра пересоздаёт DOM вокруг карты.
+  // rAF-debounce: за один тик игра делает много мутаций (ререндер points-layer,
+  // обновление виджетов попапа, splide.refresh), без debounce syncPosition с
+  // getBoundingClientRect (force layout) вызывается на каждой мутации - дорого.
+  // Аналогичный паттерн в settingsUi.ts для reinject configure-button.
   domObserver = new MutationObserver(() => {
-    if (!controlElement || !controlElement.isConnected) {
-      tryAttach();
-    } else {
-      syncPosition();
-    }
+    if (rafId !== null) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      if (!controlElement || !controlElement.isConnected) {
+        tryAttach();
+      } else {
+        syncPosition();
+      }
+    });
   });
   domObserver.observe(document.body, { childList: true, subtree: true });
   tryAttach();
@@ -123,6 +132,10 @@ export function installStarCenterClearControl(): void {
 }
 
 export function uninstallStarCenterClearControl(): void {
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
   domObserver?.disconnect();
   domObserver = null;
   resizeObserver?.disconnect();
