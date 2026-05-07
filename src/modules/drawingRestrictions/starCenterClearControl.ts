@@ -1,5 +1,6 @@
 import { STAR_CENTER_CHANGED_EVENT, clearStarCenter, getStarCenter } from './starCenter';
 import { STAR_ICON_SLASH_SVG } from './starCenterIcon';
+import { refreshPopupIfStarFilterWasActive } from './starCenterRefresh';
 import { showCenterClearedToast } from './starCenterToasts';
 
 const CONTROL_CLASS = 'svp-star-center-clear-control';
@@ -61,8 +62,16 @@ function createControl(): HTMLDivElement {
       event.stopPropagation();
       event.preventDefault();
       const star = getStarCenter();
+      const centerBefore = star?.guid ?? null;
       clearStarCenter();
       if (star) showCenterClearedToast(star.name);
+      // При снятии центра через map-control попап другой точки может быть
+      // открыт - там #draw-count и possible_lines всё ещё показывают
+      // отфильтрованный список (только бывший центр). Без перезапроса /api/draw
+      // клик "Рисовать" проложит линию на бывший центр, хотя пользователь
+      // ожидает свободного выбора. Утилита делает no-op если попап закрыт или
+      // открыт попап самого бывшего центра.
+      refreshPopupIfStarFilterWasActive(centerBefore);
     },
     { signal: abortController.signal },
   );

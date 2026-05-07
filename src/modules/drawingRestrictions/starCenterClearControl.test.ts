@@ -199,6 +199,85 @@ describe('starCenterClearControl — onClick без назначенного ц�
   });
 });
 
+describe('starCenterClearControl — refresh попапа при сбросе центра', () => {
+  const showInfoMock = jest.fn();
+
+  beforeEach(() => {
+    showInfoMock.mockClear();
+    (window as unknown as { showInfo: typeof showInfoMock }).showInfo = showInfoMock;
+  });
+
+  afterEach(() => {
+    delete (window as unknown as { showInfo?: typeof showInfoMock }).showInfo;
+  });
+
+  function createPopupWithClose(guid: string): HTMLElement {
+    const popup = document.createElement('div');
+    popup.className = 'info popup';
+    popup.dataset.guid = guid;
+    const closeButton = document.createElement('button');
+    closeButton.className = 'popup-close';
+    popup.appendChild(closeButton);
+    document.body.appendChild(popup);
+    return popup;
+  }
+
+  test('попап точки B открыт + центр на A - клик map-control закрывает и переоткрывает B', () => {
+    createMapWithRegionPicker();
+    setStarCenter('A', 'Alpha');
+    const popup = createPopupWithClose('B');
+    const closeSpy = jest.fn();
+    popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
+
+    installStarCenterClearControl();
+    const button = getControl()?.querySelector<HTMLButtonElement>('button');
+    button?.click();
+
+    expect(getStarCenter()).toBeNull();
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    expect(showInfoMock).toHaveBeenCalledWith('B');
+  });
+
+  test('попап бывшего центра открыт - клик map-control НЕ переоткрывает попап', () => {
+    createMapWithRegionPicker();
+    setStarCenter('A', 'Alpha');
+    const popup = createPopupWithClose('A');
+    const closeSpy = jest.fn();
+    popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
+
+    installStarCenterClearControl();
+    const button = getControl()?.querySelector<HTMLButtonElement>('button');
+    button?.click();
+
+    expect(getStarCenter()).toBeNull();
+    expect(closeSpy).not.toHaveBeenCalled();
+    expect(showInfoMock).not.toHaveBeenCalled();
+  });
+
+  test('попап не открыт - клик map-control НЕ переоткрывает', () => {
+    createMapWithRegionPicker();
+    setStarCenter('A', 'Alpha');
+
+    installStarCenterClearControl();
+    const button = getControl()?.querySelector<HTMLButtonElement>('button');
+    button?.click();
+
+    expect(getStarCenter()).toBeNull();
+    expect(showInfoMock).not.toHaveBeenCalled();
+  });
+
+  test('центр не назначен - клик map-control НЕ переоткрывает (no-op refresh)', () => {
+    createMapWithRegionPicker();
+    createPopupWithClose('B');
+
+    installStarCenterClearControl();
+    const button = getControl()?.querySelector<HTMLButtonElement>('button');
+    button?.click();
+
+    expect(showInfoMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('starCenterClearControl — window resize', () => {
   test('window.resize переспозиционирует control', () => {
     const container = createMapWithRegionPicker();

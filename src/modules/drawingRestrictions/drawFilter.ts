@@ -154,7 +154,14 @@ function pickToastMessage(inputs: IToastInputs): string | null {
   }
 }
 
-function getCurrentPopupGuid(): string | null {
+/**
+ * GUID точки в открытом попапе на момент вызова, либо null если попап
+ * отсутствует / скрыт через класс `.hidden` / без `data-guid`. Используется и
+ * для drawFilter (определить открытую точку в момент /api/draw), и для
+ * starCenterRefresh (решить, нужно ли перезапросить /api/draw после изменения
+ * центра звезды). Селектор `.info.popup` един для обоих случаев.
+ */
+export function getCurrentPopupGuid(): string | null {
   const popup = document.querySelector(POPUP_SELECTOR);
   if (!popup || !(popup instanceof HTMLElement)) return null;
   if (popup.classList.contains('hidden')) return null;
