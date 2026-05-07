@@ -246,12 +246,19 @@ async function filterDrawResponse(response: Response): Promise<Response> {
   });
   if (message !== null) showToast(message, 4000);
 
+  // Headers оригинала копируем без content-length: после фильтрации длина body
+  // меняется, и заголовок становится несоответствующим реальному размеру.
+  // Игровой код по чтению refs/game/script.js его на draw-response не проверяет,
+  // но формально ложный заголовок - inconsistency, и сторонние user-script'ы
+  // могут на него опираться.
+  const newHeaders = new Headers(response.headers);
+  newHeaders.delete('content-length');
   const modified = new Response(JSON.stringify(parsed), {
     status: response.status,
     statusText: response.statusText,
-    headers: response.headers,
+    headers: newHeaders,
   });
-  // Response.url — read-only, не передаётся через init. Восстанавливаем через
+  // Response.url - read-only, не передаётся через init. Восстанавливаем через
   // defineProperty, чтобы игровой код, проверяющий response.url, не сломался.
   Object.defineProperty(modified, 'url', { value: response.url });
   return modified;

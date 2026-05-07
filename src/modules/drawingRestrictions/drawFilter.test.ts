@@ -302,6 +302,35 @@ describe('drawFilter', () => {
     expect(response).toBe(originalResponse);
   });
 
+  test('content-length не копируется в headers модифицированного Response', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'hideAllFavorites',
+      maxDistanceMeters: 0,
+    });
+    setLockedPoints(['fav1']);
+    // Оригинал с явным content-length, не соответствующим длине отфильтрованного body.
+    const originalResponse = new Response(
+      JSON.stringify({
+        data: [
+          { p: 'fav1', a: 5 },
+          { p: 'other', a: 1 },
+        ],
+      }),
+      {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'content-length': '999' },
+      },
+    );
+    window.fetch = jest.fn().mockResolvedValue(originalResponse);
+    installDrawFilter();
+
+    const response = await window.fetch('/api/draw');
+    expect(response.headers.get('content-length')).toBeNull();
+    // content-type сохраняется (это валидный остающийся заголовок).
+    expect(response.headers.get('content-type')).toBe('application/json');
+  });
+
   test('uninstall возвращает оригинальный fetch', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
