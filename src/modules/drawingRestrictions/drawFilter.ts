@@ -5,12 +5,12 @@ import {
   applyPredicates,
   buildPredicates,
   countHiddenByDistance,
-  countHiddenByLastKey,
+  countHiddenByLockMode,
   countHiddenByStar,
   type IDrawEntry,
 } from './filterRules';
 import { pluralizeLastRefs } from './lastRefsPluralize';
-import { loadDrawingRestrictionsSettings } from './settings';
+import { loadDrawingRestrictionsSettings, type FavProtectionMode } from './settings';
 import { getStarCenterGuid } from './starCenter';
 
 const POPUP_SELECTOR = '.info.popup';
@@ -47,17 +47,38 @@ function isDrawResponseShape(value: unknown): value is IDrawResponseShape {
   );
 }
 
-function lastKeyMessage(hidden: number): string {
-  const phrase = pluralizeLastRefs(hidden);
-  if (hidden === 1) {
+/**
+ * Mode-aware фрагмент для бита lock в toast-сообщении. Подставляется и в
+ * соло-формулировку, и в комбинации с star/distance. Английский: единая
+ * терминология "locked points" для обоих режимов; русский: грамматика разная
+ * (последние ключи vs N точек с замочком), поэтому возвращаем готовую пару.
+ */
+function lockPhrase(count: number, mode: FavProtectionMode): { ru: string; en: string } {
+  if (mode === 'protectLastKey') {
+    const refs = pluralizeLastRefs(count);
+    return {
+      ru: `${refs.ru} защищённых точек`,
+      en: `${refs.en} of locked points`,
+    };
+  }
+  // hideAllFavorites: считаются все locked-точки независимо от amount.
+  return {
+    ru: `${count} точек с замочком`,
+    en: `${count} locked points`,
+  };
+}
+
+function lockMessage(hidden: number, mode: FavProtectionMode): string {
+  const phrase = lockPhrase(hidden, mode);
+  if (mode === 'protectLastKey' && hidden === 1) {
     return t({
-      en: `Hidden ${phrase.en} from a locked point`,
-      ru: `Скрыт ${phrase.ru} от защищённой точки`,
+      en: `Hidden ${phrase.en.replace(' of locked points', '')} from a locked point`,
+      ru: `Скрыт ${phrase.ru.replace(' защищённых точек', '')} от защищённой точки`,
     });
   }
   return t({
-    en: `Hidden ${phrase.en} from locked points`,
-    ru: `Скрыты ${phrase.ru} от защищённых точек`,
+    en: `Hidden: ${phrase.en}`,
+    ru: `Скрыто: ${phrase.ru}`,
   });
 }
 
@@ -82,51 +103,66 @@ function starAndDistanceMessage(totalHidden: number): string {
   });
 }
 
-function starAndLastKeyMessage(star: number, lastKey: number): string {
-  const phrase = pluralizeLastRefs(lastKey);
+function starAndLockMessage(star: number, lock: number, mode: FavProtectionMode): string {
+  const phrase = lockPhrase(lock, mode);
   return t({
-    en: `Hidden: ${star} in star mode, ${phrase.en} of locked points`,
-    ru: `Скрыто: ${star} в режиме "Звезда", ${phrase.ru} защищённых точек`,
+    en: `Hidden: ${star} in star mode, ${phrase.en}`,
+    ru: `Скрыто: ${star} в режиме "Звезда", ${phrase.ru}`,
   });
 }
 
-function distanceAndLastKeyMessage(distance: number, lastKey: number, maxMeters: number): string {
-  const phrase = pluralizeLastRefs(lastKey);
+function distanceAndLockMessage(
+  distance: number,
+  lock: number,
+  maxMeters: number,
+  mode: FavProtectionMode,
+): string {
+  const phrase = lockPhrase(lock, mode);
   return t({
-    en: `Hidden: ${distance} beyond ${maxMeters} m, ${phrase.en} of locked points`,
-    ru: `Скрыто: ${distance} за ${maxMeters} м, ${phrase.ru} защищённых точек`,
+    en: `Hidden: ${distance} beyond ${maxMeters} m, ${phrase.en}`,
+    ru: `Скрыто: ${distance} за ${maxMeters} м, ${phrase.ru}`,
   });
 }
 
-function allThreeMessage(totalHidden: number): string {
+function allThreeMessage(totalHidden: number, mode: FavProtectionMode): string {
+  if (mode === 'protectLastKey') {
+    return t({
+      en: `Points (${totalHidden}) hidden: star mode + distance + last-key protection`,
+      ru: `Точки (${totalHidden}) скрыты: "Звезда" + дальность + защита последних ключей`,
+    });
+  }
   return t({
-    en: `Points (${totalHidden}) hidden: star mode + distance + last-key protection`,
-    ru: `Точки (${totalHidden}) скрыты: "Звезда" + дальность + защита последних ключей`,
+    en: `Points (${totalHidden}) hidden: star mode + distance + locked points`,
+    ru: `Точки (${totalHidden}) скрыты: "Звезда" + дальность + точки с замочком`,
   });
 }
 
 interface IToastInputs {
   hiddenByStar: number;
   hiddenByDistance: number;
-  hiddenByLastKey: number;
+  hiddenByLock: number;
   totalHidden: number;
   maxDistanceMeters: number;
+  favProtectionMode: FavProtectionMode;
 }
 
 /**
  * Выбор единственного toast-сообщения по комбинации счётчиков (ровно один
- * showToast на response). Матрица покрывает 7 ненулевых комбинаций + no-op
- * при all-zero. Логика: каждый counter > 0 — отдельная причина, мы объединяем
- * названия активных причин; для star+distance и all-three используется
- * totalHidden (реально скрыто уникально после AND-композиции предикатов),
- * для комбинаций с lastKey — breakdown по причинам (lastKey-скрытие всегда
- * отдельно подсчитывается и не пересекается семантически с остальными).
+ * showToast на response). Bitmask 3-битный s/d/lock: бит lock включает оба
+ * режима защиты locked-точек (protectLastKey и hideAllFavorites), формулировка
+ * для бита lock зависит от favProtectionMode (mode-aware wording через
+ * lockPhrase / lockMessage).
+ *
+ * Матрица покрывает 7 ненулевых комбинаций + no-op при all-zero. Для
+ * star+distance и all-three используется totalHidden (реально скрыто уникально
+ * после AND-композиции предикатов); для комбинаций с lock - breakdown по
+ * причинам, lock-скрытие подсчитывается отдельно от остальных.
  */
 function pickToastMessage(inputs: IToastInputs): string | null {
   const s = inputs.hiddenByStar > 0 ? 1 : 0;
   const d = inputs.hiddenByDistance > 0 ? 1 : 0;
-  const k = inputs.hiddenByLastKey > 0 ? 1 : 0;
-  const mask = (s << 2) | (d << 1) | k;
+  const lock = inputs.hiddenByLock > 0 ? 1 : 0;
+  const mask = (s << 2) | (d << 1) | lock;
 
   switch (mask) {
     case 0b000:
@@ -136,19 +172,20 @@ function pickToastMessage(inputs: IToastInputs): string | null {
     case 0b010:
       return distanceMessage(inputs.hiddenByDistance, inputs.maxDistanceMeters);
     case 0b001:
-      return lastKeyMessage(inputs.hiddenByLastKey);
+      return lockMessage(inputs.hiddenByLock, inputs.favProtectionMode);
     case 0b110:
       return starAndDistanceMessage(inputs.totalHidden);
     case 0b101:
-      return starAndLastKeyMessage(inputs.hiddenByStar, inputs.hiddenByLastKey);
+      return starAndLockMessage(inputs.hiddenByStar, inputs.hiddenByLock, inputs.favProtectionMode);
     case 0b011:
-      return distanceAndLastKeyMessage(
+      return distanceAndLockMessage(
         inputs.hiddenByDistance,
-        inputs.hiddenByLastKey,
+        inputs.hiddenByLock,
         inputs.maxDistanceMeters,
+        inputs.favProtectionMode,
       );
     case 0b111:
-      return allThreeMessage(inputs.totalHidden);
+      return allThreeMessage(inputs.totalHidden, inputs.favProtectionMode);
     default:
       return null;
   }
@@ -202,9 +239,10 @@ async function filterDrawResponse(response: Response): Promise<Response> {
   const message = pickToastMessage({
     hiddenByStar: countHiddenByStar(original, starCenterGuid, currentPopupGuid),
     hiddenByDistance: countHiddenByDistance(original, settings.maxDistanceMeters),
-    hiddenByLastKey: countHiddenByLastKey(original, lockedPoints, settings.favProtectionMode),
+    hiddenByLock: countHiddenByLockMode(original, lockedPoints, settings.favProtectionMode),
     totalHidden: original.length - parsed.data.length,
     maxDistanceMeters: settings.maxDistanceMeters,
+    favProtectionMode: settings.favProtectionMode,
   });
   if (message !== null) showToast(message, 4000);
 

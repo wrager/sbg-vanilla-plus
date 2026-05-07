@@ -85,20 +85,31 @@ export function applyPredicates<T extends IDrawEntry>(
 }
 
 /**
- * Сколько элементов было скрыто правилом protectLastKey. Считается отдельно от
- * остальных правил, потому что только эта ветка показывает toast — скрытие
- * массово-ожидаемое (hideAllFavorites, distance) не требует уведомления.
+ * Сколько элементов было скрыто правилом защиты locked-точек (lock-axis в
+ * toast-bitmask). Покрывает оба пользовательских режима через единый счётчик:
+ * формулировка toast-сообщения для бита lock потом выбирается по mode в
+ * drawFilter (mode-aware wording, см. lockMessage).
+ *
+ * - mode='protectLastKey': считаем locked-точки с amount=1 (только последний ключ).
+ * - mode='hideAllFavorites': считаем все locked-точки (любой amount).
+ * - mode='off': предикат не создаётся, ничего не скрывается.
  */
-export function countHiddenByLastKey(
+export function countHiddenByLockMode(
   entries: readonly IDrawEntry[],
   lockedPoints: ReadonlySet<string>,
   mode: IDrawingRestrictionsSettings['favProtectionMode'],
 ): number {
-  if (mode !== 'protectLastKey' || lockedPoints.size === 0) return 0;
+  if (mode === 'off' || lockedPoints.size === 0) return 0;
   let hidden = 0;
   for (const entry of entries) {
-    if (typeof entry.p !== 'string' || typeof entry.a !== 'number') continue;
-    if (lockedPoints.has(entry.p) && entry.a === 1) hidden += 1;
+    if (typeof entry.p !== 'string') continue;
+    if (mode === 'protectLastKey') {
+      if (typeof entry.a !== 'number') continue;
+      if (lockedPoints.has(entry.p) && entry.a === 1) hidden += 1;
+    } else {
+      // hideAllFavorites: любой amount считается, поле `a` для решения не нужно.
+      if (lockedPoints.has(entry.p)) hidden += 1;
+    }
   }
   return hidden;
 }

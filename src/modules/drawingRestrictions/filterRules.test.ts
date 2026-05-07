@@ -2,7 +2,7 @@ import {
   applyPredicates,
   buildPredicates,
   countHiddenByDistance,
-  countHiddenByLastKey,
+  countHiddenByLockMode,
   countHiddenByStar,
   type IDrawEntry,
 } from './filterRules';
@@ -144,26 +144,38 @@ describe('buildPredicates', () => {
   });
 });
 
-describe('countHiddenByLastKey', () => {
-  test('считает только locked-точки с a=1 при mode=protectLastKey', () => {
-    expect(countHiddenByLastKey(ENTRIES, LOCKED_POINTS, 'protectLastKey')).toBe(1);
+describe('countHiddenByLockMode', () => {
+  test('mode=protectLastKey: считает locked-точки с a=1', () => {
+    expect(countHiddenByLockMode(ENTRIES, LOCKED_POINTS, 'protectLastKey')).toBe(1);
+  });
+
+  test('mode=hideAllFavorites: считает все locked-точки независимо от amount', () => {
+    // ENTRIES содержит fav1 (a=1) и fav2 (a=3), обе locked - всего 2.
+    expect(countHiddenByLockMode(ENTRIES, LOCKED_POINTS, 'hideAllFavorites')).toBe(2);
   });
 
   test('mode=off — 0', () => {
-    expect(countHiddenByLastKey(ENTRIES, LOCKED_POINTS, 'off')).toBe(0);
+    expect(countHiddenByLockMode(ENTRIES, LOCKED_POINTS, 'off')).toBe(0);
   });
 
-  test('mode=hideAllFavorites — 0 (эта ветка не показывает toast)', () => {
-    expect(countHiddenByLastKey(ENTRIES, LOCKED_POINTS, 'hideAllFavorites')).toBe(0);
+  test('пустой set locked-точек — 0 (любой mode)', () => {
+    expect(countHiddenByLockMode(ENTRIES, new Set(), 'protectLastKey')).toBe(0);
+    expect(countHiddenByLockMode(ENTRIES, new Set(), 'hideAllFavorites')).toBe(0);
   });
 
-  test('пустой set locked-точек — 0', () => {
-    expect(countHiddenByLastKey(ENTRIES, new Set(), 'protectLastKey')).toBe(0);
-  });
-
-  test('игнорирует записи без p или a', () => {
+  test('protectLastKey: игнорирует записи без p или a', () => {
     const entries: IDrawEntry[] = [{ p: 'fav1', a: 1 }, { a: 1 }, { p: 'fav2' }];
-    expect(countHiddenByLastKey(entries, LOCKED_POINTS, 'protectLastKey')).toBe(1);
+    expect(countHiddenByLockMode(entries, LOCKED_POINTS, 'protectLastKey')).toBe(1);
+  });
+
+  test('hideAllFavorites: считает запись без a (любой amount подходит)', () => {
+    const entries: IDrawEntry[] = [{ p: 'fav1', a: 5 }, { p: 'fav2' }, { p: 'other', a: 1 }];
+    expect(countHiddenByLockMode(entries, LOCKED_POINTS, 'hideAllFavorites')).toBe(2);
+  });
+
+  test('hideAllFavorites: игнорирует записи без p', () => {
+    const entries: IDrawEntry[] = [{ p: 'fav1', a: 5 }, { a: 1 }];
+    expect(countHiddenByLockMode(entries, LOCKED_POINTS, 'hideAllFavorites')).toBe(1);
   });
 });
 
