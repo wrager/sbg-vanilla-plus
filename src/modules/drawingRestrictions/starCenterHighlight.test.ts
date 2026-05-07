@@ -6,8 +6,9 @@ import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource } from '../../core/o
 
 interface IFakeSource extends IOlVectorSource, Record<'_features' | '_listeners', unknown> {
   _features: IOlFeature[];
-  _listeners: Map<string, (() => void)[]>;
-  emitChange: () => void;
+  _listeners: Map<string, ((...args: unknown[]) => void)[]>;
+  emitAddFeature: (feature: IOlFeature) => void;
+  emitRemoveFeature: (feature: IOlFeature) => void;
 }
 
 function makeFeature(id: string, coords: [number, number] = [0, 0]): IOlFeature {
@@ -20,7 +21,7 @@ function makeFeature(id: string, coords: [number, number] = [0, 0]): IOlFeature 
 }
 
 function makeSource(features: IOlFeature[] = []): IFakeSource {
-  const listeners = new Map<string, (() => void)[]>();
+  const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
   const featureList = [...features];
   return {
     _features: featureList,
@@ -32,22 +33,28 @@ function makeSource(features: IOlFeature[] = []): IFakeSource {
     clear: jest.fn(() => {
       featureList.length = 0;
     }),
-    on(type: string, callback: () => void) {
+    on(type: string, callback: (...args: unknown[]) => void) {
       const array = listeners.get(type) ?? [];
       array.push(callback);
       listeners.set(type, array);
     },
-    un(type: string, callback: () => void) {
+    un(type: string, callback: (...args: unknown[]) => void) {
       const array = listeners.get(type) ?? [];
       listeners.set(
         type,
         array.filter((listener) => listener !== callback),
       );
     },
-    emitChange() {
-      const callbacks = listeners.get('change') ?? [];
+    emitAddFeature(feature: IOlFeature) {
+      const callbacks = listeners.get('addfeature') ?? [];
       callbacks.forEach((callback) => {
-        callback();
+        callback({ feature });
+      });
+    },
+    emitRemoveFeature(feature: IOlFeature) {
+      const callbacks = listeners.get('removefeature') ?? [];
+      callbacks.forEach((callback) => {
+        callback({ feature });
       });
     },
   };
@@ -364,16 +371,50 @@ describe('refreshOverlay', () => {
     expect(getOverlayFeatures(map).length).toBe(1);
   });
 
-  // Реакция на source 'change' event (feature появилась позже).
-  test('emit source change — refreshOverlay отрабатывает', async () => {
+  // Реакция на source 'addfeature' для центра — refreshOverlay отрабатывает.
+  test('emit addfeature для центра — refreshOverlay создаёт overlay', async () => {
     const { map, pointsSource } = await setupInstalled([]);
     setStarCenter('center', '');
     expect(getOverlayFeatures(map).length).toBe(0);
 
-    pointsSource._features.push(makeFeature('center'));
-    pointsSource.emitChange();
+    const centerFeature = makeFeature('center');
+    pointsSource._features.push(centerFeature);
+    pointsSource.emitAddFeature(centerFeature);
 
     expect(getOverlayFeatures(map).length).toBe(1);
+  });
+
+  // 'addfeature' для не-центра не триггерит refreshOverlay (фильтр по getId).
+  test('emit addfeature для другой точки — overlay не пересчитывается', async () => {
+    const { map, pointsSource } = await setupInstalled([makeFeature('center')]);
+    setStarCenter('center', '');
+    expect(getOverlayFeatures(map).length).toBe(1);
+    const initialFeature = getOverlayFeatures(map)[0];
+
+    const otherFeature = makeFeature('other');
+    pointsSource._features.push(otherFeature);
+    pointsSource.emitAddFeature(otherFeature);
+
+    // Overlay не пересчитан: тот же instance feature.
+    expect(getOverlayFeatures(map).length).toBe(1);
+    expect(getOverlayFeatures(map)[0]).toBe(initialFeature);
+  });
+
+  // 'removefeature' для центра очищает overlay.
+  test('emit removefeature для центра — overlay очищается', async () => {
+    const centerFeature = makeFeature('center');
+    const { map, pointsSource } = await setupInstalled([centerFeature]);
+    setStarCenter('center', '');
+    expect(getOverlayFeatures(map).length).toBe(1);
+
+    // Симулируем удаление feature из points-layer.
+    const index = pointsSource._features.indexOf(centerFeature);
+    if (index >= 0) pointsSource._features.splice(index, 1);
+    pointsSource.emitRemoveFeature(centerFeature);
+
+    // refreshOverlay при getStarCenterGuid() матчит feature с центром, но
+    // findFeatureByGuid возвращает null - overlay clear() и feature не добавлена.
+    expect(getOverlayFeatures(map).length).toBe(0);
   });
 });
 
@@ -418,9 +459,10 @@ describe('uninstall', () => {
     uninstallStarCenterHighlight();
 
     expect(map._addedLayers.length).toBe(0);
-    // source.change handler отключен: dispatch не падает.
+    // addfeature/removefeature handlers отключены: dispatch не падает.
     expect(() => {
-      source.emitChange();
+      source.emitAddFeature(makeFeature('center'));
+      source.emitRemoveFeature(makeFeature('center'));
     }).not.toThrow();
 
     // STAR_CENTER_CHANGED_EVENT больше не должен влиять.

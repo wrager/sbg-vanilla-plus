@@ -8,7 +8,7 @@ let map: IOlMap | null = null;
 let pointsSource: IOlVectorSource | null = null;
 let overlayLayer: IOlLayer | null = null;
 let overlaySource: IOlVectorSource | null = null;
-let sourceChangeHandler: (() => void) | null = null;
+let featureLifecycleHandler: ((...args: unknown[]) => void) | null = null;
 let starCenterChangeHandler: (() => void) | null = null;
 let installGeneration = 0;
 // pendingInstall защищает от race `install() → install()` до резолва getOlMap:
@@ -104,12 +104,28 @@ export function installStarCenterHighlight(): void {
       map = captured;
       pointsSource = source;
 
-      // Перерисовка при появлении/изменении features (центр мог быть за viewport
-      // при install, а потом подгрузиться).
-      sourceChangeHandler = (): void => {
-        refreshOverlay();
+      // Подписки точно на addfeature/removefeature вместо широкого 'change':
+      // 'change' эмитится OL VectorSource на каждое addFeature/removeFeature/
+      // setFeatureStyle/modify - игра обновляет points часто (movement,
+      // requestEntities, изменения стиля точек), и refreshOverlay (clear +
+      // создание нового feature/style) запускался десятки раз за тик. На
+      // длинной сессии заметно в profile. Здесь нужны только события
+      // появления/исчезновения feature - других триггеров пересчёта overlay нет
+      // (координаты центра в нативной точке после requestEntities обновляются
+      // через addfeature после remove, не через мутацию).
+      featureLifecycleHandler = (...args: unknown[]): void => {
+        const event = args[0] as
+          | { feature?: { getId?(): string | number | undefined } }
+          | undefined;
+        const featureGuid = event?.feature?.getId?.();
+        // Перерисовываем только если событие касается текущего центра звезды.
+        // Любая другая feature не влияет на наш overlay.
+        if (featureGuid === getStarCenterGuid()) {
+          refreshOverlay();
+        }
       };
-      source.on('change', sourceChangeHandler);
+      source.on('addfeature', featureLifecycleHandler);
+      source.on('removefeature', featureLifecycleHandler);
 
       starCenterChangeHandler = (): void => {
         refreshOverlay();
@@ -132,8 +148,9 @@ export function uninstallStarCenterHighlight(): void {
   if (map && overlayLayer) {
     map.removeLayer(overlayLayer);
   }
-  if (pointsSource && sourceChangeHandler) {
-    pointsSource.un('change', sourceChangeHandler);
+  if (pointsSource && featureLifecycleHandler) {
+    pointsSource.un('addfeature', featureLifecycleHandler);
+    pointsSource.un('removefeature', featureLifecycleHandler);
   }
   if (starCenterChangeHandler) {
     document.removeEventListener(STAR_CENTER_CHANGED_EVENT, starCenterChangeHandler);
@@ -142,6 +159,6 @@ export function uninstallStarCenterHighlight(): void {
   pointsSource = null;
   overlayLayer = null;
   overlaySource = null;
-  sourceChangeHandler = null;
+  featureLifecycleHandler = null;
   starCenterChangeHandler = null;
 }
