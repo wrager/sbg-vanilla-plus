@@ -493,8 +493,8 @@ describe('drawFilter — выбор toast по комбинации счётчи
     expect(lastToastMessage()).toContain('500');
   });
 
-  // 0 0 1 — только last-key (старое поведение сохраняется).
-  test('s=0 d=0 k=1 — last-key toast с плюрализацией', async () => {
+  // 0 0 1 — только last-key, count=1 (единственное число через pluralizeLastRefs).
+  test('s=0 d=0 k=1 — last-key toast с count=1 (единственное число)', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
       favProtectionMode: 'protectLastKey',
@@ -512,7 +512,32 @@ describe('drawFilter — выбор toast по комбинации счётчи
     installDrawFilter();
     await window.fetch('/api/draw');
     expect(showToastMock).toHaveBeenCalledTimes(1);
-    expect(lastToastMessage()).toContain('last key');
+    // l10n в jsdom отдаёт en — проверяем единственное число "1 last key".
+    expect(lastToastMessage()).toContain('1 last key');
+    expect(lastToastMessage()).not.toContain('last keys');
+  });
+
+  // 0 0 1 — только last-key, count=2 (множественное число).
+  test('s=0 d=0 k=1 — last-key toast с count=2 (множественное)', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'protectLastKey',
+      maxDistanceMeters: 0,
+    });
+    setLockedPoints(['fav1', 'fav2']);
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        data: [
+          { p: 'fav1', a: 1 },
+          { p: 'fav2', a: 1 },
+          { p: 'other', a: 5 },
+        ],
+      }),
+    );
+    installDrawFilter();
+    await window.fetch('/api/draw');
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(lastToastMessage()).toContain('2 last keys');
   });
 
   // 1 1 0 — звезда + дистанция.

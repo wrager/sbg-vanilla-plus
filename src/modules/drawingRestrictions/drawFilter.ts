@@ -9,6 +9,7 @@ import {
   countHiddenByStar,
   type IDrawEntry,
 } from './filterRules';
+import { pluralizeLastRefs } from './lastRefsPluralize';
 import { loadDrawingRestrictionsSettings } from './settings';
 import { getStarCenterGuid } from './starCenter';
 
@@ -47,17 +48,17 @@ function isDrawResponseShape(value: unknown): value is IDrawResponseShape {
 }
 
 function lastKeyMessage(hidden: number): string {
-  return t(
-    hidden === 1
-      ? {
-          en: `Hidden last key from a locked point`,
-          ru: `Скрыт последний ключ от защищённой точки`,
-        }
-      : {
-          en: `Hidden last ${hidden} keys from locked points`,
-          ru: `Скрыты последние ${hidden} ${hidden < 5 ? 'ключа' : 'ключей'} от защищённых точек`,
-        },
-  );
+  const phrase = pluralizeLastRefs(hidden);
+  if (hidden === 1) {
+    return t({
+      en: `Hidden ${phrase.en} from a locked point`,
+      ru: `Скрыт ${phrase.ru} от защищённой точки`,
+    });
+  }
+  return t({
+    en: `Hidden ${phrase.en} from locked points`,
+    ru: `Скрыты ${phrase.ru} от защищённых точек`,
+  });
 }
 
 function starMessage(hidden: number): string {
@@ -82,16 +83,18 @@ function starAndDistanceMessage(totalHidden: number): string {
 }
 
 function starAndLastKeyMessage(star: number, lastKey: number): string {
+  const phrase = pluralizeLastRefs(lastKey);
   return t({
-    en: `Hidden: ${star} in star mode, ${lastKey} last key(s) of locked points`,
-    ru: `Скрыто: ${star} в режиме "Звезда", ${lastKey} последних ключ(а/ей) защищённых точек`,
+    en: `Hidden: ${star} in star mode, ${phrase.en} of locked points`,
+    ru: `Скрыто: ${star} в режиме "Звезда", ${phrase.ru} защищённых точек`,
   });
 }
 
 function distanceAndLastKeyMessage(distance: number, lastKey: number, maxMeters: number): string {
+  const phrase = pluralizeLastRefs(lastKey);
   return t({
-    en: `Hidden: ${distance} beyond ${maxMeters} m, ${lastKey} last key(s) of locked points`,
-    ru: `Скрыто: ${distance} за ${maxMeters} м, ${lastKey} последних ключ(а/ей) защищённых точек`,
+    en: `Hidden: ${distance} beyond ${maxMeters} m, ${phrase.en} of locked points`,
+    ru: `Скрыто: ${distance} за ${maxMeters} м, ${phrase.ru} защищённых точек`,
   });
 }
 
