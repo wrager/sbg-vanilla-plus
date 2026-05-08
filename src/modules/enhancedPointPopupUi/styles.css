@@ -21,3 +21,65 @@
   height: 32px;
   min-height: auto;
 }
+
+/* Кнопки fav/lock в попапе точки. Контейнер в правом нижнем углу
+   .i-image-box, поверх изображения точки рядом со счётчиком ключей #i-ref. */
+.i-image-box {
+  position: relative;
+}
+
+.svp-point-mark-buttons {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  display: flex;
+  gap: 4px;
+  z-index: 2;
+}
+
+/* Сдвинуть #i-ref левее, чтобы не перекрывался кнопками. 28*2 + gap 4 + breath. */
+.i-image-box #i-ref {
+  margin-right: 64px;
+}
+
+.svp-point-mark-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 50%;
+  color: #ccc;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.svp-point-mark-button svg {
+  fill: currentColor;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 24;
+  paint-order: stroke fill;
+}
+
+.svp-point-mark-button:hover:not([disabled]) {
+  transform: scale(1.1);
+}
+
+.svp-point-mark-button[data-flag='favorite'].is-filled {
+  color: #ffcc33;
+}
+
+.svp-point-mark-button[data-flag='locked'].is-filled {
+  color: #88ccff;
+}
+
+.svp-point-mark-button[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
