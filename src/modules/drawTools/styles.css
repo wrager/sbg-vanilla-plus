@@ -7,9 +7,32 @@
   transform: translateY(200%);
 }
 
+/* Размер кнопки — 1.375em от font-size button (наследуется .ol-control button
+   из ol.css). Для совпадения с native .region-picker button нам нужен ТОТ ЖЕ
+   font-size на тех же viewport, что и у picker'а: на узких экранах игра
+   увеличивает picker button до 1.5em (см. game style@0.6.1.css), и без
+   аналогичного правила наша кнопка остаётся на 1em и выглядит мельче. */
+@media (max-width: 425px) {
+  .svp-draw-tools-control button {
+    font-size: 1.5em;
+  }
+}
+
+@media (max-width: 320px) {
+  .svp-draw-tools-control button {
+    font-size: 1em;
+  }
+}
+
+/* SVG масштабируется от font-size кнопки: на desktop (16px) даёт 16px иконку,
+   на mobile (24px при 1.5em) — 24px, что повторяет визуальную плотность глифа
+   "Δ" внутри picker button. Без этого иконка 16x16 на mobile-кнопке 33x33
+   выглядит провисшей. */
 .svp-draw-tools-control button svg {
   display: block;
   margin: auto;
+  width: 1em;
+  height: 1em;
 }
 
 /* Не задаём `fill` на уровне CSS: правило перебивало бы inline `fill="none"`,
