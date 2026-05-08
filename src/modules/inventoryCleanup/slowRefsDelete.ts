@@ -12,6 +12,7 @@ import {
 } from '../../core/inventoryCache';
 import { isInventoryReference } from '../../core/inventoryTypes';
 import { isModuleEnabledByUser } from '../../core/moduleRegistry';
+import { getPlayerTeam } from '../../core/playerTeam';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { showToast as showCoreToast } from '../../core/toast';
 import type { IDeletionEntry } from './cleanupCalculator';
@@ -35,15 +36,6 @@ export const FETCH_CONCURRENCY = 3;
 const BROOM_ICON = '\u{1F9F9}';
 
 let bodyObserver: MutationObserver | null = null;
-
-function getPlayerTeam(): number | null {
-  const element = document.getElementById('self-info__name');
-  if (!element) return null;
-  const match = /var\(--team-(\d+)\)/.exec(element.style.color);
-  if (!match) return null;
-  const team = parseInt(match[1], 10);
-  return Number.isFinite(team) ? team : null;
-}
 
 export async function fetchPointTeam(pointGuid: string): Promise<number | null> {
   try {

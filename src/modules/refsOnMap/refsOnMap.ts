@@ -11,9 +11,11 @@ import {
 } from '../../core/inventoryCache';
 import type { IInventoryReferenceFull } from '../../core/inventoryTypes';
 import { isInventoryReference } from '../../core/inventoryTypes';
+import { getPlayerTeam } from '../../core/playerTeam';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 import { showToast } from '../../core/toast';
+import { loadRefsOnMapSettings, saveRefsOnMapSettings } from './refsOnMapSettings';
 import css from './styles.css?inline';
 
 const MODULE_ID = 'refsOnMap';
@@ -127,6 +129,11 @@ let showButton: HTMLButtonElement | null = null;
 let closeButton: HTMLButtonElement | null = null;
 let trashButton: HTMLButtonElement | null = null;
 let lockedNote: HTMLDivElement | null = null;
+let progressContainer: HTMLDivElement | null = null;
+let progressBar: HTMLDivElement | null = null;
+let progressCounter: HTMLDivElement | null = null;
+let keepOwnTeamCheckbox: HTMLInputElement | null = null;
+let keepOwnTeamLabel: HTMLLabelElement | null = null;
 let tabClickHandler: ((event: Event) => void) | null = null;
 let mapClickHandler: ((event: IOlMapEvent) => void) | null = null;
 let viewerOpen = false;
@@ -135,6 +142,10 @@ let beforeOpenRotation: number | undefined;
 let beforeOpenFollow: string | null = null;
 const teamCache = new Map<string, number>();
 let teamLoadAborted = false;
+// Пока true - viewer догружает команды точек, выбор по клику и trashButton
+// заблокированы. Сбрасывается в false когда loadTeamDataForRefs прошёл все
+// батчи или когда viewer закрылся (teamLoadAborted=true).
+let teamsLoading = false;
 let overallRefsToDelete = 0;
 let uniqueRefsToDelete = 0;
 
@@ -244,6 +255,40 @@ function updateTrashCounter(): void {
       ? `\uD83D\uDDD1\uFE0F ${uniqueRefsToDelete} (${overallRefsToDelete})`
       : '';
   trashButton.style.visibility = uniqueRefsToDelete > 0 ? 'visible' : 'hidden';
+  // \u041F\u043E\u043A\u0430 \u043A\u043E\u043C\u0430\u043D\u0434\u044B \u0442\u043E\u0447\u0435\u043A \u0434\u043E\u0433\u0440\u0443\u0436\u0430\u044E\u0442\u0441\u044F, \u0443\u0434\u0430\u043B\u0435\u043D\u0438\u0435 \u0437\u0430\u043F\u0440\u0435\u0449\u0435\u043D\u043E: \u0444\u0438\u043B\u044C\u0442\u0440 keepOwnTeam
+  // \u043D\u0435 \u0432\u0438\u0434\u0438\u0442 \u0444\u0438\u043D\u0430\u043B\u044C\u043D\u044B\u0435 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F `team` \u0443 \u0444\u0438\u0447. Disabled-state \u0441\u043D\u0438\u043C\u0430\u0435\u0442\u0441\u044F \u0438\u0437
+  // updateProgress() \u043F\u0440\u0438 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0435\u043C done==total \u0438 \u0438\u0437 applyTeamsLoadedState().
+  trashButton.disabled = teamsLoading;
+}
+
+function updateProgress(done: number, total: number): void {
+  if (!progressBar || !progressCounter) return;
+  const percent = total === 0 ? 100 : Math.round((done / total) * 100);
+  progressBar.style.width = `${percent}%`;
+  progressCounter.textContent = `${done} / ${total}`;
+}
+
+function showProgress(total: number): void {
+  if (!progressContainer) return;
+  progressContainer.style.display = total > 0 ? '' : 'none';
+  updateProgress(0, total);
+}
+
+function hideProgress(): void {
+  if (!progressContainer) return;
+  progressContainer.style.display = 'none';
+}
+
+/**
+ * \u0421\u043D\u0438\u043C\u0430\u0435\u0442 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0438, \u043F\u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435 \u043D\u0430 \u043C\u043E\u043C\u0435\u043D\u0442 \u0434\u043E\u0433\u0440\u0443\u0437\u043A\u0438 \u043A\u043E\u043C\u0430\u043D\u0434: trashButton
+ * \u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0441\u044F active (\u0435\u0441\u043B\u0438 \u0435\u0441\u0442\u044C \u0432\u044B\u0431\u043E\u0440), \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441-\u0431\u0430\u0440 \u0441\u043A\u0440\u044B\u0432\u0430\u0435\u0442\u0441\u044F, mapClick
+ * \u043D\u0430\u0447\u0438\u043D\u0430\u0435\u0442 \u0440\u0430\u0431\u043E\u0442\u0430\u0442\u044C. \u0412\u044B\u0437\u044B\u0432\u0430\u0435\u0442\u0441\u044F \u0438\u0437 loadTeamDataForRefs \u043F\u043E\u0441\u043B\u0435 \u043F\u043E\u043B\u043D\u043E\u0433\u043E
+ * \u043F\u0440\u043E\u0445\u043E\u0434\u0430 \u043F\u043E \u0431\u0430\u0442\u0447\u0430\u043C \u0438 \u0438\u0437 closeViewer (\u043D\u0430 \u0441\u043B\u0443\u0447\u0430\u0439 \u0435\u0441\u043B\u0438 viewer \u0437\u0430\u043A\u0440\u044B\u0442 \u0440\u0430\u043D\u044C\u0448\u0435).
+ */
+function applyTeamsLoadedState(): void {
+  teamsLoading = false;
+  hideProgress();
+  updateTrashCounter();
 }
 
 function toggleFeatureSelection(feature: IOlFeature): void {
@@ -260,6 +305,12 @@ function toggleFeatureSelection(feature: IOlFeature): void {
 
 function handleMapClick(event: IOlMapEvent): void {
   if (!olMap?.forEachFeatureAtPixel) return;
+  // Пока команды точек догружаются, выбор по клику отключён - фильтр
+  // keepOwnTeam должен видеть финальные значения `team` у фич, иначе
+  // пользователь выберет точку, цвет которой ещё не определён, и пройдёт
+  // в payload вопреки своему намерению. Pan/zoom не блокируем - игрок
+  // должен видеть всю карту во время загрузки. См. README модуля.
+  if (teamsLoading) return;
   olMap.forEachFeatureAtPixel(
     event.pixel,
     (feature: IOlFeature) => {
@@ -289,35 +340,62 @@ export function isLockSupportAvailable(cache: readonly unknown[]): boolean {
   return refStacks.every((item) => item.f !== undefined);
 }
 
+interface IOwnTeamFilter {
+  /** Команда игрока (читается через `getPlayerTeam()`). */
+  playerTeam: number;
+}
+
 /**
- * Делит выбранные ref-фичи на разрешённые к удалению и защищённые
- * locked-флагом точки. Источник правды о защите - inventory-cache: для
- * каждой стопки бит 0b10 поля `f` означает «эта стопка locked»; в UI
- * семантика per-point - одна locked-стопка защищает все ключи точки от
- * удаления (тот же агрегатор, что в slowRefsDelete и cleanupCalculator).
+ * Делит выбранные ref-фичи на разрешённые к удалению и защищённые точки.
+ * Источников защиты два:
  *
- * Свойство `pointGuid` фичи сравнивается с set'ом locked-точек; ref'ы без
- * pointGuid (теоретически возможны при сломанном кэше) трактуются как
- * unprotected, чтобы не блокировать удаление по неверной причине.
+ * 1. Lock-флаг (бит 0b10 поля `f` любой стопки в `inventory-cache`) -
+ *    `protectedByLock`. Per-point агрегация: одна locked-стопка защищает все
+ *    ключи точки от удаления (тот же агрегатор, что в `slowRefsDelete` и
+ *    `cleanupCalculator`).
+ * 2. Опциональный фильтр "своих" - `protectedByOwnTeam`. Активен только если
+ *    передан `ownTeam` (т. е. `keepOwnTeam=true` в настройках и команда игрока
+ *    определена). Фильтр fail-safe: если у фичи `team === undefined` (api ещё
+ *    не догрузил или вернул null), точка считается защищённой - не удалять,
+ *    не зная цвета. См. README модуля про прогресс-бар: к моменту нажатия
+ *    trashButton команды должны быть догружены, fail-safe нужен только на
+ *    вырожденных кейсах (gameVersion вернул не-200, fetchPointTeam дропнул).
+ *
+ * Lock проверяется до own-team: locked-точки безусловно защищены, выключенный
+ * keepOwnTeam ничего не меняет в их судьбе.
  */
-function partitionByLockProtection(features: IOlFeature[]): {
+function partitionByLockProtection(
+  features: IOlFeature[],
+  ownTeamFilter: IOwnTeamFilter | null = null,
+): {
   deletable: IOlFeature[];
-  protectedRefs: IOlFeature[];
+  protectedByLock: IOlFeature[];
+  protectedByOwnTeam: IOlFeature[];
 } {
   const cache = readInventoryCache();
   const lockedPointGuids = buildLockedPointGuids(cache);
   const deletable: IOlFeature[] = [];
-  const protectedRefs: IOlFeature[] = [];
+  const protectedByLock: IOlFeature[] = [];
+  const protectedByOwnTeam: IOlFeature[] = [];
   for (const feature of features) {
     const properties = feature.getProperties?.() ?? {};
     const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
     if (pointGuid && lockedPointGuids.has(pointGuid)) {
-      protectedRefs.push(feature);
-    } else {
-      deletable.push(feature);
+      protectedByLock.push(feature);
+      continue;
     }
+    if (ownTeamFilter !== null) {
+      const team = typeof properties.team === 'number' ? properties.team : undefined;
+      // team === undefined - fail-safe: не знаем цвет, считаем защищённой.
+      // team === playerTeam - своя точка.
+      if (team === undefined || team === ownTeamFilter.playerTeam) {
+        protectedByOwnTeam.push(feature);
+        continue;
+      }
+    }
+    deletable.push(feature);
   }
-  return { deletable, protectedRefs };
+  return { deletable, protectedByLock, protectedByOwnTeam };
 }
 
 function sumAmount(features: IOlFeature[]): number {
@@ -331,6 +409,20 @@ function sumAmount(features: IOlFeature[]): number {
 
 async function handleDeleteClick(): Promise<void> {
   if (uniqueRefsToDelete === 0 || !refsSource) return;
+
+  // Дополнительный guard поверх UI-блокировки: если по любой причине клик
+  // прошёл во время загрузки (race с MutationObserver, программный вызов из
+  // тестов), удаление запрещено - команды точек могут быть не догружены, и
+  // фильтр keepOwnTeam отработает с неполными данными.
+  if (teamsLoading) {
+    showToast(
+      t({
+        en: 'Loading team data, please wait',
+        ru: 'Загружаются данные о командах, подождите',
+      }),
+    );
+    return;
+  }
 
   const selectedFeatures = refsSource.getFeatures().filter((feature) => {
     const properties = feature.getProperties?.();
@@ -353,19 +445,58 @@ async function handleDeleteClick(): Promise<void> {
     return;
   }
 
-  // Защита locked: точки с замочком (бит 0b10 поля `f` любой стопки в
-  // inventory-cache) не удаляются. Семантика общая для всех модулей,
-  // работающих с массовым удалением ключей: refsOnMap, slowRefsDelete,
-  // cleanupCalculator (см. README inventoryCleanup).
-  const { deletable, protectedRefs } = partitionByLockProtection(selectedFeatures);
+  // Опциональный фильтр "не удалять свои": активен, если пользователь
+  // включил чекбокс. При playerTeam=null (CSS `#self-info__name` не дал
+  // команду) - жёсткий блок: фильтр заявлен пользователем, выполнить его
+  // мы не можем, удалять без фильтра нельзя - это нарушение явного
+  // пользовательского намерения.
+  const { keepOwnTeam } = loadRefsOnMapSettings();
+  let ownTeamFilter: IOwnTeamFilter | null = null;
+  if (keepOwnTeam) {
+    const playerTeam = getPlayerTeam();
+    if (playerTeam === null) {
+      showToast(
+        t({
+          en: 'Cannot determine player team. Deletion blocked (disable "Keep own" to proceed).',
+          ru: 'Не удалось определить команду игрока. Удаление заблокировано (выключите "Не удалять свои", чтобы продолжить).',
+        }),
+      );
+      return;
+    }
+    ownTeamFilter = { playerTeam };
+  }
+
+  // Защита lock + опциональный фильтр own-team. Lock всегда защищает; фильтр
+  // own-team отдельным bucket'ом, чтобы тост после удаления различал две
+  // причины ("locked: N оставлено" vs "свои: N оставлено").
+  const { deletable, protectedByLock, protectedByOwnTeam } = partitionByLockProtection(
+    selectedFeatures,
+    ownTeamFilter,
+  );
 
   if (deletable.length === 0) {
-    showToast(
-      t({
-        en: 'All selected keys belong to locked points and cannot be deleted',
-        ru: 'Все выбранные ключи относятся к locked-точкам и не могут быть удалены',
-      }),
-    );
+    if (protectedByLock.length > 0 && protectedByOwnTeam.length === 0) {
+      showToast(
+        t({
+          en: 'All selected keys belong to locked points and cannot be deleted',
+          ru: 'Все выбранные ключи относятся к locked-точкам и не могут быть удалены',
+        }),
+      );
+    } else if (protectedByOwnTeam.length > 0 && protectedByLock.length === 0) {
+      showToast(
+        t({
+          en: 'All selected keys belong to your team and were kept ("Keep own" is on)',
+          ru: 'Все выбранные ключи - свои, оставлены (включена "Не удалять свои")',
+        }),
+      );
+    } else {
+      showToast(
+        t({
+          en: 'All selected keys are protected (lock or own team) and cannot be deleted',
+          ru: 'Все выбранные ключи защищены (locked или свои) и не могут быть удалены',
+        }),
+      );
+    }
     return;
   }
 
@@ -428,19 +559,29 @@ async function handleDeleteClick(): Promise<void> {
       updateInventoryCounter(response.count.total);
     }
 
-    // Уведомление об оставленных locked: показываем после успешного удаления,
-    // чтобы пользователь увидел итог в одном тосте, а не два диалога подряд.
-    if (protectedRefs.length > 0) {
+    // Уведомления об оставленных: после успешного удаления одним тостом
+    // чтобы не плодить два диалога подряд. Lock и own-team - две разные
+    // причины, показываем по факту наличия.
+    if (protectedByLock.length > 0) {
       showToast(
         t({
-          en: `Locked points: ${protectedRefs.length} key(s) kept`,
-          ru: `Locked-точки: ${protectedRefs.length} ключ(ей) оставлено`,
+          en: `Locked points: ${protectedByLock.length} key(s) kept`,
+          ru: `Locked-точки: ${protectedByLock.length} ключ(ей) оставлено`,
+        }),
+      );
+    }
+    if (protectedByOwnTeam.length > 0) {
+      showToast(
+        t({
+          en: `Own team: ${protectedByOwnTeam.length} key(s) kept`,
+          ru: `Свои: ${protectedByOwnTeam.length} ключ(ей) оставлено`,
         }),
       );
     }
 
-    overallRefsToDelete = sumAmount(protectedRefs);
-    uniqueRefsToDelete = protectedRefs.length;
+    const remainingProtected = [...protectedByLock, ...protectedByOwnTeam];
+    overallRefsToDelete = sumAmount(remainingProtected);
+    uniqueRefsToDelete = remainingProtected.length;
     updateTrashCounter();
   } catch (error) {
     console.error(`[SVP] ${MODULE_ID}: deletion failed:`, error);
@@ -459,6 +600,18 @@ async function loadTeamDataForRefs(refs: IInventoryReferenceFull[]): Promise<voi
   }
   const uncachedGuids = Array.from(pointGuids);
   teamLoadAborted = false;
+
+  // Прогресс-бар + блокировка trashButton/выбора кликом до полной загрузки.
+  // Если все команды уже в teamCache (uncachedGuids пусто) - сразу
+  // applyTeamsLoadedState без показа бара. teamsLoading=true ставится в
+  // showViewer; здесь только обновляется и снимается.
+  const total = uncachedGuids.length;
+  if (total === 0) {
+    applyTeamsLoadedState();
+    return;
+  }
+  showProgress(total);
+  let done = 0;
 
   for (let i = 0; i < uncachedGuids.length; i += TEAM_BATCH_SIZE) {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- checked between awaits
@@ -486,10 +639,18 @@ async function loadTeamDataForRefs(refs: IInventoryReferenceFull[]): Promise<voi
       }
     }
 
+    done += batch.length;
+    updateProgress(done, total);
+
     if (i + TEAM_BATCH_SIZE < uncachedGuids.length) {
       await delay(TEAM_BATCH_DELAY_MS);
     }
   }
+
+  // Полный проход: снимаем блокировки. Если viewer был закрыт во время
+  // загрузки (teamLoadAborted=true), мы вышли через ранний return выше -
+  // closeViewer сам сбросит teamsLoading через applyTeamsLoadedState.
+  applyTeamsLoadedState();
 }
 
 // ── game state management ────────────────────────────────────────────────────
@@ -598,12 +759,24 @@ function showViewer(): void {
     refsSource.addFeature(feature);
   }
 
+  // teamsLoading=true до того как handleMapClick станет активным:
+  // первые клики по карте, пока команды грузятся, не должны выбирать
+  // фичи. updateTrashCounter учитывает teamsLoading при синхронизации
+  // disabled-state. См. handleMapClick + applyTeamsLoadedState.
+  teamsLoading = true;
   if (closeButton) closeButton.style.display = '';
   if (trashButton) {
     trashButton.style.visibility = 'hidden';
     trashButton.style.display = '';
+    trashButton.disabled = true;
   }
   if (lockedNote) lockedNote.style.display = '';
+  if (keepOwnTeamLabel) {
+    keepOwnTeamLabel.style.display = '';
+    if (keepOwnTeamCheckbox) {
+      keepOwnTeamCheckbox.checked = loadRefsOnMapSettings().keepOwnTeam;
+    }
+  }
 
   // Attach click handler for selection
   mapClickHandler = handleMapClick;
@@ -616,6 +789,8 @@ function hideViewer(): void {
   if (!viewerOpen) return;
   viewerOpen = false;
   teamLoadAborted = true;
+  teamsLoading = false;
+  hideProgress();
 
   // Remove click handler
   if (olMap && mapClickHandler) {
@@ -635,6 +810,7 @@ function hideViewer(): void {
   if (closeButton) closeButton.style.display = 'none';
   if (trashButton) trashButton.style.display = 'none';
   if (lockedNote) lockedNote.style.display = 'none';
+  if (keepOwnTeamLabel) keepOwnTeamLabel.style.display = 'none';
 
   const view = olMap?.getView();
   if (view) {
@@ -755,6 +931,57 @@ export const refsOnMap: IFeatureModule = {
           });
           lockedNote.style.display = 'none';
           document.body.appendChild(lockedNote);
+
+          // Прогресс-бар загрузки команд точек: виден пока teamsLoading=true,
+          // после полной загрузки скрывается (applyTeamsLoadedState). Пока
+          // виден, выбор по клику и trashButton заблокированы - keepOwnTeam
+          // фильтру нужны финальные значения `team` у фич.
+          progressContainer = document.createElement('div');
+          progressContainer.className = 'svp-refs-on-map-progress';
+          progressContainer.style.display = 'none';
+          const progressLabel = document.createElement('div');
+          progressLabel.className = 'svp-refs-on-map-progress-label';
+          progressLabel.textContent = t({
+            en: 'Loading team data...',
+            ru: 'Загрузка данных о командах...',
+          });
+          progressContainer.appendChild(progressLabel);
+          const progressTrack = document.createElement('div');
+          progressTrack.className = 'svp-refs-on-map-progress-track';
+          progressBar = document.createElement('div');
+          progressBar.className = 'svp-refs-on-map-progress-bar';
+          progressBar.style.width = '0%';
+          progressTrack.appendChild(progressBar);
+          progressContainer.appendChild(progressTrack);
+          progressCounter = document.createElement('div');
+          progressCounter.className = 'svp-refs-on-map-progress-counter';
+          progressCounter.textContent = '0 / 0';
+          progressContainer.appendChild(progressCounter);
+          document.body.appendChild(progressContainer);
+
+          // Чекбокс "Не удалять свои" - inline в viewer-режиме рядом с
+          // trashButton. State синхронизируется с svp_refsOnMap.keepOwnTeam.
+          // playerTeam=null при включённом чекбоксе блокирует удаление - см.
+          // handleDeleteClick.
+          keepOwnTeamLabel = document.createElement('label');
+          keepOwnTeamLabel.className = 'svp-refs-on-map-keep-own';
+          keepOwnTeamLabel.style.display = 'none';
+          keepOwnTeamCheckbox = document.createElement('input');
+          keepOwnTeamCheckbox.type = 'checkbox';
+          keepOwnTeamCheckbox.checked = loadRefsOnMapSettings().keepOwnTeam;
+          keepOwnTeamCheckbox.addEventListener('change', () => {
+            saveRefsOnMapSettings({
+              keepOwnTeam: keepOwnTeamCheckbox?.checked === true,
+            });
+          });
+          const keepOwnTeamText = document.createElement('span');
+          keepOwnTeamText.textContent = t({
+            en: 'Keep own team',
+            ru: 'Не удалять свои',
+          });
+          keepOwnTeamLabel.appendChild(keepOwnTeamCheckbox);
+          keepOwnTeamLabel.appendChild(keepOwnTeamText);
+          document.body.appendChild(keepOwnTeamLabel);
         } catch (error) {
           // Частичный успех enable() оставил бы hidden-кнопки/слой в DOM
           // (модуль помечен failed, но disable() автоматически не вызывается).
@@ -787,6 +1014,7 @@ export const refsOnMap: IFeatureModule = {
 function cleanupEnableSideEffects(): void {
   if (viewerOpen) hideViewer();
   teamLoadAborted = true;
+  teamsLoading = false;
 
   if (olMap && refsLayer) {
     olMap.removeLayer(refsLayer);
@@ -813,6 +1041,19 @@ function cleanupEnableSideEffects(): void {
     lockedNote.remove();
     lockedNote = null;
   }
+
+  if (progressContainer) {
+    progressContainer.remove();
+    progressContainer = null;
+  }
+  progressBar = null;
+  progressCounter = null;
+
+  if (keepOwnTeamLabel) {
+    keepOwnTeamLabel.remove();
+    keepOwnTeamLabel = null;
+  }
+  keepOwnTeamCheckbox = null;
 
   if (tabClickHandler) {
     const tabContainer = $('.inventory__tabs');
