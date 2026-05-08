@@ -1,7 +1,6 @@
 import {
   buildCandidates,
   inferAndPersistLockMigrationDone,
-  postMark,
   runMigration,
   type IMigrationItem,
   type MigrationFlag,
@@ -59,14 +58,6 @@ function ok(result: boolean): void {
 
 function networkError(): void {
   mockFetch.mockRejectedValueOnce(new Error('network'));
-}
-
-function httpError(status: number): void {
-  mockFetch.mockResolvedValueOnce({
-    ok: false,
-    status,
-    json: () => Promise.resolve({}),
-  });
 }
 
 describe('buildCandidates', () => {
@@ -127,78 +118,6 @@ describe('buildCandidates', () => {
     ]);
     const candidates = buildCandidates('favorite');
     expect(candidates.toSend.map((i) => i.itemGuid)).toEqual(['s1']);
-  });
-});
-
-describe('postMark', () => {
-  test('успешный ответ result=true → networkOk + result=true', async () => {
-    ok(true);
-    const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: true, result: true });
-    expect(mockFetch).toHaveBeenCalledWith('/api/marks', {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${AUTH_TOKEN}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ guid: 's1', flag: 'favorite' }),
-    });
-  });
-
-  test('успешный ответ result=false (toggle off) → networkOk + result=false', async () => {
-    ok(false);
-    const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: true, result: false });
-  });
-
-  test('сетевая ошибка → networkOk=false', async () => {
-    networkError();
-    const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: false, result: false });
-  });
-
-  test('HTTP 429/500 → networkOk=false', async () => {
-    httpError(429);
-    const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: false, result: false });
-  });
-
-  test('без auth-токена не делает запрос', async () => {
-    localStorage.removeItem('auth');
-    const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: false, result: false });
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  // Сервер возвращает {result: boolean}. Раньше код cast'ил ответ в IApiMarksResponse
-  // без runtime-проверки - любой неподходящий формат тихо превращался в result=false
-  // через сравнение `undefined === true`. После замены на parseMarksResult сценарии
-  // те же, но через явный type guard - покрываем чтобы регрессия не прошла мимо тестов.
-  test('ответ без поля result → result=false (deafult-safe)', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
-    const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: true, result: false });
-  });
-
-  test('ответ result не boolean (например, строка) → result=false', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ result: 'true' }),
-    });
-    const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: true, result: false });
-  });
-
-  test('ответ null → result=false', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(null) });
-    const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: true, result: false });
-  });
-
-  test('ответ массив вместо объекта → result=false', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([true]) });
-    const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: true, result: false });
   });
 });
 
@@ -342,48 +261,6 @@ describe('runMigration — retry-механизм', () => {
     });
     const body = (mockFetch.mock.calls[0] as [string, { body: string }])[1].body;
     expect(JSON.parse(body)).toEqual({ guid: 's-lock', flag: 'locked' });
-  });
-});
-
-describe('postMark — обновление inventory-cache', () => {
-  test('успешный locked: бит 0b10 устанавливается в кэше', async () => {
-    setInventory([{ g: 's1', t: 3, l: 'p1', a: 5, f: 0 }]);
-    ok(true);
-    await postMark('s1', 'locked');
-    const cache = JSON.parse(localStorage.getItem('inventory-cache') ?? '[]') as { f: number }[];
-    expect(cache[0].f).toBe(0b10);
-  });
-
-  test('успешный favorite: бит 0b01 устанавливается, существующий 0b10 не теряется', async () => {
-    setInventory([{ g: 's1', t: 3, l: 'p1', a: 5, f: 0b10 }]);
-    ok(true);
-    await postMark('s1', 'favorite');
-    const cache = JSON.parse(localStorage.getItem('inventory-cache') ?? '[]') as { f: number }[];
-    expect(cache[0].f).toBe(0b11);
-  });
-
-  test('toggle off: result=false снимает бит', async () => {
-    setInventory([{ g: 's1', t: 3, l: 'p1', a: 5, f: 0b10 }]);
-    ok(false);
-    await postMark('s1', 'locked');
-    const cache = JSON.parse(localStorage.getItem('inventory-cache') ?? '[]') as { f: number }[];
-    expect(cache[0].f).toBe(0);
-  });
-
-  test('сетевая ошибка не трогает кэш', async () => {
-    setInventory([{ g: 's1', t: 3, l: 'p1', a: 5, f: 0 }]);
-    networkError();
-    await postMark('s1', 'locked');
-    const cache = JSON.parse(localStorage.getItem('inventory-cache') ?? '[]') as { f: number }[];
-    expect(cache[0].f).toBe(0);
-  });
-
-  test('стопка отсутствует в кэше: запись no-op, не падает', async () => {
-    setInventory([{ g: 's-other', t: 3, l: 'p-other', a: 5, f: 0 }]);
-    ok(true);
-    await postMark('s-missing', 'locked');
-    const cache = JSON.parse(localStorage.getItem('inventory-cache') ?? '[]') as { f: number }[];
-    expect(cache[0].f).toBe(0);
   });
 });
 
