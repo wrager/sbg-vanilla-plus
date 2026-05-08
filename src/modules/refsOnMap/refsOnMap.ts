@@ -346,20 +346,21 @@ interface IOwnTeamFilter {
 }
 
 /**
- * Делит выбранные ref-фичи на разрешённые к удалению и защищённые точки.
- * Источников защиты два:
+ * Делит выбранные ref-фичи на 4 bucket'а:
  *
- * 1. Lock-флаг (бит 0b10 поля `f` любой стопки в `inventory-cache`) -
- *    `protectedByLock`. Per-point агрегация: одна locked-стопка защищает все
- *    ключи точки от удаления (тот же агрегатор, что в `slowRefsDelete` и
- *    `cleanupCalculator`).
- * 2. Опциональный фильтр "своих" - `protectedByOwnTeam`. Активен только если
- *    передан `ownTeam` (т. е. `keepOwnTeam=true` в настройках и команда игрока
- *    определена). Фильтр fail-safe: если у фичи `team === undefined` (api ещё
- *    не догрузил или вернул null), точка считается защищённой - не удалять,
- *    не зная цвета. См. README модуля про прогресс-бар: к моменту нажатия
- *    trashButton команды должны быть догружены, fail-safe нужен только на
- *    вырожденных кейсах (gameVersion вернул не-200, fetchPointTeam дропнул).
+ * 1. `protectedByLock` - точки с замочком (бит 0b10 поля `f` любой стопки в
+ *    `inventory-cache`). Per-point агрегация: одна locked-стопка защищает все
+ *    ключи точки от удаления.
+ * 2. `protectedByOwnTeam` - точки, чья команда совпадает с командой игрока
+ *    (только при `ownTeamFilter !== null`).
+ * 3. `protectedByUnknownTeam` - точки с не определённой командой (`team ===
+ *    undefined`: API не вернул `te`, fetch упал, или загрузка ещё не дошла
+ *    до этой точки). Только при `ownTeamFilter !== null` - fail-safe, цвет
+ *    неизвестен, удалять рискованно. Отдельный bucket нужен чтобы тост
+ *    честно отделял "оставлены как свои" от "оставлены потому что цвет не
+ *    загружен" - это разные причины, требующие разных действий пользователя
+ *    (повторить загрузку / pan на эти точки).
+ * 4. `deletable` - всё остальное (чужая команда; либо `ownTeamFilter=null`).
  *
  * Lock проверяется до own-team: locked-точки безусловно защищены, выключенный
  * keepOwnTeam ничего не меняет в их судьбе.
@@ -371,12 +372,14 @@ function partitionByLockProtection(
   deletable: IOlFeature[];
   protectedByLock: IOlFeature[];
   protectedByOwnTeam: IOlFeature[];
+  protectedByUnknownTeam: IOlFeature[];
 } {
   const cache = readInventoryCache();
   const lockedPointGuids = buildLockedPointGuids(cache);
   const deletable: IOlFeature[] = [];
   const protectedByLock: IOlFeature[] = [];
   const protectedByOwnTeam: IOlFeature[] = [];
+  const protectedByUnknownTeam: IOlFeature[] = [];
   for (const feature of features) {
     const properties = feature.getProperties?.() ?? {};
     const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
@@ -386,16 +389,18 @@ function partitionByLockProtection(
     }
     if (ownTeamFilter !== null) {
       const team = typeof properties.team === 'number' ? properties.team : undefined;
-      // team === undefined - fail-safe: не знаем цвет, считаем защищённой.
-      // team === playerTeam - своя точка.
-      if (team === undefined || team === ownTeamFilter.playerTeam) {
+      if (team === undefined) {
+        protectedByUnknownTeam.push(feature);
+        continue;
+      }
+      if (team === ownTeamFilter.playerTeam) {
         protectedByOwnTeam.push(feature);
         continue;
       }
     }
     deletable.push(feature);
   }
-  return { deletable, protectedByLock, protectedByOwnTeam };
+  return { deletable, protectedByLock, protectedByOwnTeam, protectedByUnknownTeam };
 }
 
 function sumAmount(features: IOlFeature[]): number {
@@ -467,36 +472,14 @@ async function handleDeleteClick(): Promise<void> {
   }
 
   // Защита lock + опциональный фильтр own-team. Lock всегда защищает; фильтр
-  // own-team отдельным bucket'ом, чтобы тост после удаления различал две
-  // причины ("locked: N оставлено" vs "свои: N оставлено").
-  const { deletable, protectedByLock, protectedByOwnTeam } = partitionByLockProtection(
-    selectedFeatures,
-    ownTeamFilter,
-  );
+  // own-team отдельными bucket'ами, чтобы тост честно различал три причины:
+  // "locked: N", "свои: N", "цвет неизвестен: N" - у каждой свой вывод для
+  // пользователя и разные дальнейшие действия.
+  const { deletable, protectedByLock, protectedByOwnTeam, protectedByUnknownTeam } =
+    partitionByLockProtection(selectedFeatures, ownTeamFilter);
 
   if (deletable.length === 0) {
-    if (protectedByLock.length > 0 && protectedByOwnTeam.length === 0) {
-      showToast(
-        t({
-          en: 'All selected keys belong to locked points and cannot be deleted',
-          ru: 'Все выбранные ключи относятся к locked-точкам и не могут быть удалены',
-        }),
-      );
-    } else if (protectedByOwnTeam.length > 0 && protectedByLock.length === 0) {
-      showToast(
-        t({
-          en: 'All selected keys belong to your team and were kept ("Keep own" is on)',
-          ru: 'Все выбранные ключи - свои, оставлены (включена "Не удалять свои")',
-        }),
-      );
-    } else {
-      showToast(
-        t({
-          en: 'All selected keys are protected (lock or own team) and cannot be deleted',
-          ru: 'Все выбранные ключи защищены (locked или свои) и не могут быть удалены',
-        }),
-      );
-    }
+    showToast(buildAllProtectedToast(protectedByLock, protectedByOwnTeam, protectedByUnknownTeam));
     return;
   }
 
@@ -559,9 +542,9 @@ async function handleDeleteClick(): Promise<void> {
       updateInventoryCounter(response.count.total);
     }
 
-    // Уведомления об оставленных: после успешного удаления одним тостом
-    // чтобы не плодить два диалога подряд. Lock и own-team - две разные
-    // причины, показываем по факту наличия.
+    // Уведомления об оставленных: lock / своя / неизвестный цвет - три
+    // разные причины, показываем по факту наличия. Каждая категория - свой
+    // тост, чтобы пользователь видел развёрнутый итог в одном диалоге.
     if (protectedByLock.length > 0) {
       showToast(
         t({
@@ -578,14 +561,79 @@ async function handleDeleteClick(): Promise<void> {
         }),
       );
     }
+    if (protectedByUnknownTeam.length > 0) {
+      showToast(
+        t({
+          en: `Unknown team color: ${protectedByUnknownTeam.length} key(s) kept (try reopening or panning to load colors)`,
+          ru: `Цвет команды не загружен: ${protectedByUnknownTeam.length} ключ(ей) оставлено (откройте viewer заново или передвиньте карту, чтобы догрузить)`,
+        }),
+      );
+    }
 
-    const remainingProtected = [...protectedByLock, ...protectedByOwnTeam];
+    const remainingProtected = [
+      ...protectedByLock,
+      ...protectedByOwnTeam,
+      ...protectedByUnknownTeam,
+    ];
     overallRefsToDelete = sumAmount(remainingProtected);
     uniqueRefsToDelete = remainingProtected.length;
     updateTrashCounter();
   } catch (error) {
     console.error(`[SVP] ${MODULE_ID}: deletion failed:`, error);
   }
+}
+
+/**
+ * Текст тоста "все выбранные защищены": честно отражает категории защиты.
+ * Только одна категория - конкретный текст; смешанные - перечисление
+ * количеств. Цель - пользователь видит почему ничего не удалилось и какое
+ * действие предпринять.
+ */
+function buildAllProtectedToast(
+  protectedByLock: IOlFeature[],
+  protectedByOwnTeam: IOlFeature[],
+  protectedByUnknownTeam: IOlFeature[],
+): string {
+  const lockN = protectedByLock.length;
+  const ownN = protectedByOwnTeam.length;
+  const unknownN = protectedByUnknownTeam.length;
+  const onlyLock = lockN > 0 && ownN === 0 && unknownN === 0;
+  const onlyOwn = ownN > 0 && lockN === 0 && unknownN === 0;
+  const onlyUnknown = unknownN > 0 && lockN === 0 && ownN === 0;
+  if (onlyLock) {
+    return t({
+      en: 'All selected keys belong to locked points and cannot be deleted',
+      ru: 'Все выбранные ключи относятся к locked-точкам и не могут быть удалены',
+    });
+  }
+  if (onlyOwn) {
+    return t({
+      en: 'All selected keys belong to your team and were kept ("Keep own" is on)',
+      ru: 'Все выбранные ключи - свои, оставлены (включена "Не удалять свои")',
+    });
+  }
+  if (onlyUnknown) {
+    return t({
+      en: 'All selected keys have unknown team color (try reopening or panning to load colors)',
+      ru: 'У всех выбранных ключей не загружен цвет команды (откройте viewer заново или передвиньте карту)',
+    });
+  }
+  // Смешанные категории: перечисление с количествами.
+  const parts: string[] = [];
+  if (lockN > 0) {
+    parts.push(t({ en: `lock: ${lockN}`, ru: `locked: ${lockN}` }));
+  }
+  if (ownN > 0) {
+    parts.push(t({ en: `own team: ${ownN}`, ru: `свои: ${ownN}` }));
+  }
+  if (unknownN > 0) {
+    parts.push(t({ en: `unknown color: ${unknownN}`, ru: `цвет не загружен: ${unknownN}` }));
+  }
+  const breakdown = parts.join(', ');
+  return t({
+    en: `All selected keys are protected (${breakdown}) and cannot be deleted`,
+    ru: `Все выбранные ключи защищены (${breakdown}) и не могут быть удалены`,
+  });
 }
 
 // ── team loading (per-ref) ───────────────────────────────────────────────────

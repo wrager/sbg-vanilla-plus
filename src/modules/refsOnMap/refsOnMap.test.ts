@@ -876,7 +876,7 @@ describe('refsOnMap own-team protection', () => {
       (r) => r.value as IOlFeature,
     );
     for (const feature of allFeatures) {
-      const pointGuid = feature.getProperties().pointGuid;
+      const pointGuid = feature.getProperties?.().pointGuid;
       if (typeof pointGuid !== 'string') continue;
       const team = teamsByPoint[pointGuid];
       if (typeof team === 'number') {
@@ -1109,6 +1109,139 @@ describe('refsOnMap own-team protection', () => {
     const body = JSON.parse(init.body as string) as { selection: Record<string, number> };
     expect(body.selection).not.toHaveProperty('ref-1');
     expect(body.selection).toHaveProperty('ref-2');
+  });
+
+  test('keepOwnTeam=true, deletable=0: только свои - тост "your team"', async () => {
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true }));
+    setMixedInventoryCache();
+    clickShowButton();
+    await flushTeamLoad();
+    // Обе точки команды игрока (1) - все попадают в protectedByOwnTeam.
+    applyTeamsToFeatures({ 'point-own': 1, 'point-enemy': 1 });
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[1]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    const confirmSpy = jest.fn(() => true);
+    window.confirm = confirmSpy;
+    const fetchSpy = jest.fn();
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // Тост говорит про "свои/your team", не про "unknown" и не "lock".
+    const toast = document.querySelector('.svp-toast')?.textContent ?? '';
+    expect(toast).toMatch(/свои|your team/i);
+    expect(toast).not.toMatch(/locked|замочк/i);
+    expect(toast).not.toMatch(/unknown|не загружен/i);
+  });
+
+  test('keepOwnTeam=true, deletable=0: только unknown - тост "unknown team color"', async () => {
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true }));
+    setMixedInventoryCache();
+    clickShowButton();
+    await flushTeamLoad();
+    // Обе точки без team - все попадают в protectedByUnknownTeam.
+    // applyTeamsToFeatures не вызываем.
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[1]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    const confirmSpy = jest.fn(() => true);
+    window.confirm = confirmSpy;
+    const fetchSpy = jest.fn();
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    const toast = document.querySelector('.svp-toast')?.textContent ?? '';
+    expect(toast).toMatch(/unknown|не загружен/i);
+    expect(toast).not.toMatch(/your team|свои - оставлены/i);
+  });
+
+  test('keepOwnTeam=true, 1 своя + 1 чужая (сценарий пользователя): чужая удаляется, тост "Свои"', async () => {
+    // Регрессия: раньше при team=undefined fail-safe заталкивал чужую в
+    // protectedByOwnTeam, и тост ложно говорил "all your team". Теперь
+    // фикс - чужая идёт в deletable, своя в protectedByOwnTeam, удаление
+    // проходит, тост по факту.
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true }));
+    setMixedInventoryCache();
+    clickShowButton();
+    await flushTeamLoad();
+    applyTeamsToFeatures({ 'point-own': 1, 'point-enemy': 2 });
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[1]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    window.confirm = jest.fn(() => true);
+    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
+      void _args;
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ count: { total: 90 } }),
+      } as unknown as Response);
+    });
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushTeamLoad();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    // Тост после удаления: "Свои: 1 ключ оставлен", без unknown.
+    const toast = document.querySelector('.svp-toast')?.textContent ?? '';
+    expect(toast).toMatch(/свои|own team/i);
+    expect(toast).not.toMatch(/unknown|не загружен/i);
   });
 });
 
