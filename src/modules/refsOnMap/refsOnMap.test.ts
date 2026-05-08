@@ -1372,6 +1372,163 @@ describe('refsOnMap progress + interaction lock', () => {
   });
 });
 
+// ── visible-only team loading ────────────────────────────────────────────────
+
+describe('refsOnMap visible-only team load', () => {
+  let view: ReturnType<typeof makeView>;
+  let map: ReturnType<typeof makeMap>;
+  let originalFetch: typeof window.fetch;
+  let teamFetchSpy: jest.Mock;
+
+  function clickShowButton(): void {
+    const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
+    button.click();
+  }
+
+  function setExtent(extent: number[]): void {
+    // calculateExtent в makeView - стрелочная функция, не jest.Mock; подменяем
+    // напрямую. Достаточно для тестов: getMapExtent читает результат через
+    // view.calculateExtent(size).
+    view.calculateExtent = (): number[] => extent;
+  }
+
+  function emitMoveend(): void {
+    const listeners = view._listeners.get('moveend') ?? [];
+    for (const listener of listeners) listener();
+  }
+
+  async function flushTeamLoad(): Promise<void> {
+    for (let i = 0; i < 10; i++) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  function setInventory(): void {
+    // Все feature имеют координаты [0, 0] - mock OL Geom.Point. Видимость
+    // определяется extent (см. setExtent). Две разные точки в одной координате -
+    // нормально для мока, реально SBG они в разных географических местах.
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'A', f: 0 },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'B', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+  }
+
+  beforeEach(async () => {
+    setupInventoryDom();
+    view = makeView(16, 0.5);
+    const pointsLayer = makeLayer('points', makeSource());
+    const linesLayer = makeLayer('lines', makeSource());
+    const regionsLayer = makeLayer('regions', makeSource());
+    map = makeMap([pointsLayer, linesLayer, regionsLayer], view);
+    mockGetOlMap.mockResolvedValue(map);
+    mockOl();
+    originalFetch = window.fetch;
+    // Считаем количество fetch'ей на /api/point. Возвращает team=1 для всех.
+    teamFetchSpy = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ data: { te: 1 } }),
+      } as unknown as Response),
+    );
+    window.fetch = teamFetchSpy as unknown as typeof window.fetch;
+    localStorage.setItem('auth', 'test-token');
+    await refsOnMap.enable();
+  });
+
+  afterEach(async () => {
+    await refsOnMap.disable();
+    delete window.ol;
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('follow');
+    localStorage.removeItem('auth');
+    localStorage.removeItem('svp_refsOnMap');
+    document.body.innerHTML = '';
+    window.fetch = originalFetch;
+  });
+
+  test('extent не покрывает точки: fetch /api/point не идёт, прогресс-бар не показан, teamsLoading=false', async () => {
+    setInventory();
+    setExtent([100, 100, 200, 200]); // далеко от [0, 0]
+    clickShowButton();
+    await flushTeamLoad();
+
+    expect(teamFetchSpy).not.toHaveBeenCalled();
+    const progress = document.querySelector('.svp-refs-on-map-progress') as HTMLElement;
+    expect(progress.style.display).toBe('none');
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.disabled).toBe(false);
+  });
+
+  test('extent покрывает все точки: fetch вызван по разу для каждого pointGuid', async () => {
+    setInventory();
+    setExtent([-1000, -1000, 1000, 1000]); // покрывает [0, 0]
+    clickShowButton();
+    await flushTeamLoad();
+
+    // 2 уникальных pointGuid (point-1, point-2) - 2 запроса.
+    expect(teamFetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  test('moveend на покрывающий extent догружает точки, ранее вне видимости', async () => {
+    // Все feature в моках имеют координаты [0, 0] (см. mockOl). Первый
+    // extent не покрывает [0, 0] - точки невидимы, fetch не идёт. На
+    // moveend extent расширяется и покрывает - точки попадают в очередь
+    // и грузятся. Это и есть проверка что загрузка идёт по видимым,
+    // а не по всем сразу.
+    setInventory();
+    setExtent([100, 100, 200, 200]); // далеко от [0, 0]
+    clickShowButton();
+    await flushTeamLoad();
+
+    expect(teamFetchSpy).toHaveBeenCalledTimes(0);
+
+    // Расширяем extent чтобы покрыть точки. Симулируем moveend.
+    setExtent([-1000, -1000, 1000, 1000]);
+    emitMoveend();
+    await flushTeamLoad();
+
+    // 2 уникальных pointGuid - 2 запроса.
+    expect(teamFetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  test('moveend на тот же extent не вызывает повторного fetch (точки уже в кэше)', async () => {
+    setInventory();
+    setExtent([-1000, -1000, 1000, 1000]);
+    clickShowButton();
+    await flushTeamLoad();
+
+    expect(teamFetchSpy).toHaveBeenCalledTimes(2);
+
+    emitMoveend();
+    await flushTeamLoad();
+
+    // Никаких новых запросов.
+    expect(teamFetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  test('hideViewer снимает moveend handler: после закрытия viewer pan не триггерит fetch', async () => {
+    setInventory();
+    setExtent([100, 100, 200, 200]); // нет видимых
+    clickShowButton();
+    await flushTeamLoad();
+
+    expect(teamFetchSpy).not.toHaveBeenCalled();
+
+    // Закрываем viewer
+    const closeButton = document.querySelector('.svp-refs-on-map-close') as HTMLElement;
+    closeButton.click();
+
+    // Пытаемся симулировать moveend - не должен ничего загружать,
+    // т. к. viewer закрыт и handler снят.
+    setExtent([-1000, -1000, 1000, 1000]);
+    emitMoveend();
+    await flushTeamLoad();
+
+    expect(teamFetchSpy).not.toHaveBeenCalled();
+  });
+});
+
 // ── keep own team checkbox ───────────────────────────────────────────────────
 
 describe('refsOnMap keep-own-team checkbox', () => {

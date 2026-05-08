@@ -9,7 +9,6 @@ import {
   readInventoryCache,
   INVENTORY_CACHE_KEY,
 } from '../../core/inventoryCache';
-import type { IInventoryReferenceFull } from '../../core/inventoryTypes';
 import { isInventoryReference } from '../../core/inventoryTypes';
 import { getPlayerTeam } from '../../core/playerTeam';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
@@ -143,9 +142,18 @@ let beforeOpenFollow: string | null = null;
 const teamCache = new Map<string, number>();
 let teamLoadAborted = false;
 // Пока true - viewer догружает команды точек, выбор по клику и trashButton
-// заблокированы. Сбрасывается в false когда loadTeamDataForRefs прошёл все
-// батчи или когда viewer закрылся (teamLoadAborted=true).
+// заблокированы. Сбрасывается в false когда очередь загрузки выработана
+// или когда viewer закрылся (teamLoadAborted=true).
 let teamsLoading = false;
+// Очередь загрузки команд для видимых точек. Заполняется enqueueVisibleForLoad
+// при showViewer и moveend; обрабатывается worker'ом батчами по TEAM_BATCH_SIZE.
+const teamLoadQueue = new Set<string>();
+let teamLoadInProgress = false;
+let teamLoadTotal = 0;
+let teamLoadDone = 0;
+// Подписка на moveend карты во время viewer-режима - чтобы при pan/zoom
+// догружать команды для новых видимых точек. Снимается в hideViewer.
+let viewMoveHandler: (() => void) | null = null;
 let overallRefsToDelete = 0;
 let uniqueRefsToDelete = 0;
 
@@ -282,13 +290,16 @@ function hideProgress(): void {
 /**
  * \u0421\u043D\u0438\u043C\u0430\u0435\u0442 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0438, \u043F\u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435 \u043D\u0430 \u043C\u043E\u043C\u0435\u043D\u0442 \u0434\u043E\u0433\u0440\u0443\u0437\u043A\u0438 \u043A\u043E\u043C\u0430\u043D\u0434: trashButton
  * \u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0441\u044F active (\u0435\u0441\u043B\u0438 \u0435\u0441\u0442\u044C \u0432\u044B\u0431\u043E\u0440), \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441-\u0431\u0430\u0440 \u0441\u043A\u0440\u044B\u0432\u0430\u0435\u0442\u0441\u044F, mapClick
- * \u043D\u0430\u0447\u0438\u043D\u0430\u0435\u0442 \u0440\u0430\u0431\u043E\u0442\u0430\u0442\u044C. \u0412\u044B\u0437\u044B\u0432\u0430\u0435\u0442\u0441\u044F \u0438\u0437 loadTeamDataForRefs \u043F\u043E\u0441\u043B\u0435 \u043F\u043E\u043B\u043D\u043E\u0433\u043E
- * \u043F\u0440\u043E\u0445\u043E\u0434\u0430 \u043F\u043E \u0431\u0430\u0442\u0447\u0430\u043C \u0438 \u0438\u0437 closeViewer (\u043D\u0430 \u0441\u043B\u0443\u0447\u0430\u0439 \u0435\u0441\u043B\u0438 viewer \u0437\u0430\u043A\u0440\u044B\u0442 \u0440\u0430\u043D\u044C\u0448\u0435).
+ * \u043D\u0430\u0447\u0438\u043D\u0430\u0435\u0442 \u0440\u0430\u0431\u043E\u0442\u0430\u0442\u044C. \u0412\u044B\u0437\u044B\u0432\u0430\u0435\u0442\u0441\u044F \u0438\u0437 worker'\u0430 \u043A\u043E\u0433\u0434\u0430 \u043E\u0447\u0435\u0440\u0435\u0434\u044C \u043F\u043E\u043B\u043D\u043E\u0441\u0442\u044C\u044E
+ * \u0432\u044B\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u0430. \u0421\u0431\u0440\u0430\u0441\u044B\u0432\u0430\u0435\u0442 total/done \u0432 0 - \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 enqueue (\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440,
+ * \u043F\u043E\u0441\u043B\u0435 pan \u043D\u0430 \u043D\u043E\u0432\u044B\u0435 \u0442\u043E\u0447\u043A\u0438) \u0441\u0442\u0430\u0440\u0442\u0443\u0435\u0442 \u0441 \u0447\u0438\u0441\u0442\u043E\u0433\u043E \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430.
  */
 function applyTeamsLoadedState(): void {
   teamsLoading = false;
   hideProgress();
   updateTrashCounter();
+  teamLoadTotal = 0;
+  teamLoadDone = 0;
 }
 
 function toggleFeatureSelection(feature: IOlFeature): void {
@@ -636,46 +647,109 @@ function buildAllProtectedToast(
   });
 }
 
-// ── team loading (per-ref) ───────────────────────────────────────────────────
+// ── team loading (visible-only with on-demand queue) ────────────────────────
 
-async function loadTeamDataForRefs(refs: IInventoryReferenceFull[]): Promise<void> {
-  // Collect unique point GUIDs that aren't cached
-  const pointGuids = new Set<string>();
-  for (const ref of refs) {
-    if (!teamCache.has(ref.l)) {
-      pointGuids.add(ref.l);
+/**
+ * Bounding box карты в map projection. Используется для фильтрации фич по
+ * видимости. Возвращает null если view ещё не готов или getSize не отдал
+ * размеры (происходит до первого render'а).
+ */
+function getMapExtent(): number[] | null {
+  if (!olMap) return null;
+  const size = olMap.getSize();
+  if (!size) return null;
+  const view = olMap.getView();
+  const extent = view.calculateExtent(size);
+  if (!Array.isArray(extent) || extent.length < 4) return null;
+  return extent;
+}
+
+function isCoordinateInExtent(coord: number[], extent: number[]): boolean {
+  return (
+    coord[0] >= extent[0] && coord[0] <= extent[2] && coord[1] >= extent[1] && coord[1] <= extent[3]
+  );
+}
+
+/**
+ * GUID'ы видимых точек. Берёт extent карты + координаты feature'ов из
+ * refsSource. Один pointGuid может приходиться на несколько ref-фич (стопок),
+ * поэтому возвращаем Set, а не массив.
+ */
+function getVisiblePointGuids(): Set<string> {
+  const extent = getMapExtent();
+  if (!extent || !refsSource) return new Set();
+  const visible = new Set<string>();
+  for (const feature of refsSource.getFeatures()) {
+    const properties = feature.getProperties?.() ?? {};
+    const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+    if (!pointGuid) continue;
+    if (visible.has(pointGuid)) continue;
+    const geom = feature.getGeometry();
+    const coord = geom.getCoordinates();
+    if (Array.isArray(coord) && coord.length >= 2 && isCoordinateInExtent(coord, extent)) {
+      visible.add(pointGuid);
     }
   }
-  const uncachedGuids = Array.from(pointGuids);
-  teamLoadAborted = false;
+  return visible;
+}
 
-  // Прогресс-бар + блокировка trashButton/выбора кликом до полной загрузки.
-  // Если все команды уже в teamCache (uncachedGuids пусто) - сразу
-  // applyTeamsLoadedState без показа бара. teamsLoading=true ставится в
-  // showViewer; здесь только обновляется и снимается.
-  const total = uncachedGuids.length;
-  if (total === 0) {
-    applyTeamsLoadedState();
-    return;
+/**
+ * Добавляет в очередь загрузки команд GUID'ы видимых точек, ещё не в кэше
+ * и не в очереди. Запускает worker, если он не крутится. Вызывается из
+ * showViewer (первичный набор) и из moveend handler'а (новые видимые
+ * точки после pan/zoom).
+ */
+function enqueueVisibleForLoad(): void {
+  if (!viewerOpen) return;
+  const visible = getVisiblePointGuids();
+  let added = 0;
+  for (const guid of visible) {
+    if (teamCache.has(guid)) continue;
+    if (teamLoadQueue.has(guid)) continue;
+    teamLoadQueue.add(guid);
+    teamLoadTotal++;
+    added++;
   }
-  showProgress(total);
-  let done = 0;
+  if (added > 0) {
+    teamsLoading = true;
+    showProgress(teamLoadTotal);
+    updateProgress(teamLoadDone, teamLoadTotal);
+    updateTrashCounter();
+  }
+  if (!teamLoadInProgress && teamLoadQueue.size > 0) {
+    void runTeamLoadWorker();
+  }
+}
 
-  for (let i = 0; i < uncachedGuids.length; i += TEAM_BATCH_SIZE) {
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- checked between awaits
-    if (teamLoadAborted) return;
-    const batch = uncachedGuids.slice(i, i + TEAM_BATCH_SIZE);
+/**
+ * Один worker на жизнь viewer'а. Берёт по TEAM_BATCH_SIZE из очереди,
+ * запрашивает /api/point параллельно, пишет результат в teamCache и в
+ * feature.team. Между батчами ждёт TEAM_BATCH_DELAY_MS чтобы не задавить
+ * сервер. На abort (hideViewer) прерывается, applyTeamsLoadedState не
+ * вызывается - hideViewer сам очистит state.
+ */
+async function runTeamLoadWorker(): Promise<void> {
+  if (teamLoadInProgress) return;
+  teamLoadInProgress = true;
+
+  while (teamLoadQueue.size > 0 && !teamLoadAborted) {
+    const batch: string[] = [];
+    for (const guid of teamLoadQueue) {
+      batch.push(guid);
+      teamLoadQueue.delete(guid);
+      if (batch.length >= TEAM_BATCH_SIZE) break;
+    }
     const results = await Promise.all(
       batch.map(async (pointGuid) => {
         const team = await fetchPointTeam(pointGuid);
         return { pointGuid, team };
       }),
     );
-
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- checked between awaits, hideViewer мог выставить
+    if (teamLoadAborted) break;
     for (const { pointGuid, team } of results) {
       if (team !== null) {
         teamCache.set(pointGuid, team);
-        // Update all features belonging to this point
         if (refsSource) {
           for (const feature of refsSource.getFeatures()) {
             const properties = feature.getProperties?.() ?? {};
@@ -685,20 +759,23 @@ async function loadTeamDataForRefs(refs: IInventoryReferenceFull[]): Promise<voi
           }
         }
       }
+      teamLoadDone++;
     }
-
-    done += batch.length;
-    updateProgress(done, total);
-
-    if (i + TEAM_BATCH_SIZE < uncachedGuids.length) {
-      await delay(TEAM_BATCH_DELAY_MS);
-    }
+    updateProgress(teamLoadDone, teamLoadTotal);
+    if (teamLoadQueue.size > 0) await delay(TEAM_BATCH_DELAY_MS);
   }
 
-  // Полный проход: снимаем блокировки. Если viewer был закрыт во время
-  // загрузки (teamLoadAborted=true), мы вышли через ранний return выше -
-  // closeViewer сам сбросит teamsLoading через applyTeamsLoadedState.
-  applyTeamsLoadedState();
+  teamLoadInProgress = false;
+  if (!teamLoadAborted && teamLoadQueue.size === 0) {
+    applyTeamsLoadedState();
+  }
+}
+
+function resetTeamLoadState(): void {
+  teamLoadQueue.clear();
+  teamLoadTotal = 0;
+  teamLoadDone = 0;
+  teamLoadInProgress = false;
 }
 
 // ── game state management ────────────────────────────────────────────────────
@@ -807,10 +884,12 @@ function showViewer(): void {
     refsSource.addFeature(feature);
   }
 
-  // teamsLoading=true до того как handleMapClick станет активным:
-  // первые клики по карте, пока команды грузятся, не должны выбирать
-  // фичи. updateTrashCounter учитывает teamsLoading при синхронизации
-  // disabled-state. См. handleMapClick + applyTeamsLoadedState.
+  // teamsLoading стартует true и снимается, когда worker выработает очередь
+  // (либо если в текущем extent нет ни одной точки без team). Первые клики
+  // по карте, пока команды грузятся, не должны выбирать фичи. См.
+  // handleMapClick + applyTeamsLoadedState.
+  teamLoadAborted = false;
+  resetTeamLoadState();
   teamsLoading = true;
   if (closeButton) closeButton.style.display = '';
   if (trashButton) {
@@ -830,7 +909,19 @@ function showViewer(): void {
   mapClickHandler = handleMapClick;
   olMap.on?.('click', mapClickHandler);
 
-  void loadTeamDataForRefs(refs);
+  // Загружаем команды только для видимых точек. На pan/zoom догружаем через
+  // moveend handler. Если в текущем extent нет ни одной незагруженной точки,
+  // enqueueVisibleForLoad сразу не запускает worker, и applyTeamsLoadedState
+  // не вызовется через worker - снимаем блокировки сами.
+  enqueueVisibleForLoad();
+  if (teamLoadQueue.size === 0 && !teamLoadInProgress) {
+    applyTeamsLoadedState();
+  }
+
+  viewMoveHandler = (): void => {
+    enqueueVisibleForLoad();
+  };
+  view.on?.('moveend', viewMoveHandler);
 }
 
 function hideViewer(): void {
@@ -839,11 +930,18 @@ function hideViewer(): void {
   teamLoadAborted = true;
   teamsLoading = false;
   hideProgress();
+  resetTeamLoadState();
 
   // Remove click handler
   if (olMap && mapClickHandler) {
     olMap.un?.('click', mapClickHandler);
     mapClickHandler = null;
+  }
+
+  // Remove moveend handler
+  if (olMap && viewMoveHandler) {
+    olMap.getView().un?.('moveend', viewMoveHandler);
+    viewMoveHandler = null;
   }
 
   refsSource?.clear();
@@ -1063,6 +1161,8 @@ function cleanupEnableSideEffects(): void {
   if (viewerOpen) hideViewer();
   teamLoadAborted = true;
   teamsLoading = false;
+  resetTeamLoadState();
+  viewMoveHandler = null;
 
   if (olMap && refsLayer) {
     olMap.removeLayer(refsLayer);
