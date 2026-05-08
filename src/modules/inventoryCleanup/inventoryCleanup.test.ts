@@ -612,15 +612,29 @@ describe('calculateDeletions', () => {
     expect(result).toEqual([]);
   });
 
-  test('fast mode: favorite-флаг (бит 0b01) НЕ защищает от удаления', () => {
+  test('fast mode: favorite-флаг (бит 0b01) защищает от удаления (как и lock)', () => {
+    // Постановка обновлена: и lock, и favorite защищают. Семантика для
+    // пользователя единая - и замочек, и звёздочка означают «не трогать».
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = 0;
     const items = [
-      { g: 'r1', t: 3 as const, l: 'p1', a: 5, f: 0b01 }, // favorite, но не locked
+      { g: 'r1', t: 3 as const, l: 'p1', a: 5, f: 0b01 }, // favorite, без lock
     ];
     const result = calculateDeletions(items, limits);
-    expect(result).toEqual([{ guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' }]);
+    expect(result).toEqual([]);
+  });
+
+  test('fast mode: favorite-агрегация per-point — одна favorite-стопка защищает все стопки точки', () => {
+    const limits = unlimitedLimits();
+    limits.referencesMode = 'fast';
+    limits.referencesFastLimit = 0;
+    const items = [
+      { g: 'r1', t: 3 as const, l: 'p1', a: 5, f: 0b01 }, // favorite-стопка точки p1
+      { g: 'r2', t: 3 as const, l: 'p1', a: 3, f: 0 }, // вторая стопка той же точки — тоже под защитой
+    ];
+    const result = calculateDeletions(items, limits);
+    expect(result).toEqual([]);
   });
 
   test('off mode: не трогает ключи даже при доступной lock-поддержке', () => {
@@ -1492,17 +1506,17 @@ describe('inventoryCleanup module', () => {
 
     test('lock-migration-done выставлен: native lock-флаг ВСЁ РАВНО защищает стопку от удаления', async () => {
       // Документированная семантика lock-migration-done: после миграции
-      // защита переходит на нативный lock-флаг; legacy-список становится
-      // архивом. Это значит, что для конкретной стопки с f=0b10 защита
-      // обеспечивается через buildLockedPointGuids в calculateDeletions
-      // (отфильтровывается до подсчёта) и через final guard в
-      // deleteInventoryItems (блокирует, если что-то прошло).
+      // защита переходит на нативный lock/favorite-флаг; legacy-список
+      // становится архивом. Это значит, что для конкретной стопки с f=0b10
+      // защита обеспечивается через buildProtectedPointGuids в
+      // calculateDeletions (отфильтровывается до подсчёта) и через final
+      // guard в deleteInventoryItems (блокирует, если что-то прошло).
       //
       // Без этого теста инвариант "флаг lock-migration-done не подавляет
       // нативную защиту" формализован только в комментариях. Если кто-то
       // изменит calculateDeletions так, чтобы при флаге=true пропускать
-      // фильтр по lockedPointGuids, тесты выше (про unblock) останутся
-      // зелёными - там точка не locked в кэше.
+      // фильтр по protectedPointGuids, тесты выше (про unblock) останутся
+      // зелёными - там точка не защищённая в кэше.
       const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
 
       registerModules([

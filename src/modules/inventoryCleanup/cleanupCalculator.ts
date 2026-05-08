@@ -1,6 +1,6 @@
 import type { IInventoryItem, IInventoryReference } from '../../core/inventoryTypes';
 import { isInventoryReference } from '../../core/inventoryTypes';
-import { buildLockedPointGuids } from '../../core/inventoryCache';
+import { buildProtectedPointGuids } from '../../core/inventoryCache';
 import type { ICleanupLimits } from './cleanupSettings';
 import type { ILocalizedString } from '../../core/l10n';
 import { t } from '../../core/l10n';
@@ -111,10 +111,9 @@ function addLevelDeletions(
  * Лимит ключей — НА ТОЧКУ: для каждой уникальной точки оставляет не более limit
  * ключей. Аналогично cores/catalysers, где лимит задаётся на уровень.
  * Из расчёта исключаются точки, у которых в инвентаре есть хотя бы одна стопка
- * с нативным lock-флагом (бит 1 в `item.f`) — пользователь явно защитил их в
- * UI игры 0.6.1. Favorite-флаг (бит 0) НЕ защищает от удаления: пользователь
- * подтвердил это в постановке («избранные ключи не защищаются от удаления,
- * заблокированные — не удаляются автоочисткой»).
+ * с нативным lock-флагом (бит 1 в `item.f`) ИЛИ favorite-флагом (бит 0) — оба
+ * означают «пользователь явно отметил эту точку, не трогать». Lock в SBG 0.6.1
+ * — явный замочек, favorite — звёздочка; семантика для пользователя едина.
  */
 function addReferenceDeletions(
   items: readonly IInventoryItem[],
@@ -123,12 +122,12 @@ function addReferenceDeletions(
 ): void {
   if (limit === -1) return;
 
-  const lockedPointGuids = buildLockedPointGuids(items);
+  const protectedPointGuids = buildProtectedPointGuids(items);
 
-  // Отфильтровать ключи заблокированных точек ПЕРЕД расчётом лимита.
+  // Отфильтровать ключи защищённых точек (lock или favorite) ПЕРЕД расчётом лимита.
   const matching: IInventoryReference[] = items.filter(
     (item): item is IInventoryReference =>
-      isInventoryReference(item) && item.a > 0 && !lockedPointGuids.has(item.l),
+      isInventoryReference(item) && item.a > 0 && !protectedPointGuids.has(item.l),
   );
 
   // Группировка по pointGuid (item.l для ключей = GUID точки).

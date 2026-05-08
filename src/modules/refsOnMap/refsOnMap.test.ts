@@ -519,7 +519,7 @@ describe('refsOnMap viewer', () => {
     const note = document.querySelector('.svp-refs-on-map-locked-note') as HTMLElement;
     expect(note).not.toBeNull();
     expect(note.style.display).toBe('');
-    expect(note.textContent).toMatch(/locked|защищ/i);
+    expect(note.textContent).toMatch(/lock|favorite|защищ|замочк|звёздочк/i);
     clickCloseButton();
     expect(note.style.display).toBe('none');
   });
@@ -575,6 +575,17 @@ describe('refsOnMap lock protection', () => {
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open Point', f: 0 },
       { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Locked Point', f: 0b10 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+  }
+
+  function setInventoryCacheWithFavorites(): void {
+    // ref-2 в стопке favorite (бит 0b01 поля f) - точка point-2 защищена.
+    // Зеркальный кейс к setInventoryCacheWithLocks: семантика защиты
+    // едина для locked и favorite, тест фиксирует это в viewer'е.
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open Point', f: 0 },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Favorited Point', f: 0b01 },
     ];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
   }
@@ -657,6 +668,55 @@ describe('refsOnMap lock protection', () => {
     });
     const body = JSON.parse(init.body as string) as { selection: Record<string, number> };
     // ref-1 (l=point-1, не locked) в payload; ref-2 (l=point-2, locked) - НЕ в payload.
+    expect(body.selection).toHaveProperty('ref-1');
+    expect(body.selection).not.toHaveProperty('ref-2');
+  });
+
+  test('partitionByLockProtection через handleDeleteClick: favorite не уходит в payload', async () => {
+    // Зеркальный кейс к locked: favorite (бит 0b01) защищает так же, как
+    // lock (бит 0b10). Проверяем, что viewer пропускает в payload только
+    // незащищённые точки.
+    setInventoryCacheWithFavorites();
+    clickShowButton();
+
+    const clickHandler = map._clickListeners[0];
+    expect(clickHandler).toBeDefined();
+
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    expect(allFeatures.length).toBe(2);
+
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[1]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    window.confirm = jest.fn(() => true);
+    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
+      void _args;
+      return Promise.resolve({
+        json: () => Promise.resolve({ count: { total: 90 } }),
+      } as unknown as Response);
+    });
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    const body = JSON.parse(init.body as string) as { selection: Record<string, number> };
     expect(body.selection).toHaveProperty('ref-1');
     expect(body.selection).not.toHaveProperty('ref-2');
   });

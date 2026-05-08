@@ -1,6 +1,6 @@
 import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import type { IInventoryItem } from '../../core/inventoryTypes';
-import { buildLockedPointGuids } from '../../core/inventoryCache';
+import { buildLockedPointGuids, buildProtectedPointGuids } from '../../core/inventoryCache';
 import { calculateDeletions } from './cleanupCalculator';
 import type { ICleanupLimits } from './cleanupSettings';
 
@@ -26,28 +26,20 @@ function ref(g: string, point: string, amount: number, f?: number): IInventoryIt
 }
 
 describe('buildLockedPointGuids', () => {
-  test('пустой инвентарь: пустой Set', () => {
-    expect(buildLockedPointGuids([]).size).toBe(0);
-  });
-
-  test('игнорирует записи без поля f (0.6.0 совместимость)', () => {
-    const items = [ref('s1', 'p1', 5)];
-    expect(buildLockedPointGuids(items).size).toBe(0);
-  });
+  // Сокращённый набор: функция используется только в favoritesMigration для
+  // определения, какие точки УЖЕ помечены lock-битом (миграция legacy
+  // SVP/CUI-избранных). Семантика «защита от удаления» теперь живёт в
+  // buildProtectedPointGuids (lock OR favorite). Здесь покрываем только
+  // ключевые инварианты функции lock-only.
 
   test('lock-флаг (бит 1) добавляет точку', () => {
     const items = [ref('s1', 'p1', 5, 0b10)];
     expect([...buildLockedPointGuids(items)]).toEqual(['p1']);
   });
 
-  test('favorite-флаг (бит 0) сам по себе НЕ добавляет точку', () => {
+  test('favorite-флаг (бит 0) сам по себе НЕ добавляет точку (lock-only семантика)', () => {
     const items = [ref('s1', 'p1', 5, 0b01)];
     expect(buildLockedPointGuids(items).size).toBe(0);
-  });
-
-  test('комбинация lock+favorite (биты 0 и 1) — точка locked', () => {
-    const items = [ref('s1', 'p1', 5, 0b11)];
-    expect([...buildLockedPointGuids(items)]).toEqual(['p1']);
   });
 
   test('per-point агрегация: одна стопка locked ⇒ вся точка locked', () => {
@@ -55,30 +47,92 @@ describe('buildLockedPointGuids', () => {
     expect([...buildLockedPointGuids(items)]).toEqual(['p1']);
   });
 
-  test('игнорирует не-рефы (cores/cats), даже если у них есть похожее поле', () => {
-    // У cores нет поля f в нашем типе, но если кто-то по ошибке передаст —
-    // фильтр isInventoryReference отсеет.
-    const core = { g: 'c1', t: ITEM_TYPE_CORE, l: 5, a: 10, f: 0b10 };
-    expect(buildLockedPointGuids([core]).size).toBe(0);
+  test('игнорирует записи без поля f (0.6.0 совместимость)', () => {
+    const items = [ref('s1', 'p1', 5)];
+    expect(buildLockedPointGuids(items).size).toBe(0);
   });
 });
 
-describe('calculateDeletions — lock-aware фильтрация рефов', () => {
+describe('buildProtectedPointGuids', () => {
+  // Семантика «защита от удаления»: lock (бит 1) ИЛИ favorite (бит 0).
+  // Используется во всех местах массового удаления: cleanupCalculator (fast),
+  // slowRefsDelete (slow), inventoryApi (final guard), refsOnMap (viewer).
+
+  test('пустой инвентарь: пустой Set', () => {
+    expect(buildProtectedPointGuids([]).size).toBe(0);
+  });
+
+  test('игнорирует записи без поля f (0.6.0 совместимость)', () => {
+    const items = [ref('s1', 'p1', 5)];
+    expect(buildProtectedPointGuids(items).size).toBe(0);
+  });
+
+  test('lock-флаг (бит 1) защищает', () => {
+    const items = [ref('s1', 'p1', 5, 0b10)];
+    expect([...buildProtectedPointGuids(items)]).toEqual(['p1']);
+  });
+
+  test('favorite-флаг (бит 0) защищает', () => {
+    const items = [ref('s1', 'p1', 5, 0b01)];
+    expect([...buildProtectedPointGuids(items)]).toEqual(['p1']);
+  });
+
+  test('lock + favorite (биты 0 и 1) — точка защищена', () => {
+    const items = [ref('s1', 'p1', 5, 0b11)];
+    expect([...buildProtectedPointGuids(items)]).toEqual(['p1']);
+  });
+
+  test('per-point агрегация: одна locked-стопка ⇒ вся точка защищена', () => {
+    const items = [ref('stack-a', 'p1', 3, 0b10), ref('stack-b', 'p1', 2, 0)];
+    expect([...buildProtectedPointGuids(items)]).toEqual(['p1']);
+  });
+
+  test('per-point агрегация: одна favorite-стопка ⇒ вся точка защищена', () => {
+    const items = [ref('stack-a', 'p1', 3, 0b01), ref('stack-b', 'p1', 2, 0)];
+    expect([...buildProtectedPointGuids(items)]).toEqual(['p1']);
+  });
+
+  test('per-point агрегация: смешанные стопки (одна favorite, одна lock) — точка защищена один раз', () => {
+    const items = [ref('stack-a', 'p1', 3, 0b01), ref('stack-b', 'p1', 2, 0b10)];
+    expect([...buildProtectedPointGuids(items)]).toEqual(['p1']);
+  });
+
+  test('разные точки защищаются независимо', () => {
+    const items = [
+      ref('s1', 'p-lock', 3, 0b10),
+      ref('s2', 'p-fav', 2, 0b01),
+      ref('s3', 'p-open', 4, 0),
+    ];
+    expect([...buildProtectedPointGuids(items)].sort()).toEqual(['p-fav', 'p-lock']);
+  });
+
+  test('f=0 не защищает', () => {
+    const items = [ref('s1', 'p1', 5, 0)];
+    expect(buildProtectedPointGuids(items).size).toBe(0);
+  });
+
+  test('игнорирует не-рефы (cores/cats), даже если у них есть похожее поле', () => {
+    const core = { g: 'c1', t: ITEM_TYPE_CORE, l: 5, a: 10, f: 0b11 };
+    expect(buildProtectedPointGuids([core]).size).toBe(0);
+  });
+});
+
+describe('calculateDeletions — lock/favorite-aware фильтрация рефов', () => {
   test('locked-точка с одной стопкой (бит 1) не попадает в deletions', () => {
-    // 5 ключей одной точки, лимит 2, locked. Без lock-фильтра было бы 3 на удаление.
+    // 5 ключей одной точки, лимит 2, locked. Без protect-фильтра было бы 3 на удаление.
     const items: IInventoryItem[] = [ref('s1', 'p1', 5, 0b10)];
     const deletions = calculateDeletions(items, FAST_LIMIT_2);
     expect(deletions).toHaveLength(0);
   });
 
   test('locked-точка с 2 стопками (одна с lock, другая без) — обе защищены (per-point)', () => {
-    // Стопки в реальности — деталь хранения. UI агрегирует, lock per-point.
+    // Стопки в реальности — деталь хранения. UI агрегирует, защита per-point.
     const items: IInventoryItem[] = [ref('stack-a', 'p1', 3, 0b10), ref('stack-b', 'p1', 2, 0)];
     const deletions = calculateDeletions(items, FAST_LIMIT_2);
     expect(deletions).toHaveLength(0);
   });
 
-  test('не-locked точка с превышением лимита — удаляется, lock-точка рядом не страдает', () => {
+  test('не-защищённая точка с превышением лимита — удаляется, защищённая точка рядом не страдает', () => {
     const items: IInventoryItem[] = [
       ref('locked-stack', 'locked-point', 5, 0b10),
       ref('normal-stack', 'normal-point', 5, 0),
@@ -89,16 +143,39 @@ describe('calculateDeletions — lock-aware фильтрация рефов', ()
     expect(deletions[0].amount).toBe(3);
   });
 
-  test('favorite-флаг (бит 0) НЕ защищает: точка идёт под лимит', () => {
-    // По постановке: «избранные ключи не защищаются от удаления» (только lock).
+  test('favorite-флаг (бит 0) защищает: точка не попадает в deletions', () => {
+    // Постановка обновлена: и lock, и favorite защищают от удаления.
     const items: IInventoryItem[] = [ref('s1', 'p1', 5, 0b01)];
     const deletions = calculateDeletions(items, FAST_LIMIT_2);
+    expect(deletions).toHaveLength(0);
+  });
+
+  test('favorite-точка с 2 стопками (одна с favorite, другая без) — обе защищены (per-point)', () => {
+    const items: IInventoryItem[] = [ref('stack-a', 'p1', 3, 0b01), ref('stack-b', 'p1', 2, 0)];
+    const deletions = calculateDeletions(items, FAST_LIMIT_2);
+    expect(deletions).toHaveLength(0);
+  });
+
+  test('lock + favorite (бит 0 и 1) — точка защищена', () => {
+    const items: IInventoryItem[] = [ref('s1', 'p1', 5, 0b11)];
+    const deletions = calculateDeletions(items, FAST_LIMIT_2);
+    expect(deletions).toHaveLength(0);
+  });
+
+  test('mix трёх точек: locked, favorite, open — удаляется только open', () => {
+    const items: IInventoryItem[] = [
+      ref('s-lock', 'p-locked', 5, 0b10),
+      ref('s-fav', 'p-fav', 5, 0b01),
+      ref('s-open', 'p-open', 5, 0),
+    ];
+    const deletions = calculateDeletions(items, FAST_LIMIT_2);
     expect(deletions).toHaveLength(1);
+    expect(deletions[0].pointGuid).toBe('p-open');
     expect(deletions[0].amount).toBe(3);
   });
 
-  test('lock-фильтр работает БЕЗ legacy SVP-избранных (0.6.1+ кейс)', () => {
-    // Legacy список в логике защиты не участвует — полагаемся только на lock.
+  test('protect-фильтр работает БЕЗ legacy SVP-избранных (0.6.1+ кейс)', () => {
+    // Legacy список в логике защиты не участвует — полагаемся только на lock/favorite.
     const items: IInventoryItem[] = [
       ref('locked-stack', 'p-locked', 5, 0b10),
       ref('normal-stack', 'p-normal', 5, 0),
@@ -107,7 +184,7 @@ describe('calculateDeletions — lock-aware фильтрация рефов', ()
     expect(deletions.map((d) => d.pointGuid)).toEqual(['p-normal']);
   });
 
-  test('cores/catalysers продолжают работать независимо от lock-фильтра (lock — только для рефов)', () => {
+  test('cores/catalysers продолжают работать независимо от protect-фильтра (только для рефов)', () => {
     const items: IInventoryItem[] = [
       { g: 'c1', t: ITEM_TYPE_CORE, l: 1, a: 10 },
       { g: 'cat1', t: ITEM_TYPE_CATALYSER, l: 1, a: 10 },
@@ -145,6 +222,16 @@ describe('calculateDeletions — условие запуска (только loc
   test('кэш с f-полем: cleanup идёт, locked-точка защищена', () => {
     const items: IInventoryItem[] = [
       ref('s-locked', 'p-locked', 5, 0b10),
+      ref('s-other', 'p-other', 5, 0),
+    ];
+    const deletions = calculateDeletions(items, FAST_LIMIT_2);
+    expect(deletions.map((d) => d.pointGuid)).toEqual(['p-other']);
+    expect(deletions[0].amount).toBe(3);
+  });
+
+  test('кэш с f-полем: cleanup идёт, favorite-точка защищена', () => {
+    const items: IInventoryItem[] = [
+      ref('s-fav', 'p-fav', 5, 0b01),
       ref('s-other', 'p-other', 5, 0),
     ];
     const deletions = calculateDeletions(items, FAST_LIMIT_2);

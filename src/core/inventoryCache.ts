@@ -37,6 +37,11 @@ export function readFullInventoryReferences(): IInventoryReferenceFull[] {
  * Принимает `unknown[]` - позволяет передавать сырой `inventory-cache` без
  * предварительной фильтрации; внутренний `isInventoryReference` отсеивает
  * не-рефы и стопки без поля `f`.
+ *
+ * Используется для логики миграции legacy SVP/CUI-избранных в нативный lock
+ * (`favoritesMigration/migrationApi.ts`), где нужен именно lock-бит, а не
+ * «защищена от удаления». Для логики защиты от удаления есть
+ * `buildProtectedPointGuids` (ниже): она ловит и lock, и favorite.
  */
 export function buildLockedPointGuids(items: readonly unknown[]): Set<string> {
   const locked = new Set<string>();
@@ -47,4 +52,30 @@ export function buildLockedPointGuids(items: readonly unknown[]): Set<string> {
     locked.add(item.l);
   }
   return locked;
+}
+
+/**
+ * Возвращает GUID'ы точек, защищённых от удаления: хотя бы одна стопка ключей
+ * помечена флагом lock (бит 1) ИЛИ favorite (бит 0) поля `f`. Семантика
+ * пользователю едина: «эту точку я отметил - её ключи не удалять автоочисткой
+ * и не удалять через viewer refsOnMap». Lock в SBG 0.6.1 - явный замочек,
+ * favorite - звёздочка; оба знака пользователь ставит сам, и оба означают
+ * «не трогать».
+ *
+ * Per-point агрегация та же, что и у `buildLockedPointGuids`: одна
+ * защищённая стопка - вся точка под защитой. Игрок видит точку, не стопку.
+ *
+ * Принимает `unknown[]` - позволяет передавать сырой `inventory-cache` без
+ * предварительной фильтрации; внутренний `isInventoryReference` отсеивает
+ * не-рефы и стопки без поля `f`.
+ */
+export function buildProtectedPointGuids(items: readonly unknown[]): Set<string> {
+  const protectedGuids = new Set<string>();
+  for (const item of items) {
+    if (!isInventoryReference(item)) continue;
+    if (item.f === undefined) continue;
+    if ((item.f & 0b11) === 0) continue;
+    protectedGuids.add(item.l);
+  }
+  return protectedGuids;
 }

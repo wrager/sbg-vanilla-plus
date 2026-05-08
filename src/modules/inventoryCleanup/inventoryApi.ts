@@ -2,7 +2,7 @@ import type { IDeletionEntry } from './cleanupCalculator';
 import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import {
   INVENTORY_CACHE_KEY,
-  buildLockedPointGuids,
+  buildProtectedPointGuids,
   readInventoryCache,
 } from '../../core/inventoryCache';
 import { isInventoryItem, isInventoryReference } from '../../core/inventoryTypes';
@@ -65,14 +65,14 @@ export async function deleteInventoryItems(
 ): Promise<IDeleteResult> {
   const hasReferences = deletions.some((entry) => entry.type === ITEM_TYPE_REFERENCE);
 
-  // Финальный guard для lock-флагов: перечитываем СВЕЖИЙ inventory-cache (он
-  // мог обновиться между расчётом deletions и этим вызовом — пользователь
-  // нажал замок прямо во время cleanup'а, или сервер вернул новые `f` в
-  // ответе на discover). Если точка теперь locked — удаление её ключей
-  // блокируется.
+  // Финальный guard для lock/favorite-флагов: перечитываем СВЕЖИЙ
+  // inventory-cache (он мог обновиться между расчётом deletions и этим
+  // вызовом — пользователь нажал замок или звёздочку прямо во время
+  // cleanup'а, или сервер вернул новые `f` в ответе на discover). Если точка
+  // теперь защищена (lock или favorite) — удаление её ключей блокируется.
   const freshCache = hasReferences ? readInventoryCache() : [];
-  const freshLockedPointGuids = hasReferences
-    ? buildLockedPointGuids(freshCache)
+  const freshProtectedPointGuids = hasReferences
+    ? buildProtectedPointGuids(freshCache)
     : new Set<string>();
   // Удаление ключей разрешено только если ВСЕ реф-стопки в свежем кэше имеют
   // поле `f`. Раньше проверялось `some` (хотя бы одна), но при mix-кэше (часть
@@ -95,11 +95,13 @@ export async function deleteInventoryItems(
     }
     if (entry.type === ITEM_TYPE_REFERENCE) {
       if (entry.pointGuid === undefined) {
-        throw new Error(`Ключ ${entry.guid} без pointGuid не может быть удалён (guard lock)`);
-      }
-      if (freshLockedPointGuids.has(entry.pointGuid)) {
         throw new Error(
-          `Ключ от заблокированной точки ${entry.pointGuid} не может быть удалён (guard lock)`,
+          `Ключ ${entry.guid} без pointGuid не может быть удалён (guard lock/favorite)`,
+        );
+      }
+      if (freshProtectedPointGuids.has(entry.pointGuid)) {
+        throw new Error(
+          `Ключ от защищённой точки ${entry.pointGuid} не может быть удалён (guard lock/favorite)`,
         );
       }
     }

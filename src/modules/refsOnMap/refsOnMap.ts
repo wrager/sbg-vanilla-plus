@@ -4,7 +4,7 @@ import { t } from '../../core/l10n';
 import { getOlMap } from '../../core/olMap';
 import type { IOlFeature, IOlMap, IOlLayer, IOlMapEvent, IOlVectorSource } from '../../core/olMap';
 import {
-  buildLockedPointGuids,
+  buildProtectedPointGuids,
   readFullInventoryReferences,
   readInventoryCache,
   INVENTORY_CACHE_KEY,
@@ -275,13 +275,13 @@ function handleMapClick(event: IOlMapEvent): void {
 
 /**
  * Удаление ключей разрешено, только если ВСЕ реф-стопки в кэше имеют поле
- * `f`. На 0.6.0 поле отсутствует целиком - `buildLockedPointGuids` возвращает
- * пустой Set и locked-семантики нет. На mix-кэше (часть стопок с `f`, часть
- * без) `buildLockedPointGuids` пропускает стопки без `f` (`if (item.f ===
- * undefined) continue`), и точка по факту locked не попала бы в защищённые -
- * её ключи могли быть удалены вслепую. `every` исключает этот класс ошибок
- * целиком, симметрично с `cleanupCalculator`, `slowRefsDelete` и финальным
- * guard'ом в `inventoryApi.deleteInventoryItems`.
+ * `f`. На 0.6.0 поле отсутствует целиком - `buildProtectedPointGuids`
+ * возвращает пустой Set и lock/favorite-семантики нет. На mix-кэше (часть
+ * стопок с `f`, часть без) `buildProtectedPointGuids` пропускает стопки без
+ * `f` (`if (item.f === undefined) continue`), и точка по факту защищённая не
+ * попала бы в защищённые - её ключи могли быть удалены вслепую. `every`
+ * исключает этот класс ошибок целиком, симметрично с `cleanupCalculator`,
+ * `slowRefsDelete` и финальным guard'ом в `inventoryApi.deleteInventoryItems`.
  */
 export function isLockSupportAvailable(cache: readonly unknown[]): boolean {
   const refStacks = cache.filter(isInventoryReference);
@@ -291,13 +291,14 @@ export function isLockSupportAvailable(cache: readonly unknown[]): boolean {
 
 /**
  * Делит выбранные ref-фичи на разрешённые к удалению и защищённые
- * locked-флагом точки. Источник правды о защите - inventory-cache: для
- * каждой стопки бит 0b10 поля `f` означает «эта стопка locked»; в UI
- * семантика per-point - одна locked-стопка защищает все ключи точки от
- * удаления (тот же агрегатор, что в slowRefsDelete и cleanupCalculator).
+ * lock/favorite-флагом точки. Источник правды о защите - inventory-cache:
+ * для каждой стопки бит 0b10 поля `f` означает «эта стопка locked», бит
+ * 0b01 - «favorite»; оба означают «не трогать». В UI семантика per-point -
+ * одна защищённая стопка защищает все ключи точки от удаления (тот же
+ * агрегатор, что в slowRefsDelete и cleanupCalculator).
  *
- * Свойство `pointGuid` фичи сравнивается с set'ом locked-точек; ref'ы без
- * pointGuid (теоретически возможны при сломанном кэше) трактуются как
+ * Свойство `pointGuid` фичи сравнивается с set'ом защищённых точек; ref'ы
+ * без pointGuid (теоретически возможны при сломанном кэше) трактуются как
  * unprotected, чтобы не блокировать удаление по неверной причине.
  */
 function partitionByLockProtection(features: IOlFeature[]): {
@@ -305,13 +306,13 @@ function partitionByLockProtection(features: IOlFeature[]): {
   protectedRefs: IOlFeature[];
 } {
   const cache = readInventoryCache();
-  const lockedPointGuids = buildLockedPointGuids(cache);
+  const protectedPointGuids = buildProtectedPointGuids(cache);
   const deletable: IOlFeature[] = [];
   const protectedRefs: IOlFeature[] = [];
   for (const feature of features) {
     const properties = feature.getProperties?.() ?? {};
     const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
-    if (pointGuid && lockedPointGuids.has(pointGuid)) {
+    if (pointGuid && protectedPointGuids.has(pointGuid)) {
       protectedRefs.push(feature);
     } else {
       deletable.push(feature);
@@ -339,7 +340,7 @@ async function handleDeleteClick(): Promise<void> {
 
   // Защита mix-кэша: если хоть одна реф-стопка без поля `f`, нельзя
   // полагаться на нативный lock - стопки без `f` не попадут в
-  // lockedPointGuids и точки по факту locked могут быть удалены вслепую.
+  // protectedPointGuids и точки по факту защищённые могут быть удалены вслепую.
   // Симметрично с slowRefsDelete и cleanupCalculator. На 0.6.0 (нет `f`
   // целиком) удаление через viewer тоже блокируется - пользователь не
   // должен лишиться ключей из-за того что версия игры не поддерживает lock.
@@ -353,17 +354,18 @@ async function handleDeleteClick(): Promise<void> {
     return;
   }
 
-  // Защита locked: точки с замочком (бит 0b10 поля `f` любой стопки в
-  // inventory-cache) не удаляются. Семантика общая для всех модулей,
-  // работающих с массовым удалением ключей: refsOnMap, slowRefsDelete,
-  // cleanupCalculator (см. README inventoryCleanup).
+  // Защита lock/favorite: точки с замочком (бит 0b10) или звёздочкой
+  // (бит 0b01) поля `f` любой стопки в inventory-cache не удаляются.
+  // Семантика общая для всех модулей, работающих с массовым удалением
+  // ключей: refsOnMap, slowRefsDelete, cleanupCalculator (см. README
+  // inventoryCleanup).
   const { deletable, protectedRefs } = partitionByLockProtection(selectedFeatures);
 
   if (deletable.length === 0) {
     showToast(
       t({
-        en: 'All selected keys belong to locked points and cannot be deleted',
-        ru: 'Все выбранные ключи относятся к locked-точкам и не могут быть удалены',
+        en: 'All selected keys belong to protected (locked or favorited) points and cannot be deleted',
+        ru: 'Все выбранные ключи относятся к защищённым точкам (с замочком или звёздочкой) и не могут быть удалены',
       }),
     );
     return;
@@ -428,13 +430,14 @@ async function handleDeleteClick(): Promise<void> {
       updateInventoryCounter(response.count.total);
     }
 
-    // Уведомление об оставленных locked: показываем после успешного удаления,
-    // чтобы пользователь увидел итог в одном тосте, а не два диалога подряд.
+    // Уведомление об оставленных защищённых: показываем после успешного
+    // удаления, чтобы пользователь увидел итог в одном тосте, а не два
+    // диалога подряд.
     if (protectedRefs.length > 0) {
       showToast(
         t({
-          en: `Locked points: ${protectedRefs.length} key(s) kept`,
-          ru: `Locked-точки: ${protectedRefs.length} ключ(ей) оставлено`,
+          en: `Protected points (lock/favorite): ${protectedRefs.length} key(s) kept`,
+          ru: `Защищённые точки (замочек/звёздочка): ${protectedRefs.length} ключ(ей) оставлено`,
         }),
       );
     }
@@ -666,8 +669,8 @@ export const refsOnMap: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Refs on map', ru: 'Ключи на карте' },
   description: {
-    en: 'View and manage points with collected keys on the map at any zoom level. Keys of points marked with the native SBG lock are protected.',
-    ru: 'Просмотр и управление точками с ключами на карте на любом масштабе. Ключи точек, помеченных нативным замочком SBG, защищены.',
+    en: 'View and manage points with collected keys on the map at any zoom level. Keys of points marked with the native SBG lock or favorite are protected.',
+    ru: 'Просмотр и управление точками с ключами на карте на любом масштабе. Ключи точек, помеченных нативным замочком или звёздочкой SBG, защищены.',
   },
   defaultEnabled: true,
   category: 'feature',
@@ -743,15 +746,15 @@ export const refsOnMap: IFeatureModule = {
           });
           document.body.appendChild(trashButton);
 
-          // Постоянная подсказка про защиту locked-точек: видна только в
+          // Постоянная подсказка про защиту lock/favorite-точек: видна только в
           // viewer-режиме, чтобы пользователь сразу понимал, что часть
           // выбранного при удалении будет пропущена. Та же семантика
           // используется в slowRefsDelete и cleanupCalculator.
           lockedNote = document.createElement('div');
           lockedNote.className = 'svp-refs-on-map-locked-note';
           lockedNote.textContent = t({
-            en: 'Keys of locked points are protected and not deleted',
-            ru: 'Ключи locked-точек защищены и не удаляются',
+            en: 'Keys of points with lock or favorite are protected and not deleted',
+            ru: 'Ключи точек с замочком или звёздочкой защищены и не удаляются',
           });
           lockedNote.style.display = 'none';
           document.body.appendChild(lockedNote);
