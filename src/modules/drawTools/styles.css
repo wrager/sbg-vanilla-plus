@@ -1,3 +1,12 @@
+/* Стек OL-controls слева от карты позиционируется через top: 50% + transform
+   собственной высоты: rotate (-200%), zoom (0%), region-picker (100%).
+   Наш control продолжает колонку на 200% — на одну высоту ниже region-picker. */
+.svp-draw-tools-control {
+  top: 50%;
+  left: 0.5em;
+  transform: translateY(200%);
+}
+
 .svp-draw-tools-control button svg {
   display: block;
   margin: auto;

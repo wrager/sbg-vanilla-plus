@@ -81,10 +81,7 @@ let drawSource: IVectorSourceWithRemove | null = null;
 let drawLayer: IOlLayer | null = null;
 
 let controlElement: HTMLDivElement | null = null;
-let pickerElement: HTMLElement | null = null;
 let controlMutationObserver: MutationObserver | null = null;
-let controlResizeObserver: ResizeObserver | null = null;
-let windowResizeHandler: (() => void) | null = null;
 let toolbar: HTMLDivElement | null = null;
 let copyModalOverlay: HTMLDivElement | null = null;
 let copyModalKeydownHandler: ((event: KeyboardEvent) => void) | null = null;
@@ -962,30 +959,15 @@ function createToolbar(): HTMLDivElement {
   return panel;
 }
 
-function syncControlPosition(): void {
-  if (!controlElement || !pickerElement) return;
-  const rect = pickerElement.getBoundingClientRect();
-  // Если picker скрыт (rect нулевой) — не двигаем control, оставляем последнюю
-  // валидную позицию. Иначе при кратком re-render игрой control мигнул бы в
-  // верхний левый угол.
-  if (rect.width === 0 && rect.height === 0) return;
-  // OL-controls в игре выстроены вертикально вплотную (zoom-in / zoom-out /
-  // region-picker / ...) — ставим наш control сразу под region-picker, чтобы
-  // визуально продолжить колонку.
-  controlElement.style.top = `${rect.bottom}px`;
-  controlElement.style.right = `${window.innerWidth - rect.right}px`;
-  controlElement.style.left = 'auto';
-  controlElement.style.bottom = 'auto';
-}
-
 function createControlElement(): HTMLDivElement {
   // Структура повторяет .region-picker (div.ol-unselectable.ol-control > button),
   // чтобы наследовать игровые стили OL-кнопок. Класс region-picker НЕ
   // навешиваем: игра через jQuery делегирует на все .region-picker свой
-  // toggle регионов, наш control не должен туда попасть.
+  // toggle регионов, наш control не должен туда попасть. Позиционирование
+  // делает CSS через top/left/transform (см. styles.css), как у нативных
+  // OL-controls — без JS-вычислений.
   const element = document.createElement('div');
   element.className = 'svp-draw-tools-control ol-unselectable ol-control';
-  element.style.position = 'fixed';
 
   const button = document.createElement('button');
   button.type = 'button';
@@ -1013,34 +995,19 @@ async function mountOlControl(myToken: number): Promise<boolean> {
     picker = found;
   }
 
-  pickerElement = picker;
   controlElement = createControlElement();
   picker.after(controlElement);
-  syncControlPosition();
 
   // Игра может пересоздавать DOM вокруг карты (например, при смене размера
   // viewport). Если control оторвался от документа — снова приклеиваем после
-  // picker'а. Если остался — синхронизируем позицию (picker мог переехать).
+  // актуального picker'а (re-find динамически на случай, если игра пересоздала
+  // и сам picker, заменив старый узел новым).
   controlMutationObserver = new MutationObserver(() => {
-    if (!controlElement || !pickerElement) return;
-    if (!controlElement.isConnected) {
-      pickerElement.after(controlElement);
-    }
-    syncControlPosition();
+    if (!controlElement || controlElement.isConnected) return;
+    const fresh = document.querySelector<HTMLElement>(REGION_PICKER_SELECTOR);
+    fresh?.after(controlElement);
   });
   controlMutationObserver.observe(document.body, { childList: true, subtree: true });
-
-  if (typeof ResizeObserver !== 'undefined') {
-    controlResizeObserver = new ResizeObserver(() => {
-      syncControlPosition();
-    });
-    controlResizeObserver.observe(picker);
-  }
-
-  windowResizeHandler = (): void => {
-    syncControlPosition();
-  };
-  window.addEventListener('resize', windowResizeHandler);
 
   return true;
 }
@@ -1048,19 +1015,12 @@ async function mountOlControl(myToken: number): Promise<boolean> {
 function unmountOlControl(): void {
   controlMutationObserver?.disconnect();
   controlMutationObserver = null;
-  controlResizeObserver?.disconnect();
-  controlResizeObserver = null;
-  if (windowResizeHandler) {
-    window.removeEventListener('resize', windowResizeHandler);
-    windowResizeHandler = null;
-  }
   if (controlElement) {
     const button = controlElement.querySelector('button');
     button?.removeEventListener('click', toggleToolbar);
     controlElement.remove();
     controlElement = null;
   }
-  pickerElement = null;
 }
 
 function applyToolbarPositionClass(): void {
