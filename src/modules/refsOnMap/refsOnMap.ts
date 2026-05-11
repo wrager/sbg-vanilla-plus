@@ -697,7 +697,37 @@ function toggleFeatureSelection(feature: IOlFeature): void {
   const properties = feature.getProperties?.() ?? {};
   const isSelected = properties.isSelected === true;
   feature.set?.('isSelected', !isSelected);
+  // Если фича только что попала в выбор и её team ещё не известна -
+  // ставим pointGuid в очередь worker'а. Без этого выделенные точки
+  // вне visible-extent остаются protectedByUnknownTeam (fail-safe),
+  // и UI breakdown показывает их в "protected" хотя по смыслу это
+  // просто "не догружено".
+  if (!isSelected) {
+    const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+    const hasKnownTeam = typeof properties.team === 'number';
+    if (pointGuid !== null && !hasKnownTeam) requestTeamLoad(pointGuid);
+  }
   updateSelectionUi();
+}
+
+/**
+ * Ставит pointGuid в teamLoadQueue если команда ещё не известна, не в
+ * очереди и не в-полёте. Запускает worker если он не крутится. Общая
+ * точка между active pull по visible-extent (enqueueVisibleForLoad) и
+ * selection-driven загрузкой (toggleFeatureSelection).
+ */
+function requestTeamLoad(pointGuid: string): void {
+  if (teamCache.has(pointGuid)) return;
+  if (teamLoadQueue.has(pointGuid)) return;
+  if (teamLoadInFlight.has(pointGuid)) return;
+  teamLoadQueue.add(pointGuid);
+  teamLoadTotal++;
+  teamsLoading = true;
+  showProgress(teamLoadTotal);
+  updateProgress(teamLoadDone, teamLoadTotal);
+  if (!teamLoadInProgress) {
+    void runTeamLoadWorker();
+  }
 }
 
 function clearSelection(): void {

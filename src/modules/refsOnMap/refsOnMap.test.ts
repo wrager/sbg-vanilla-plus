@@ -2779,6 +2779,10 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     selectFeatureByIndex(2);
     selectFeatureByIndex(3);
     enableKeepOwn();
+    // selection-driven загрузка ставит point-unk в очередь worker'а
+    // (feature.team=undefined). Ждём пока worker отработает - иначе
+    // teamsLoading=true && keepOwnTeam=true заблокирует trash.click.
+    await flushAsync();
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -2861,6 +2865,8 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     selectFeatureByIndex(0);
     selectFeatureByIndex(1);
     enableKeepOwn();
+    // selection-driven загрузка ставит point-unk в очередь - ждём worker.
+    await flushAsync();
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -2985,6 +2991,11 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     selectFeatureByIndex(3);
     selectFeatureByIndex(4);
     enableKeepOwn();
+    // selection-driven загрузка ставит p-lock + p-unk в очередь. Worker
+    // обрабатывает первую (p-lock) сразу, потом await delay(100ms) перед
+    // p-unk. flushAsync (setTimeout 0) не покрывает delay - ждём реально.
+    await new Promise((r) => setTimeout(r, 200));
+    await flushAsync();
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
