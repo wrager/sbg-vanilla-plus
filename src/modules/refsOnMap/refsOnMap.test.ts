@@ -1638,6 +1638,56 @@ describe('refsOnMap visible-only active pull', () => {
     expect(teamFetchSpy).toHaveBeenCalledTimes(2);
   });
 
+  test('moveend пока worker pending: total НЕ растёт (in-flight guard)', async () => {
+    // Сценарий пользователя: zoom туда-сюда увеличивал teamLoadTotal,
+    // потому что worker между batch-delete и await Promise.all держал
+    // guid'ы "в полёте" (не в очереди, не в кэше); enqueueVisibleForLoad
+    // на каждом moveend видел их как "новые" и добавлял заново.
+    // Фикс: teamLoadInFlight Set, enqueueVisibleForLoad skip'ит.
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'A', f: 0 },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'B', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    // Замедляем /api/point чтобы воспроизвести "worker pending".
+    const pending: (() => void)[] = [];
+    window.fetch = jest.fn(() => {
+      return new Promise<Response>((resolve) => {
+        pending.push(() => {
+          resolve({
+            ok: true,
+            json: () => Promise.resolve({ data: { te: 1 } }),
+          } as unknown as Response);
+        });
+      });
+    }) as unknown as typeof window.fetch;
+
+    setExtent([-1000, -1000, 1000, 1000]);
+    clickShowButton();
+    await flushAsync();
+
+    const progressCounter = document.querySelector(
+      '.svp-refs-on-map-progress-counter',
+    ) as HTMLElement;
+    // Worker взял оба guid'а в batch и ждёт pending. Total=2.
+    expect(progressCounter.textContent).toBe('0 / 2');
+
+    // Симулируем zoom: тот же extent, moveend dispatched дважды.
+    emitMoveend();
+    await flushAsync();
+    emitMoveend();
+    await flushAsync();
+    emitMoveend();
+    await flushAsync();
+
+    // Total остался 2 - in-flight guid'ы не добавлены повторно.
+    expect(progressCounter.textContent).toBe('0 / 2');
+
+    // Cleanup.
+    for (const r of pending) r();
+    await flushAsync();
+  });
+
   test('hideViewer снимает moveend handler: после закрытия pan не триггерит fetch', async () => {
     setInventory();
     setExtent([100, 100, 200, 200]);

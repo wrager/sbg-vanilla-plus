@@ -193,6 +193,13 @@ let teamsLoading = false;
 // (refs/game/script.js v11) /inview всегда отдаёт `t`, очередь остаётся
 // пустой; fallback нужен для несовпадающих версий сервера/клиента.
 const teamLoadQueue = new Set<string>();
+// guid'ы, которые worker уже извлёк из очереди в batch (синхронно через
+// teamLoadQueue.delete) и сейчас ожидает их fetchPointTeam в await Promise.all.
+// Без отдельного in-flight Set'а enqueueVisibleForLoad на каждом moveend
+// видел такой guid как "не в кэше и не в очереди" и добавлял его снова -
+// teamLoadTotal++ инкрементировался лишний раз. enqueueVisibleForLoad
+// пропускает guid'ы в inFlight симметрично с teamLoadQueue.has.
+const teamLoadInFlight = new Set<string>();
 let teamLoadInProgress = false;
 let teamLoadTotal = 0;
 let teamLoadDone = 0;
@@ -366,6 +373,7 @@ function enqueueVisibleForLoad(): void {
   for (const guid of visible) {
     if (teamCache.has(guid)) continue;
     if (teamLoadQueue.has(guid)) continue;
+    if (teamLoadInFlight.has(guid)) continue;
     teamLoadQueue.add(guid);
     teamLoadTotal++;
     added++;
@@ -1048,6 +1056,9 @@ async function runTeamLoadWorker(): Promise<void> {
     for (const guid of teamLoadQueue) {
       batch.push(guid);
       teamLoadQueue.delete(guid);
+      // guid в-полёте до завершения Promise.all - enqueueVisibleForLoad
+      // не должен добавить его повторно.
+      teamLoadInFlight.add(guid);
       if (batch.length >= TEAM_BATCH_SIZE) break;
     }
     const results = await Promise.all(
@@ -1071,6 +1082,7 @@ async function runTeamLoadWorker(): Promise<void> {
       // guid в очередь снова. Без этого one та же "мёртвая" точка вечно
       // запрашивалась бы через /api/point на каждом zoom/pan.
       teamCache.set(pointGuid, team);
+      teamLoadInFlight.delete(pointGuid);
       if (team !== null && refsSource) {
         for (const feature of refsSource.getFeatures()) {
           const properties = feature.getProperties?.() ?? {};
@@ -1093,6 +1105,7 @@ async function runTeamLoadWorker(): Promise<void> {
 
 function resetTeamLoadState(): void {
   teamLoadQueue.clear();
+  teamLoadInFlight.clear();
   teamLoadTotal = 0;
   teamLoadDone = 0;
   teamLoadInProgress = false;
