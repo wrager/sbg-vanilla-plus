@@ -2499,7 +2499,7 @@ describe('refsOnMap selection breakdown UI', () => {
     expect(total.textContent).toMatch(/(?:Всего|Total):\s*1\s*\(\s*5\s*(?:ключей|keys)\)/);
   });
 
-  test('selectionInfo строки: total + protected, без own-row при keepOwnTeam=false', async () => {
+  test('selectionInfo строки: total + protected + deletable, без own-row при keepOwnTeam=false', async () => {
     setInventoryTwoPointsThreeStacks();
     clickShowButton();
     await flushAsync();
@@ -2523,6 +2523,13 @@ describe('refsOnMap selection breakdown UI', () => {
 
     const own = document.querySelector('.svp-refs-on-map-selection-info__own') as HTMLElement;
     expect(own.style.display).toBe('none');
+
+    const deletableRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__deletable',
+    ) as HTMLElement;
+    expect(deletableRow.textContent).toMatch(
+      /(?:К удалению|To delete):\s*2\s*\(\s*6\s*(?:ключей|keys)\)/,
+    );
   });
 
   test('keepOwnTeam=true: own-row видна, deletable исключает своих, protected растёт', async () => {
@@ -2559,6 +2566,13 @@ describe('refsOnMap selection breakdown UI', () => {
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     // Удаляется enemy: 1 точка (2 ключа).
     expect(trash.textContent).toMatch(/1\s*\(\s*2\s*(?:ключей|keys)\)/);
+
+    const deletableRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__deletable',
+    ) as HTMLElement;
+    expect(deletableRow.textContent).toMatch(
+      /(?:К удалению|To delete):\s*1\s*\(\s*2\s*(?:ключей|keys)\)/,
+    );
   });
 
   test('toggle keepOwnTeam пересчитывает breakdown без повторного клика по фиче', async () => {
@@ -2613,6 +2627,13 @@ describe('refsOnMap selection breakdown UI', () => {
     // 1 locked точка (2 ключа).
     expect(protectedRow.textContent).toMatch(
       /1\s*\(\s*2\s*(?:ключей|keys)\)\s*(?:защищено|protected)/,
+    );
+
+    const deletableRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__deletable',
+    ) as HTMLElement;
+    expect(deletableRow.textContent).toMatch(
+      /(?:К удалению|To delete):\s*1\s*\(\s*4\s*(?:ключей|keys)\)/,
     );
   });
 

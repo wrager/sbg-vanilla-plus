@@ -155,6 +155,7 @@ let selectionInfoEl: HTMLDivElement | null = null;
 let selectionInfoTotalRow: HTMLDivElement | null = null;
 let selectionInfoProtectedRow: HTMLDivElement | null = null;
 let selectionInfoOwnRow: HTMLDivElement | null = null;
+let selectionInfoDeletableRow: HTMLDivElement | null = null;
 let tabClickHandler: ((event: Event) => void) | null = null;
 let mapClickHandler: ((event: IOlMapEvent) => void) | null = null;
 let viewMoveHandler: (() => void) | null = null;
@@ -657,6 +658,12 @@ function updateSelectionUi(): void {
           ru: `${breakdown.ownPoints} (${breakdown.ownKeys} ключей) своего цвета`,
         });
       }
+    }
+    if (selectionInfoDeletableRow) {
+      selectionInfoDeletableRow.textContent = t({
+        en: `To delete: ${breakdown.deletablePoints} (${breakdown.deletableKeys} keys)`,
+        ru: `К удалению: ${breakdown.deletablePoints} (${breakdown.deletableKeys} ключей)`,
+      });
     }
   }
 }
@@ -1539,9 +1546,10 @@ export const refsOnMap: IFeatureModule = {
           keepOwnTeamLabel.appendChild(keepOwnTeamText);
           document.body.appendChild(keepOwnTeamLabel);
 
-          // Selection info: 3 строки, total + protected + own (последняя
-          // видна только при keepOwnTeam=true). Видим только при
-          // hasSelection - синхронизация в updateSelectionUi.
+          // Selection info: 4 строки, total + protected + own (видна
+          // только при keepOwnTeam=true) + deletable (зеркало счётчика
+          // на кнопке "Корзина"). Видим только при hasSelection -
+          // синхронизация в updateSelectionUi.
           selectionInfoEl = document.createElement('div');
           selectionInfoEl.className = 'svp-refs-on-map-selection-info';
           selectionInfoEl.style.display = 'none';
@@ -1552,9 +1560,12 @@ export const refsOnMap: IFeatureModule = {
           selectionInfoOwnRow = document.createElement('div');
           selectionInfoOwnRow.className = 'svp-refs-on-map-selection-info__own';
           selectionInfoOwnRow.style.display = 'none';
+          selectionInfoDeletableRow = document.createElement('div');
+          selectionInfoDeletableRow.className = 'svp-refs-on-map-selection-info__deletable';
           selectionInfoEl.appendChild(selectionInfoTotalRow);
           selectionInfoEl.appendChild(selectionInfoProtectedRow);
           selectionInfoEl.appendChild(selectionInfoOwnRow);
+          selectionInfoEl.appendChild(selectionInfoDeletableRow);
           document.body.appendChild(selectionInfoEl);
         } catch (error) {
           // Частичный успех enable() оставил бы hidden-кнопки/слой в DOM
@@ -1641,6 +1652,7 @@ function cleanupEnableSideEffects(): void {
   selectionInfoTotalRow = null;
   selectionInfoProtectedRow = null;
   selectionInfoOwnRow = null;
+  selectionInfoDeletableRow = null;
 
   if (tabClickHandler) {
     const tabContainer = $('.inventory__tabs');
