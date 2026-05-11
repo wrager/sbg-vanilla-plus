@@ -165,7 +165,21 @@ let beforeOpenFollow: string | null = null;
 // handleInviewResponse при появлении новых guid'ов (контекст изменился,
 // прежний фильтр невалиден). В localStorage не сохраняется.
 let keepOwnTeam = false;
-const teamCache = new Map<string, number>();
+/**
+ * Кэш команд точек. Ключ - pointGuid. Значение - число (команда) либо
+ * `null` ("пытались загрузить через /api/point, ответ без data.te либо
+ * fetch упал"). Запись `null` нужна для идемпотентности повторных попыток:
+ * `enqueueVisibleForLoad.teamCache.has(guid)` skip'ит и успешные, и
+ * провалившиеся попытки. Без `null` каждый последующий moveend через
+ * extent заново ставил такие точки в очередь, worker снова дёргал
+ * /api/point, получал null - бесконечный loop запросов для точек, чью
+ * команду сервер не возвращает (без owner, удалённые, rate-limited).
+ *
+ * feature.team устанавливается только когда команда известна (number);
+ * `null` оставляет feature.team=undefined, что корректно классифицируется
+ * как `protectedByUnknownTeam` fail-safe в partitionByLockProtection.
+ */
+const teamCache = new Map<string, number | null>();
 let teamLoadAborted = false;
 // Пока true - viewer догружает команды точек, выбор по клику и trashButton
 // заблокированы. Сбрасывается в false когда очередь fallback /api/point
@@ -1054,14 +1068,17 @@ async function runTeamLoadWorker(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- checked between awaits, hideViewer мог выставить
     if (teamLoadAborted) break;
     for (const { pointGuid, team } of results) {
-      if (team !== null) {
-        teamCache.set(pointGuid, team);
-        if (refsSource) {
-          for (const feature of refsSource.getFeatures()) {
-            const properties = feature.getProperties?.() ?? {};
-            if (properties.pointGuid === pointGuid) {
-              feature.set?.('team', team);
-            }
+      // Пишем результат в teamCache ВСЕГДА - и number, и null. null = "уже
+      // пытались, сервер не вернул команду"; повторные enqueueVisibleForLoad
+      // на следующих moveend увидят teamCache.has(guid)=true и не поставят
+      // guid в очередь снова. Без этого one та же "мёртвая" точка вечно
+      // запрашивалась бы через /api/point на каждом zoom/pan.
+      teamCache.set(pointGuid, team);
+      if (team !== null && refsSource) {
+        for (const feature of refsSource.getFeatures()) {
+          const properties = feature.getProperties?.() ?? {};
+          if (properties.pointGuid === pointGuid) {
+            feature.set?.('team', team);
           }
         }
       }
@@ -1186,8 +1203,10 @@ function showViewer(): void {
     feature.set?.('pointGuid', ref.l);
     feature.set?.('isSelected', false);
 
+    // cachedTeam может быть null ("пытались, не получилось") - не ставим
+    // feature.team, оставляем undefined для protectedByUnknownTeam fail-safe.
     const cachedTeam = teamCache.get(ref.l);
-    if (cachedTeam !== undefined) {
+    if (typeof cachedTeam === 'number') {
       feature.set?.('team', cachedTeam);
     }
 

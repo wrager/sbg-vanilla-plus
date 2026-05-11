@@ -1573,6 +1573,62 @@ describe('refsOnMap visible-only active pull', () => {
     expect(toast).not.toBeNull();
     expect(toast?.textContent).toMatch(/keep own team|не удалять свои/i);
   });
+
+  test('/api/point возвращает null: повторный moveend НЕ перезапрашивает ту же точку', async () => {
+    // fetchPointTeam null = "сервер не вернул data.te" (точка без owner,
+    // удалённая, rate-limited). Раньше каждый moveend возвращал такой guid
+    // в очередь, worker дёргал /api/point снова и снова - loop. Сейчас
+    // worker пишет null в teamCache, enqueueVisibleForLoad skip'ит.
+    const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-null', ti: 'X', f: 0 }];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    // Возвращаем пустой объект - data.te отсутствует.
+    teamFetchSpy.mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response),
+    );
+    setExtent([-1000, -1000, 1000, 1000]);
+    clickShowButton();
+    await flushAsync();
+
+    // Первый раз: /api/point вызван 1 раз для point-null.
+    expect(teamFetchSpy).toHaveBeenCalledTimes(1);
+
+    // Эмулируем серию moveend на том же extent.
+    emitMoveend();
+    await flushAsync();
+    emitMoveend();
+    await flushAsync();
+    emitMoveend();
+    await flushAsync();
+
+    // Никаких повторных запросов: точка уже в teamCache как null.
+    expect(teamFetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('feature.team остаётся undefined для точек с null в teamCache (fail-safe protection)', async () => {
+    // Семантика "team неизвестна" сохраняется: feature.team НЕ
+    // устанавливается на null, остаётся undefined. partitionByLockProtection
+    // классифицирует такие точки как protectedByUnknownTeam при
+    // keepOwnTeam=true.
+    const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-null', ti: 'X', f: 0 }];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    teamFetchSpy.mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response),
+    );
+    setExtent([-1000, -1000, 1000, 1000]);
+    clickShowButton();
+    await flushAsync();
+
+    const features = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    expect(features[0].getProperties?.().team).toBeUndefined();
+  });
 });
 
 // ── checkbox visibility ──────────────────────────────────────────────────────
