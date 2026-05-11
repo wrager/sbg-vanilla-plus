@@ -21,7 +21,7 @@
 .svp-refs-on-map-trash {
   position: fixed;
   bottom: 45px;
-  right: 50px;
+  right: 8px;
   z-index: 10;
   box-sizing: border-box;
   background: var(--background-transp);
@@ -88,7 +88,7 @@
 
 .svp-refs-on-map-cancel {
   position: fixed;
-  bottom: 45px;
+  bottom: 4px;
   right: 8px;
   z-index: 10;
   box-sizing: border-box;
