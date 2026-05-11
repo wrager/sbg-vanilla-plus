@@ -20,8 +20,8 @@
 
 .svp-refs-on-map-trash {
   position: fixed;
-  bottom: 100px;
-  right: 20px;
+  bottom: 82px;
+  left: 8px;
   z-index: 10;
   background: var(--background-transp);
   border: 1px solid var(--border-transp);
@@ -35,28 +35,15 @@
   text-align: center;
 }
 
-.svp-refs-on-map-locked-note {
-  position: fixed;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 1;
-  background: var(--background-transp);
-  border: 1px solid var(--border-transp);
-  backdrop-filter: blur(8px);
-  color: var(--text);
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  pointer-events: none;
-  max-width: calc(100vw - 40px);
-  text-align: center;
+.svp-refs-on-map-trash:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .svp-refs-on-map-keep-own {
   position: fixed;
-  bottom: 50px;
-  right: 20px;
+  bottom: 45px;
+  right: 8px;
   z-index: 10;
   background: var(--background-transp);
   border: 1px solid var(--border-transp);
@@ -77,9 +64,27 @@
   cursor: pointer;
 }
 
+.svp-refs-on-map-selection-info {
+  position: fixed;
+  bottom: 82px;
+  right: 8px;
+  z-index: 10;
+  background: var(--background-transp);
+  border: 1px solid var(--border-transp);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  font-size: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  text-align: right;
+  line-height: 1.4;
+  max-width: calc(100vw - 40px);
+  pointer-events: none;
+}
+
 .svp-refs-on-map-progress {
   position: fixed;
-  top: 36px;
+  top: 8px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;

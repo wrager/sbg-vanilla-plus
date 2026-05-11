@@ -562,15 +562,10 @@ describe('refsOnMap viewer', () => {
     expect(trash.style.display).toBe('none');
   });
 
-  test('shows locked-note while viewer is open and hides it on close', () => {
+  test('locked-note удалён: в DOM его нет', () => {
     setInventoryCache();
     clickShowButton();
-    const note = document.querySelector('.svp-refs-on-map-locked-note') as HTMLElement;
-    expect(note).not.toBeNull();
-    expect(note.style.display).toBe('');
-    expect(note.textContent).toMatch(/locked|защищ/i);
-    clickCloseButton();
-    expect(note.style.display).toBe('none');
+    expect(document.querySelector('.svp-refs-on-map-locked-note')).toBeNull();
   });
 });
 
@@ -2013,14 +2008,30 @@ describe('refsOnMap progress + interaction lock', () => {
     window.fetch = originalFetch;
   });
 
-  test('во время fallback /api/point: trashButton disabled, прогресс-бар видим', async () => {
+  test('во время загрузки + keepOwnTeam=true: trashButton disabled', async () => {
     setInventory();
     const slow = configureSlowFallback();
     clickShowButton();
     await flushAsync();
-
     await window.fetch('/api/inview?sw=1&ne=2&z=14');
     await flushAsync();
+
+    // Выбираем фичу, включаем keepOwnTeam - blocks trash.
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    const checkbox = document.querySelector(
+      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+    ) as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     expect(trash.disabled).toBe(true);
@@ -2034,7 +2045,35 @@ describe('refsOnMap progress + interaction lock', () => {
     expect(progress.style.display).toBe('none');
   });
 
-  test('во время fallback /api/point: клик по карте не выбирает фичу', async () => {
+  test('во время загрузки + keepOwnTeam=false: trashButton НЕ disabled', async () => {
+    // Без фильтра свои feature.team не нужен в payload - lock защищается
+    // через inventory-cache.f, удаление безопасно.
+    setInventory();
+    const slow = configureSlowFallback();
+    clickShowButton();
+    await flushAsync();
+    await window.fetch('/api/inview?sw=1&ne=2&z=14');
+    await flushAsync();
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.disabled).toBe(false);
+
+    slow.resolveAll();
+    await flushAsync();
+  });
+
+  test('во время загрузки: клик по карте ВСЕГДА выбирает фичу (блокировки нет)', async () => {
     setInventory();
     const slow = configureSlowFallback();
     clickShowButton();
@@ -2044,11 +2083,658 @@ describe('refsOnMap progress + interaction lock', () => {
 
     const clickHandler = map._clickListeners[0];
     (map.forEachFeatureAtPixel as jest.Mock).mockClear();
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
     clickHandler({ pixel: [0, 0] });
 
-    expect((map.forEachFeatureAtPixel as jest.Mock).mock.calls.length).toBe(0);
+    // forEachFeatureAtPixel вызывается несмотря на teamsLoading.
+    expect((map.forEachFeatureAtPixel as jest.Mock).mock.calls.length).toBeGreaterThan(0);
+    // Фича выбрана: feature.isSelected=true.
+    expect(allFeatures[0].getProperties?.().isSelected).toBe(true);
 
     slow.resolveAll();
     await flushAsync();
+  });
+});
+
+// ── selection breakdown UI ───────────────────────────────────────────────────
+
+describe('refsOnMap selection breakdown UI', () => {
+  let view: ReturnType<typeof makeView>;
+  let map: ReturnType<typeof makeMap>;
+  let originalFetch: typeof window.fetch;
+
+  function clickShowButton(): void {
+    const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
+    button.click();
+  }
+
+  function clickCloseButton(): void {
+    const button = document.querySelector('.svp-refs-on-map-close') as HTMLElement;
+    button.click();
+  }
+
+  function selectFeatureByIndex(index: number): void {
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[index]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+  }
+
+  function applyTeams(teamsByPoint: Record<string, number>): void {
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    for (const feature of allFeatures) {
+      const pointGuid = feature.getProperties?.().pointGuid;
+      if (typeof pointGuid !== 'string') continue;
+      const team = teamsByPoint[pointGuid];
+      if (typeof team === 'number') feature.set?.('team', team);
+    }
+  }
+
+  /**
+   * Две точки: point-own (своя команда=1, две стопки по 4 и 1 ключ) и
+   * point-enemy (чужая=2, одна стопка 2 ключа). Покрывает per-point
+   * агрегацию: одна точка с несколькими стопками должна считаться один раз
+   * в selectedPoints/deletablePoints.
+   */
+  function setInventoryTwoPointsThreeStacks(): void {
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-own', ti: 'Mine', f: 0 },
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-1b', l: 'point-own', ti: 'Mine', f: 0 },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-enemy', ti: 'Enemy', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+  }
+
+  beforeEach(async () => {
+    setupInventoryDom();
+    view = makeView(16, 0.5);
+    const pointsLayer = makeLayer('points', makeSource());
+    const linesLayer = makeLayer('lines', makeSource());
+    const regionsLayer = makeLayer('regions', makeSource());
+    map = makeMap([pointsLayer, linesLayer, regionsLayer], view);
+    mockGetOlMap.mockResolvedValue(map);
+    mockOl();
+    originalFetch = window.fetch;
+    // Заглушаем active pull через extent: тесты breakdown UI работают
+    // вручную через applyTeams + clickHandler.
+    view.calculateExtent = (): number[] => [100, 100, 200, 200];
+    window.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response),
+    ) as unknown as typeof window.fetch;
+    localStorage.setItem('auth', 'test-token');
+    mockGetPlayerTeam.mockReturnValue(1);
+    await refsOnMap.enable();
+  });
+
+  afterEach(async () => {
+    await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
+    delete window.ol;
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('follow');
+    localStorage.removeItem('auth');
+    document.body.innerHTML = '';
+    window.fetch = originalFetch;
+  });
+
+  test('0 selected: selectionInfo скрыт, trashButton hidden', async () => {
+    setInventoryTwoPointsThreeStacks();
+    clickShowButton();
+    await flushAsync();
+
+    const info = document.querySelector('.svp-refs-on-map-selection-info') as HTMLElement;
+    expect(info).not.toBeNull();
+    expect(info.style.display).toBe('none');
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.style.visibility).toBe('hidden');
+  });
+
+  test('select 1 стопка из point-own (deletable, keepOwnTeam=false): кнопка "1 (4 ключей)"', async () => {
+    setInventoryTwoPointsThreeStacks();
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-own': 1, 'point-enemy': 2 });
+
+    selectFeatureByIndex(0); // ref-1 (point-own, 4 ключа)
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.style.visibility).toBe('visible');
+    // 1 точка (4 ключей). Regex кросс-локальный.
+    expect(trash.textContent).toMatch(/1\s*\(\s*4\s*(?:ключей|keys)\)/);
+  });
+
+  test('per-point агрегация: 2 стопки одной точки = 1 точка, 5 ключей', async () => {
+    setInventoryTwoPointsThreeStacks();
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-own': 1, 'point-enemy': 2 });
+
+    selectFeatureByIndex(0); // ref-1 (point-own, 4)
+    selectFeatureByIndex(1); // ref-1b (point-own, 1) - та же точка
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.textContent).toMatch(/1\s*\(\s*5\s*(?:ключей|keys)\)/);
+
+    const total = document.querySelector('.svp-refs-on-map-selection-info__total') as HTMLElement;
+    // "Всего: 1 (5 ключей). Из них:"
+    expect(total.textContent).toMatch(/(?:Всего|Total):\s*1\s*\(\s*5\s*(?:ключей|keys)\)/);
+  });
+
+  test('selectionInfo строки: total + protected, без own-row при keepOwnTeam=false', async () => {
+    setInventoryTwoPointsThreeStacks();
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-own': 1, 'point-enemy': 2 });
+
+    selectFeatureByIndex(0); // point-own (4)
+    selectFeatureByIndex(2); // point-enemy (2)
+
+    const info = document.querySelector('.svp-refs-on-map-selection-info') as HTMLElement;
+    expect(info.style.display).not.toBe('none');
+
+    const total = document.querySelector('.svp-refs-on-map-selection-info__total') as HTMLElement;
+    expect(total.textContent).toMatch(/(?:Всего|Total):\s*2\s*\(\s*6\s*(?:ключей|keys)\)/);
+
+    const protectedRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__protected',
+    ) as HTMLElement;
+    expect(protectedRow.textContent).toMatch(
+      /0\s*\(\s*0\s*(?:ключей|keys)\)\s*(?:защищено|protected)/,
+    );
+
+    const own = document.querySelector('.svp-refs-on-map-selection-info__own') as HTMLElement;
+    expect(own.style.display).toBe('none');
+  });
+
+  test('keepOwnTeam=true: own-row видна, deletable исключает своих, protected растёт', async () => {
+    setInventoryTwoPointsThreeStacks();
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-own': 1, 'point-enemy': 2 });
+
+    selectFeatureByIndex(0); // point-own (4)
+    selectFeatureByIndex(1); // point-own (1)
+    selectFeatureByIndex(2); // point-enemy (2)
+
+    const checkbox = document.querySelector(
+      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+    ) as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+
+    const total = document.querySelector('.svp-refs-on-map-selection-info__total') as HTMLElement;
+    // 2 точки (5 own + 2 enemy = 7 ключей суммарно). Из них:
+    expect(total.textContent).toMatch(/(?:Всего|Total):\s*2\s*\(\s*7\s*(?:ключей|keys)\)/);
+
+    const protectedRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__protected',
+    ) as HTMLElement;
+    expect(protectedRow.textContent).toMatch(
+      /1\s*\(\s*5\s*(?:ключей|keys)\)\s*(?:защищено|protected)/,
+    );
+
+    const own = document.querySelector('.svp-refs-on-map-selection-info__own') as HTMLElement;
+    expect(own.style.display).not.toBe('none');
+    expect(own.textContent).toMatch(/1\s*\(\s*5\s*(?:ключей|keys)\)\s*(?:своего цвета|own team)/);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    // Удаляется enemy: 1 точка (2 ключа).
+    expect(trash.textContent).toMatch(/1\s*\(\s*2\s*(?:ключей|keys)\)/);
+  });
+
+  test('toggle keepOwnTeam пересчитывает breakdown без повторного клика по фиче', async () => {
+    setInventoryTwoPointsThreeStacks();
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-own': 1, 'point-enemy': 2 });
+
+    selectFeatureByIndex(0); // point-own (4)
+    selectFeatureByIndex(2); // point-enemy (2)
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    // OFF: обе точки в deletable -> 2 (6 ключей).
+    expect(trash.textContent).toMatch(/2\s*\(\s*6\s*(?:ключей|keys)\)/);
+
+    const checkbox = document.querySelector(
+      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+    ) as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+
+    // ON: own (point-own, 4 ключа) защищён -> 1 точка (2 ключа).
+    expect(trash.textContent).toMatch(/1\s*\(\s*2\s*(?:ключей|keys)\)/);
+
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event('change'));
+
+    // OFF снова: обе в deletable.
+    expect(trash.textContent).toMatch(/2\s*\(\s*6\s*(?:ключей|keys)\)/);
+  });
+
+  test('locked-точка: deletable уменьшается на её ключи, protected отражает lock-bucket', async () => {
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-own', ti: 'Mine', f: 0 },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-enemy', ti: 'Locked', f: 0b10 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-own': 2, 'point-enemy': 3 });
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    // point-own deletable (4 ключа, 1 точка); point-enemy locked.
+    expect(trash.textContent).toMatch(/1\s*\(\s*4\s*(?:ключей|keys)\)/);
+
+    const protectedRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__protected',
+    ) as HTMLElement;
+    // 1 locked точка (2 ключа).
+    expect(protectedRow.textContent).toMatch(
+      /1\s*\(\s*2\s*(?:ключей|keys)\)\s*(?:защищено|protected)/,
+    );
+  });
+
+  test('deselect всех: trashButton и selectionInfo скрываются обратно', async () => {
+    setInventoryTwoPointsThreeStacks();
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-own': 1, 'point-enemy': 2 });
+
+    selectFeatureByIndex(0);
+    const info = document.querySelector('.svp-refs-on-map-selection-info') as HTMLElement;
+    expect(info.style.display).not.toBe('none');
+
+    selectFeatureByIndex(0); // повторный клик = deselect
+
+    expect(info.style.display).toBe('none');
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.style.visibility).toBe('hidden');
+  });
+
+  test('закрытие viewer: selectionInfo скрыт', async () => {
+    setInventoryTwoPointsThreeStacks();
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-own': 1, 'point-enemy': 2 });
+
+    selectFeatureByIndex(0);
+    const info = document.querySelector('.svp-refs-on-map-selection-info') as HTMLElement;
+    expect(info.style.display).not.toBe('none');
+
+    clickCloseButton();
+    expect(info.style.display).toBe('none');
+  });
+});
+
+// ── critical safety: protected никогда не уходит в DELETE payload ────────────
+
+/**
+ * Серия тестов-инвариантов на единственное обещание модуля: ключи, которые
+ * UI помечает защищёнными (lock / own / unknown при keepOwnTeam), НЕ должны
+ * попадать в payload DELETE /api/inventory ни при каких комбинациях. Тесты
+ * читают реальные guid'ы из тела запроса и сверяют их с partition-bucket'ами.
+ *
+ * Регрессия здесь = пользователь теряет защищённые ключи без своего ведома.
+ */
+describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
+  let view: ReturnType<typeof makeView>;
+  let map: ReturnType<typeof makeMap>;
+  let originalConfirm: typeof window.confirm;
+  let originalFetch: typeof window.fetch;
+  let fetchSpy: jest.Mock;
+
+  function clickShowButton(): void {
+    const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
+    button.click();
+  }
+
+  function selectFeatureByIndex(index: number): void {
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[index]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+  }
+
+  function applyTeams(teamsByPoint: Record<string, number>): void {
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    for (const feature of allFeatures) {
+      const pointGuid = feature.getProperties?.().pointGuid;
+      if (typeof pointGuid !== 'string') continue;
+      const team = teamsByPoint[pointGuid];
+      if (typeof team === 'number') feature.set?.('team', team);
+    }
+  }
+
+  function enableKeepOwn(): void {
+    const checkbox = document.querySelector(
+      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+    ) as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+  }
+
+  function extractDeletePayload(): Record<string, number> {
+    const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit?][];
+    const deleteCalls = calls.filter(([, init]) => init?.method === 'DELETE');
+    expect(deleteCalls.length).toBe(1);
+    const body = JSON.parse((deleteCalls[0][1] as RequestInit).body as string) as {
+      selection: Record<string, number>;
+    };
+    return body.selection;
+  }
+
+  beforeEach(async () => {
+    setupInventoryDom();
+    view = makeView(16, 0.5);
+    const pointsLayer = makeLayer('points', makeSource());
+    const linesLayer = makeLayer('lines', makeSource());
+    const regionsLayer = makeLayer('regions', makeSource());
+    map = makeMap([pointsLayer, linesLayer, regionsLayer], view);
+    mockGetOlMap.mockResolvedValue(map);
+    mockOl();
+    originalConfirm = window.confirm;
+    originalFetch = window.fetch;
+    view.calculateExtent = (): number[] => [100, 100, 200, 200]; // заглушаем active pull
+    fetchSpy = jest.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (init?.method === 'DELETE') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ count: { total: 90 } }),
+        } as unknown as Response);
+      }
+      if (url.includes('/api/inview')) {
+        return Promise.resolve(makeInviewResponse([]));
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response);
+    });
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.confirm = jest.fn(() => true);
+    localStorage.setItem('auth', 'test-token');
+    mockGetPlayerTeam.mockReturnValue(1);
+    await refsOnMap.enable();
+  });
+
+  afterEach(async () => {
+    await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
+    delete window.ol;
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('follow');
+    localStorage.removeItem('auth');
+    document.body.innerHTML = '';
+    window.confirm = originalConfirm;
+    window.fetch = originalFetch;
+  });
+
+  test('lock+own+unknown одновременно (keepOwnTeam=true): payload только enemy guid', async () => {
+    // 4 точки: locked, own-team, unknown-team, enemy. Только enemy идёт
+    // в DELETE.
+    const items = [
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-lock', l: 'point-lock', ti: 'L', f: 0b10 },
+      { t: 3, a: 2, c: [100.5, 13.7], g: 'ref-own', l: 'point-own', ti: 'O', f: 0 },
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-unk', l: 'point-unk', ti: 'U', f: 0 },
+      { t: 3, a: 8, c: [100.5, 13.7], g: 'ref-enemy', l: 'point-enemy', ti: 'E', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-own': 1, 'point-enemy': 2 }); // point-unk без team
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+    selectFeatureByIndex(2);
+    selectFeatureByIndex(3);
+    enableKeepOwn();
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    expect(payload).toEqual({ 'ref-enemy': 8 });
+    expect(payload).not.toHaveProperty('ref-lock');
+    expect(payload).not.toHaveProperty('ref-own');
+    expect(payload).not.toHaveProperty('ref-unk');
+  });
+
+  test('lock защищает все стопки своей точки (несколько стопок одной locked-точки)', async () => {
+    // point-lock имеет 3 стопки, у одной f=lock. lockedPointGuids
+    // агрегирует per-point - все 3 стопки защищены.
+    const items = [
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'lock-a', l: 'point-lock', ti: 'L', f: 0b10 },
+      { t: 3, a: 2, c: [100.5, 13.7], g: 'lock-b', l: 'point-lock', ti: 'L', f: 0 },
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'lock-c', l: 'point-lock', ti: 'L', f: 0 },
+      { t: 3, a: 8, c: [100.5, 13.7], g: 'free', l: 'point-free', ti: 'F', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-lock': 5, 'point-free': 5 });
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+    selectFeatureByIndex(2);
+    selectFeatureByIndex(3);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    expect(payload).toEqual({ free: 8 });
+    expect(payload).not.toHaveProperty('lock-a');
+    expect(payload).not.toHaveProperty('lock-b');
+    expect(payload).not.toHaveProperty('lock-c');
+  });
+
+  test('keepOwnTeam=true: ВСЕ стопки своей точки защищены (per-point own filter)', async () => {
+    // 2 стопки point-own (team=player). Обе должны быть protected.
+    const items = [
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'own-a', l: 'point-own', ti: 'O', f: 0 },
+      { t: 3, a: 2, c: [100.5, 13.7], g: 'own-b', l: 'point-own', ti: 'O', f: 0 },
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'enemy', l: 'point-enemy', ti: 'E', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-own': 1, 'point-enemy': 2 });
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+    selectFeatureByIndex(2);
+    enableKeepOwn();
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    expect(payload).toEqual({ enemy: 4 });
+    expect(payload).not.toHaveProperty('own-a');
+    expect(payload).not.toHaveProperty('own-b');
+  });
+
+  test('keepOwnTeam=true, point с team=undefined: protected, payload не содержит unknown', async () => {
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'unk', l: 'point-unk', ti: 'U', f: 0 },
+      { t: 3, a: 8, c: [100.5, 13.7], g: 'enemy', l: 'point-enemy', ti: 'E', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-enemy': 2 }); // point-unk остаётся без team
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+    enableKeepOwn();
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    expect(payload).toEqual({ enemy: 8 });
+    expect(payload).not.toHaveProperty('unk');
+  });
+
+  test('keepOwnTeam=true + playerTeam=null: удаление полностью заблокировано (НИ ОДИН guid не уходит)', async () => {
+    // Defensive case: handleDeleteClick должен блокировать; computeSelectionBreakdown
+    // показывает всё как protected, на кнопке "0 (0 ключей)".
+    mockGetPlayerTeam.mockReturnValue(null);
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-own', l: 'point-own', ti: 'O', f: 0 },
+      { t: 3, a: 2, c: [100.5, 13.7], g: 'ref-enemy', l: 'point-enemy', ti: 'E', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-own': 1, 'point-enemy': 2 });
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+    enableKeepOwn();
+
+    // UI: всё в protected, deletable=0.
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.textContent).toMatch(/0\s*\(\s*0\s*(?:ключей|keys)\)/);
+    const protectedRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__protected',
+    ) as HTMLElement;
+    expect(protectedRow.textContent).toMatch(
+      /2\s*\(\s*6\s*(?:ключей|keys)\)\s*(?:защищено|protected)/,
+    );
+
+    trash.click();
+    await flushAsync();
+
+    // DELETE не отправлен.
+    const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit?][];
+    const deleteCalls = calls.filter(([, init]) => init?.method === 'DELETE');
+    expect(deleteCalls.length).toBe(0);
+  });
+
+  test('post-DELETE: protected features ОСТАЮТСЯ в refsSource (только deletable удалены)', async () => {
+    const items = [
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-lock', l: 'point-lock', ti: 'L', f: 0b10 },
+      { t: 3, a: 8, c: [100.5, 13.7], g: 'ref-free', l: 'point-free', ti: 'F', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-lock': 2, 'point-free': 2 });
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+
+    // refsSource создаётся через ol.source.Vector в enable(); его instance
+    // первый и единственный в mock.results.
+    const refsSource = (window.ol?.source?.Vector as unknown as jest.Mock).mock.results[0]
+      .value as IOlVectorSource;
+    expect(refsSource.getFeatures().length).toBe(2);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    // ref-free deletable -> удалён из refsSource; ref-lock protected -> остался.
+    const remaining = refsSource.getFeatures();
+    expect(remaining.length).toBe(1);
+    expect(remaining[0].getId()).toBe('ref-lock');
+  });
+
+  test('inventory-cache очищается только от deletable guid (protected остаются в кэше)', async () => {
+    const items = [
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-lock', l: 'point-lock', ti: 'L', f: 0b10 },
+      { t: 3, a: 8, c: [100.5, 13.7], g: 'ref-free', l: 'point-free', ti: 'F', f: 0 },
+      { t: 1, a: 50, c: [100.5, 13.7], g: 'core-x', l: 'point-other', ti: 'C', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-lock': 2, 'point-free': 2 });
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const updatedCache = JSON.parse(localStorage.getItem('inventory-cache') ?? '[]') as {
+      g: string;
+      t: number;
+    }[];
+    const remainingGuids = updatedCache.map((it) => it.g);
+    expect(remainingGuids).toContain('ref-lock'); // protected
+    expect(remainingGuids).toContain('core-x'); // не реф вообще
+    expect(remainingGuids).not.toContain('ref-free'); // deletable
+  });
+
+  test('инвариант: payload guids НИКОГДА не пересекается с partition.protected*', async () => {
+    // Property-style: при ЛЮБОМ выборе и keepOwnTeam=true, payload guids
+    // не должны содержать ни одного guid'а из защищённых bucket'ов.
+    const items = [
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'g1', l: 'p-lock', ti: 'L', f: 0b10 },
+      { t: 3, a: 2, c: [100.5, 13.7], g: 'g2', l: 'p-own', ti: 'O', f: 0 },
+      { t: 3, a: 3, c: [100.5, 13.7], g: 'g3', l: 'p-unk', ti: 'U', f: 0 },
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'g4', l: 'p-enemy-a', ti: 'EA', f: 0 },
+      { t: 3, a: 5, c: [100.5, 13.7], g: 'g5', l: 'p-enemy-b', ti: 'EB', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'p-own': 1, 'p-enemy-a': 2, 'p-enemy-b': 3 });
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+    selectFeatureByIndex(2);
+    selectFeatureByIndex(3);
+    selectFeatureByIndex(4);
+    enableKeepOwn();
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    const PROTECTED_GUIDS = new Set(['g1', 'g2', 'g3']); // lock, own, unknown
+    for (const guid of Object.keys(payload)) {
+      expect(PROTECTED_GUIDS.has(guid)).toBe(false);
+    }
+    expect(Object.keys(payload).sort()).toEqual(['g4', 'g5']);
   });
 });
