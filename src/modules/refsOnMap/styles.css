@@ -20,8 +20,8 @@
 
 .svp-refs-on-map-trash {
   position: fixed;
-  bottom: 82px;
-  left: 8px;
+  bottom: 45px;
+  right: 8px;
   z-index: 10;
   background: var(--background-transp);
   border: 1px solid var(--border-transp);
@@ -42,7 +42,7 @@
 
 .svp-refs-on-map-keep-own {
   position: fixed;
-  bottom: 45px;
+  bottom: 86px;
   right: 8px;
   z-index: 10;
   background: var(--background-transp);
@@ -66,7 +66,7 @@
 
 .svp-refs-on-map-selection-info {
   position: fixed;
-  bottom: 82px;
+  bottom: 122px;
   right: 8px;
   z-index: 10;
   background: var(--background-transp);
