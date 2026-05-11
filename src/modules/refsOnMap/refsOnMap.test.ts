@@ -2279,6 +2279,16 @@ describe('refsOnMap progress + interaction lock', () => {
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     expect(trash.disabled).toBe(true);
+    // Spinner-иконка визуально замещает эмодзи "🗑️" через data-loading.
+    expect(trash.dataset.loading).toBe('true');
+    const defaultIcon = trash.querySelector('.svp-refs-on-map-trash-icon-default') as HTMLElement;
+    const loadingIcon = trash.querySelector('.svp-refs-on-map-trash-icon-loading') as HTMLElement;
+    expect(defaultIcon).not.toBeNull();
+    expect(loadingIcon).not.toBeNull();
+    // Loader span пустой - CSS::before рисует крутилку (keyframe loading
+    // в style@0.6.1.css игры). Проверяем чистоту span'а: нет inline SVG /
+    // text, только pseudo-element-driven content.
+    expect(loadingIcon.innerHTML).toBe('');
     const progress = document.querySelector('.svp-refs-on-map-progress') as HTMLElement;
     expect(progress.style.display).not.toBe('none');
 
@@ -2286,6 +2296,9 @@ describe('refsOnMap progress + interaction lock', () => {
     await flushAsync();
 
     expect(trash.disabled).toBe(false);
+    // После завершения загрузки data-loading=false: эмодзи мусорки снова
+    // видимая через CSS-селекторы.
+    expect(trash.dataset.loading).toBe('false');
     expect(progress.style.display).toBe('none');
   });
 
@@ -2312,6 +2325,9 @@ describe('refsOnMap progress + interaction lock', () => {
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     expect(trash.disabled).toBe(false);
+    // Без фильтра спиннер не показываем - данные ещё грузятся, но удаление
+    // не зависит от team, кнопка работоспособна.
+    expect(trash.dataset.loading).toBe('false');
 
     slow.resolveAll();
     await flushAsync();

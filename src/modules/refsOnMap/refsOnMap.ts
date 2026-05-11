@@ -597,12 +597,15 @@ function updateSelectionUi(): void {
   const hasSelection = breakdown.selectedPoints > 0;
 
   if (trashButton) {
-    trashButton.textContent = hasSelection
-      ? `🗑️ ${t({
-          en: `${breakdown.deletablePoints} (${breakdown.deletableKeys} keys)`,
-          ru: `${breakdown.deletablePoints} (${breakdown.deletableKeys} ключей)`,
-        })}`
-      : '';
+    const trashLabel = trashButton.querySelector<HTMLSpanElement>('.svp-refs-on-map-trash-label');
+    if (trashLabel) {
+      trashLabel.textContent = hasSelection
+        ? t({
+            en: `${breakdown.deletablePoints} (${breakdown.deletableKeys} keys)`,
+            ru: `${breakdown.deletablePoints} (${breakdown.deletableKeys} ключей)`,
+          })
+        : '';
+    }
     trashButton.style.visibility = hasSelection ? 'visible' : 'hidden';
     // Блокировка по teamsLoading - только при включённом keepOwnTeam:
     // фильтр свои опирается на финальные значения `team` у фич, до их
@@ -610,7 +613,12 @@ function updateSelectionUi(): void {
     // цвета". Без фильтра удалять можно безопасно - lock и так
     // защищён через inventory-cache.f. Disabled-state снимается из
     // applyTeamsLoadedState и из onChange чекбокса.
-    trashButton.disabled = teamsLoading && keepOwnTeam;
+    const isLoading = teamsLoading && keepOwnTeam;
+    trashButton.disabled = isLoading;
+    // data-loading переключает видимость default/loading icon span'ов через
+    // CSS селекторы [data-loading="true"]. SVG-спиннер остаётся mounted
+    // всё время viewer-сессии - animation крутится непрерывно.
+    trashButton.dataset.loading = isLoading ? 'true' : 'false';
   }
 
   // Чекбокс "Не удалять свои" показывается только при наличии выбора - до
@@ -1404,13 +1412,32 @@ export const refsOnMap: IFeatureModule = {
           closeButton.addEventListener('click', hideViewer);
           document.body.appendChild(closeButton);
 
-          // Trash/delete button
+          // Trash/delete button. Структура - icon-default span (эмодзи) +
+          // icon-loading span (SVG-спиннер) + label span. Один из icon
+          // span'ов видим в зависимости от data-loading атрибута. SVG
+          // создаётся один раз, поэтому CSS animation крутится непрерывно
+          // (innerHTML на каждом updateSelectionUi пересоздавал бы node и
+          // перезапускал бы keyframe).
           trashButton = document.createElement('button');
           trashButton.className = 'svp-refs-on-map-trash';
+          trashButton.dataset.loading = 'false';
           trashButton.style.display = 'none';
           trashButton.addEventListener('click', () => {
             void handleDeleteClick();
           });
+          const trashIconDefault = document.createElement('span');
+          trashIconDefault.className = 'svp-refs-on-map-trash-icon-default';
+          trashIconDefault.textContent = '🗑️';
+          // Loader span пустой - крутилка рисуется через ::before
+          // (border-trick), повторяет нативный лоадер стартового экрана
+          // игры: .loading-screen__task.loading::before.
+          const trashIconLoading = document.createElement('span');
+          trashIconLoading.className = 'svp-refs-on-map-trash-icon-loading';
+          const trashLabel = document.createElement('span');
+          trashLabel.className = 'svp-refs-on-map-trash-label';
+          trashButton.appendChild(trashIconDefault);
+          trashButton.appendChild(trashIconLoading);
+          trashButton.appendChild(trashLabel);
           document.body.appendChild(trashButton);
 
           // Cancel button - снимает выделение всех выбранных точек. Видна

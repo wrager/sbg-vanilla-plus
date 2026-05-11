@@ -44,6 +44,48 @@
   cursor: not-allowed;
 }
 
+.svp-refs-on-map-trash-icon-default,
+.svp-refs-on-map-trash-icon-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.svp-refs-on-map-trash-icon-loading {
+  display: none;
+}
+
+.svp-refs-on-map-trash[data-loading='true'] .svp-refs-on-map-trash-icon-default {
+  display: none;
+}
+
+.svp-refs-on-map-trash[data-loading='true'] .svp-refs-on-map-trash-icon-loading {
+  display: inline-flex;
+}
+
+/* Border-spinner в стиле нативного .loading-screen__task.loading::before:
+ * круг с прозрачной правой границей, который крутится. keyframe `loading`
+ * определён в style@0.6.1.css игры (rotate(1turn)); полагаемся на него. */
+.svp-refs-on-map-trash-icon-loading::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 3px currentColor solid;
+  border-right-color: #0000;
+  border-radius: 1em;
+  animation: loading 1s linear infinite;
+}
+
+.svp-refs-on-map-trash-label {
+  margin-left: 6px;
+}
+
+.svp-refs-on-map-trash-label:empty {
+  margin-left: 0;
+}
+
 .svp-refs-on-map-cancel {
   position: fixed;
   bottom: 45px;
