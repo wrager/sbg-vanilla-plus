@@ -1401,10 +1401,16 @@ export const refsOnMap: IFeatureModule = {
           document.body.appendChild(trashButton);
 
           // Cancel button - снимает выделение всех выбранных точек. Видна
-          // только при наличии выбора (updateSelectionUi).
+          // только при наличии выбора (updateSelectionUi). Иконка - крестик
+          // в стиле lucide-icons "x" (две диагональные линии).
           cancelButton = document.createElement('button');
           cancelButton.className = 'svp-refs-on-map-cancel';
-          cancelButton.textContent = t({ en: 'Cancel', ru: 'Отменить' });
+          cancelButton.setAttribute(
+            'aria-label',
+            t({ en: 'Cancel selection', ru: 'Отменить выделение' }),
+          );
+          cancelButton.innerHTML =
+            '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
           cancelButton.style.visibility = 'hidden';
           cancelButton.addEventListener('click', clearSelection);
           document.body.appendChild(cancelButton);
