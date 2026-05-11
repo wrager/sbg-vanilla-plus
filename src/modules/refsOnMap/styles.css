@@ -40,6 +40,22 @@
   cursor: not-allowed;
 }
 
+.svp-refs-on-map-cancel {
+  position: fixed;
+  bottom: 24px;
+  right: 8px;
+  z-index: 10;
+  background: var(--background-transp);
+  border: 1px solid var(--border-transp);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
 .svp-refs-on-map-keep-own {
   position: fixed;
   bottom: 86px;

@@ -145,6 +145,7 @@ let refsLayer: IOlLayer | null = null;
 let showButton: HTMLButtonElement | null = null;
 let closeButton: HTMLButtonElement | null = null;
 let trashButton: HTMLButtonElement | null = null;
+let cancelButton: HTMLButtonElement | null = null;
 let progressContainer: HTMLDivElement | null = null;
 let progressBar: HTMLDivElement | null = null;
 let progressCounter: HTMLDivElement | null = null;
@@ -610,6 +611,12 @@ function updateSelectionUi(): void {
     keepOwnTeamLabel.style.display = viewerOpen && hasSelection ? '' : 'none';
   }
 
+  // Кнопка "Отменить" снимает выделение всех точек. Видна только при
+  // наличии выбора - симметрично с trashButton.
+  if (cancelButton) {
+    cancelButton.style.visibility = hasSelection ? 'visible' : 'hidden';
+  }
+
   if (selectionInfoEl) {
     selectionInfoEl.style.display = hasSelection ? '' : 'none';
   }
@@ -674,6 +681,17 @@ function toggleFeatureSelection(feature: IOlFeature): void {
   const properties = feature.getProperties?.() ?? {};
   const isSelected = properties.isSelected === true;
   feature.set?.('isSelected', !isSelected);
+  updateSelectionUi();
+}
+
+function clearSelection(): void {
+  if (!refsSource) return;
+  for (const feature of refsSource.getFeatures()) {
+    const properties = feature.getProperties?.() ?? {};
+    if (properties.isSelected === true) {
+      feature.set?.('isSelected', false);
+    }
+  }
   updateSelectionUi();
 }
 
@@ -1206,6 +1224,10 @@ function showViewer(): void {
     trashButton.style.display = '';
     trashButton.disabled = false;
   }
+  if (cancelButton) {
+    cancelButton.style.visibility = 'hidden';
+    cancelButton.style.display = '';
+  }
   if (keepOwnTeamCheckbox) keepOwnTeamCheckbox.checked = keepOwnTeam;
   if (keepOwnTeamLabel) keepOwnTeamLabel.style.display = 'none';
   hideProgress();
@@ -1265,6 +1287,7 @@ function hideViewer(): void {
 
   if (closeButton) closeButton.style.display = 'none';
   if (trashButton) trashButton.style.display = 'none';
+  if (cancelButton) cancelButton.style.display = 'none';
   if (selectionInfoEl) selectionInfoEl.style.display = 'none';
   if (keepOwnTeamLabel) keepOwnTeamLabel.style.display = 'none';
   if (keepOwnTeamCheckbox) keepOwnTeamCheckbox.checked = false;
@@ -1376,6 +1399,15 @@ export const refsOnMap: IFeatureModule = {
             void handleDeleteClick();
           });
           document.body.appendChild(trashButton);
+
+          // Cancel button - снимает выделение всех выбранных точек. Видна
+          // только при наличии выбора (updateSelectionUi).
+          cancelButton = document.createElement('button');
+          cancelButton.className = 'svp-refs-on-map-cancel';
+          cancelButton.textContent = t({ en: 'Cancel', ru: 'Отменить' });
+          cancelButton.style.visibility = 'hidden';
+          cancelButton.addEventListener('click', clearSelection);
+          document.body.appendChild(cancelButton);
 
           // Прогресс-бар fallback /api/point: виден пока teamsLoading=true,
           // после полной загрузки скрывается (applyTeamsLoadedState). Пока
@@ -1505,6 +1537,12 @@ function cleanupEnableSideEffects(): void {
   if (trashButton) {
     trashButton.remove();
     trashButton = null;
+  }
+
+  if (cancelButton) {
+    cancelButton.removeEventListener('click', clearSelection);
+    cancelButton.remove();
+    cancelButton = null;
   }
 
   if (progressContainer) {

@@ -1832,6 +1832,122 @@ describe('refsOnMap checkbox visibility', () => {
   });
 });
 
+// ── cancel button (deselect all) ────────────────────────────────────────────
+
+describe('refsOnMap cancel button', () => {
+  let view: ReturnType<typeof makeView>;
+  let map: ReturnType<typeof makeMap>;
+  let originalFetch: typeof window.fetch;
+
+  function clickShowButton(): void {
+    const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
+    button.click();
+  }
+
+  function setInventory(): void {
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'A', f: 0 },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'B', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+  }
+
+  beforeEach(async () => {
+    setupInventoryDom();
+    view = makeView(16, 0.5);
+    const pointsLayer = makeLayer('points', makeSource());
+    const linesLayer = makeLayer('lines', makeSource());
+    const regionsLayer = makeLayer('regions', makeSource());
+    map = makeMap([pointsLayer, linesLayer, regionsLayer], view);
+    mockGetOlMap.mockResolvedValue(map);
+    mockOl();
+    originalFetch = window.fetch;
+    window.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response),
+    ) as unknown as typeof window.fetch;
+    localStorage.setItem('auth', 'test-token');
+    await refsOnMap.enable();
+  });
+
+  afterEach(async () => {
+    await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
+    delete window.ol;
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('auth');
+    document.body.innerHTML = '';
+    window.fetch = originalFetch;
+  });
+
+  test('cancel-кнопка hidden при 0 selected, visible при > 0', () => {
+    setInventory();
+    clickShowButton();
+
+    const cancel = document.querySelector('.svp-refs-on-map-cancel') as HTMLButtonElement;
+    expect(cancel).not.toBeNull();
+    expect(cancel.style.visibility).toBe('hidden');
+
+    // Select.
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    expect(cancel.style.visibility).toBe('visible');
+  });
+
+  test('клик по cancel: все isSelected=true фичи сбрасываются, UI обновляется', () => {
+    setInventory();
+    clickShowButton();
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[1]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    expect(allFeatures[0].getProperties?.().isSelected).toBe(true);
+    expect(allFeatures[1].getProperties?.().isSelected).toBe(true);
+
+    const cancel = document.querySelector('.svp-refs-on-map-cancel') as HTMLButtonElement;
+    cancel.click();
+
+    expect(allFeatures[0].getProperties?.().isSelected).toBe(false);
+    expect(allFeatures[1].getProperties?.().isSelected).toBe(false);
+
+    // UI отражает 0 selected.
+    expect(cancel.style.visibility).toBe('hidden');
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.style.visibility).toBe('hidden');
+  });
+
+  test('cancel удаляется из DOM при disable модуля', async () => {
+    expect(document.querySelector('.svp-refs-on-map-cancel')).not.toBeNull();
+    await refsOnMap.disable();
+    expect(document.querySelector('.svp-refs-on-map-cancel')).toBeNull();
+  });
+});
+
 // ── keepOwnTeam persistence (localStorage) ──────────────────────────────────
 
 describe('refsOnMap keepOwnTeam persistence', () => {
