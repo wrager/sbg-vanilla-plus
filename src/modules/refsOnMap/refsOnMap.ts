@@ -14,6 +14,7 @@ import { getPlayerTeam } from '../../core/playerTeam';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 import { showToast } from '../../core/toast';
+import { loadRefsOnMapSettings, saveRefsOnMapSettings } from './refsOnMapSettings';
 import css from './styles.css?inline';
 
 const MODULE_ID = 'refsOnMap';
@@ -160,10 +161,11 @@ let viewerOpen = false;
 let beforeOpenZoom: number | undefined;
 let beforeOpenRotation: number | undefined;
 let beforeOpenFollow: string | null = null;
-// Эфемерный флаг: живёт только пока viewer открыт. Сбрасывается в showViewer
-// (новый viewer-сеанс всегда стартует с выключенным фильтром) и в
-// handleInviewResponse при появлении новых guid'ов (контекст изменился,
-// прежний фильтр невалиден). В localStorage не сохраняется.
+// Персистентный флаг: сохраняется в localStorage (svp_refsOnMap.keepOwnTeam)
+// и переживает закрытие viewer'а / перезагрузку страницы. Загружается из
+// storage в showViewer, сохраняется в onChange чекбокса. До первого
+// showViewer хранит дефолт (false); реальное значение читается из
+// loadRefsOnMapSettings при открытии viewer.
 let keepOwnTeam = false;
 /**
  * Кэш команд точек. Ключ - pointGuid. Значение - число (команда) либо
@@ -261,14 +263,12 @@ export function uninstallInviewFetchHookForTest(): void {
 }
 
 /**
- * Обработчик /api/inview ответа: enrichment поверх active pull. Две задачи:
- * 1. Записать команды из ответа в teamCache и в feature.team всех refs-фич
- *    с соответствующим pointGuid. Если guid уже был в очереди worker'а
- *    /api/point - удаляем его из очереди, т. к. данные уже получены через
- *    /inview быстрее.
- * 2. Auto-disable keepOwnTeam при появлении новых (не в teamCache) guid'ов:
- *    /inview может прислать guid'ы из текущего extent'а раньше, чем active
- *    pull на следующий moveend - сигнал смены контекста приходит первым.
+ * Обработчик /api/inview ответа: enrichment поверх active pull. Записывает
+ * команды из ответа в teamCache и в feature.team всех refs-фич с
+ * соответствующим pointGuid. Если guid уже был в очереди worker'а
+ * /api/point - удаляем его из очереди (данные получены через /inview
+ * быстрее) и инкрементируем teamLoadDone, чтобы прогресс-бар не закончил
+ * раньше total.
  *
  * Fallback /api/point для guid'ов с отсутствующим `t` не нужен: active pull
  * (enqueueVisibleForLoad на showViewer + moveend) и так загружает все
@@ -276,12 +276,6 @@ export function uninstallInviewFetchHookForTest(): void {
  */
 function handleInviewResponse(points: IInviewPoint[]): void {
   if (!viewerOpen || !refsSource) return;
-
-  const newGuids: string[] = [];
-  for (const point of points) {
-    if (typeof point.g !== 'string') continue;
-    if (!teamCache.has(point.g)) newGuids.push(point.g);
-  }
 
   let queueDeleted = 0;
   for (const point of points) {
@@ -303,47 +297,14 @@ function handleInviewResponse(points: IInviewPoint[]): void {
   // /inview "обработал" guid'ы из очереди вместо worker'а - инкрементируем
   // teamLoadDone, чтобы прогресс-бар не закончил раньше total. Без этого
   // worker экзит при queue.size===0 с done<total, applyTeamsLoadedState
-  // скрывает прогресс на "10 из 100" (наблюдалось в логах пользователя:
-  // queueDeleted=112, total=117, done=5, mismatch=112).
+  // скрывает прогресс на "10 из 100".
   if (queueDeleted > 0) {
     teamLoadDone += queueDeleted;
     if (teamLoadTotal > 0) updateProgress(teamLoadDone, teamLoadTotal);
-    // Если worker уже завершил свой цикл, но applyTeamsLoadedState ещё не
-    // успел отработать (или /inview опустошил очередь до старта worker'а -
-    // worker не пишет applyTeamsLoadedState без runtime), закрываем
-    // прогресс сами.
     if (!teamLoadInProgress && teamLoadQueue.size === 0 && teamsLoading) {
       applyTeamsLoadedState();
     }
   }
-
-  maybeResetKeepOwnTeamOnNewVisibility(newGuids);
-}
-
-/**
- * Сбрасывает keepOwnTeam, если среди обработанных guid'ов есть новые
- * (визуально неизвестные точки в кадре). Срабатывает независимо от того,
- * попали ли новые guid'ы в текущий selection: новый набор видимых точек =
- * новый контекст, прежний фильтр невалиден.
- *
- * Вызывается из двух мест:
- * - handleInviewResponse (passive enrichment через игровой /api/inview);
- * - enqueueVisibleForLoad (active pull при showViewer и moveend, когда
- *   обнаруживаем guid'ы в visible extent, которых ещё нет в teamCache).
- */
-function maybeResetKeepOwnTeamOnNewVisibility(newGuids: readonly string[]): void {
-  if (newGuids.length === 0 || !keepOwnTeam) return;
-  keepOwnTeam = false;
-  if (keepOwnTeamCheckbox) keepOwnTeamCheckbox.checked = false;
-  showToast(
-    t({
-      en: 'Filter "Keep own team" disabled: visible points may have unknown team',
-      ru: 'Фильтр "Не удалять свои" сброшен из-за возможного появления точек с неизвестной командой',
-    }),
-  );
-  // partition в breakdown зависит от keepOwnTeam: после сброса own-bucket
-  // обнуляется, deletable растёт; перерисовываем UI с новыми числами.
-  updateSelectionUi();
 }
 
 // ── visible-only active pull ─────────────────────────────────────────────────
@@ -400,11 +361,9 @@ function getVisiblePointGuids(): Set<string> {
 function enqueueVisibleForLoad(): void {
   if (!viewerOpen) return;
   const visible = getVisiblePointGuids();
-  const newGuids: string[] = [];
   let added = 0;
   for (const guid of visible) {
     if (teamCache.has(guid)) continue;
-    newGuids.push(guid);
     if (teamLoadQueue.has(guid)) continue;
     teamLoadQueue.add(guid);
     teamLoadTotal++;
@@ -419,7 +378,6 @@ function enqueueVisibleForLoad(): void {
       void runTeamLoadWorker();
     }
   }
-  maybeResetKeepOwnTeamOnNewVisibility(newGuids);
 }
 
 // ── style function ───────────────────────────────────────────────────────────
@@ -1200,10 +1158,10 @@ function showViewer(): void {
   if (!OlFeature || !OlPoint || !olProj?.fromLonLat) return;
 
   viewerOpen = true;
-  // Эфемерный сброс фильтра: новый viewer-сеанс всегда стартует с keepOwnTeam
-  // выключенным, независимо от предыдущего сеанса. В localStorage флаг не
-  // живёт - решение пользователя действует только до hideViewer.
-  keepOwnTeam = false;
+  // Загружаем сохранённое значение keepOwnTeam из localStorage. Чекбокс ниже
+  // получит .checked = keepOwnTeam перед показом - пользователь видит свой
+  // выбор из прошлой сессии.
+  keepOwnTeam = loadRefsOnMapSettings().keepOwnTeam;
   const view = olMap.getView();
   beforeOpenZoom = view.getZoom?.();
   beforeOpenRotation = view.getRotation();
@@ -1248,7 +1206,7 @@ function showViewer(): void {
     trashButton.style.display = '';
     trashButton.disabled = false;
   }
-  if (keepOwnTeamCheckbox) keepOwnTeamCheckbox.checked = false;
+  if (keepOwnTeamCheckbox) keepOwnTeamCheckbox.checked = keepOwnTeam;
   if (keepOwnTeamLabel) keepOwnTeamLabel.style.display = 'none';
   hideProgress();
 
@@ -1282,7 +1240,8 @@ function hideViewer(): void {
   teamLoadAborted = true;
   teamsLoading = false;
   inviewHookEnabled = false;
-  keepOwnTeam = false;
+  // keepOwnTeam НЕ сбрасываем: настройка персистентна, следующий showViewer
+  // загрузит её через loadRefsOnMapSettings.
   hideProgress();
   resetTeamLoadState();
 
@@ -1447,9 +1406,9 @@ export const refsOnMap: IFeatureModule = {
 
           // Чекбокс "Не удалять свои" - inline в viewer-режиме, виден только
           // когда есть выбор (updateSelectionUi контролирует visibility).
-          // State эфемерный: keepOwnTeam - module-level let, сбрасывается в
-          // showViewer и в maybeResetKeepOwnTeamOnNewVisibility при появлении
-          // новых guid'ов. В localStorage не сохраняется.
+          // State персистентный: keepOwnTeam синхронизирован с localStorage
+          // через svp_refsOnMap.keepOwnTeam (refsOnMapSettings). showViewer
+          // загружает значение, onChange сохраняет.
           keepOwnTeamLabel = document.createElement('label');
           keepOwnTeamLabel.className = 'svp-refs-on-map-keep-own';
           keepOwnTeamLabel.style.display = 'none';
@@ -1458,6 +1417,7 @@ export const refsOnMap: IFeatureModule = {
           keepOwnTeamCheckbox.checked = false;
           keepOwnTeamCheckbox.addEventListener('change', () => {
             keepOwnTeam = keepOwnTeamCheckbox?.checked === true;
+            saveRefsOnMapSettings({ keepOwnTeam });
             // Партиция в computeSelectionBreakdown зависит от keepOwnTeam:
             // переключение влияет на own/deletable bucket'ы. Перерисовываем UI.
             updateSelectionUi();
