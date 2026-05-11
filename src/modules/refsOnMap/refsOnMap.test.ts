@@ -1401,6 +1401,122 @@ describe('refsOnMap /inview team load', () => {
 
     expect(pointFetchSpy).not.toHaveBeenCalled();
   });
+
+  test('/inview опустошает очередь во время pending worker batch: teamLoadDone синхронизирован', async () => {
+    // Сценарий задачи 2 из логов пользователя: active pull добавил N точек
+    // в очередь. Worker берёт первый batch (BATCH_SIZE=5), оставляет N-5
+    // в очереди, и зависает на await Promise.all (медленный /api/point).
+    // В этот момент /inview приходит и удаляет из очереди оставшиеся N-5
+    // guid'ов (queueDeleted=N-5). Без counter sync teamLoadDone остался
+    // бы 0 (worker ещё не resolved batch); applyTeamsLoadedState закрыл
+    // бы прогресс с done=5, total=N, mismatch=N-5. С counter sync done
+    // инкрементируется на queueDeleted сразу.
+    //
+    // 7 точек: worker batch=5, 2 в очереди ждут next batch. /inview
+    // приносит команды для всех 7; queueDeleted=2 (только оставшиеся 2).
+    const items = Array.from({ length: 7 }, (_, i) => ({
+      t: 3,
+      a: 1,
+      c: [100.5, 13.7],
+      g: `ref-${i + 1}`,
+      l: `point-${i + 1}`,
+      ti: 'X',
+      f: 0,
+    }));
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+
+    const pointPending: (() => void)[] = [];
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/api/inview')) {
+        return Promise.resolve(
+          makeInviewResponse(
+            Array.from({ length: 7 }, (_, i) => ({ g: `point-${i + 1}`, t: i + 1 })),
+          ),
+        );
+      }
+      if (url.includes('/api/point')) {
+        return new Promise<Response>((resolve) => {
+          pointPending.push(() => {
+            resolve({
+              ok: true,
+              json: () => Promise.resolve({ data: { te: 1 } }),
+            } as unknown as Response);
+          });
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response);
+    });
+
+    view.calculateExtent = (): number[] => [-1000, -1000, 1000, 1000];
+    clickShowButton();
+    await flushAsync();
+
+    const progressCounter = document.querySelector(
+      '.svp-refs-on-map-progress-counter',
+    ) as HTMLElement;
+    // Worker запустил pending /api/point для первых 5 guid'ов, 2 в очереди.
+    // teamLoadDone=0, teamLoadTotal=7.
+    expect(progressCounter.textContent).toBe('0 / 7');
+
+    // /inview опустошает оставшиеся 2 guid'а из очереди (первые 5 уже
+    // вытащены worker'ом в batch и удалены из queue синхронно).
+    await window.fetch('/api/inview?sw=1&ne=2&z=14');
+    await flushAsync();
+
+    // С counter sync: done = 0 (worker) + 2 (queueDeleted via inview) = 2.
+    // Без него: '0 / 7' - регрессия.
+    expect(progressCounter.textContent).toBe('2 / 7');
+
+    // Cleanup: resolve pending pointFetch worker'а.
+    for (const r of pointPending) r();
+    await flushAsync();
+  });
+
+  test('/inview приходит после полного завершения worker: applyTeamsLoadedState не дёргается повторно', async () => {
+    // Edge case: worker уже завершил все batch'и и applyTeamsLoadedState
+    // отработал (teamLoadTotal=0, teamLoadDone=0, прогресс скрыт). /inview
+    // приходит позже - queueDeleted=0 (очередь была пуста), counter sync
+    // ничего не делает, прогресс остаётся скрытым.
+    setInventory();
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/api/inview')) {
+        return Promise.resolve(
+          makeInviewResponse([
+            { g: 'point-1', t: 1 },
+            { g: 'point-2', t: 2 },
+          ]),
+        );
+      }
+      if (url.includes('/api/point')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: { te: 5 } }),
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response);
+    });
+    view.calculateExtent = (): number[] => [-1000, -1000, 1000, 1000];
+    clickShowButton();
+    await flushAsync(); // worker завершает все 2 fetch'а
+
+    const progress = document.querySelector('.svp-refs-on-map-progress') as HTMLElement;
+    expect(progress.style.display).toBe('none');
+
+    // /inview приходит позже.
+    await window.fetch('/api/inview?sw=1&ne=2&z=14');
+    await flushAsync();
+
+    // Прогресс остаётся скрытым, очередь пуста.
+    expect(progress.style.display).toBe('none');
+  });
 });
 
 // ── visible-only active pull (/api/point worker по extent) ─────────────────

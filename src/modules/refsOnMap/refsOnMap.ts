@@ -283,16 +283,37 @@ function handleInviewResponse(points: IInviewPoint[]): void {
     if (!teamCache.has(point.g)) newGuids.push(point.g);
   }
 
+  let queueDeleted = 0;
   for (const point of points) {
     if (typeof point.g !== 'string') continue;
     if (typeof point.t !== 'number') continue;
     teamCache.set(point.g, point.t);
-    teamLoadQueue.delete(point.g);
+    if (teamLoadQueue.has(point.g)) {
+      teamLoadQueue.delete(point.g);
+      queueDeleted++;
+    }
     for (const feature of refsSource.getFeatures()) {
       const properties = feature.getProperties?.() ?? {};
       if (properties.pointGuid === point.g) {
         feature.set?.('team', point.t);
       }
+    }
+  }
+
+  // /inview "обработал" guid'ы из очереди вместо worker'а - инкрементируем
+  // teamLoadDone, чтобы прогресс-бар не закончил раньше total. Без этого
+  // worker экзит при queue.size===0 с done<total, applyTeamsLoadedState
+  // скрывает прогресс на "10 из 100" (наблюдалось в логах пользователя:
+  // queueDeleted=112, total=117, done=5, mismatch=112).
+  if (queueDeleted > 0) {
+    teamLoadDone += queueDeleted;
+    if (teamLoadTotal > 0) updateProgress(teamLoadDone, teamLoadTotal);
+    // Если worker уже завершил свой цикл, но applyTeamsLoadedState ещё не
+    // успел отработать (или /inview опустошил очередь до старта worker'а -
+    // worker не пишет applyTeamsLoadedState без runtime), закрываем
+    // прогресс сами.
+    if (!teamLoadInProgress && teamLoadQueue.size === 0 && teamsLoading) {
+      applyTeamsLoadedState();
     }
   }
 
