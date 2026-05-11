@@ -14,7 +14,6 @@ import { getPlayerTeam } from '../../core/playerTeam';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 import { showToast } from '../../core/toast';
-import { loadRefsOnMapSettings, saveRefsOnMapSettings } from './refsOnMapSettings';
 import css from './styles.css?inline';
 
 const MODULE_ID = 'refsOnMap';
@@ -29,6 +28,7 @@ const SELECTED_COLOR = '#BB7100';
 const NEUTRAL_COLOR = '#666666';
 const INVENTORY_API = '/api/inventory';
 const REFS_TAB_TYPE = 3;
+const INVIEW_URL_PATTERN = /\/api\/inview(\?|$)/;
 
 // ID элементов из модуля collapsibleTopPanel — связь закреплена явно
 const COLLAPSIBLE_TOGGLE_ID = 'svp-top-toggle';
@@ -41,6 +41,23 @@ interface IPointApiResponse {
 }
 
 function isPointApiResponse(value: unknown): value is IPointApiResponse {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Формат ответа /api/inview, выявленный из refs/game/script.js:3167-3253:
+ * `response.p[]` — список точек в видимой области, у каждой `g` (guid) и
+ * `t` (team). Поле team называется `t`, не `te` как в /api/point.
+ */
+interface IInviewPoint {
+  g?: unknown;
+  t?: unknown;
+}
+interface IInviewResponse {
+  p?: IInviewPoint[];
+}
+
+function isInviewResponse(value: unknown): value is IInviewResponse {
   return typeof value === 'object' && value !== null;
 }
 
@@ -135,27 +152,236 @@ let keepOwnTeamCheckbox: HTMLInputElement | null = null;
 let keepOwnTeamLabel: HTMLLabelElement | null = null;
 let tabClickHandler: ((event: Event) => void) | null = null;
 let mapClickHandler: ((event: IOlMapEvent) => void) | null = null;
+let viewMoveHandler: (() => void) | null = null;
 let viewerOpen = false;
 let beforeOpenZoom: number | undefined;
 let beforeOpenRotation: number | undefined;
 let beforeOpenFollow: string | null = null;
+// Эфемерный флаг: живёт только пока viewer открыт. Сбрасывается в showViewer
+// (новый viewer-сеанс всегда стартует с выключенным фильтром) и в
+// handleInviewResponse при появлении новых guid'ов (контекст изменился,
+// прежний фильтр невалиден). В localStorage не сохраняется.
+let keepOwnTeam = false;
 const teamCache = new Map<string, number>();
 let teamLoadAborted = false;
 // Пока true - viewer догружает команды точек, выбор по клику и trashButton
-// заблокированы. Сбрасывается в false когда очередь загрузки выработана
-// или когда viewer закрылся (teamLoadAborted=true).
+// заблокированы. Сбрасывается в false когда очередь fallback /api/point
+// выработана или когда viewer закрылся (teamLoadAborted=true).
 let teamsLoading = false;
-// Очередь загрузки команд для видимых точек. Заполняется enqueueVisibleForLoad
-// при showViewer и moveend; обрабатывается worker'ом батчами по TEAM_BATCH_SIZE.
+// Очередь fallback /api/point для guid'ов, чью команду /inview не вернул.
+// Обрабатывается worker'ом батчами по TEAM_BATCH_SIZE. На современной игре
+// (refs/game/script.js v11) /inview всегда отдаёт `t`, очередь остаётся
+// пустой; fallback нужен для несовпадающих версий сервера/клиента.
 const teamLoadQueue = new Set<string>();
 let teamLoadInProgress = false;
 let teamLoadTotal = 0;
 let teamLoadDone = 0;
-// Подписка на moveend карты во время viewer-режима - чтобы при pan/zoom
-// догружать команды для новых видимых точек. Снимается в hideViewer.
-let viewMoveHandler: (() => void) | null = null;
 let overallRefsToDelete = 0;
 let uniqueRefsToDelete = 0;
+
+// ── inview fetch hook ────────────────────────────────────────────────────────
+
+let inviewHookInstalled = false;
+let inviewHookEnabled = false;
+let originalFetchBeforePatch: typeof window.fetch | null = null;
+
+function extractUrl(input: RequestInfo | URL): string | null {
+  if (typeof input === 'string') return input;
+  if (input instanceof URL) return input.toString();
+  return typeof input.url === 'string' ? input.url : null;
+}
+
+/**
+ * Перехватывает игровой /api/inview и забирает из ответа `t` каждой видимой
+ * точки. Хук устанавливается один раз за жизнь страницы (как в refsLayerSync);
+ * переключение поведения - через `inviewHookEnabled`, чтобы не пересобирать
+ * цепочку патчей при каждом enable/disable.
+ *
+ * `response.clone()` обязателен: игра тоже читает body этого ответа в
+ * `drawEntities`, неклонированный read body заблокирует игровой код.
+ */
+export function installInviewFetchHook(): void {
+  if (inviewHookInstalled) return;
+  inviewHookInstalled = true;
+  const originalFetch = window.fetch;
+  originalFetchBeforePatch = originalFetch;
+  window.fetch = function patchedFetch(
+    this: typeof window,
+    ...args: Parameters<typeof window.fetch>
+  ): Promise<Response> {
+    const responsePromise = originalFetch.apply(this, args);
+    if (!inviewHookEnabled) return responsePromise;
+    const url = extractUrl(args[0]);
+    if (!url || !INVIEW_URL_PATTERN.test(url)) return responsePromise;
+    void responsePromise.then(
+      async (response) => {
+        if (!response.ok) return;
+        if (!inviewHookEnabled) return;
+        const cloned = response.clone();
+        let json: unknown;
+        try {
+          json = await cloned.json();
+        } catch {
+          return;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- inviewHookEnabled может измениться между awaits (hideViewer/disable)
+        if (!inviewHookEnabled) return;
+        if (!isInviewResponse(json) || !Array.isArray(json.p)) return;
+        handleInviewResponse(json.p);
+      },
+      () => {
+        // Сетевой сбой - игра уведомлена через rejection основного промиса.
+      },
+    );
+    return responsePromise;
+  };
+}
+
+/** Тестовый сброс глобального fetch-патча. Только для тестов. */
+export function uninstallInviewFetchHookForTest(): void {
+  if (!inviewHookInstalled) return;
+  if (originalFetchBeforePatch) window.fetch = originalFetchBeforePatch;
+  originalFetchBeforePatch = null;
+  inviewHookInstalled = false;
+}
+
+/**
+ * Обработчик /api/inview ответа: enrichment поверх active pull. Две задачи:
+ * 1. Записать команды из ответа в teamCache и в feature.team всех refs-фич
+ *    с соответствующим pointGuid. Если guid уже был в очереди worker'а
+ *    /api/point - удаляем его из очереди, т. к. данные уже получены через
+ *    /inview быстрее.
+ * 2. Auto-disable keepOwnTeam при появлении новых (не в teamCache) guid'ов:
+ *    /inview может прислать guid'ы из текущего extent'а раньше, чем active
+ *    pull на следующий moveend - сигнал смены контекста приходит первым.
+ *
+ * Fallback /api/point для guid'ов с отсутствующим `t` не нужен: active pull
+ * (enqueueVisibleForLoad на showViewer + moveend) и так загружает все
+ * видимые ref-точки через /api/point, дубль приведёт к race за queue.
+ */
+function handleInviewResponse(points: IInviewPoint[]): void {
+  if (!viewerOpen || !refsSource) return;
+
+  const newGuids: string[] = [];
+  for (const point of points) {
+    if (typeof point.g !== 'string') continue;
+    if (!teamCache.has(point.g)) newGuids.push(point.g);
+  }
+
+  for (const point of points) {
+    if (typeof point.g !== 'string') continue;
+    if (typeof point.t !== 'number') continue;
+    teamCache.set(point.g, point.t);
+    teamLoadQueue.delete(point.g);
+    for (const feature of refsSource.getFeatures()) {
+      const properties = feature.getProperties?.() ?? {};
+      if (properties.pointGuid === point.g) {
+        feature.set?.('team', point.t);
+      }
+    }
+  }
+
+  maybeResetKeepOwnTeamOnNewVisibility(newGuids);
+}
+
+/**
+ * Сбрасывает keepOwnTeam, если среди обработанных guid'ов есть новые
+ * (визуально неизвестные точки в кадре). Срабатывает независимо от того,
+ * попали ли новые guid'ы в текущий selection: новый набор видимых точек =
+ * новый контекст, прежний фильтр невалиден.
+ *
+ * Вызывается из двух мест:
+ * - handleInviewResponse (passive enrichment через игровой /api/inview);
+ * - enqueueVisibleForLoad (active pull при showViewer и moveend, когда
+ *   обнаруживаем guid'ы в visible extent, которых ещё нет в teamCache).
+ */
+function maybeResetKeepOwnTeamOnNewVisibility(newGuids: readonly string[]): void {
+  if (newGuids.length === 0 || !keepOwnTeam) return;
+  keepOwnTeam = false;
+  if (keepOwnTeamCheckbox) keepOwnTeamCheckbox.checked = false;
+  showToast(
+    t({
+      en: 'Filter "Keep own team" disabled: visible points may have unknown team',
+      ru: 'Фильтр "Не удалять свои" сброшен из-за возможного появления точек с неизвестной командой',
+    }),
+  );
+}
+
+// ── visible-only active pull ─────────────────────────────────────────────────
+
+function getMapExtent(): number[] | null {
+  if (!olMap) return null;
+  const size = olMap.getSize();
+  if (!size) return null;
+  const view = olMap.getView();
+  const extent = view.calculateExtent(size);
+  if (!Array.isArray(extent) || extent.length < 4) return null;
+  return extent;
+}
+
+function isCoordinateInExtent(coord: number[], extent: number[]): boolean {
+  return (
+    coord[0] >= extent[0] && coord[0] <= extent[2] && coord[1] >= extent[1] && coord[1] <= extent[3]
+  );
+}
+
+/**
+ * GUID'ы видимых на текущем extent точек. Один pointGuid может приходиться
+ * на несколько ref-фич (стопок одной точки), поэтому Set.
+ */
+function getVisiblePointGuids(): Set<string> {
+  const extent = getMapExtent();
+  if (!extent || !refsSource) return new Set();
+  const visible = new Set<string>();
+  for (const feature of refsSource.getFeatures()) {
+    const properties = feature.getProperties?.() ?? {};
+    const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+    if (!pointGuid) continue;
+    if (visible.has(pointGuid)) continue;
+    const geom = feature.getGeometry();
+    const coord = geom.getCoordinates();
+    if (Array.isArray(coord) && coord.length >= 2 && isCoordinateInExtent(coord, extent)) {
+      visible.add(pointGuid);
+    }
+  }
+  return visible;
+}
+
+/**
+ * Active pull: догружает команды видимых ref-точек через /api/point worker.
+ * /inview-перехват работает параллельно как enrichment - его ответ удаляет
+ * guid из очереди, worker такие guid'ы пропускает. Без active pull точки за
+ * пределами того extent'а, по которому игра последний раз дёргала /inview,
+ * остаются с team=undefined; игра дёргает /inview только при moveend, до
+ * первого moveend (или для не-видимых регионов) данных нет.
+ *
+ * Вызывается из showViewer (первичный extent) и из viewMoveHandler (на
+ * каждый moveend - новые видимые точки попадают в очередь).
+ */
+function enqueueVisibleForLoad(): void {
+  if (!viewerOpen) return;
+  const visible = getVisiblePointGuids();
+  const newGuids: string[] = [];
+  let added = 0;
+  for (const guid of visible) {
+    if (teamCache.has(guid)) continue;
+    newGuids.push(guid);
+    if (teamLoadQueue.has(guid)) continue;
+    teamLoadQueue.add(guid);
+    teamLoadTotal++;
+    added++;
+  }
+  if (added > 0) {
+    teamsLoading = true;
+    showProgress(teamLoadTotal);
+    updateProgress(teamLoadDone, teamLoadTotal);
+    updateTrashCounter();
+    if (!teamLoadInProgress) {
+      void runTeamLoadWorker();
+    }
+  }
+  maybeResetKeepOwnTeamOnNewVisibility(newGuids);
+}
 
 // ── style function ───────────────────────────────────────────────────────────
 
@@ -258,15 +484,18 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
 
 function updateTrashCounter(): void {
   if (!trashButton) return;
-  trashButton.textContent =
-    uniqueRefsToDelete > 0
-      ? `\uD83D\uDDD1\uFE0F ${uniqueRefsToDelete} (${overallRefsToDelete})`
-      : '';
-  trashButton.style.visibility = uniqueRefsToDelete > 0 ? 'visible' : 'hidden';
-  // \u041F\u043E\u043A\u0430 \u043A\u043E\u043C\u0430\u043D\u0434\u044B \u0442\u043E\u0447\u0435\u043A \u0434\u043E\u0433\u0440\u0443\u0436\u0430\u044E\u0442\u0441\u044F, \u0443\u0434\u0430\u043B\u0435\u043D\u0438\u0435 \u0437\u0430\u043F\u0440\u0435\u0449\u0435\u043D\u043E: \u0444\u0438\u043B\u044C\u0442\u0440 keepOwnTeam
-  // \u043D\u0435 \u0432\u0438\u0434\u0438\u0442 \u0444\u0438\u043D\u0430\u043B\u044C\u043D\u044B\u0435 \u0437\u043D\u0430\u0447\u0435\u043D\u0438\u044F `team` \u0443 \u0444\u0438\u0447. Disabled-state \u0441\u043D\u0438\u043C\u0430\u0435\u0442\u0441\u044F \u0438\u0437
-  // updateProgress() \u043F\u0440\u0438 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0435\u043C done==total \u0438 \u0438\u0437 applyTeamsLoadedState().
+  const hasSelection = uniqueRefsToDelete > 0;
+  trashButton.textContent = hasSelection ? `🗑️ ${uniqueRefsToDelete} (${overallRefsToDelete})` : '';
+  trashButton.style.visibility = hasSelection ? 'visible' : 'hidden';
+  // Пока команды точек догружаются, удаление запрещено: фильтр keepOwnTeam
+  // не видит финальные значения `team` у фич. Disabled-state снимается из
+  // updateProgress() при последнем done==total и из applyTeamsLoadedState().
   trashButton.disabled = teamsLoading;
+  // Чекбокс «Не удалять свои» показывается только при наличии выбора - до
+  // выбора пользовательский фильтр не имеет смысла, лишний UI-шум.
+  if (keepOwnTeamLabel) {
+    keepOwnTeamLabel.style.display = viewerOpen && hasSelection ? '' : 'none';
+  }
 }
 
 function updateProgress(done: number, total: number): void {
@@ -288,11 +517,10 @@ function hideProgress(): void {
 }
 
 /**
- * \u0421\u043D\u0438\u043C\u0430\u0435\u0442 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0438, \u043F\u043E\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u043D\u044B\u0435 \u043D\u0430 \u043C\u043E\u043C\u0435\u043D\u0442 \u0434\u043E\u0433\u0440\u0443\u0437\u043A\u0438 \u043A\u043E\u043C\u0430\u043D\u0434: trashButton
- * \u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0441\u044F active (\u0435\u0441\u043B\u0438 \u0435\u0441\u0442\u044C \u0432\u044B\u0431\u043E\u0440), \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441-\u0431\u0430\u0440 \u0441\u043A\u0440\u044B\u0432\u0430\u0435\u0442\u0441\u044F, mapClick
- * \u043D\u0430\u0447\u0438\u043D\u0430\u0435\u0442 \u0440\u0430\u0431\u043E\u0442\u0430\u0442\u044C. \u0412\u044B\u0437\u044B\u0432\u0430\u0435\u0442\u0441\u044F \u0438\u0437 worker'\u0430 \u043A\u043E\u0433\u0434\u0430 \u043E\u0447\u0435\u0440\u0435\u0434\u044C \u043F\u043E\u043B\u043D\u043E\u0441\u0442\u044C\u044E
- * \u0432\u044B\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u0430. \u0421\u0431\u0440\u0430\u0441\u044B\u0432\u0430\u0435\u0442 total/done \u0432 0 - \u0441\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 enqueue (\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440,
- * \u043F\u043E\u0441\u043B\u0435 pan \u043D\u0430 \u043D\u043E\u0432\u044B\u0435 \u0442\u043E\u0447\u043A\u0438) \u0441\u0442\u0430\u0440\u0442\u0443\u0435\u0442 \u0441 \u0447\u0438\u0441\u0442\u043E\u0433\u043E \u0441\u0447\u0451\u0442\u0447\u0438\u043A\u0430.
+ * Снимает блокировки, поставленные на момент догрузки команд: trashButton
+ * становится active (если есть выбор), прогресс-бар скрывается, mapClick
+ * начинает работать. Сбрасывает total/done в 0 - следующий fallback из
+ * handleInviewResponse стартует с чистого счётчика.
  */
 function applyTeamsLoadedState(): void {
   teamsLoading = false;
@@ -466,7 +694,6 @@ async function handleDeleteClick(): Promise<void> {
   // команду) - жёсткий блок: фильтр заявлен пользователем, выполнить его
   // мы не можем, удалять без фильтра нельзя - это нарушение явного
   // пользовательского намерения.
-  const { keepOwnTeam } = loadRefsOnMapSettings();
   let ownTeamFilter: IOwnTeamFilter | null = null;
   if (keepOwnTeam) {
     const playerTeam = getPlayerTeam();
@@ -647,86 +874,18 @@ function buildAllProtectedToast(
   });
 }
 
-// ── team loading (visible-only with on-demand queue) ────────────────────────
+// ── fallback team loading worker ─────────────────────────────────────────────
 
 /**
- * Bounding box карты в map projection. Используется для фильтрации фич по
- * видимости. Возвращает null если view ещё не готов или getSize не отдал
- * размеры (происходит до первого render'а).
- */
-function getMapExtent(): number[] | null {
-  if (!olMap) return null;
-  const size = olMap.getSize();
-  if (!size) return null;
-  const view = olMap.getView();
-  const extent = view.calculateExtent(size);
-  if (!Array.isArray(extent) || extent.length < 4) return null;
-  return extent;
-}
-
-function isCoordinateInExtent(coord: number[], extent: number[]): boolean {
-  return (
-    coord[0] >= extent[0] && coord[0] <= extent[2] && coord[1] >= extent[1] && coord[1] <= extent[3]
-  );
-}
-
-/**
- * GUID'ы видимых точек. Берёт extent карты + координаты feature'ов из
- * refsSource. Один pointGuid может приходиться на несколько ref-фич (стопок),
- * поэтому возвращаем Set, а не массив.
- */
-function getVisiblePointGuids(): Set<string> {
-  const extent = getMapExtent();
-  if (!extent || !refsSource) return new Set();
-  const visible = new Set<string>();
-  for (const feature of refsSource.getFeatures()) {
-    const properties = feature.getProperties?.() ?? {};
-    const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
-    if (!pointGuid) continue;
-    if (visible.has(pointGuid)) continue;
-    const geom = feature.getGeometry();
-    const coord = geom.getCoordinates();
-    if (Array.isArray(coord) && coord.length >= 2 && isCoordinateInExtent(coord, extent)) {
-      visible.add(pointGuid);
-    }
-  }
-  return visible;
-}
-
-/**
- * Добавляет в очередь загрузки команд GUID'ы видимых точек, ещё не в кэше
- * и не в очереди. Запускает worker, если он не крутится. Вызывается из
- * showViewer (первичный набор) и из moveend handler'а (новые видимые
- * точки после pan/zoom).
- */
-function enqueueVisibleForLoad(): void {
-  if (!viewerOpen) return;
-  const visible = getVisiblePointGuids();
-  let added = 0;
-  for (const guid of visible) {
-    if (teamCache.has(guid)) continue;
-    if (teamLoadQueue.has(guid)) continue;
-    teamLoadQueue.add(guid);
-    teamLoadTotal++;
-    added++;
-  }
-  if (added > 0) {
-    teamsLoading = true;
-    showProgress(teamLoadTotal);
-    updateProgress(teamLoadDone, teamLoadTotal);
-    updateTrashCounter();
-  }
-  if (!teamLoadInProgress && teamLoadQueue.size > 0) {
-    void runTeamLoadWorker();
-  }
-}
-
-/**
- * Один worker на жизнь viewer'а. Берёт по TEAM_BATCH_SIZE из очереди,
+ * Worker очереди fallback /api/point. Берёт по TEAM_BATCH_SIZE из очереди,
  * запрашивает /api/point параллельно, пишет результат в teamCache и в
  * feature.team. Между батчами ждёт TEAM_BATCH_DELAY_MS чтобы не задавить
  * сервер. На abort (hideViewer) прерывается, applyTeamsLoadedState не
  * вызывается - hideViewer сам очистит state.
+ *
+ * Очередь заполняется только из handleInviewResponse для guid'ов, чью
+ * команду /inview не вернул (рассогласование версий сервер/клиент). На
+ * современной игре worker фактически не запускается.
  */
 async function runTeamLoadWorker(): Promise<void> {
   if (teamLoadInProgress) return;
@@ -856,6 +1015,10 @@ function showViewer(): void {
   if (!OlFeature || !OlPoint || !olProj?.fromLonLat) return;
 
   viewerOpen = true;
+  // Эфемерный сброс фильтра: новый viewer-сеанс всегда стартует с keepOwnTeam
+  // выключенным, независимо от предыдущего сеанса. В localStorage флаг не
+  // живёт - решение пользователя действует только до hideViewer.
+  keepOwnTeam = false;
   const view = olMap.getView();
   beforeOpenZoom = view.getZoom?.();
   beforeOpenRotation = view.getRotation();
@@ -884,44 +1047,47 @@ function showViewer(): void {
     refsSource.addFeature(feature);
   }
 
-  // teamsLoading стартует true и снимается, когда worker выработает очередь
-  // (либо если в текущем extent нет ни одной точки без team). Первые клики
-  // по карте, пока команды грузятся, не должны выбирать фичи. См.
-  // handleMapClick + applyTeamsLoadedState.
   teamLoadAborted = false;
   resetTeamLoadState();
-  teamsLoading = true;
+  // Команды грузятся через перехват /api/inview, который игра дёрнет при
+  // ближайшем moveend (или уже дёрнула - команды попали в teamCache). Очередь
+  // fallback /api/point пуста - teamsLoading=false с самого старта; если
+  // /inview не вернёт `t` для каких-то точек, handleInviewResponse поднимет
+  // teamsLoading=true и покажет прогресс-бар.
+  teamsLoading = false;
   if (closeButton) closeButton.style.display = '';
   if (trashButton) {
     trashButton.style.visibility = 'hidden';
     trashButton.style.display = '';
-    trashButton.disabled = true;
+    trashButton.disabled = false;
   }
   if (lockedNote) lockedNote.style.display = '';
-  if (keepOwnTeamLabel) {
-    keepOwnTeamLabel.style.display = '';
-    if (keepOwnTeamCheckbox) {
-      keepOwnTeamCheckbox.checked = loadRefsOnMapSettings().keepOwnTeam;
-    }
-  }
+  if (keepOwnTeamCheckbox) keepOwnTeamCheckbox.checked = false;
+  if (keepOwnTeamLabel) keepOwnTeamLabel.style.display = 'none';
+  hideProgress();
 
-  // Attach click handler for selection
+  // Включаем перехват /api/inview только пока viewer открыт. Перехватчик
+  // ставится один раз за page lifetime в enable(); тут только переключаем
+  // флаг inviewHookEnabled.
+  inviewHookEnabled = true;
+
   mapClickHandler = handleMapClick;
   olMap.on?.('click', mapClickHandler);
 
-  // Загружаем команды только для видимых точек. На pan/zoom догружаем через
-  // moveend handler. Если в текущем extent нет ни одной незагруженной точки,
-  // enqueueVisibleForLoad сразу не запускает worker, и applyTeamsLoadedState
-  // не вызовется через worker - снимаем блокировки сами.
+  // Active pull для видимых точек: /inview ловит игровые ответы пассивно,
+  // но игра дёргает /inview только на moveend, и /inview возвращает лишь
+  // текущий extent. Точки за пределами активного extent остаются без
+  // team. Запускаем worker на первичный extent и подписываемся на moveend.
+  //
+  // ВАЖНО: в OL `moveend` - событие Map, не View. View поддерживает только
+  // `change:*`-события (center, resolution, rotation), а map-level moveend
+  // fires когда движение карты завершено. Игра подписывается так же
+  // (refs/game/script.js: map.on('moveend', requestEntities)).
   enqueueVisibleForLoad();
-  if (teamLoadQueue.size === 0 && !teamLoadInProgress) {
-    applyTeamsLoadedState();
-  }
-
   viewMoveHandler = (): void => {
     enqueueVisibleForLoad();
   };
-  view.on?.('moveend', viewMoveHandler);
+  olMap.on?.('moveend', viewMoveHandler);
 }
 
 function hideViewer(): void {
@@ -929,18 +1095,18 @@ function hideViewer(): void {
   viewerOpen = false;
   teamLoadAborted = true;
   teamsLoading = false;
+  inviewHookEnabled = false;
+  keepOwnTeam = false;
   hideProgress();
   resetTeamLoadState();
 
-  // Remove click handler
   if (olMap && mapClickHandler) {
     olMap.un?.('click', mapClickHandler);
     mapClickHandler = null;
   }
 
-  // Remove moveend handler
   if (olMap && viewMoveHandler) {
-    olMap.getView().un?.('moveend', viewMoveHandler);
+    olMap.un?.('moveend', viewMoveHandler);
     viewMoveHandler = null;
   }
 
@@ -957,6 +1123,7 @@ function hideViewer(): void {
   if (trashButton) trashButton.style.display = 'none';
   if (lockedNote) lockedNote.style.display = 'none';
   if (keepOwnTeamLabel) keepOwnTeamLabel.style.display = 'none';
+  if (keepOwnTeamCheckbox) keepOwnTeamCheckbox.checked = false;
 
   const view = olMap?.getView();
   if (view) {
@@ -998,6 +1165,7 @@ export const refsOnMap: IFeatureModule = {
 
   enable() {
     injectStyles(css, MODULE_ID);
+    installInviewFetchHook();
 
     return getOlMap().then(
       (map) => {
@@ -1078,7 +1246,7 @@ export const refsOnMap: IFeatureModule = {
           lockedNote.style.display = 'none';
           document.body.appendChild(lockedNote);
 
-          // Прогресс-бар загрузки команд точек: виден пока teamsLoading=true,
+          // Прогресс-бар fallback /api/point: виден пока teamsLoading=true,
           // после полной загрузки скрывается (applyTeamsLoadedState). Пока
           // виден, выбор по клику и trashButton заблокированы - keepOwnTeam
           // фильтру нужны финальные значения `team` у фич.
@@ -1105,20 +1273,19 @@ export const refsOnMap: IFeatureModule = {
           progressContainer.appendChild(progressCounter);
           document.body.appendChild(progressContainer);
 
-          // Чекбокс "Не удалять свои" - inline в viewer-режиме рядом с
-          // trashButton. State синхронизируется с svp_refsOnMap.keepOwnTeam.
-          // playerTeam=null при включённом чекбоксе блокирует удаление - см.
-          // handleDeleteClick.
+          // Чекбокс "Не удалять свои" - inline в viewer-режиме, виден только
+          // когда uniqueRefsToDelete > 0 (updateTrashCounter контролирует
+          // visibility). State эфемерный: keepOwnTeam - module-level let,
+          // сбрасывается в showViewer и в handleInviewResponse при появлении
+          // новых guid'ов. В localStorage не сохраняется.
           keepOwnTeamLabel = document.createElement('label');
           keepOwnTeamLabel.className = 'svp-refs-on-map-keep-own';
           keepOwnTeamLabel.style.display = 'none';
           keepOwnTeamCheckbox = document.createElement('input');
           keepOwnTeamCheckbox.type = 'checkbox';
-          keepOwnTeamCheckbox.checked = loadRefsOnMapSettings().keepOwnTeam;
+          keepOwnTeamCheckbox.checked = false;
           keepOwnTeamCheckbox.addEventListener('change', () => {
-            saveRefsOnMapSettings({
-              keepOwnTeam: keepOwnTeamCheckbox?.checked === true,
-            });
+            keepOwnTeam = keepOwnTeamCheckbox?.checked === true;
           });
           const keepOwnTeamText = document.createElement('span');
           keepOwnTeamText.textContent = t({
@@ -1161,8 +1328,10 @@ function cleanupEnableSideEffects(): void {
   if (viewerOpen) hideViewer();
   teamLoadAborted = true;
   teamsLoading = false;
-  resetTeamLoadState();
+  inviewHookEnabled = false;
+  keepOwnTeam = false;
   viewMoveHandler = null;
+  resetTeamLoadState();
 
   if (olMap && refsLayer) {
     olMap.removeLayer(refsLayer);

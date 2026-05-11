@@ -1,4 +1,4 @@
-import { refsOnMap } from './refsOnMap';
+import { refsOnMap, uninstallInviewFetchHookForTest } from './refsOnMap';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -94,10 +94,15 @@ function makeLayer(
 function makeMap(
   layers: IOlLayer[],
   view: IOlView,
-): IOlMap & { _clickListeners: ((event: unknown) => void)[] } {
+): IOlMap & {
+  _clickListeners: ((event: unknown) => void)[];
+  _moveendListeners: (() => void)[];
+} {
   const clickListeners: ((event: unknown) => void)[] = [];
+  const moveendListeners: (() => void)[] = [];
   return {
     _clickListeners: clickListeners,
+    _moveendListeners: moveendListeners,
     getView: () => view,
     getSize: () => [800, 600],
     getLayers: () => ({ getArray: () => layers }),
@@ -105,10 +110,22 @@ function makeMap(
     addLayer: jest.fn(),
     removeLayer: jest.fn(),
     updateSize: jest.fn(),
-    on: jest.fn((_type: string, listener: (event: unknown) => void) => {
+    on: jest.fn((type: string, listener: (event: unknown) => void) => {
+      // OL диспетчеризует click через map.on('click', ...) и moveend через
+      // map.on('moveend', ...). Раскладываем по подходящим листенерам, чтобы
+      // тесты могли симулировать каждый тип независимо.
+      if (type === 'moveend') {
+        moveendListeners.push(listener as () => void);
+        return;
+      }
       clickListeners.push(listener);
     }),
-    un: jest.fn((_type: string, listener: (event: unknown) => void) => {
+    un: jest.fn((type: string, listener: (event: unknown) => void) => {
+      if (type === 'moveend') {
+        const index = moveendListeners.indexOf(listener as () => void);
+        if (index >= 0) moveendListeners.splice(index, 1);
+        return;
+      }
       const index = clickListeners.indexOf(listener);
       if (index >= 0) clickListeners.splice(index, 1);
     }),
@@ -220,6 +237,23 @@ function setInventoryCache(): void {
   localStorage.setItem('inventory-cache', JSON.stringify(items));
 }
 
+/**
+ * Возвращает ответ, имитирующий /api/inview. Поле `t` опционально - для
+ * проверки fallback /api/point handleInviewResponse при отсутствии команды.
+ * `clone()` обязателен: refsOnMap читает body через response.clone().json().
+ */
+function makeInviewResponse(p: { g: string; t?: number }[]): Response {
+  const body = { p };
+  const factory = (): Response =>
+    ({
+      ok: true,
+      status: 200,
+      clone: factory,
+      json: () => Promise.resolve(body),
+    }) as unknown as Response;
+  return factory();
+}
+
 // ── module metadata ──────────────────────────────────────────────────────────
 
 describe('refsOnMap metadata', () => {
@@ -271,9 +305,20 @@ const mockGetPlayerTeam = getPlayerTeam as jest.MockedFunction<typeof getPlayerT
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 
+/**
+ * Прокручивает микротаски, чтобы /inview-handler и worker /api/point успели
+ * пройти через своё then-цепочки до assertion'ов.
+ */
+async function flushAsync(): Promise<void> {
+  for (let i = 0; i < 10; i++) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 describe('refsOnMap enable/disable', () => {
   let view: ReturnType<typeof makeView>;
   let map: ReturnType<typeof makeMap>;
+  let originalFetch: typeof window.fetch;
 
   beforeEach(() => {
     localStorage.removeItem('inventory-cache');
@@ -285,10 +330,13 @@ describe('refsOnMap enable/disable', () => {
     map = makeMap([pointsLayer, linesLayer, regionsLayer], view);
     mockGetOlMap.mockResolvedValue(map);
     mockOl();
+    originalFetch = window.fetch;
   });
 
   afterEach(async () => {
     await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
+    window.fetch = originalFetch;
     delete window.ol;
     document.body.innerHTML = '';
   });
@@ -354,9 +402,6 @@ describe('refsOnMap enable/disable', () => {
   });
 
   test('частичный провал enable: слой и hidden-кнопки снимаются с DOM', async () => {
-    // Заставляем OlVectorLayer constructor бросать — это случится после того
-    // как injectStyles уже отработал и OlVectorSource уже создан, но до
-    // создания hidden-кнопок. Проверяем что enable() cleanup'ает state.
     const ol = window.ol;
     if (!ol?.layer) throw new Error('ol.layer not mocked');
     (ol.layer.Vector as jest.Mock).mockImplementationOnce(() => {
@@ -365,21 +410,13 @@ describe('refsOnMap enable/disable', () => {
 
     await expect(refsOnMap.enable()).rejects.toThrow('OlVectorLayer constructor failed');
 
-    // Стили должны быть сняты.
     expect(document.getElementById('svp-refsOnMap')).toBeNull();
-    // Hidden-кнопки не должны висеть в DOM (на момент падения они ещё
-    // не были созданы, но проверим инвариант).
     expect(document.querySelector('.svp-refs-on-map-close')).toBeNull();
     expect(document.querySelector('.svp-refs-on-map-trash')).toBeNull();
-    // showButton на момент падения тоже ещё не создан.
     expect(document.querySelector('.svp-refs-on-map-button')).toBeNull();
   });
 
   test('частичный провал после создания showButton: все элементы убраны', async () => {
-    // Заставляем document.body.appendChild бросать на третьем вызове
-    // (showButton вставляется через insertBefore в inventory, closeButton
-    // и trashButton — через document.body.appendChild). Первый appendChild
-    // на closeButton должен упасть.
     const originalAppendChild = document.body.appendChild.bind(document.body);
     let callCount = 0;
     const appendSpy = jest
@@ -395,14 +432,10 @@ describe('refsOnMap enable/disable', () => {
     await expect(refsOnMap.enable()).rejects.toThrow('appendChild boom');
     appendSpy.mockRestore();
 
-    // showButton уже был вставлен в inventory-delete parent, должен быть снят.
     expect(document.querySelector('.svp-refs-on-map-button')).toBeNull();
-    // closeButton/trashButton не были созданы до конца или не прикреплены.
     expect(document.querySelector('.svp-refs-on-map-close')).toBeNull();
     expect(document.querySelector('.svp-refs-on-map-trash')).toBeNull();
-    // Стили сняты.
     expect(document.getElementById('svp-refsOnMap')).toBeNull();
-    // Слой из карты удалён.
     expect((map.removeLayer as jest.Mock).mock.calls.length).toBeGreaterThan(0);
   });
 
@@ -420,6 +453,7 @@ describe('refsOnMap enable/disable', () => {
 describe('refsOnMap viewer', () => {
   let view: ReturnType<typeof makeView>;
   let map: ReturnType<typeof makeMap>;
+  let originalFetch: typeof window.fetch;
 
   function clickShowButton(): void {
     const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
@@ -440,11 +474,14 @@ describe('refsOnMap viewer', () => {
     map = makeMap([pointsLayer, linesLayer, regionsLayer], view);
     mockGetOlMap.mockResolvedValue(map);
     mockOl();
+    originalFetch = window.fetch;
     await refsOnMap.enable();
   });
 
   afterEach(async () => {
     await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
+    window.fetch = originalFetch;
     delete window.ol;
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('follow');
@@ -561,52 +598,33 @@ describe('refsOnMap lock protection', () => {
     mockOl();
     originalConfirm = window.confirm;
     originalFetch = window.fetch;
-    // Дефолтный fetch на /api/point: возвращает team=1 (произвольный).
-    // Тесты на удаление переопределяют window.fetch ПОСЛЕ flushTeamLoad,
-    // когда loadTeamDataForRefs уже отработала на этом дефолтном моке.
+    // По умолчанию fetch отвечает пустым для /api/point - тесты этого блока
+    // не зависят от /inview-перехвата, они вручную проставляют team на
+    // features через свойства feature и проверяют partition.
     window.fetch = jest.fn(() =>
       Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ data: { te: 1 } }),
+        json: () => Promise.resolve({}),
       } as unknown as Response),
     ) as unknown as typeof window.fetch;
-    // deleteRefsFromServer теперь требует auth-токен в localStorage,
-    // симметрично с inventoryApi и migrationApi. Тесты ставят фиксированный
-    // токен; контр-тест "без auth" живёт ниже отдельно.
     localStorage.setItem('auth', 'test-token');
     await refsOnMap.enable();
   });
 
   afterEach(async () => {
     await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
     delete window.ol;
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('follow');
     localStorage.removeItem('auth');
-    localStorage.removeItem('svp_refsOnMap');
     document.body.innerHTML = '';
     window.confirm = originalConfirm;
     window.fetch = originalFetch;
   });
 
-  /**
-   * Прокручивает микротаски до завершения loadTeamDataForRefs:
-   * fetch -> response.json -> Promise.all -> updateProgress ->
-   * applyTeamsLoadedState. Без этого вызова teamsLoading=true и
-   * handleMapClick + handleDeleteClick делают ранний return, что
-   * приводит к ложным негативам в существующих lock-protection тестах.
-   */
-  async function flushTeamLoad(): Promise<void> {
-    for (let i = 0; i < 10; i++) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    }
-  }
-
   function setInventoryCacheWithLocks(): void {
     // ref-2 в стопке locked (бит 0b10 поля f) - точка point-2 защищена.
-    // У ref-1 поле `f` явно 0 (без lock-бита) - lockSupportAvailable=true,
-    // удаление разрешено. Mix-кэш (часть стопок без `f`) проверяется
-    // отдельным тестом ниже.
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open Point', f: 0 },
       { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Locked Point', f: 0b10 },
@@ -617,21 +635,12 @@ describe('refsOnMap lock protection', () => {
   test('clicking trash with all-locked selection toasts and skips delete', async () => {
     setInventoryCacheWithLocks();
     clickShowButton();
-    await flushTeamLoad();
-    // Выбираем только locked-фичу через клик симуляцию: эмулируем
-    // toggleFeatureSelection через прямую установку isSelected на feature.
-    // Берём вторую фичу (ref-2 на point-2 = locked).
-    const sourceCallArgs = (window.ol?.source?.Vector as unknown as jest.Mock).mock.results;
-    expect(sourceCallArgs.length).toBeGreaterThan(0);
-    // Все фичи добавлены в один локальный source при showViewer.
-    // Прямой доступ через document не работает - используем addFeature mock.
+    await flushAsync();
     const fetchSpy = jest.fn(() =>
       Promise.resolve({ json: () => Promise.resolve({}) } as unknown as Response),
     );
     window.fetch = fetchSpy as unknown as typeof window.fetch;
 
-    // Симулируем клик на trash без выбранных фич: ничего не должно произойти
-    // (uniqueRefsToDelete = 0, ранний return).
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
     await Promise.resolve();
@@ -641,15 +650,11 @@ describe('refsOnMap lock protection', () => {
   test('partitionByLockProtection через handleDeleteClick: locked не уходит в payload', async () => {
     setInventoryCacheWithLocks();
     clickShowButton();
-    await flushTeamLoad();
+    await flushAsync();
 
-    // Получаем mapClickHandler (после showViewer он подписан на map.on('click')).
     const clickHandler = map._clickListeners[0];
     expect(clickHandler).toBeDefined();
 
-    // forEachFeatureAtPixel должен дёргать callback на feature под пикселем.
-    // Эмулируем выбор обеих фич: для ref-1 (point-1, не locked) и ref-2
-    // (point-2, locked).
     const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
       (r) => r.value as IOlFeature,
     );
@@ -668,7 +673,6 @@ describe('refsOnMap lock protection', () => {
     );
     clickHandler({ pixel: [0, 0] });
 
-    // Подтверждаем delete в confirm.
     window.confirm = jest.fn(() => true);
     const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
       void _args;
@@ -680,33 +684,25 @@ describe('refsOnMap lock protection', () => {
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
-    // Дожидаемся deleteRefsFromServer + then-цепочки.
     await Promise.resolve();
     await Promise.resolve();
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const init = fetchSpy.mock.calls[0][1] as RequestInit;
-    // Bearer-токен передан в Authorization заголовке - симметрично с
-    // inventoryApi.deleteInventoryItems и migrationApi.postMark.
     expect(init.headers).toMatchObject({
       authorization: 'Bearer test-token',
       'content-type': 'application/json',
     });
     const body = JSON.parse(init.body as string) as { selection: Record<string, number> };
-    // ref-1 (l=point-1, не locked) в payload; ref-2 (l=point-2, locked) - НЕ в payload.
     expect(body.selection).toHaveProperty('ref-1');
     expect(body.selection).not.toHaveProperty('ref-2');
   });
 
   test('без auth-токена delete не отправляет fetch', async () => {
-    // Контр-тест к новой проверке Authorization: если токен пропал из
-    // localStorage (logout или ручная чистка), deleteRefsFromServer
-    // возвращает error без сетевого вызова. Симметрично с buildAuthHeaders
-    // в inventoryApi (там throw).
     localStorage.removeItem('auth');
     setInventoryCacheWithLocks();
     clickShowButton();
-    await flushTeamLoad();
+    await flushAsync();
     const clickHandler = map._clickListeners[0];
     const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
       (r) => r.value as IOlFeature,
@@ -729,8 +725,6 @@ describe('refsOnMap lock protection', () => {
     await Promise.resolve();
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    // Ошибка ушла в console.error через стандартную ветку обработки
-    // response.error в handleDeleteClick.
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining('refsOnMap'),
       expect.stringContaining('Auth token'),
@@ -741,12 +735,11 @@ describe('refsOnMap lock protection', () => {
   test('all-locked selection: confirm не вызывается, fetch не идёт, показан toast', async () => {
     setInventoryCacheWithLocks();
     clickShowButton();
-    await flushTeamLoad();
+    await flushAsync();
     const clickHandler = map._clickListeners[0];
     const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
       (r) => r.value as IOlFeature,
     );
-    // Выбираем только locked-фичу (ref-2 на point-2).
     (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
       (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
         callback(allFeatures[1]);
@@ -765,29 +758,22 @@ describe('refsOnMap lock protection', () => {
 
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
-    // Toast виден в DOM.
     expect(document.querySelector('.svp-toast')).not.toBeNull();
   });
 
   test('mix-кэш блокирует удаление: одна стопка без поля f - confirm и fetch не вызываются, показан toast', async () => {
-    // Mix-кэш: ref-1 без `f`, ref-2 с lock-битом. Симметрично с слоями
-    // защиты в slowRefsDelete и cleanupCalculator: стопки без `f` не
-    // попадают в lockedPointGuids (`if (item.f === undefined) continue`),
-    // и точка по факту locked может быть удалена вслепую. Защита: если хоть
-    // одна реф-стопка без `f` - удаление через viewer запрещено.
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Mixed Open' },
       { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Mixed Locked', f: 0b10 },
     ];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
     clickShowButton();
-    await flushTeamLoad();
+    await flushAsync();
 
     const clickHandler = map._clickListeners[0];
     const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
       (r) => r.value as IOlFeature,
     );
-    // Выбираем ref-1 (без `f`, точка по нашему фильтру выглядит «открытой»).
     (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
       (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
         callback(allFeatures[0]);
@@ -810,16 +796,13 @@ describe('refsOnMap lock protection', () => {
   });
 
   test('0.6.0 кэш без поля f целиком: удаление заблокировано', async () => {
-    // На 0.6.0 сервер не отдаёт `f`. lockSupportAvailable=false - удаление
-    // через viewer заблокировано целиком, чтобы пользователь не лишился
-    // ключей из-за отсутствия lock-семантики на старой версии игры.
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Old A' },
       { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Old B' },
     ];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
     clickShowButton();
-    await flushTeamLoad();
+    await flushAsync();
 
     const clickHandler = map._clickListeners[0];
     const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
@@ -864,13 +847,6 @@ describe('refsOnMap own-team protection', () => {
     mockGetPlayerTeam.mockReturnValue(team);
   }
 
-  /**
-   * Имитация "загрузки команд завершилась": устанавливает свойство `team`
-   * на каждой созданной OlFeature по pointGuid. Аналог конечного состояния
-   * loadTeamDataForRefs без зависимости от fetch-моков. Прогресс-бар и
-   * teamsLoading-блокировки закрываются отдельным applyState'ом, который
-   * тут не имитируется - используется flushTeamLoad ниже.
-   */
   function applyTeamsToFeatures(teamsByPoint: Record<string, number | null>): void {
     const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
       (r) => r.value as IOlFeature,
@@ -885,10 +861,18 @@ describe('refsOnMap own-team protection', () => {
     }
   }
 
-  async function flushTeamLoad(): Promise<void> {
-    for (let i = 0; i < 10; i++) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    }
+  /**
+   * Эмулирует пользовательский flow включения чекбокса: выбор фичи
+   * (uniqueRefsToDelete>0 ⇒ чекбокс становится visible), затем клик-toggle.
+   * Прямая запись keepOwnTeam через localStorage больше не работает -
+   * флаг эфемерный.
+   */
+  function enableKeepOwnTeamCheckbox(): void {
+    const checkbox = document.querySelector(
+      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+    ) as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
   }
 
   beforeEach(async () => {
@@ -902,6 +886,16 @@ describe('refsOnMap own-team protection', () => {
     mockOl();
     originalConfirm = window.confirm;
     originalFetch = window.fetch;
+    // Дефолтный fetch не моделирует /api/inview - тесты ставят team вручную
+    // через applyTeamsToFeatures. Хук /inview не активируется без специально
+    // отправленного запроса на /api/inview, что соответствует тестируемому
+    // блоку: проверка partition по team, не источник team.
+    window.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response),
+    ) as unknown as typeof window.fetch;
     localStorage.setItem('auth', 'test-token');
     setPlayerTeam(1);
     await refsOnMap.enable();
@@ -909,18 +903,17 @@ describe('refsOnMap own-team protection', () => {
 
   afterEach(async () => {
     await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
     delete window.ol;
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('follow');
     localStorage.removeItem('auth');
-    localStorage.removeItem('svp_refsOnMap');
     document.body.innerHTML = '';
     window.confirm = originalConfirm;
     window.fetch = originalFetch;
   });
 
   function setMixedInventoryCache(): void {
-    // Все рефы с f=0 (lockSupportAvailable=true), две точки разной команды.
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-own', ti: 'Mine', f: 0 },
       { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-enemy', ti: 'Enemy', f: 0 },
@@ -929,10 +922,9 @@ describe('refsOnMap own-team protection', () => {
   }
 
   test('keepOwnTeam=true, playerTeam=1: своя точка в protected, чужая в payload', async () => {
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true }));
     setMixedInventoryCache();
     clickShowButton();
-    await flushTeamLoad();
+    await flushAsync();
     applyTeamsToFeatures({ 'point-own': 1, 'point-enemy': 2 });
 
     const clickHandler = map._clickListeners[0];
@@ -940,7 +932,6 @@ describe('refsOnMap own-team protection', () => {
       (r) => r.value as IOlFeature,
     );
     expect(allFeatures.length).toBe(2);
-    // Кликаем по обеим: своя ушла в protectedByOwnTeam, чужая deletable.
     (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
       (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
         callback(allFeatures[0]);
@@ -953,6 +944,8 @@ describe('refsOnMap own-team protection', () => {
       },
     );
     clickHandler({ pixel: [0, 0] });
+
+    enableKeepOwnTeamCheckbox();
 
     window.confirm = jest.fn(() => true);
     const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
@@ -976,11 +969,10 @@ describe('refsOnMap own-team protection', () => {
     expect(body.selection).toHaveProperty('ref-2');
   });
 
-  test('keepOwnTeam=false: фильтр не работает, обе точки в payload', async () => {
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: false }));
+  test('keepOwnTeam=false (по дефолту): фильтр не работает, обе точки в payload', async () => {
     setMixedInventoryCache();
     clickShowButton();
-    await flushTeamLoad();
+    await flushAsync();
     applyTeamsToFeatures({ 'point-own': 1, 'point-enemy': 2 });
 
     const clickHandler = map._clickListeners[0];
@@ -1023,13 +1015,10 @@ describe('refsOnMap own-team protection', () => {
   });
 
   test('keepOwnTeam=true + playerTeam=null: удаление заблокировано, fetch не идёт', async () => {
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true }));
     setMixedInventoryCache();
     clickShowButton();
-    await flushTeamLoad();
+    await flushAsync();
     applyTeamsToFeatures({ 'point-own': 1, 'point-enemy': 2 });
-    // Убираем playerTeam после загрузки, перед нажатием trash.
-    setPlayerTeam(null);
 
     const clickHandler = map._clickListeners[0];
     const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
@@ -1041,6 +1030,9 @@ describe('refsOnMap own-team protection', () => {
       },
     );
     clickHandler({ pixel: [0, 0] });
+
+    enableKeepOwnTeamCheckbox();
+    setPlayerTeam(null);
 
     const confirmSpy = jest.fn(() => true);
     window.confirm = confirmSpy;
@@ -1057,19 +1049,14 @@ describe('refsOnMap own-team protection', () => {
   });
 
   test('keepOwnTeam=true: точка с team=undefined fail-safe защищена', async () => {
-    // mockTeamFetch для point-unknown возвращает {data: {}} (без te) -
-    // fetchPointTeam вернёт null, teamCache не получит запись, feature.team
-    // останется undefined. При keepOwnTeam=true это попадает в protectedByOwnTeam.
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true }));
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-unknown', ti: 'Unk', f: 0 },
       { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-enemy', ti: 'Enemy', f: 0 },
     ];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
     clickShowButton();
-    await flushTeamLoad();
-    // point-unknown оставляем без team (имитация: API вернул null);
-    // point-enemy получает team=2.
+    await flushAsync();
+    // point-unknown без team (имитация: API не вернул); point-enemy = команда 2.
     applyTeamsToFeatures({ 'point-enemy': 2 });
 
     const clickHandler = map._clickListeners[0];
@@ -1088,6 +1075,8 @@ describe('refsOnMap own-team protection', () => {
       },
     );
     clickHandler({ pixel: [0, 0] });
+
+    enableKeepOwnTeamCheckbox();
 
     window.confirm = jest.fn(() => true);
     const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
@@ -1112,11 +1101,9 @@ describe('refsOnMap own-team protection', () => {
   });
 
   test('keepOwnTeam=true, deletable=0: только свои - тост "your team"', async () => {
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true }));
     setMixedInventoryCache();
     clickShowButton();
-    await flushTeamLoad();
-    // Обе точки команды игрока (1) - все попадают в protectedByOwnTeam.
+    await flushAsync();
     applyTeamsToFeatures({ 'point-own': 1, 'point-enemy': 1 });
 
     const clickHandler = map._clickListeners[0];
@@ -1136,6 +1123,8 @@ describe('refsOnMap own-team protection', () => {
     );
     clickHandler({ pixel: [0, 0] });
 
+    enableKeepOwnTeamCheckbox();
+
     const confirmSpy = jest.fn(() => true);
     window.confirm = confirmSpy;
     const fetchSpy = jest.fn();
@@ -1147,7 +1136,6 @@ describe('refsOnMap own-team protection', () => {
 
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
-    // Тост говорит про "свои/your team", не про "unknown" и не "lock".
     const toast = document.querySelector('.svp-toast')?.textContent ?? '';
     expect(toast).toMatch(/свои|your team/i);
     expect(toast).not.toMatch(/locked|замочк/i);
@@ -1155,12 +1143,10 @@ describe('refsOnMap own-team protection', () => {
   });
 
   test('keepOwnTeam=true, deletable=0: только unknown - тост "unknown team color"', async () => {
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true }));
     setMixedInventoryCache();
     clickShowButton();
-    await flushTeamLoad();
+    await flushAsync();
     // Обе точки без team - все попадают в protectedByUnknownTeam.
-    // applyTeamsToFeatures не вызываем.
 
     const clickHandler = map._clickListeners[0];
     const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
@@ -1179,6 +1165,8 @@ describe('refsOnMap own-team protection', () => {
     );
     clickHandler({ pixel: [0, 0] });
 
+    enableKeepOwnTeamCheckbox();
+
     const confirmSpy = jest.fn(() => true);
     window.confirm = confirmSpy;
     const fetchSpy = jest.fn();
@@ -1196,14 +1184,9 @@ describe('refsOnMap own-team protection', () => {
   });
 
   test('keepOwnTeam=true, 1 своя + 1 чужая (сценарий пользователя): чужая удаляется, тост "Свои"', async () => {
-    // Регрессия: раньше при team=undefined fail-safe заталкивал чужую в
-    // protectedByOwnTeam, и тост ложно говорил "all your team". Теперь
-    // фикс - чужая идёт в deletable, своя в protectedByOwnTeam, удаление
-    // проходит, тост по факту.
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true }));
     setMixedInventoryCache();
     clickShowButton();
-    await flushTeamLoad();
+    await flushAsync();
     applyTeamsToFeatures({ 'point-own': 1, 'point-enemy': 2 });
 
     const clickHandler = map._clickListeners[0];
@@ -1223,6 +1206,8 @@ describe('refsOnMap own-team protection', () => {
     );
     clickHandler({ pixel: [0, 0] });
 
+    enableKeepOwnTeamCheckbox();
+
     window.confirm = jest.fn(() => true);
     const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
       void _args;
@@ -1235,26 +1220,47 @@ describe('refsOnMap own-team protection', () => {
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
-    await flushTeamLoad();
+    await flushAsync();
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    // Тост после удаления: "Свои: 1 ключ оставлен", без unknown.
     const toast = document.querySelector('.svp-toast')?.textContent ?? '';
     expect(toast).toMatch(/свои|own team/i);
     expect(toast).not.toMatch(/unknown|не загружен/i);
   });
 });
 
-// ── progress bar + interaction lock ──────────────────────────────────────────
+// ── /inview-driven team load ─────────────────────────────────────────────────
 
-describe('refsOnMap progress + interaction lock', () => {
+describe('refsOnMap /inview team load', () => {
   let view: ReturnType<typeof makeView>;
   let map: ReturnType<typeof makeMap>;
   let originalFetch: typeof window.fetch;
+  // fetchSpy создаётся ДО enable() и присваивается на window.fetch, чтобы
+  // installInviewFetchHook захватил его как `originalFetch` внутри хука.
+  // Перезапись window.fetch=fetchSpy ПОСЛЕ enable() сломала бы цепочку.
+  let fetchSpy: jest.Mock;
 
   function clickShowButton(): void {
     const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
     button.click();
+  }
+
+  function setInventory(): void {
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'A', f: 0 },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'B', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+  }
+
+  /**
+   * Заглушает active pull (visible-only через /api/point) - extent
+   * выставлен далеко от моковых координат features [0, 0], так что
+   * getVisiblePointGuids возвращает пусто и worker не стартует. Тесты
+   * этого блока проверяют именно /inview hook без шума /api/point.
+   */
+  function setExtentOutsideFeatures(): void {
+    view.calculateExtent = (): number[] => [100, 100, 200, 200];
   }
 
   beforeEach(async () => {
@@ -1267,114 +1273,144 @@ describe('refsOnMap progress + interaction lock', () => {
     mockGetOlMap.mockResolvedValue(map);
     mockOl();
     originalFetch = window.fetch;
+    fetchSpy = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response),
+    );
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
     localStorage.setItem('auth', 'test-token');
     await refsOnMap.enable();
   });
 
   afterEach(async () => {
     await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
     delete window.ol;
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('follow');
     localStorage.removeItem('auth');
-    localStorage.removeItem('svp_refsOnMap');
     document.body.innerHTML = '';
     window.fetch = originalFetch;
   });
 
-  /**
-   * Хелпер с настраиваемой задержкой на /api/point: позволяет тесту
-   * наблюдать состояние "загрузка идёт", не дожидаясь applyTeamsLoadedState.
-   */
-  function mockSlowTeamFetch(): { resolveAll: () => void } {
-    const pending: (() => void)[] = [];
-    window.fetch = jest.fn((input: RequestInfo | URL) => {
-      // input может быть string или Request - оба покрываются типом
-      // RequestInfo. Для Request читаем .url; для URL берём .href.
+  test('/inview-ответ с p[].t пишет team в feature, /api/point не вызывается', async () => {
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (url.includes('/api/point')) {
-        return new Promise<Response>((resolve) => {
-          pending.push(() => {
-            resolve({
-              ok: true,
-              json: () => Promise.resolve({ data: { te: 1 } }),
-            } as unknown as Response);
-          });
-        });
+      if (url.includes('/api/inview')) {
+        return Promise.resolve(
+          makeInviewResponse([
+            { g: 'point-1', t: 2 },
+            { g: 'point-2', t: 3 },
+          ]),
+        );
       }
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({}),
       } as unknown as Response);
-    }) as unknown as typeof window.fetch;
-    return {
-      resolveAll: () => {
-        for (const r of pending) r();
-        pending.length = 0;
-      },
-    };
-  }
+    });
 
-  async function flushTeamLoad(): Promise<void> {
-    for (let i = 0; i < 10; i++) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    }
-  }
-
-  function setInventory(): void {
-    const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'A', f: 0 }];
-    localStorage.setItem('inventory-cache', JSON.stringify(items));
-  }
-
-  test('во время загрузки команд: trashButton disabled, прогресс-бар видим', async () => {
     setInventory();
-    const slow = mockSlowTeamFetch();
+    setExtentOutsideFeatures();
     clickShowButton();
-    // Не дожидаемся applyTeamsLoadedState - проверяем промежуточное состояние.
-    await Promise.resolve();
 
-    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
-    expect(trash.disabled).toBe(true);
-    const progress = document.querySelector('.svp-refs-on-map-progress') as HTMLElement;
-    expect(progress.style.display).not.toBe('none');
+    await window.fetch('/api/inview?sw=1&ne=2&z=14');
+    await flushAsync();
 
-    // Завершаем pending fetch'и - applyTeamsLoadedState отработает.
-    slow.resolveAll();
-    await flushTeamLoad();
-
-    expect(trash.disabled).toBe(false);
-    expect(progress.style.display).toBe('none');
-  });
-
-  test('во время загрузки клик по карте не выбирает фичу (handleMapClick ранний return)', async () => {
-    setInventory();
-    const slow = mockSlowTeamFetch();
-    clickShowButton();
-    await Promise.resolve();
-
-    const clickHandler = map._clickListeners[0];
     const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
       (r) => r.value as IOlFeature,
     );
-    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
-      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
-        callback(allFeatures[0]);
-      },
+    expect(allFeatures[0].getProperties?.().team).toBe(2);
+    expect(allFeatures[1].getProperties?.().team).toBe(3);
+    const pointCalls = (fetchSpy.mock.calls as [RequestInfo | URL][]).filter(([arg]) => {
+      const url = typeof arg === 'string' ? arg : arg instanceof URL ? arg.href : arg.url;
+      return url.includes('/api/point');
+    });
+    expect(pointCalls.length).toBe(0);
+  });
+
+  test('/inview без поля t для guid: handleInviewResponse не делает fallback /api/point (active pull покрывает)', async () => {
+    // Active pull загружает все видимые ref-точки через /api/point на
+    // showViewer/moveend; handleInviewResponse fallback для guid без t -
+    // дубль, который порождал race за teamLoadQueue (см. commit comment).
+    // Тест фиксирует: /inview без t НЕ триггерит /api/point из
+    // handleInviewResponse - запрос идёт ТОЛЬКО если active pull его
+    // запланировал. Здесь extent выставлен далеко от features, active
+    // pull спит -> /api/point не должен быть вызван вообще.
+    const pointFetchSpy = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ data: { te: 5 } }),
+      } as unknown as Response),
     );
-    clickHandler({ pixel: [0, 0] });
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/api/inview')) {
+        return Promise.resolve(makeInviewResponse([{ g: 'point-1' }]));
+      }
+      if (url.includes('/api/point')) {
+        return pointFetchSpy();
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response);
+    });
 
-    // Фича не должна быть выбрана - forEachFeatureAtPixel не должен был
-    // быть вызван (handleMapClick ранний return при teamsLoading=true).
-    expect((map.forEachFeatureAtPixel as jest.Mock).mock.calls.length).toBe(0);
+    setInventory();
+    setExtentOutsideFeatures();
+    clickShowButton();
 
-    slow.resolveAll();
-    await flushTeamLoad();
+    await window.fetch('/api/inview?sw=1&ne=2&z=14');
+    await flushAsync();
+
+    expect(pointFetchSpy).not.toHaveBeenCalled();
+  });
+
+  test('повторный /inview с теми же guid: новых guid нет, повторных запросов /api/point нет', async () => {
+    const pointFetchSpy = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ data: { te: 1 } }),
+      } as unknown as Response),
+    );
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/api/inview')) {
+        return Promise.resolve(
+          makeInviewResponse([
+            { g: 'point-1', t: 1 },
+            { g: 'point-2', t: 1 },
+          ]),
+        );
+      }
+      if (url.includes('/api/point')) {
+        return pointFetchSpy();
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response);
+    });
+
+    setInventory();
+    setExtentOutsideFeatures();
+    clickShowButton();
+
+    await window.fetch('/api/inview?sw=1&ne=2&z=14');
+    await flushAsync();
+    await window.fetch('/api/inview?sw=1&ne=2&z=14');
+    await flushAsync();
+
+    expect(pointFetchSpy).not.toHaveBeenCalled();
   });
 });
 
-// ── visible-only team loading ────────────────────────────────────────────────
+// ── visible-only active pull (/api/point worker по extent) ─────────────────
 
-describe('refsOnMap visible-only team load', () => {
+describe('refsOnMap visible-only active pull', () => {
   let view: ReturnType<typeof makeView>;
   let map: ReturnType<typeof makeMap>;
   let originalFetch: typeof window.fetch;
@@ -1386,27 +1422,17 @@ describe('refsOnMap visible-only team load', () => {
   }
 
   function setExtent(extent: number[]): void {
-    // calculateExtent в makeView - стрелочная функция, не jest.Mock; подменяем
-    // напрямую. Достаточно для тестов: getMapExtent читает результат через
-    // view.calculateExtent(size).
     view.calculateExtent = (): number[] => extent;
   }
 
   function emitMoveend(): void {
-    const listeners = view._listeners.get('moveend') ?? [];
-    for (const listener of listeners) listener();
-  }
-
-  async function flushTeamLoad(): Promise<void> {
-    for (let i = 0; i < 10; i++) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    }
+    // OL fires `moveend` на Map (refs/game/script.js: map.on('moveend')),
+    // не на View. refsOnMap подписывается через olMap.on('moveend'), так
+    // что симулировать надо через map listeners, не view.
+    for (const listener of map._moveendListeners) listener();
   }
 
   function setInventory(): void {
-    // Все feature имеют координаты [0, 0] - mock OL Geom.Point. Видимость
-    // определяется extent (см. setExtent). Две разные точки в одной координате -
-    // нормально для мока, реально SBG они в разных географических местах.
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'A', f: 0 },
       { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'B', f: 0 },
@@ -1424,7 +1450,6 @@ describe('refsOnMap visible-only team load', () => {
     mockGetOlMap.mockResolvedValue(map);
     mockOl();
     originalFetch = window.fetch;
-    // Считаем количество fetch'ей на /api/point. Возвращает team=1 для всех.
     teamFetchSpy = jest.fn(() =>
       Promise.resolve({
         ok: true,
@@ -1438,20 +1463,20 @@ describe('refsOnMap visible-only team load', () => {
 
   afterEach(async () => {
     await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
     delete window.ol;
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('follow');
     localStorage.removeItem('auth');
-    localStorage.removeItem('svp_refsOnMap');
     document.body.innerHTML = '';
     window.fetch = originalFetch;
   });
 
-  test('extent не покрывает точки: fetch /api/point не идёт, прогресс-бар не показан, teamsLoading=false', async () => {
+  test('extent не покрывает точки: /api/point не идёт, прогресс-бар не показан, teamsLoading=false', async () => {
     setInventory();
-    setExtent([100, 100, 200, 200]); // далеко от [0, 0]
+    setExtent([100, 100, 200, 200]); // далеко от моковых coord [0, 0]
     clickShowButton();
-    await flushTeamLoad();
+    await flushAsync();
 
     expect(teamFetchSpy).not.toHaveBeenCalled();
     const progress = document.querySelector('.svp-refs-on-map-progress') as HTMLElement;
@@ -1460,35 +1485,26 @@ describe('refsOnMap visible-only team load', () => {
     expect(trash.disabled).toBe(false);
   });
 
-  test('extent покрывает все точки: fetch вызван по разу для каждого pointGuid', async () => {
+  test('extent покрывает все точки: /api/point вызван по разу для каждого pointGuid', async () => {
     setInventory();
-    setExtent([-1000, -1000, 1000, 1000]); // покрывает [0, 0]
+    setExtent([-1000, -1000, 1000, 1000]);
     clickShowButton();
-    await flushTeamLoad();
+    await flushAsync();
 
-    // 2 уникальных pointGuid (point-1, point-2) - 2 запроса.
     expect(teamFetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  test('moveend на покрывающий extent догружает точки, ранее вне видимости', async () => {
-    // Все feature в моках имеют координаты [0, 0] (см. mockOl). Первый
-    // extent не покрывает [0, 0] - точки невидимы, fetch не идёт. На
-    // moveend extent расширяется и покрывает - точки попадают в очередь
-    // и грузятся. Это и есть проверка что загрузка идёт по видимым,
-    // а не по всем сразу.
+  test('moveend на покрывающий extent догружает ранее невидимые точки', async () => {
     setInventory();
-    setExtent([100, 100, 200, 200]); // далеко от [0, 0]
+    setExtent([100, 100, 200, 200]);
     clickShowButton();
-    await flushTeamLoad();
-
+    await flushAsync();
     expect(teamFetchSpy).toHaveBeenCalledTimes(0);
 
-    // Расширяем extent чтобы покрыть точки. Симулируем moveend.
     setExtent([-1000, -1000, 1000, 1000]);
     emitMoveend();
-    await flushTeamLoad();
+    await flushAsync();
 
-    // 2 уникальных pointGuid - 2 запроса.
     expect(teamFetchSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -1496,42 +1512,77 @@ describe('refsOnMap visible-only team load', () => {
     setInventory();
     setExtent([-1000, -1000, 1000, 1000]);
     clickShowButton();
-    await flushTeamLoad();
-
+    await flushAsync();
     expect(teamFetchSpy).toHaveBeenCalledTimes(2);
 
     emitMoveend();
-    await flushTeamLoad();
-
-    // Никаких новых запросов.
+    await flushAsync();
     expect(teamFetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  test('hideViewer снимает moveend handler: после закрытия viewer pan не триггерит fetch', async () => {
+  test('hideViewer снимает moveend handler: после закрытия pan не триггерит fetch', async () => {
     setInventory();
-    setExtent([100, 100, 200, 200]); // нет видимых
+    setExtent([100, 100, 200, 200]);
     clickShowButton();
-    await flushTeamLoad();
-
+    await flushAsync();
     expect(teamFetchSpy).not.toHaveBeenCalled();
 
-    // Закрываем viewer
     const closeButton = document.querySelector('.svp-refs-on-map-close') as HTMLElement;
     closeButton.click();
 
-    // Пытаемся симулировать moveend - не должен ничего загружать,
-    // т. к. viewer закрыт и handler снят.
     setExtent([-1000, -1000, 1000, 1000]);
     emitMoveend();
-    await flushTeamLoad();
+    await flushAsync();
 
     expect(teamFetchSpy).not.toHaveBeenCalled();
   });
+
+  test('auto-disable keepOwnTeam на moveend с новым видимым guid', async () => {
+    setInventory();
+    // Начинаем с extent, покрывающего только point-1 (по факту coord
+    // обоих [0,0] в моках, но добавление в visible Set гарантирует
+    // unique - active pull увидит обе одновременно). Чтобы изолировать
+    // именно moveend-триггер, стартуем с пустого extent и включаем
+    // фильтр через явный select+toggle.
+    setExtent([100, 100, 200, 200]);
+    clickShowButton();
+    await flushAsync();
+
+    // На первом /inview-моке ничего не приходит (fetch на /inview не
+    // вызывался) - teamCache пуст. Выбор фичи + включение чекбокса.
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    const checkbox = document.querySelector(
+      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+    ) as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+    expect(checkbox.checked).toBe(true);
+
+    // Pan карты в новый extent, покрывающий [0, 0] - в visible
+    // появляются point-1 и point-2 (новые guid'ы) -> auto-disable.
+    setExtent([-1000, -1000, 1000, 1000]);
+    emitMoveend();
+    await flushAsync();
+
+    expect(checkbox.checked).toBe(false);
+    const toast = document.querySelector('.svp-toast');
+    expect(toast).not.toBeNull();
+    expect(toast?.textContent).toMatch(/keep own team|не удалять свои/i);
+  });
 });
 
-// ── keep own team checkbox ───────────────────────────────────────────────────
+// ── checkbox visibility ──────────────────────────────────────────────────────
 
-describe('refsOnMap keep-own-team checkbox', () => {
+describe('refsOnMap checkbox visibility', () => {
   let view: ReturnType<typeof makeView>;
   let map: ReturnType<typeof makeMap>;
   let originalFetch: typeof window.fetch;
@@ -1539,6 +1590,11 @@ describe('refsOnMap keep-own-team checkbox', () => {
   function clickShowButton(): void {
     const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
     button.click();
+  }
+
+  function setInventory(): void {
+    const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'A', f: 0 }];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
   }
 
   beforeEach(async () => {
@@ -1554,7 +1610,7 @@ describe('refsOnMap keep-own-team checkbox', () => {
     window.fetch = jest.fn(() =>
       Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ data: { te: 1 } }),
+        json: () => Promise.resolve({}),
       } as unknown as Response),
     ) as unknown as typeof window.fetch;
     localStorage.setItem('auth', 'test-token');
@@ -1563,65 +1619,436 @@ describe('refsOnMap keep-own-team checkbox', () => {
 
   afterEach(async () => {
     await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
     delete window.ol;
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('follow');
     localStorage.removeItem('auth');
-    localStorage.removeItem('svp_refsOnMap');
     document.body.innerHTML = '';
     window.fetch = originalFetch;
   });
+
+  test('viewer открыт, 0 selected: чекбокс hidden', async () => {
+    setInventory();
+    clickShowButton();
+    await flushAsync();
+
+    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
+    expect(label).not.toBeNull();
+    expect(label.style.display).toBe('none');
+  });
+
+  test('select feature: чекбокс становится visible; deselect: скрывается обратно', async () => {
+    setInventory();
+    clickShowButton();
+    await flushAsync();
+
+    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+
+    // Select.
+    clickHandler({ pixel: [0, 0] });
+    expect(label.style.display).not.toBe('none');
+
+    // Deselect (повторный клик на ту же фичу).
+    clickHandler({ pixel: [0, 0] });
+    expect(label.style.display).toBe('none');
+  });
+});
+
+// ── auto-disable keepOwnTeam on new visibility ───────────────────────────────
+
+describe('refsOnMap auto-disable keepOwnTeam', () => {
+  let view: ReturnType<typeof makeView>;
+  let map: ReturnType<typeof makeMap>;
+  let originalFetch: typeof window.fetch;
+  let fetchSpy: jest.Mock;
+
+  function clickShowButton(): void {
+    const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
+    button.click();
+  }
 
   function setInventory(): void {
     const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'A', f: 0 }];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
   }
 
-  test('чекбокс отрендерен в viewer и скрыт после закрытия', () => {
-    setInventory();
-    clickShowButton();
-    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
-    expect(label).not.toBeNull();
-    expect(label.style.display).not.toBe('none');
-
-    const closeBtn = document.querySelector('.svp-refs-on-map-close') as HTMLElement;
-    closeBtn.click();
-    expect(label.style.display).toBe('none');
+  beforeEach(async () => {
+    setupInventoryDom();
+    view = makeView(16, 0.5);
+    const pointsLayer = makeLayer('points', makeSource());
+    const linesLayer = makeLayer('lines', makeSource());
+    const regionsLayer = makeLayer('regions', makeSource());
+    map = makeMap([pointsLayer, linesLayer, regionsLayer], view);
+    mockGetOlMap.mockResolvedValue(map);
+    mockOl();
+    originalFetch = window.fetch;
+    fetchSpy = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response),
+    );
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    localStorage.setItem('auth', 'test-token');
+    await refsOnMap.enable();
   });
 
-  test('toggle сохраняет в localStorage svp_refsOnMap', () => {
+  afterEach(async () => {
+    await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
+    delete window.ol;
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('follow');
+    localStorage.removeItem('auth');
+    document.body.innerHTML = '';
+    window.fetch = originalFetch;
+  });
+
+  test('новый guid в /inview при включённом keepOwnTeam: сброс + toast', async () => {
+    let inviewPoints: { g: string; t: number }[] = [{ g: 'point-1', t: 1 }];
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/api/inview')) {
+        return Promise.resolve(makeInviewResponse(inviewPoints));
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response);
+    });
+
     setInventory();
     clickShowButton();
+    await flushAsync();
+
+    // Первый /inview: всё новое, но keepOwnTeam=false (свежий viewer-сеанс),
+    // сброс не срабатывает, toast не появляется.
+    await window.fetch('/api/inview?sw=1&ne=2&z=14');
+    await flushAsync();
+    expect(document.querySelectorAll('.svp-toast').length).toBe(0);
+
+    // Включаем чекбокс. Для visibility - сначала выбор фичи.
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
     const checkbox = document.querySelector(
       '.svp-refs-on-map-keep-own input[type="checkbox"]',
     ) as HTMLInputElement;
-
-    expect(checkbox.checked).toBe(false);
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
-    expect(JSON.parse(localStorage.getItem('svp_refsOnMap') ?? '{}')).toEqual({
-      keepOwnTeam: true,
-    });
+    expect(checkbox.checked).toBe(true);
 
-    checkbox.checked = false;
-    checkbox.dispatchEvent(new Event('change'));
-    expect(JSON.parse(localStorage.getItem('svp_refsOnMap') ?? '{}')).toEqual({
-      keepOwnTeam: false,
-    });
+    // Игра дёрнула /inview снова с НОВЫМ guid'ом (point-new ещё не было в
+    // teamCache) - срабатывает auto-disable.
+    inviewPoints = [
+      { g: 'point-1', t: 1 },
+      { g: 'point-new', t: 2 },
+    ];
+    await window.fetch('/api/inview?sw=2&ne=3&z=14');
+    await flushAsync();
+
+    expect(checkbox.checked).toBe(false);
+    const toast = document.querySelector('.svp-toast');
+    expect(toast).not.toBeNull();
+    expect(toast?.textContent).toMatch(/keep own team|не удалять свои/i);
   });
 
-  test('повторное открытие viewer восстанавливает state чекбокса', () => {
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true }));
+  test('повторный /inview с теми же guid: keepOwnTeam НЕ сбрасывается, toast не появляется', async () => {
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/api/inview')) {
+        return Promise.resolve(makeInviewResponse([{ g: 'point-1', t: 1 }]));
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response);
+    });
+
     setInventory();
     clickShowButton();
+    await flushAsync();
+    await window.fetch('/api/inview?sw=1&ne=2&z=14');
+    await flushAsync();
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
     const checkbox = document.querySelector(
       '.svp-refs-on-map-keep-own input[type="checkbox"]',
     ) as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+
+    await window.fetch('/api/inview?sw=1&ne=2&z=14');
+    await flushAsync();
+
+    expect(checkbox.checked).toBe(true);
+    expect(document.querySelector('.svp-toast')).toBeNull();
+  });
+
+  test('новый guid в /inview при выключенном keepOwnTeam: тоста нет, состояние не меняется', async () => {
+    let inviewPoints: { g: string; t: number }[] = [{ g: 'point-1', t: 1 }];
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/api/inview')) {
+        return Promise.resolve(makeInviewResponse(inviewPoints));
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response);
+    });
+
+    setInventory();
+    clickShowButton();
+    await flushAsync();
+    await window.fetch('/api/inview?sw=1&ne=2&z=14');
+    await flushAsync();
+
+    inviewPoints = [
+      { g: 'point-1', t: 1 },
+      { g: 'point-new', t: 2 },
+    ];
+    await window.fetch('/api/inview?sw=2&ne=3&z=14');
+    await flushAsync();
+
+    expect(document.querySelector('.svp-toast')).toBeNull();
+  });
+});
+
+// ── ephemeral keepOwnTeam ────────────────────────────────────────────────────
+
+describe('refsOnMap ephemeral keepOwnTeam', () => {
+  let view: ReturnType<typeof makeView>;
+  let map: ReturnType<typeof makeMap>;
+  let originalFetch: typeof window.fetch;
+
+  function clickShowButton(): void {
+    const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
+    button.click();
+  }
+
+  function clickCloseButton(): void {
+    const button = document.querySelector('.svp-refs-on-map-close') as HTMLElement;
+    button.click();
+  }
+
+  function setInventory(): void {
+    const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'A', f: 0 }];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+  }
+
+  beforeEach(async () => {
+    setupInventoryDom();
+    view = makeView(16, 0.5);
+    const pointsLayer = makeLayer('points', makeSource());
+    const linesLayer = makeLayer('lines', makeSource());
+    const regionsLayer = makeLayer('regions', makeSource());
+    map = makeMap([pointsLayer, linesLayer, regionsLayer], view);
+    mockGetOlMap.mockResolvedValue(map);
+    mockOl();
+    originalFetch = window.fetch;
+    window.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response),
+    ) as unknown as typeof window.fetch;
+    localStorage.setItem('auth', 'test-token');
+    await refsOnMap.enable();
+  });
+
+  afterEach(async () => {
+    await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
+    delete window.ol;
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('follow');
+    localStorage.removeItem('auth');
+    document.body.innerHTML = '';
+    window.fetch = originalFetch;
+  });
+
+  test('reopen viewer: чекбокс off независимо от прошлого state, localStorage svp_refsOnMap отсутствует', async () => {
+    setInventory();
+    clickShowButton();
+    await flushAsync();
+
+    // Эмулируем включение в первом сеансе.
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    const checkbox = document.querySelector(
+      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+    ) as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
     expect(checkbox.checked).toBe(true);
 
-    const closeBtn = document.querySelector('.svp-refs-on-map-close') as HTMLElement;
-    closeBtn.click();
+    // Закрываем viewer, открываем повторно.
+    clickCloseButton();
     clickShowButton();
-    expect(checkbox.checked).toBe(true);
+    await flushAsync();
+
+    expect(checkbox.checked).toBe(false);
+    expect(localStorage.getItem('svp_refsOnMap')).toBeNull();
+  });
+});
+
+// ── progress + interaction lock (fallback /api/point worker) ─────────────────
+
+describe('refsOnMap progress + interaction lock', () => {
+  let view: ReturnType<typeof makeView>;
+  let map: ReturnType<typeof makeMap>;
+  let originalFetch: typeof window.fetch;
+  let fetchSpy: jest.Mock;
+
+  function clickShowButton(): void {
+    const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
+    button.click();
+  }
+
+  function setInventory(): void {
+    const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'A', f: 0 }];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+  }
+
+  /**
+   * Имитирует медленный /api/point с управляемым resolve. /inview сразу
+   * отдаёт guid без `t`, чтобы handleInviewResponse поднял teamsLoading
+   * через очередь fallback.
+   */
+  function configureSlowFallback(): { resolveAll: () => void } {
+    const pending: (() => void)[] = [];
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/api/inview')) {
+        return Promise.resolve(makeInviewResponse([{ g: 'point-1' }]));
+      }
+      if (url.includes('/api/point')) {
+        return new Promise<Response>((resolve) => {
+          pending.push(() => {
+            resolve({
+              ok: true,
+              json: () => Promise.resolve({ data: { te: 1 } }),
+            } as unknown as Response);
+          });
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response);
+    });
+    return {
+      resolveAll: () => {
+        for (const r of pending) r();
+        pending.length = 0;
+      },
+    };
+  }
+
+  beforeEach(async () => {
+    setupInventoryDom();
+    view = makeView(16, 0.5);
+    const pointsLayer = makeLayer('points', makeSource());
+    const linesLayer = makeLayer('lines', makeSource());
+    const regionsLayer = makeLayer('regions', makeSource());
+    map = makeMap([pointsLayer, linesLayer, regionsLayer], view);
+    mockGetOlMap.mockResolvedValue(map);
+    mockOl();
+    originalFetch = window.fetch;
+    fetchSpy = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response),
+    );
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    localStorage.setItem('auth', 'test-token');
+    await refsOnMap.enable();
+  });
+
+  afterEach(async () => {
+    await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
+    delete window.ol;
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('follow');
+    localStorage.removeItem('auth');
+    document.body.innerHTML = '';
+    window.fetch = originalFetch;
+  });
+
+  test('во время fallback /api/point: trashButton disabled, прогресс-бар видим', async () => {
+    setInventory();
+    const slow = configureSlowFallback();
+    clickShowButton();
+    await flushAsync();
+
+    await window.fetch('/api/inview?sw=1&ne=2&z=14');
+    await flushAsync();
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.disabled).toBe(true);
+    const progress = document.querySelector('.svp-refs-on-map-progress') as HTMLElement;
+    expect(progress.style.display).not.toBe('none');
+
+    slow.resolveAll();
+    await flushAsync();
+
+    expect(trash.disabled).toBe(false);
+    expect(progress.style.display).toBe('none');
+  });
+
+  test('во время fallback /api/point: клик по карте не выбирает фичу', async () => {
+    setInventory();
+    const slow = configureSlowFallback();
+    clickShowButton();
+    await flushAsync();
+    await window.fetch('/api/inview?sw=1&ne=2&z=14');
+    await flushAsync();
+
+    const clickHandler = map._clickListeners[0];
+    (map.forEachFeatureAtPixel as jest.Mock).mockClear();
+    clickHandler({ pixel: [0, 0] });
+
+    expect((map.forEachFeatureAtPixel as jest.Mock).mock.calls.length).toBe(0);
+
+    slow.resolveAll();
+    await flushAsync();
   });
 });
