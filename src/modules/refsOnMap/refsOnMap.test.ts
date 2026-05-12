@@ -2698,12 +2698,6 @@ describe('refsOnMap selection breakdown UI', () => {
       '.svp-refs-on-map-selection-info__unknown',
     ) as HTMLElement;
     expect(unknown.style.display).toBe('none');
-
-    const deletableRow = document.querySelector(
-      '.svp-refs-on-map-selection-info__deletable',
-    ) as HTMLElement;
-    expect(deletableRow.textContent).toMatch(/6\s*(?:ключей|key)/);
-    expect(deletableRow.textContent).toMatch(/(?:к удалению|to delete)/);
   });
 
   test('keepOwnTeam=true: own-row видна, deletable исключает своих, protected пуст без lock', async () => {
@@ -2746,12 +2740,6 @@ describe('refsOnMap selection breakdown UI', () => {
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     // Удаляется enemy: 1 точка (2 ключа).
     expect(trash.textContent).toMatch(/1\s*\(\s*2\s*(?:ключей|keys)\)/);
-
-    const deletableRow = document.querySelector(
-      '.svp-refs-on-map-selection-info__deletable',
-    ) as HTMLElement;
-    expect(deletableRow.textContent).toMatch(/2\s*(?:ключей|key)/);
-    expect(deletableRow.textContent).toMatch(/(?:к удалению|to delete)/);
   });
 
   test('own-row текст под цвет команды: team=2 (зелёные)', async () => {
@@ -2875,12 +2863,6 @@ describe('refsOnMap selection breakdown UI', () => {
     expect(protectedRow.textContent).toMatch(
       /1\s*\(\s*2\s*(?:ключей|keys)\)\s*(?:защищено|protected)/,
     );
-
-    const deletableRow = document.querySelector(
-      '.svp-refs-on-map-selection-info__deletable',
-    ) as HTMLElement;
-    expect(deletableRow.textContent).toMatch(/4\s*(?:ключей|key)/);
-    expect(deletableRow.textContent).toMatch(/(?:к удалению|to delete)/);
   });
 
   test('deselect всех: trashButton и selectionInfo скрываются обратно', async () => {
@@ -2963,99 +2945,6 @@ describe('refsOnMap selection breakdown UI', () => {
     expect(unknown.textContent).toMatch(
       /1\s*\(\s*1\s*(?:ключей|keys)\)\s*(?:неизвестного цвета|unknown team)/,
     );
-
-    const deletableRow = document.querySelector(
-      '.svp-refs-on-map-selection-info__deletable',
-    ) as HTMLElement;
-    expect(deletableRow.textContent).toMatch(/1\s*(?:ключей|key)/);
-    expect(deletableRow.textContent).toMatch(/(?:к удалению|to delete)/);
-  });
-
-  test('инвариант: сумма ключей по всем строкам = total (с учётом частичных)', async () => {
-    // Сценарий из жалобы пользователя: lock + own + keepOne (полные) +
-    // keepOne (частичные) + deletable. Сумма всех "ключей по строкам"
-    // должна равняться total.
-    //
-    // Раскладка (keepOwnTeam=true, mockGetPlayerTeam=1 => 1 = красная,
-    // 2 = зелёная свои? нет: в этом блоке beforeEach ставит team=1):
-    // - point-lock (lock=замок, выделена 1 стопка=3 ключа) -> lock_keys=3.
-    // - point-own (team=1=мои красные, 1 стопка=2 ключа) -> own_keys=2.
-    // - point-full-keepone (team=2 enemy, 1 стопка=1 ключ) - удаление целиком
-    //   запрещено правилом (selectedAmount<=1), полностью защищена -> keepOne 1.
-    // - point-partial (team=2 enemy, 1 стопка=4 ключа) - частично удалится,
-    //   3 в payload, 1 остаётся -> deletable=3, keepOne 1.
-    // Всего ключей: 3+2+1+4=10. Сумма строк: lock(3)+own(2)+keepOne(2)+deletable(3)=10.
-    const items = [
-      { t: 3, a: 3, c: [100, 13], g: 'ref-lock', l: 'point-lock', ti: 'L', f: 0b10 },
-      { t: 3, a: 2, c: [100, 13], g: 'ref-own', l: 'point-own', ti: 'O', f: 0 },
-      { t: 3, a: 1, c: [100, 13], g: 'ref-1', l: 'point-full-keepone', ti: 'F', f: 0 },
-      { t: 3, a: 4, c: [100, 13], g: 'ref-4', l: 'point-partial', ti: 'P', f: 0 },
-    ];
-    localStorage.setItem('inventory-cache', JSON.stringify(items));
-    // keepOneKey=true для этого теста.
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: false, keepOneKey: true }));
-    clickShowButton();
-    await flushAsync();
-    applyTeams({
-      'point-lock': 2,
-      'point-own': 1,
-      'point-full-keepone': 2,
-      'point-partial': 2,
-    });
-
-    selectFeatureByIndex(0); // ref-lock
-    selectFeatureByIndex(1); // ref-own
-    selectFeatureByIndex(2); // ref-1 (1 ключ)
-    selectFeatureByIndex(3); // ref-4 (4 ключа)
-
-    // keepOwnTeam=true
-    const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
-    ) as HTMLInputElement;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
-
-    function extractNumber(text: string | null, re: RegExp): number {
-      if (text === null) return 0;
-      const match = re.exec(text);
-      return match ? parseInt(match[1], 10) : 0;
-    }
-
-    const total = document.querySelector('.svp-refs-on-map-selection-info__total') as HTMLElement;
-    const totalKeys = extractNumber(total.textContent, /\(\s*(\d+)\s*(?:ключей|keys)/);
-    expect(totalKeys).toBe(10);
-
-    const protectedRow = document.querySelector(
-      '.svp-refs-on-map-selection-info__protected',
-    ) as HTMLElement;
-    const lockKeys = extractNumber(protectedRow.textContent, /\(\s*(\d+)\s*(?:ключей|keys)/);
-    expect(lockKeys).toBe(3);
-
-    const own = document.querySelector('.svp-refs-on-map-selection-info__own') as HTMLElement;
-    const ownKeys = extractNumber(own.textContent, /\(\s*(\d+)\s*(?:ключей|keys)/);
-    expect(ownKeys).toBe(2);
-
-    const keepOneRow = document.querySelector(
-      '.svp-refs-on-map-selection-info__keepone',
-    ) as HTMLElement;
-    // "X точек сохранят 1 ключ" - X = 2 (point-full-keepone полностью + point-partial частично).
-    const keepOnePoints = extractNumber(keepOneRow.textContent, /^\s*(\d+)\s*/);
-    expect(keepOnePoints).toBe(2);
-
-    const deletableRow = document.querySelector(
-      '.svp-refs-on-map-selection-info__deletable',
-    ) as HTMLElement;
-    const deletableKeys = extractNumber(deletableRow.textContent, /^\s*(\d+)\s*/);
-    expect(deletableKeys).toBe(3);
-
-    // Сумма ключей по всем строкам = total. keepOne_keys = 2 (1 полностью
-    // защищённая + 1 от частично удалённой). Доступа к нему через UI нет
-    // (текст содержит только число точек, не ключей), но известно по
-    // алгоритму: для каждой точки в keepOne сохранён ровно 1 ключ если
-    // частичная, или selectedAmount если полностью защищённая (<=1).
-    // 2 точки * 1 ключ = 2.
-    const keepOneKeysComputed = 2;
-    expect(lockKeys + ownKeys + keepOneKeysComputed + deletableKeys).toBe(totalKeys);
   });
 });
 
@@ -3834,7 +3723,7 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     expect(payload).toEqual({ r: 4 });
   });
 
-  test('UI: кнопка "Корзина" и строка "к удалению" учитывают keepOneKey', async () => {
+  test('UI: кнопка "Корзина" учитывает keepOneKey (показывает payload sum)', async () => {
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ t: 3, a: 5, c: [100.5, 13.7], g: 'r', l: 'p', ti: 'P', f: 0 }]),
@@ -3846,17 +3735,11 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     selectFeatureByIndex(0);
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
-    // 1 точка, фактически удалится 4 ключа.
+    // 1 точка, фактически удалится 4 ключа (1 остаётся по правилу).
     expect(trash.textContent).toMatch(/1\s*\(\s*4\s*(?:ключей|keys)\)/);
-
-    const deletableRow = document.querySelector(
-      '.svp-refs-on-map-selection-info__deletable',
-    ) as HTMLElement;
-    expect(deletableRow.textContent).toMatch(/4\s*(?:ключей|key)/);
-    expect(deletableRow.textContent).toMatch(/(?:к удалению|to delete)/);
   });
 
-  test('UI: точка с 1 ключом в selection-info__keepone, не в deletable', async () => {
+  test('UI: точка с 1 ключом полностью защищена правилом - кнопка "0 (0 ключей)"', async () => {
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ t: 3, a: 1, c: [100.5, 13.7], g: 'r', l: 'p', ti: 'P', f: 0 }]),
@@ -3869,13 +3752,6 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     expect(trash.textContent).toMatch(/0\s*\(\s*0\s*(?:ключей|keys)\)/);
-
-    const keepOneRow = document.querySelector(
-      '.svp-refs-on-map-selection-info__keepone',
-    ) as HTMLElement;
-    expect(keepOneRow.style.display).not.toBe('none');
-    // Текст "X точек сохранят 1 ключ" - X=1 для одной полностью защищённой точки.
-    expect(keepOneRow.textContent).toMatch(/1\s*(?:точек|point)/);
   });
 
   test('ИНВАРИАНТ: при любой комбинации payload по точке < inventory total', async () => {
