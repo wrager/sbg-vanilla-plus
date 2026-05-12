@@ -20,7 +20,7 @@
 
 .svp-refs-on-map-trash {
   position: fixed;
-  bottom: 45px;
+  bottom: 50px;
   right: 8px;
   z-index: 10;
   height: 38px;
@@ -78,10 +78,9 @@
 
 .svp-refs-on-map-cancel {
   position: fixed;
-  bottom: 4px;
+  bottom: 8px;
   right: 8px;
   z-index: 10;
-  width: 38px;
   height: 38px;
   border: none;
   border-radius: 3px;
@@ -90,11 +89,10 @@
 
 .svp-refs-on-map-keep-own {
   position: fixed;
-  bottom: 86px;
+  bottom: 92px;
   right: 8px;
   z-index: 10;
   background: var(--background-transp);
-  border: 1px solid var(--border-transp);
   backdrop-filter: blur(8px);
   color: var(--text);
   font-size: 13px;
@@ -114,11 +112,10 @@
 
 .svp-refs-on-map-keep-one {
   position: fixed;
-  bottom: 122px;
+  bottom: 126px;
   right: 8px;
   z-index: 10;
   background: var(--background-transp);
-  border: 1px solid var(--border-transp);
   backdrop-filter: blur(8px);
   color: var(--text);
   font-size: 13px;
@@ -138,17 +135,15 @@
 
 .svp-refs-on-map-selection-info {
   position: fixed;
-  bottom: 158px;
-  right: 8px;
+  bottom: 71px;
+  left: 8px;
   z-index: 10;
   background: var(--background-transp);
-  border: 1px solid var(--border-transp);
   backdrop-filter: blur(8px);
   color: var(--text);
   font-size: 10px;
   padding: 8px 12px;
   border-radius: 8px;
-  text-align: right;
   line-height: 1.4;
   max-width: calc(100vw - 40px);
   pointer-events: none;
