@@ -736,7 +736,10 @@ describe('refsOnMap lock protection', () => {
     errorSpy.mockRestore();
   });
 
-  test('all-locked selection: confirm не вызывается, fetch не идёт, показан toast', async () => {
+  test('all-locked selection: trash disabled, click игнорируется (fetch не идёт)', async () => {
+    // При выборе только locked-точки deletable=0 -> trash.disabled=true.
+    // Click на disabled-кнопке не запускает обработчик в jsdom (как и в
+    // браузере), confirm и fetch остаются не вызванными.
     setInventoryCacheWithLocks();
     clickShowButton();
     await flushAsync();
@@ -756,13 +759,13 @@ describe('refsOnMap lock protection', () => {
     const fetchSpy = jest.fn();
     window.fetch = fetchSpy as unknown as typeof window.fetch;
 
-    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.disabled).toBe(true);
     trash.click();
     await Promise.resolve();
 
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(document.querySelector('.svp-toast')).not.toBeNull();
   });
 
   test('mix-кэш блокирует удаление: одна стопка без поля f - confirm и fetch не вызываются, показан toast', async () => {
@@ -1018,7 +1021,10 @@ describe('refsOnMap own-team protection', () => {
     expect(body.selection).toHaveProperty('ref-2');
   });
 
-  test('keepOwnTeam=true + playerTeam=null: удаление заблокировано, fetch не идёт', async () => {
+  test('keepOwnTeam=true + playerTeam=null: trash disabled, fetch не идёт', async () => {
+    // playerTeam=null + keepOwnTeam=true -> computeSelectionBreakdown
+    // переводит всё selected в protectedByUnknownTeam (defensive). deletable=0,
+    // trash.disabled=true. Click игнорируется, fetch не вызывается.
     setMixedInventoryCache();
     clickShowButton();
     await flushAsync();
@@ -1043,13 +1049,13 @@ describe('refsOnMap own-team protection', () => {
     const fetchSpy = jest.fn();
     window.fetch = fetchSpy as unknown as typeof window.fetch;
 
-    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.disabled).toBe(true);
     trash.click();
     await Promise.resolve();
 
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/команд|team|player/i);
   });
 
   test('keepOwnTeam=true: точка с team=undefined fail-safe защищена', async () => {
@@ -1104,7 +1110,9 @@ describe('refsOnMap own-team protection', () => {
     expect(body.selection).toHaveProperty('ref-2');
   });
 
-  test('keepOwnTeam=true, deletable=0: только свои - тост "your team"', async () => {
+  test('keepOwnTeam=true, deletable=0: только свои - trash disabled, fetch не идёт', async () => {
+    // Все выделенные точки = own -> deletable=0 -> trash.disabled=true.
+    // Click игнорируется.
     setMixedInventoryCache();
     clickShowButton();
     await flushAsync();
@@ -1134,23 +1142,21 @@ describe('refsOnMap own-team protection', () => {
     const fetchSpy = jest.fn();
     window.fetch = fetchSpy as unknown as typeof window.fetch;
 
-    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.disabled).toBe(true);
     trash.click();
     await Promise.resolve();
 
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
-    const toast = document.querySelector('.svp-toast')?.textContent ?? '';
-    expect(toast).toMatch(/свои|your team/i);
-    expect(toast).not.toMatch(/locked|замочк/i);
-    expect(toast).not.toMatch(/unknown|не загружен/i);
   });
 
-  test('keepOwnTeam=true, deletable=0: только unknown - тост "unknown team color"', async () => {
+  test('keepOwnTeam=true, deletable=0: только unknown - trash disabled, fetch не идёт', async () => {
+    // Обе точки без team -> все в protectedByUnknownTeam -> deletable=0 ->
+    // trash.disabled=true. Click игнорируется.
     setMixedInventoryCache();
     clickShowButton();
     await flushAsync();
-    // Обе точки без team - все попадают в protectedByUnknownTeam.
 
     const clickHandler = map._clickListeners[0];
     const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
@@ -1176,15 +1182,13 @@ describe('refsOnMap own-team protection', () => {
     const fetchSpy = jest.fn();
     window.fetch = fetchSpy as unknown as typeof window.fetch;
 
-    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.disabled).toBe(true);
     trash.click();
     await Promise.resolve();
 
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
-    const toast = document.querySelector('.svp-toast')?.textContent ?? '';
-    expect(toast).toMatch(/unknown|не загружен/i);
-    expect(toast).not.toMatch(/your team|свои - оставлены/i);
   });
 
   test('keepOwnTeam=true, 1 своя + 1 чужая (сценарий пользователя): чужая удаляется, тост "Свои"', async () => {
@@ -2293,7 +2297,10 @@ describe('refsOnMap progress + interaction lock', () => {
           pending.push(() => {
             resolve({
               ok: true,
-              json: () => Promise.resolve({ data: { te: 1 } }),
+              // te:2 (enemy) - чтобы при keepOwnTeam=true (playerTeam=1)
+              // точка попала в deletable, а не в protectedByOwnTeam.
+              // Иначе deletable=0 -> trash disabled от nothingToDelete.
+              json: () => Promise.resolve({ data: { te: 2 } }),
             } as unknown as Response);
           });
         });
@@ -2477,14 +2484,17 @@ describe('refsOnMap progress + interaction lock', () => {
             pending.push(() => {
               resolve({
                 ok: true,
-                json: () => Promise.resolve({ data: { te: 2 } }),
+                json: () => Promise.resolve({ data: { te: 1 } }),
               } as unknown as Response);
             });
           });
         }
+        // Первые 5 точек - enemy (te:2), чтобы при keepOwnTeam=true они
+        // попали в deletable, а не в own. Иначе deletable=0 -> trash
+        // disabled (см. правило "nothing to delete -> disabled").
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ data: { te: 1 } }),
+          json: () => Promise.resolve({ data: { te: 2 } }),
         } as unknown as Response);
       }
       return Promise.resolve({
@@ -3797,7 +3807,7 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     expect(trash.textContent).toMatch(/1\s*\(\s*4\s*(?:ключей|keys)\)/);
   });
 
-  test('UI: точка с 1 ключом полностью защищена правилом - кнопка "0 (0 ключей)"', async () => {
+  test('UI: точка с 1 ключом полностью защищена правилом - кнопка "0 (0 ключей)" и disabled', async () => {
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ t: 3, a: 1, c: [100.5, 13.7], g: 'r', l: 'p', ti: 'P', f: 0 }]),
@@ -3810,6 +3820,9 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     expect(trash.textContent).toMatch(/0\s*\(\s*0\s*(?:ключей|keys)\)/);
+    // deletableKeys=0 -> disabled. Пользователь визуально видит, что
+    // удалять нечего.
+    expect(trash.disabled).toBe(true);
   });
 
   test('ИНВАРИАНТ: при любой комбинации payload по точке < inventory total', async () => {

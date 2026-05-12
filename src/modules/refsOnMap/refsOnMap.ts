@@ -746,15 +746,18 @@ function updateSelectionUi(): void {
         : '';
     }
     trashButton.style.visibility = hasSelection ? 'visible' : 'hidden';
-    // Блокировка только при включённом keepOwnTeam И когда хотя бы один
-    // выбранный guid реально в очереди загрузки команды (queue/in-flight).
-    // Фоновая загрузка для невыбранных точек (visible extent moveend, /inview
-    // enrichment) удалению не мешает - фильтр свои читает team только у
-    // selected, lock защищается через inventory-cache.f. Без фильтра
-    // удаление безопасно в любом случае. Пересчёт триггерится из
-    // updateSelectionUi на toggle/checkbox/batch worker'а.
+    // Блокировка двух типов:
+    // 1. isLoading - при включённом keepOwnTeam И когда хотя бы один
+    //    выбранный guid реально в очереди загрузки команды. Фоновая
+    //    загрузка для невыбранных точек не мешает - фильтр свои читает
+    //    team только у selected, lock защищается через inventory-cache.f.
+    // 2. nothingToDelete - payload пуст (deletableKeys=0). Кнопка "0 (0
+    //    ключей)" не должна быть кликабельна: клик и так показал бы
+    //    тост-разъяснение, но визуально disabled-состояние сразу даёт
+    //    пользователю понять, что удалять нечего без догадок.
     const isLoading = keepOwnTeam && hasSelectedPointsLoadingTeam();
-    trashButton.disabled = isLoading;
+    const nothingToDelete = breakdown.deletableKeys === 0;
+    trashButton.disabled = isLoading || nothingToDelete;
     // data-loading переключает видимость default/loading icon span'ов через
     // CSS селекторы [data-loading="true"]. SVG-спиннер остаётся mounted
     // всё время viewer-сессии - animation крутится непрерывно.
