@@ -2703,6 +2703,43 @@ describe('refsOnMap selection breakdown UI', () => {
     expect(total.textContent).not.toMatch(/(?:Из них|Of them):/);
   });
 
+  test('keepOne-row: показывает X (Y ключей) когда правило "1 ключ" сработало', async () => {
+    // Точка с 1 ключом - полностью защищена правилом (toDeleteTotal<=0,
+    // selectedAmount=1 идёт в survivedKeysByPoint). keepOneKey=true по
+    // умолчанию (см. refsOnMapSettings). beforeEach глобально ставит
+    // keepOneKey=false для совместимости со старыми тестами - явно
+    // переопределяем.
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: false, keepOneKey: true }));
+    const items = [{ t: 3, a: 1, c: [100, 13], g: 'r', l: 'p', ti: 'P', f: 0 }];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ p: 2 });
+
+    selectFeatureByIndex(0);
+
+    const keepOneRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__keepone',
+    ) as HTMLElement;
+    expect(keepOneRow.style.display).not.toBe('none');
+    expect(keepOneRow.textContent).toMatch(/1\s*\(\s*1\s*(?:ключей|keys)\)\s*(?:по правилу|kept)/);
+  });
+
+  test('keepOne-row скрыт при keepOneKey=false', async () => {
+    // Глобальный beforeEach уже ставит keepOneKey=false.
+    const items = [{ t: 3, a: 1, c: [100, 13], g: 'r', l: 'p', ti: 'P', f: 0 }];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ p: 2 });
+    selectFeatureByIndex(0);
+
+    const keepOneRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__keepone',
+    ) as HTMLElement;
+    expect(keepOneRow.style.display).toBe('none');
+  });
+
   test('"Из них:" присутствует когда есть хотя бы одна под-строка (lock)', async () => {
     const items = [
       { t: 3, a: 3, c: [100, 13], g: 'ref-lock', l: 'point-lock', ti: 'L', f: 0b10 },

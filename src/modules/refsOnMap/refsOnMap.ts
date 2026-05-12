@@ -186,6 +186,7 @@ let selectionInfoTotalRow: HTMLDivElement | null = null;
 let selectionInfoProtectedRow: HTMLDivElement | null = null;
 let selectionInfoOwnRow: HTMLDivElement | null = null;
 let selectionInfoUnknownRow: HTMLDivElement | null = null;
+let selectionInfoKeepOneRow: HTMLDivElement | null = null;
 let tabClickHandler: ((event: Event) => void) | null = null;
 let mapClickHandler: ((event: IOlMapEvent) => void) | null = null;
 let viewMoveHandler: (() => void) | null = null;
@@ -587,6 +588,11 @@ interface ISelectionBreakdown {
   ownKeys: number;
   unknownPoints: number;
   unknownKeys: number;
+  // keepOneKey: точки, у которых правило "Оставлять 1 ключ" сохранило хотя
+  // бы 1 ключ (полностью защищена + частично удалена). keepOneKeyKeys -
+  // сумма этих сохранённых ключей.
+  keepOneKeyPoints: number;
+  keepOneKeyKeys: number;
 }
 
 const EMPTY_BREAKDOWN: ISelectionBreakdown = {
@@ -600,6 +606,8 @@ const EMPTY_BREAKDOWN: ISelectionBreakdown = {
   ownKeys: 0,
   unknownPoints: 0,
   unknownKeys: 0,
+  keepOneKeyPoints: 0,
+  keepOneKeyKeys: 0,
 };
 
 function getPointGuid(feature: IOlFeature): string | null {
@@ -687,9 +695,11 @@ function computeSelectionBreakdown(): ISelectionBreakdown {
   }
   // lock / own / unknown disjoint по точкам И по ключам - partitionByLockProtection.
   // deletable пропускается через computeDeletablePayload: payload содержит
-  // только то, что реально уйдёт в DELETE (с учётом keepOneKey-обрезаний).
-  // deletablePoints/Keys в breakdown отражают payload, не исходный bucket.
-  const { payload } = computeDeletablePayload(deletable, keepOneKey);
+  // только то, что реально уйдёт в DELETE (с учётом keepOneKey-обрезаний),
+  // survivedKeysByPoint - сколько ключей по каждой точке осталось благодаря
+  // правилу. Частично удалённая точка считается в обоих счётчиках: payload
+  // (то, что удалится) и survived (то, что осталось).
+  const { payload, survivedKeysByPoint } = computeDeletablePayload(deletable, keepOneKey);
   let deletableKeysFinal = 0;
   const pointsInPayload = new Set<string>();
   for (const [feature, deleteAmount] of payload) {
@@ -697,6 +707,8 @@ function computeSelectionBreakdown(): ISelectionBreakdown {
     const guid = getPointGuid(feature);
     if (guid !== null) pointsInPayload.add(guid);
   }
+  let keepOneKeyKeysFinal = 0;
+  for (const keys of survivedKeysByPoint.values()) keepOneKeyKeysFinal += keys;
   return {
     selectedPoints: uniquePointCount(selected),
     selectedKeys: sumAmount(selected),
@@ -708,6 +720,8 @@ function computeSelectionBreakdown(): ISelectionBreakdown {
     ownKeys: sumAmount(protectedByOwnTeam),
     unknownPoints: uniquePointCount(protectedByUnknownTeam),
     unknownKeys: sumAmount(protectedByUnknownTeam),
+    keepOneKeyPoints: survivedKeysByPoint.size,
+    keepOneKeyKeys: keepOneKeyKeysFinal,
   };
 }
 
@@ -768,12 +782,13 @@ function updateSelectionUi(): void {
   }
   if (hasSelection) {
     // "Из них:" - только когда после total идёт хотя бы одна под-строка
-    // (lock / own / unknown). Иначе total оканчивается точкой без
-    // продолжения, чтобы не висел сирота-двоеточие в UI.
+    // (lock / own / unknown / keepOne). Иначе total оканчивается точкой
+    // без продолжения, чтобы не висел сирота-двоеточие в UI.
     const hasAnySubrow =
       breakdown.lockPoints > 0 ||
       (keepOwnTeam && breakdown.ownPoints > 0) ||
-      (keepOwnTeam && breakdown.unknownPoints > 0);
+      (keepOwnTeam && breakdown.unknownPoints > 0) ||
+      (keepOneKey && breakdown.keepOneKeyPoints > 0);
     if (selectionInfoTotalRow) {
       selectionInfoTotalRow.textContent = hasAnySubrow
         ? t({
@@ -813,6 +828,20 @@ function updateSelectionUi(): void {
         selectionInfoUnknownRow.textContent = t({
           en: `${breakdown.unknownPoints} (${breakdown.unknownKeys} keys) unknown team`,
           ru: `${breakdown.unknownPoints} (${breakdown.unknownKeys} ключей) неизвестного цвета`,
+        });
+      }
+    }
+    if (selectionInfoKeepOneRow) {
+      // Показываем сохранённые правилом ключи: и полностью защищённые точки
+      // (точки с 1 ключом, которые правило не трогает), и частично удалённые
+      // (где правило обрезает payload, 1 ключ остаётся). Формулировка про
+      // ключи - они и есть основной "не удалится" фактор правила.
+      const showKeepOne = keepOneKey && breakdown.keepOneKeyPoints > 0;
+      selectionInfoKeepOneRow.style.display = showKeepOne ? '' : 'none';
+      if (showKeepOne) {
+        selectionInfoKeepOneRow.textContent = t({
+          en: `${breakdown.keepOneKeyPoints} (${breakdown.keepOneKeyKeys} keys) kept by "1 key" rule`,
+          ru: `${breakdown.keepOneKeyPoints} (${breakdown.keepOneKeyKeys} ключей) по правилу "1 ключ"`,
         });
       }
     }
@@ -1049,16 +1078,21 @@ function computeDeletablePayload(
 ): {
   payload: Map<IOlFeature, number>;
   protectedByKeepOneKey: IOlFeature[];
+  // survivedKeysByPoint: pointGuid -> сколько ключей у этой точки осталось
+  // в инвентаре благодаря правилу. Полностью защищённые точки - selectedAmount.
+  // Частично удалённые - 1 ключ.
+  survivedKeysByPoint: Map<string, number>;
 } {
   const payload = new Map<IOlFeature, number>();
   const protectedByKeepOneKey: IOlFeature[] = [];
+  const survivedKeysByPoint = new Map<string, number>();
 
   if (!keepOneKeyActive) {
     for (const feature of deletable) {
       const amount = (feature.getProperties?.() ?? {}).amount;
       if (typeof amount === 'number') payload.set(feature, amount);
     }
-    return { payload, protectedByKeepOneKey };
+    return { payload, protectedByKeepOneKey, survivedKeysByPoint };
   }
 
   // Группа: pointGuid -> features этой точки в deletable.
@@ -1104,8 +1138,11 @@ function computeDeletablePayload(
     if (toDeleteTotal <= 0) {
       // selectedAmount <= 1: нечего удалять без нарушения инварианта.
       for (const feature of features) protectedByKeepOneKey.push(feature);
+      survivedKeysByPoint.set(pointGuid, selectedAmount);
       continue;
     }
+    // Частично удалена: 1 ключ остаётся в инвентаре.
+    survivedKeysByPoint.set(pointGuid, 1);
 
     // Distribute. Sort by amount desc, ties по feature id (детерминированно
     // для тестов и для воспроизводимого DELETE-payload).
@@ -1135,7 +1172,7 @@ function computeDeletablePayload(
     }
   }
 
-  return { payload, protectedByKeepOneKey };
+  return { payload, protectedByKeepOneKey, survivedKeysByPoint };
 }
 
 async function handleDeleteClick(): Promise<void> {
@@ -1924,10 +1961,14 @@ export const refsOnMap: IFeatureModule = {
           selectionInfoUnknownRow = document.createElement('div');
           selectionInfoUnknownRow.className = 'svp-refs-on-map-selection-info__unknown';
           selectionInfoUnknownRow.style.display = 'none';
+          selectionInfoKeepOneRow = document.createElement('div');
+          selectionInfoKeepOneRow.className = 'svp-refs-on-map-selection-info__keepone';
+          selectionInfoKeepOneRow.style.display = 'none';
           selectionInfoEl.appendChild(selectionInfoTotalRow);
           selectionInfoEl.appendChild(selectionInfoProtectedRow);
           selectionInfoEl.appendChild(selectionInfoOwnRow);
           selectionInfoEl.appendChild(selectionInfoUnknownRow);
+          selectionInfoEl.appendChild(selectionInfoKeepOneRow);
           document.body.appendChild(selectionInfoEl);
         } catch (error) {
           // Частичный успех enable() оставил бы hidden-кнопки/слой в DOM
@@ -2022,6 +2063,7 @@ function cleanupEnableSideEffects(): void {
   selectionInfoProtectedRow = null;
   selectionInfoOwnRow = null;
   selectionInfoUnknownRow = null;
+  selectionInfoKeepOneRow = null;
 
   if (tabClickHandler) {
     const tabContainer = $('.inventory__tabs');
