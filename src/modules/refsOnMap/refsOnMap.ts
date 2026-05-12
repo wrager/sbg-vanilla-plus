@@ -661,8 +661,8 @@ function updateSelectionUi(): void {
     }
     if (selectionInfoDeletableRow) {
       selectionInfoDeletableRow.textContent = t({
-        en: `To delete: ${breakdown.deletablePoints} (${breakdown.deletableKeys} keys)`,
-        ru: `К удалению: ${breakdown.deletablePoints} (${breakdown.deletableKeys} ключей)`,
+        en: `${breakdown.deletablePoints} (${breakdown.deletableKeys} keys) to delete`,
+        ru: `${breakdown.deletablePoints} (${breakdown.deletableKeys} ключей) к удалению`,
       });
     }
   }

@@ -2528,7 +2528,7 @@ describe('refsOnMap selection breakdown UI', () => {
       '.svp-refs-on-map-selection-info__deletable',
     ) as HTMLElement;
     expect(deletableRow.textContent).toMatch(
-      /(?:К удалению|To delete):\s*2\s*\(\s*6\s*(?:ключей|keys)\)/,
+      /2\s*\(\s*6\s*(?:ключей|keys)\)\s*(?:к удалению|to delete)/,
     );
   });
 
@@ -2571,7 +2571,7 @@ describe('refsOnMap selection breakdown UI', () => {
       '.svp-refs-on-map-selection-info__deletable',
     ) as HTMLElement;
     expect(deletableRow.textContent).toMatch(
-      /(?:К удалению|To delete):\s*1\s*\(\s*2\s*(?:ключей|keys)\)/,
+      /1\s*\(\s*2\s*(?:ключей|keys)\)\s*(?:к удалению|to delete)/,
     );
   });
 
@@ -2633,7 +2633,7 @@ describe('refsOnMap selection breakdown UI', () => {
       '.svp-refs-on-map-selection-info__deletable',
     ) as HTMLElement;
     expect(deletableRow.textContent).toMatch(
-      /(?:К удалению|To delete):\s*1\s*\(\s*4\s*(?:ключей|keys)\)/,
+      /1\s*\(\s*4\s*(?:ключей|keys)\)\s*(?:к удалению|to delete)/,
     );
   });
 
