@@ -1928,6 +1928,53 @@ describe('refsOnMap checkbox visibility', () => {
     clickHandler({ pixel: [0, 0] });
     expect(label.style.display).toBe('none');
   });
+
+  test('team=1 (красные): текст чекбокса "Не удалять красные"', () => {
+    mockGetPlayerTeam.mockReturnValue(1);
+    setInventory();
+    clickShowButton();
+    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
+    expect(label.textContent).toMatch(/(?:Не удалять красные|Keep red)/);
+  });
+
+  test('team=2 (зелёные): текст чекбокса "Не удалять зелёные"', () => {
+    mockGetPlayerTeam.mockReturnValue(2);
+    setInventory();
+    clickShowButton();
+    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
+    expect(label.textContent).toMatch(/(?:Не удалять зелёные|Keep green)/);
+  });
+
+  test('team=3 (синие): текст чекбокса "Не удалять синие"', () => {
+    mockGetPlayerTeam.mockReturnValue(3);
+    setInventory();
+    clickShowButton();
+    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
+    expect(label.textContent).toMatch(/(?:Не удалять синие|Keep blue)/);
+  });
+
+  test('playerTeam=null: fallback "Не удалять свои" (чекбокс остаётся функциональным)', () => {
+    mockGetPlayerTeam.mockReturnValue(null);
+    setInventory();
+    clickShowButton();
+    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
+    expect(label.textContent).toMatch(/(?:Не удалять свои|Keep own team)/);
+  });
+
+  test('смена команды между showViewer: текст label обновляется', () => {
+    setInventory();
+    mockGetPlayerTeam.mockReturnValue(2);
+    clickShowButton();
+    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
+    expect(label.textContent).toMatch(/(?:Не удалять зелёные|Keep green)/);
+
+    // Закрываем viewer, меняем команду игрока, открываем снова.
+    const closeButton = document.querySelector('.svp-refs-on-map-close') as HTMLElement;
+    closeButton.click();
+    mockGetPlayerTeam.mockReturnValue(1);
+    clickShowButton();
+    expect(label.textContent).toMatch(/(?:Не удалять красные|Keep red)/);
+  });
 });
 
 // ── cancel button (deselect all) ────────────────────────────────────────────

@@ -178,6 +178,7 @@ let progressBar: HTMLDivElement | null = null;
 let progressCounter: HTMLDivElement | null = null;
 let keepOwnTeamCheckbox: HTMLInputElement | null = null;
 let keepOwnTeamLabel: HTMLLabelElement | null = null;
+let keepOwnTeamTextSpan: HTMLSpanElement | null = null;
 let keepOneKeyCheckbox: HTMLInputElement | null = null;
 let keepOneKeyLabel: HTMLLabelElement | null = null;
 let selectionInfoEl: HTMLDivElement | null = null;
@@ -449,6 +450,27 @@ function getTeamColor(team: number | undefined): string {
   const property = `--team-${team}`;
   const raw = getComputedStyle(document.documentElement).getPropertyValue(property).trim();
   return raw ? expandHexColor(raw) : NEUTRAL_COLOR;
+}
+
+/**
+ * Текст чекбокса "Не удалять <цвет>" под цвет команды игрока. SBG-команды
+ * фиксированы в refs/game/css/variables.css: --team-1 красный, --team-2
+ * зелёный, --team-3 синий. Если команда игрока не извлекается из DOM
+ * (#self-info__name пустой / другой формат / выход из аккаунта) - fallback
+ * на исторический "Не удалять свои" / "Keep own team", чтобы чекбокс всё
+ * равно был функциональным (флаг работает и без точного цвета).
+ */
+function getKeepOwnTeamLabelText(): { en: string; ru: string } {
+  switch (getPlayerTeam()) {
+    case 1:
+      return { en: 'Keep red', ru: 'Не удалять красные' };
+    case 2:
+      return { en: 'Keep green', ru: 'Не удалять зелёные' };
+    case 3:
+      return { en: 'Keep blue', ru: 'Не удалять синие' };
+    default:
+      return { en: 'Keep own team', ru: 'Не удалять свои' };
+  }
 }
 
 function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
@@ -1599,6 +1621,10 @@ function showViewer(): void {
   }
   if (keepOwnTeamCheckbox) keepOwnTeamCheckbox.checked = keepOwnTeam;
   if (keepOwnTeamLabel) keepOwnTeamLabel.style.display = 'none';
+  // Текст keepOwnTeam-label - под цвет команды игрока. Перечитываем при
+  // каждом showViewer: между сессиями viewer'а команда могла измениться
+  // (relogin внутри игры обычно делает reload, но cookie может остаться).
+  if (keepOwnTeamTextSpan) keepOwnTeamTextSpan.textContent = t(getKeepOwnTeamLabelText());
   if (keepOneKeyCheckbox) keepOneKeyCheckbox.checked = keepOneKey;
   if (keepOneKeyLabel) keepOneKeyLabel.style.display = 'none';
   hideProgress();
@@ -1854,13 +1880,12 @@ export const refsOnMap: IFeatureModule = {
             // переключение влияет на own/deletable bucket'ы. Перерисовываем UI.
             updateSelectionUi();
           });
-          const keepOwnTeamText = document.createElement('span');
-          keepOwnTeamText.textContent = t({
-            en: 'Keep own team',
-            ru: 'Не удалять свои',
-          });
+          keepOwnTeamTextSpan = document.createElement('span');
+          // Текст изначально fallback; showViewer перепишет под текущий
+          // цвет команды игрока, когда #self-info__name точно отрендерен.
+          keepOwnTeamTextSpan.textContent = t(getKeepOwnTeamLabelText());
           keepOwnTeamLabel.appendChild(keepOwnTeamCheckbox);
-          keepOwnTeamLabel.appendChild(keepOwnTeamText);
+          keepOwnTeamLabel.appendChild(keepOwnTeamTextSpan);
           document.body.appendChild(keepOwnTeamLabel);
 
           // Чекбокс "Оставлять 1 ключ" - дефолт=true, защищает от случайного
@@ -2001,6 +2026,7 @@ function cleanupEnableSideEffects(): void {
     keepOwnTeamLabel = null;
   }
   keepOwnTeamCheckbox = null;
+  keepOwnTeamTextSpan = null;
   if (keepOneKeyLabel) {
     keepOneKeyLabel.remove();
     keepOneKeyLabel = null;
