@@ -453,24 +453,43 @@ function getTeamColor(team: number | undefined): string {
 }
 
 /**
- * Текст чекбокса "Не удалять <цвет>" под цвет команды игрока. SBG-команды
- * фиксированы в refs/game/css/variables.css: --team-1 красный, --team-2
- * зелёный, --team-3 синий. Если команда игрока не извлекается из DOM
- * (#self-info__name пустой / другой формат / выход из аккаунта) - fallback
- * на исторический "Не удалять свои" / "Keep own team", чтобы чекбокс всё
- * равно был функциональным (флаг работает и без точного цвета).
+ * Цвет команды игрока как прилагательное мн.ч. (для подстановки в UI).
+ * SBG-команды фиксированы в refs/game/css/variables.css: --team-1 красный,
+ * --team-2 зелёный, --team-3 синий. Возвращает null, если getPlayerTeam()
+ * не извлёкся (#self-info__name пустой / другой формат / выход из аккаунта) -
+ * вызывающий обязан использовать fallback-формулировку без цвета.
  */
-function getKeepOwnTeamLabelText(): { en: string; ru: string } {
+function getPlayerTeamColorName(): { en: string; ru: string } | null {
   switch (getPlayerTeam()) {
     case 1:
-      return { en: 'Keep red', ru: 'Не удалять красные' };
+      return { en: 'red', ru: 'красные' };
     case 2:
-      return { en: 'Keep green', ru: 'Не удалять зелёные' };
+      return { en: 'green', ru: 'зелёные' };
     case 3:
-      return { en: 'Keep blue', ru: 'Не удалять синие' };
+      return { en: 'blue', ru: 'синие' };
     default:
-      return { en: 'Keep own team', ru: 'Не удалять свои' };
+      return null;
   }
+}
+
+function getKeepOwnTeamLabelText(): { en: string; ru: string } {
+  const color = getPlayerTeamColorName();
+  if (color === null) return { en: 'Keep own team', ru: 'Не удалять свои' };
+  return { en: `Keep ${color.en}`, ru: `Не удалять ${color.ru}` };
+}
+
+function getOwnRowText(points: number, keys: number): { en: string; ru: string } {
+  const color = getPlayerTeamColorName();
+  if (color === null) {
+    return {
+      en: `${points} (${keys} keys) own team`,
+      ru: `${points} (${keys} ключей) своего цвета`,
+    };
+  }
+  return {
+    en: `${points} (${keys} keys) ${color.en}`,
+    ru: `${points} (${keys} ключей) ${color.ru}`,
+  };
 }
 
 function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
@@ -788,10 +807,7 @@ function updateSelectionUi(): void {
       const showOwn = keepOwnTeam && breakdown.ownPoints > 0;
       selectionInfoOwnRow.style.display = showOwn ? '' : 'none';
       if (showOwn) {
-        selectionInfoOwnRow.textContent = t({
-          en: `${breakdown.ownPoints} (${breakdown.ownKeys} keys) own team`,
-          ru: `${breakdown.ownPoints} (${breakdown.ownKeys} ключей) своего цвета`,
-        });
+        selectionInfoOwnRow.textContent = t(getOwnRowText(breakdown.ownPoints, breakdown.ownKeys));
       }
     }
     if (selectionInfoUnknownRow) {
