@@ -124,7 +124,17 @@ async function deleteRefsFromServer(items: Record<string, number>): Promise<IDel
   return {};
 }
 
-function removeRefsFromCache(deletedGuids: Set<string>): void {
+/**
+ * Синхронизирует inventory-cache после DELETE: полностью удалённые стопки
+ * убирает из кэша; частично-удалённые - снижает amount до нового значения.
+ * Сервер уже применил изменения; локальный кэш должен отражать факт, чтобы
+ * последующий открытый inventory или другой модуль (slowRefsDelete и т.д.)
+ * не использовал устаревшие данные.
+ */
+function removeRefsFromCacheAndUpdate(
+  fullyDeletedGuids: Set<string>,
+  partialUpdates: Map<string, number>,
+): void {
   const raw = localStorage.getItem(INVENTORY_CACHE_KEY);
   if (!raw) return;
   let items: unknown[];
@@ -134,13 +144,19 @@ function removeRefsFromCache(deletedGuids: Set<string>): void {
     return;
   }
   if (!Array.isArray(items)) return;
-  const filtered = items.filter((item) => {
-    if (typeof item !== 'object' || item === null) return true;
+  const updated = items.flatMap<unknown>((item) => {
+    if (typeof item !== 'object' || item === null) return [item];
     const record = item as Record<string, unknown>;
-    if (record.t !== REFS_TAB_TYPE) return true;
-    return typeof record.g === 'string' && !deletedGuids.has(record.g);
+    if (record.t !== REFS_TAB_TYPE) return [item];
+    if (typeof record.g !== 'string') return [item];
+    if (fullyDeletedGuids.has(record.g)) return [];
+    const newAmount = partialUpdates.get(record.g);
+    if (typeof newAmount === 'number') {
+      return [{ ...record, a: newAmount }];
+    }
+    return [item];
   });
-  localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(filtered));
+  localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(updated));
 }
 
 function updateInventoryCounter(total: number): void {
@@ -162,11 +178,14 @@ let progressBar: HTMLDivElement | null = null;
 let progressCounter: HTMLDivElement | null = null;
 let keepOwnTeamCheckbox: HTMLInputElement | null = null;
 let keepOwnTeamLabel: HTMLLabelElement | null = null;
+let keepOneKeyCheckbox: HTMLInputElement | null = null;
+let keepOneKeyLabel: HTMLLabelElement | null = null;
 let selectionInfoEl: HTMLDivElement | null = null;
 let selectionInfoTotalRow: HTMLDivElement | null = null;
 let selectionInfoProtectedRow: HTMLDivElement | null = null;
 let selectionInfoOwnRow: HTMLDivElement | null = null;
 let selectionInfoUnknownRow: HTMLDivElement | null = null;
+let selectionInfoKeepOneRow: HTMLDivElement | null = null;
 let selectionInfoDeletableRow: HTMLDivElement | null = null;
 let tabClickHandler: ((event: Event) => void) | null = null;
 let mapClickHandler: ((event: IOlMapEvent) => void) | null = null;
@@ -181,6 +200,11 @@ let beforeOpenFollow: string | null = null;
 // showViewer хранит дефолт (false); реальное значение читается из
 // loadRefsOnMapSettings при открытии viewer.
 let keepOwnTeam = false;
+// Персистентный флаг "Оставлять 1 ключ": при включённом удаление выделенных
+// точек гарантирует, что в инвентаре по каждой точке останется минимум 1
+// ключ. Дефолт - true (защитный): новый пользователь должен быть защищён от
+// случайного полного удаления ключей. До первого showViewer хранит дефолт.
+let keepOneKey = true;
 /**
 /**
  * Кэш команд точек. Ключ - pointGuid. Значения:
@@ -514,6 +538,8 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
 interface ISelectionBreakdown {
   selectedPoints: number;
   selectedKeys: number;
+  // deletable: точки, по которым в DELETE-payload >0 ключей. deletableKeys -
+  // сумма payload (фактическое число удаляемых ключей). Учитывает keepOneKey.
   deletablePoints: number;
   deletableKeys: number;
   lockPoints: number;
@@ -522,6 +548,11 @@ interface ISelectionBreakdown {
   ownKeys: number;
   unknownPoints: number;
   unknownKeys: number;
+  // keepOneKey: точки, у которых keepOneKey защитил ВСЕ выделенные стопки
+  // (delete_amount=0 для всех). Disjoint с deletable по pointGuid. Типичный
+  // случай: точка с 1 ключом и выделена.
+  keepOneKeyPoints: number;
+  keepOneKeyKeys: number;
 }
 
 const EMPTY_BREAKDOWN: ISelectionBreakdown = {
@@ -535,6 +566,8 @@ const EMPTY_BREAKDOWN: ISelectionBreakdown = {
   ownKeys: 0,
   unknownPoints: 0,
   unknownKeys: 0,
+  keepOneKeyPoints: 0,
+  keepOneKeyKeys: 0,
 };
 
 function getPointGuid(feature: IOlFeature): string | null {
@@ -620,20 +653,36 @@ function computeSelectionBreakdown(): ISelectionBreakdown {
     protectedByOwnTeam = result.protectedByOwnTeam;
     protectedByUnknownTeam = result.protectedByUnknownTeam;
   }
-  // Bucket'ы lock / own / unknown / deletable disjoint по построению
-  // partitionByLockProtection (см. continue на каждой ветке). В UI каждая
-  // строка показывает свой bucket; сумма всех четырёх = selected.
+  // Bucket'ы lock / own / unknown disjoint по построению partitionByLockProtection.
+  // Финальное deletable разделяется через computeDeletablePayload на:
+  // - реально удаляемые (payload>0) -> deletableFinal/deletableKeysFinal
+  // - защищённые keepOneKey (delete_amount=0 для всех стопок точки) -> keepOneKey
+  // Все 5 bucket'ов disjoint по pointGuid; сумма точек по строкам = selectedPoints.
+  // По ключам disjoint только если keepOneKey-сценарий "точка полностью защищена";
+  // частичные удаления (payload<amount) учитываются в deletableKeys как payload.
+  const { payload, protectedByKeepOneKey } = computeDeletablePayload(deletable, keepOneKey);
+  const deletableFinal: IOlFeature[] = [];
+  let deletableKeysFinal = 0;
+  const pointsInPayload = new Set<string>();
+  for (const [feature, deleteAmount] of payload) {
+    deletableFinal.push(feature);
+    deletableKeysFinal += deleteAmount;
+    const guid = getPointGuid(feature);
+    if (guid !== null) pointsInPayload.add(guid);
+  }
   return {
     selectedPoints: uniquePointCount(selected),
     selectedKeys: sumAmount(selected),
-    deletablePoints: uniquePointCount(deletable),
-    deletableKeys: sumAmount(deletable),
+    deletablePoints: pointsInPayload.size,
+    deletableKeys: deletableKeysFinal,
     lockPoints: uniquePointCount(protectedByLock),
     lockKeys: sumAmount(protectedByLock),
     ownPoints: uniquePointCount(protectedByOwnTeam),
     ownKeys: sumAmount(protectedByOwnTeam),
     unknownPoints: uniquePointCount(protectedByUnknownTeam),
     unknownKeys: sumAmount(protectedByUnknownTeam),
+    keepOneKeyPoints: uniquePointCount(protectedByKeepOneKey),
+    keepOneKeyKeys: sumAmount(protectedByKeepOneKey),
   };
 }
 
@@ -673,10 +722,14 @@ function updateSelectionUi(): void {
     trashButton.dataset.loading = isLoading ? 'true' : 'false';
   }
 
-  // Чекбокс "Не удалять свои" показывается только при наличии выбора - до
-  // выбора пользовательский фильтр не имеет смысла, лишний UI-шум.
+  // Чекбоксы "Не удалять свои" и "Оставлять 1 ключ" показываются только при
+  // наличии выбора - до выбора пользовательские фильтры не имеют смысла,
+  // лишний UI-шум.
   if (keepOwnTeamLabel) {
     keepOwnTeamLabel.style.display = viewerOpen && hasSelection ? '' : 'none';
+  }
+  if (keepOneKeyLabel) {
+    keepOneKeyLabel.style.display = viewerOpen && hasSelection ? '' : 'none';
   }
 
   // Кнопка "Отменить" снимает выделение всех точек. Видна только при
@@ -726,6 +779,20 @@ function updateSelectionUi(): void {
         selectionInfoUnknownRow.textContent = t({
           en: `${breakdown.unknownPoints} (${breakdown.unknownKeys} keys) unknown team`,
           ru: `${breakdown.unknownPoints} (${breakdown.unknownKeys} ключей) неизвестного цвета`,
+        });
+      }
+    }
+    if (selectionInfoKeepOneRow) {
+      // Показываем только когда keepOneKey активен и есть точки, полностью
+      // защищённые им. Частично-удалённые точки (где 1 ключ остался)
+      // отображены в deletable с уменьшенным amount; отдельная строка про
+      // них не нужна.
+      const showKeepOne = keepOneKey && breakdown.keepOneKeyPoints > 0;
+      selectionInfoKeepOneRow.style.display = showKeepOne ? '' : 'none';
+      if (showKeepOne) {
+        selectionInfoKeepOneRow.textContent = t({
+          en: `${breakdown.keepOneKeyPoints} (${breakdown.keepOneKeyKeys} keys) kept (1 key rule)`,
+          ru: `${breakdown.keepOneKeyPoints} (${breakdown.keepOneKeyKeys} ключей) защищено (правило "1 ключ")`,
         });
       }
     }
@@ -936,6 +1003,124 @@ function sumAmount(features: IOlFeature[]): number {
   return total;
 }
 
+/**
+ * Применяет фильтр "Оставлять 1 ключ" к набору deletable-фич. Гарантирует,
+ * что после DELETE у каждой выделенной точки в инвентаре останется минимум
+ * 1 ключ - с учётом НЕвыделенных стопок этой точки.
+ *
+ * Алгоритм для каждой точки (группировка deletable по pointGuid):
+ * 1. selectedAmount = сумма amount выделенных стопок этой точки.
+ * 2. inventoryTotal = сумма amount ВСЕХ стопок этой точки из inventory-cache
+ *    (включая невыделенные и не попавшие в deletable, например lock-стопки -
+ *    они всё равно физически в инвентаре).
+ * 3. unselectedAmount = inventoryTotal - selectedAmount.
+ * 4. Если keepOneKey=false ИЛИ unselectedAmount >= 1 - инвариант уже
+ *    выполнен (либо фильтр выключен, либо в инвентаре по точке останется
+ *    хотя бы 1 ключ через невыделенные стопки). Удаляем все выделенные
+ *    стопки целиком: payload[guid] = amount.
+ * 5. Иначе (keepOneKey=true И unselectedAmount === 0):
+ *    - toDeleteTotal = selectedAmount - 1.
+ *    - Если toDeleteTotal <= 0 (selectedAmount <= 1) - удалять нечего без
+ *      нарушения инварианта; все стопки попадают в protectedByKeepOneKey.
+ *    - Иначе distribute toDeleteTotal среди выделенных стопок по убыванию
+ *      amount: большие стопки удаляются полностью, последняя обрезается до
+ *      остатка. Стопки с delete_amount=0 уходят в protectedByKeepOneKey.
+ *
+ * Критический инвариант: при keepOneKey=true sum(payload values для стопок
+ * pointGuid) < inventoryTotal(pointGuid). Покрыт серией critical-safety тестов.
+ */
+function computeDeletablePayload(
+  deletable: IOlFeature[],
+  keepOneKeyActive: boolean,
+): { payload: Map<IOlFeature, number>; protectedByKeepOneKey: IOlFeature[] } {
+  const payload = new Map<IOlFeature, number>();
+  const protectedByKeepOneKey: IOlFeature[] = [];
+
+  if (!keepOneKeyActive) {
+    for (const feature of deletable) {
+      const amount = (feature.getProperties?.() ?? {}).amount;
+      if (typeof amount === 'number') payload.set(feature, amount);
+    }
+    return { payload, protectedByKeepOneKey };
+  }
+
+  // Группа: pointGuid -> features этой точки в deletable.
+  const groups = new Map<string, IOlFeature[]>();
+  for (const feature of deletable) {
+    const guid = getPointGuid(feature);
+    if (guid === null) {
+      // Без pointGuid не можем сгруппировать - конструкция inventory не
+      // даст найти невыделенные стопки. Без инварианта keepOneKey удалить
+      // такую стопку нельзя: попадает в protectedByKeepOneKey.
+      protectedByKeepOneKey.push(feature);
+      continue;
+    }
+    const list = groups.get(guid);
+    if (list) list.push(feature);
+    else groups.set(guid, [feature]);
+  }
+
+  // Инвентарь читаем один раз для всех групп - сразу строим карту
+  // pointGuid -> inventoryTotal по всем стопкам этой точки.
+  const inventoryTotals = new Map<string, number>();
+  for (const item of readFullInventoryReferences()) {
+    inventoryTotals.set(item.l, (inventoryTotals.get(item.l) ?? 0) + item.a);
+  }
+
+  for (const [pointGuid, features] of groups) {
+    const selectedAmount = sumAmount(features);
+    const inventoryTotal = inventoryTotals.get(pointGuid) ?? 0;
+    const unselectedAmount = inventoryTotal - selectedAmount;
+
+    if (unselectedAmount >= 1) {
+      // Невыделенные стопки оставляют >=1 ключ в инвентаре - удаляем
+      // выделенные полностью.
+      for (const feature of features) {
+        const amount = (feature.getProperties?.() ?? {}).amount;
+        if (typeof amount === 'number') payload.set(feature, amount);
+      }
+      continue;
+    }
+
+    // unselectedAmount === 0: все стопки точки выделены. Сохраняем 1 ключ.
+    const toDeleteTotal = selectedAmount - 1;
+    if (toDeleteTotal <= 0) {
+      // selectedAmount <= 1: нечего удалять без нарушения инварианта.
+      for (const feature of features) protectedByKeepOneKey.push(feature);
+      continue;
+    }
+
+    // Distribute. Sort by amount desc, ties по feature id (детерминированно
+    // для тестов и для воспроизводимого DELETE-payload).
+    const sorted = [...features].sort((a, b) => {
+      const aAmount = ((a.getProperties?.() ?? {}).amount as number | undefined) ?? 0;
+      const bAmount = ((b.getProperties?.() ?? {}).amount as number | undefined) ?? 0;
+      if (bAmount !== aAmount) return bAmount - aAmount;
+      const aId = a.getId();
+      const bId = b.getId();
+      return String(aId).localeCompare(String(bId));
+    });
+
+    let remaining = toDeleteTotal;
+    for (const feature of sorted) {
+      if (remaining <= 0) {
+        protectedByKeepOneKey.push(feature);
+        continue;
+      }
+      const amount = (feature.getProperties?.() ?? {}).amount;
+      if (typeof amount !== 'number' || amount <= 0) {
+        protectedByKeepOneKey.push(feature);
+        continue;
+      }
+      const deleteAmount = Math.min(amount, remaining);
+      payload.set(feature, deleteAmount);
+      remaining -= deleteAmount;
+    }
+  }
+
+  return { payload, protectedByKeepOneKey };
+}
+
 async function handleDeleteClick(): Promise<void> {
   if (!refsSource) return;
   const selected = refsSource.getFeatures().filter((feature) => {
@@ -1003,29 +1188,58 @@ async function handleDeleteClick(): Promise<void> {
   const { deletable, protectedByLock, protectedByOwnTeam, protectedByUnknownTeam } =
     partitionByLockProtection(selected, ownTeamFilter);
 
-  if (deletable.length === 0) {
+  // Применяем фильтр "Оставлять 1 ключ" к deletable. payload содержит только
+  // те фичи, у которых есть что удалить с учётом инварианта. protectedByKeepOneKey -
+  // фичи, которые keepOneKey защитил полностью (delete_amount=0).
+  const { payload, protectedByKeepOneKey } = computeDeletablePayload(deletable, keepOneKey);
+
+  if (payload.size === 0) {
+    if (protectedByKeepOneKey.length > 0 && deletable.length === protectedByKeepOneKey.length) {
+      // Все deletable защищены keepOneKey (typically: каждая точка с 1
+      // ключом). Показываем явный toast о keepOneKey.
+      showToast(
+        t({
+          en: `Keep 1 key kept ${protectedByKeepOneKey.length} stack(s) from deletion`,
+          ru: `"Оставлять 1 ключ" сохранил ${protectedByKeepOneKey.length} стопк(и) от удаления`,
+        }),
+      );
+      return;
+    }
     showToast(buildAllProtectedToast(protectedByLock, protectedByOwnTeam, protectedByUnknownTeam));
     return;
   }
 
-  const overallToDelete = sumAmount(deletable);
+  // Уникальные точки, по которым что-то удалится (один pointGuid - одна точка
+  // в подсчёте, даже если payload содержит несколько стопок этой точки).
+  const pointsInPayload = new Set<string>();
+  let overallToDelete = 0;
+  for (const [feature, deleteAmount] of payload) {
+    overallToDelete += deleteAmount;
+    const guid = getPointGuid(feature);
+    if (guid !== null) pointsInPayload.add(guid);
+  }
   const message = t({
-    en: `Delete ${overallToDelete} ref(s) from ${deletable.length} point(s)?`,
-    ru: `Удалить ${overallToDelete} ключ(ей) от ${deletable.length} точ(ек)?`,
+    en: `Delete ${overallToDelete} ref(s) from ${pointsInPayload.size} point(s)?`,
+    ru: `Удалить ${overallToDelete} ключ(ей) от ${pointsInPayload.size} точ(ек)?`,
   });
 
   if (!confirm(message)) return;
 
+  // items: refGuid -> deleteAmount. Для частично-удалённых стопок (payload
+  // < amount) сервер обновит amount, а не удалит item. removeRefsFromCache
+  // ниже синхронизирует локальный кэш аналогично.
   const items: Record<string, number> = {};
-  const deletedGuids = new Set<string>();
-
-  for (const feature of deletable) {
+  const fullyDeletedGuids = new Set<string>();
+  const partialUpdates = new Map<string, number>(); // refGuid -> new amount
+  for (const [feature, deleteAmount] of payload) {
     const id = feature.getId();
-    const properties = feature.getProperties?.();
-    const amount = properties?.amount;
-    if (typeof id === 'string' && typeof amount === 'number') {
-      items[id] = amount;
-      deletedGuids.add(id);
+    const amount = (feature.getProperties?.() ?? {}).amount;
+    if (typeof id !== 'string' || typeof amount !== 'number') continue;
+    items[id] = deleteAmount;
+    if (deleteAmount >= amount) {
+      fullyDeletedGuids.add(id);
+    } else {
+      partialUpdates.set(id, amount - deleteAmount);
     }
   }
 
@@ -1036,28 +1250,28 @@ async function handleDeleteClick(): Promise<void> {
       return;
     }
 
-    // Remove features from map
-    for (const feature of deletable) {
-      refsSource.removeFeature?.(feature);
+    // Полностью удалённые фичи убираем из source; частично-удалённые
+    // обновляем amount + снимаем isSelected (визуально пользователь видит
+    // "цикл удаления завершён", может начать новый выбор).
+    for (const [feature, deleteAmount] of payload) {
+      const amount = (feature.getProperties?.() ?? {}).amount;
+      if (typeof amount !== 'number') continue;
+      if (deleteAmount >= amount) {
+        refsSource.removeFeature?.(feature);
+      } else {
+        feature.set?.('amount', amount - deleteAmount);
+        feature.set?.('isSelected', false);
+      }
     }
 
-    // Update local cache
-    removeRefsFromCache(deletedGuids);
+    // Update local cache: полностью удалённые стопки убираются, частично
+    // обновлённые - меняют amount.
+    removeRefsFromCacheAndUpdate(fullyDeletedGuids, partialUpdates);
 
     // Sync счётчика ключей на подписи затронутых точек на основной карте.
-    // Хотя refsOnMap viewer прячет нативные слои на время viewer-режима,
-    // после hideViewer() основной points-layer становится видимым - и
-    // highlight['7'] на feature должен отражать актуальное число ключей.
-    const affectedPointGuids = Array.from(
-      new Set(
-        deletable
-          .map((feature) => {
-            const properties = feature.getProperties?.();
-            return typeof properties?.pointGuid === 'string' ? properties.pointGuid : null;
-          })
-          .filter((guid): guid is string => guid !== null),
-      ),
-    );
+    // Учитываем только реально затронутые точки (из payload), не все
+    // deletable - keepOneKey-protected фичи в инвентаре не изменились.
+    const affectedPointGuids = Array.from(pointsInPayload);
     if (affectedPointGuids.length > 0) {
       void syncRefsCountForPoints(affectedPointGuids);
     }
@@ -1091,6 +1305,14 @@ async function handleDeleteClick(): Promise<void> {
         t({
           en: `Unknown team color: ${protectedByUnknownTeam.length} key(s) kept (try reopening or panning to load colors)`,
           ru: `Цвет команды не загружен: ${protectedByUnknownTeam.length} ключ(ей) оставлено (откройте viewer заново или передвиньте карту, чтобы догрузить)`,
+        }),
+      );
+    }
+    if (protectedByKeepOneKey.length > 0) {
+      showToast(
+        t({
+          en: `Keep 1 key: ${protectedByKeepOneKey.length} stack(s) kept untouched`,
+          ru: `"Оставлять 1 ключ": ${protectedByKeepOneKey.length} стопк(и) не тронуто`,
         }),
       );
     }
@@ -1318,10 +1540,14 @@ function showViewer(): void {
   if (!OlFeature || !OlPoint || !olProj?.fromLonLat) return;
 
   viewerOpen = true;
-  // Загружаем сохранённое значение keepOwnTeam из localStorage. Чекбокс ниже
-  // получит .checked = keepOwnTeam перед показом - пользователь видит свой
-  // выбор из прошлой сессии.
-  keepOwnTeam = loadRefsOnMapSettings().keepOwnTeam;
+  // Загружаем сохранённое значение keepOwnTeam и keepOneKey из localStorage.
+  // Чекбоксы ниже получат .checked перед показом - пользователь видит свой
+  // выбор из прошлой сессии. keepOneKey по умолчанию true (см. settings).
+  {
+    const settings = loadRefsOnMapSettings();
+    keepOwnTeam = settings.keepOwnTeam;
+    keepOneKey = settings.keepOneKey;
+  }
   const view = olMap.getView();
   beforeOpenZoom = view.getZoom?.();
   beforeOpenRotation = view.getRotation();
@@ -1373,6 +1599,8 @@ function showViewer(): void {
   }
   if (keepOwnTeamCheckbox) keepOwnTeamCheckbox.checked = keepOwnTeam;
   if (keepOwnTeamLabel) keepOwnTeamLabel.style.display = 'none';
+  if (keepOneKeyCheckbox) keepOneKeyCheckbox.checked = keepOneKey;
+  if (keepOneKeyLabel) keepOneKeyLabel.style.display = 'none';
   hideProgress();
 
   // Включаем перехват /api/inview только пока viewer открыт. Перехватчик
@@ -1434,6 +1662,10 @@ function hideViewer(): void {
   if (selectionInfoEl) selectionInfoEl.style.display = 'none';
   if (keepOwnTeamLabel) keepOwnTeamLabel.style.display = 'none';
   if (keepOwnTeamCheckbox) keepOwnTeamCheckbox.checked = false;
+  if (keepOneKeyLabel) keepOneKeyLabel.style.display = 'none';
+  // .checked НЕ сбрасываем у keepOneKeyCheckbox в false: дефолт=true,
+  // следующий showViewer всё равно перепишет из loadRefsOnMapSettings.
+  // Симметрично с keepOwnTeam-сбросом - там было false, тут будет true.
 
   const view = olMap?.getView();
   if (view) {
@@ -1604,11 +1836,11 @@ export const refsOnMap: IFeatureModule = {
           progressContainer.appendChild(progressCounter);
           document.body.appendChild(progressContainer);
 
-          // Чекбокс "Не удалять свои" - inline в viewer-режиме, виден только
-          // когда есть выбор (updateSelectionUi контролирует visibility).
-          // State персистентный: keepOwnTeam синхронизирован с localStorage
-          // через svp_refsOnMap.keepOwnTeam (refsOnMapSettings). showViewer
-          // загружает значение, onChange сохраняет.
+          // Чекбоксы "Не удалять свои" и "Оставлять 1 ключ" - inline в
+          // viewer-режиме, оба видны только когда есть выбор (updateSelectionUi
+          // контролирует visibility). State персистентный через localStorage
+          // (refsOnMapSettings): showViewer загружает значения, onChange
+          // сохраняет.
           keepOwnTeamLabel = document.createElement('label');
           keepOwnTeamLabel.className = 'svp-refs-on-map-keep-own';
           keepOwnTeamLabel.style.display = 'none';
@@ -1617,7 +1849,7 @@ export const refsOnMap: IFeatureModule = {
           keepOwnTeamCheckbox.checked = false;
           keepOwnTeamCheckbox.addEventListener('change', () => {
             keepOwnTeam = keepOwnTeamCheckbox?.checked === true;
-            saveRefsOnMapSettings({ keepOwnTeam });
+            saveRefsOnMapSettings({ keepOwnTeam, keepOneKey });
             // Партиция в computeSelectionBreakdown зависит от keepOwnTeam:
             // переключение влияет на own/deletable bucket'ы. Перерисовываем UI.
             updateSelectionUi();
@@ -1630,6 +1862,34 @@ export const refsOnMap: IFeatureModule = {
           keepOwnTeamLabel.appendChild(keepOwnTeamCheckbox);
           keepOwnTeamLabel.appendChild(keepOwnTeamText);
           document.body.appendChild(keepOwnTeamLabel);
+
+          // Чекбокс "Оставлять 1 ключ" - дефолт=true, защищает от случайного
+          // полного удаления ключей точки. payload вычисляется с учётом
+          // невыделенных стопок: если в инвентаре по точке остаются ключи в
+          // невыделенных стопках, выделенные удаляются полностью; иначе
+          // distribute (selected_total - 1) keys среди выделенных.
+          keepOneKeyLabel = document.createElement('label');
+          keepOneKeyLabel.className = 'svp-refs-on-map-keep-one';
+          keepOneKeyLabel.style.display = 'none';
+          keepOneKeyCheckbox = document.createElement('input');
+          keepOneKeyCheckbox.type = 'checkbox';
+          keepOneKeyCheckbox.checked = true;
+          keepOneKeyCheckbox.addEventListener('change', () => {
+            keepOneKey = keepOneKeyCheckbox?.checked === true;
+            saveRefsOnMapSettings({ keepOwnTeam, keepOneKey });
+            // Партиция payload в computeSelectionBreakdown зависит от
+            // keepOneKey: переключение влияет на deletable/keepOneKey
+            // bucket'ы. Перерисовываем UI и кнопку "Корзина".
+            updateSelectionUi();
+          });
+          const keepOneKeyText = document.createElement('span');
+          keepOneKeyText.textContent = t({
+            en: 'Keep 1 key',
+            ru: 'Оставлять 1 ключ',
+          });
+          keepOneKeyLabel.appendChild(keepOneKeyCheckbox);
+          keepOneKeyLabel.appendChild(keepOneKeyText);
+          document.body.appendChild(keepOneKeyLabel);
 
           // Selection info: до 5 строк - total + protected (lock) + own +
           // unknown (последние две только при keepOwnTeam=true) + deletable
@@ -1651,12 +1911,16 @@ export const refsOnMap: IFeatureModule = {
           selectionInfoUnknownRow = document.createElement('div');
           selectionInfoUnknownRow.className = 'svp-refs-on-map-selection-info__unknown';
           selectionInfoUnknownRow.style.display = 'none';
+          selectionInfoKeepOneRow = document.createElement('div');
+          selectionInfoKeepOneRow.className = 'svp-refs-on-map-selection-info__keepone';
+          selectionInfoKeepOneRow.style.display = 'none';
           selectionInfoDeletableRow = document.createElement('div');
           selectionInfoDeletableRow.className = 'svp-refs-on-map-selection-info__deletable';
           selectionInfoEl.appendChild(selectionInfoTotalRow);
           selectionInfoEl.appendChild(selectionInfoProtectedRow);
           selectionInfoEl.appendChild(selectionInfoOwnRow);
           selectionInfoEl.appendChild(selectionInfoUnknownRow);
+          selectionInfoEl.appendChild(selectionInfoKeepOneRow);
           selectionInfoEl.appendChild(selectionInfoDeletableRow);
           document.body.appendChild(selectionInfoEl);
         } catch (error) {
@@ -1694,6 +1958,7 @@ function cleanupEnableSideEffects(): void {
   teamsLoading = false;
   inviewHookEnabled = false;
   keepOwnTeam = false;
+  keepOneKey = true;
   viewMoveHandler = null;
   resetTeamLoadState();
 
@@ -1736,6 +2001,11 @@ function cleanupEnableSideEffects(): void {
     keepOwnTeamLabel = null;
   }
   keepOwnTeamCheckbox = null;
+  if (keepOneKeyLabel) {
+    keepOneKeyLabel.remove();
+    keepOneKeyLabel = null;
+  }
+  keepOneKeyCheckbox = null;
 
   if (selectionInfoEl) {
     selectionInfoEl.remove();
@@ -1745,6 +2015,7 @@ function cleanupEnableSideEffects(): void {
   selectionInfoProtectedRow = null;
   selectionInfoOwnRow = null;
   selectionInfoUnknownRow = null;
+  selectionInfoKeepOneRow = null;
   selectionInfoDeletableRow = null;
 
   if (tabClickHandler) {

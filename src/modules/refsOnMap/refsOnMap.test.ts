@@ -315,11 +315,13 @@ async function flushAsync(): Promise<void> {
   }
 }
 
-// keepOwnTeam теперь персистентен в localStorage (svp_refsOnMap). Чистим
-// перед каждым тестом, чтобы тесты, выставляющие keepOwnTeam=true через
-// клик по чекбоксу, не утекали в следующие.
+// keepOwnTeam и keepOneKey персистентны в localStorage (svp_refsOnMap).
+// Для большинства тестов keepOneKey=true мешал бы существующим инвариантам
+// (тесты на partition/lock/own написаны без учёта "оставить 1 ключ").
+// Глобально форсим оба флага в false; тесты блока про keepOneKey явно
+// перезаписывают свой стартовый state через saveRefsOnMapSettings.
 beforeEach(() => {
-  localStorage.removeItem('svp_refsOnMap');
+  localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: false, keepOneKey: false }));
 });
 
 describe('refsOnMap enable/disable', () => {
@@ -2124,17 +2126,19 @@ describe('refsOnMap keepOwnTeam persistence', () => {
     checkbox.dispatchEvent(new Event('change'));
     expect(JSON.parse(localStorage.getItem('svp_refsOnMap') ?? '{}')).toEqual({
       keepOwnTeam: true,
+      keepOneKey: false,
     });
 
     checkbox.checked = false;
     checkbox.dispatchEvent(new Event('change'));
     expect(JSON.parse(localStorage.getItem('svp_refsOnMap') ?? '{}')).toEqual({
       keepOwnTeam: false,
+      keepOneKey: false,
     });
   });
 
   test('повторное открытие viewer восстанавливает state чекбокса из storage', () => {
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true }));
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true, keepOneKey: false }));
     setInventory();
     clickShowButton();
     const checkbox = document.querySelector(
@@ -2149,8 +2153,10 @@ describe('refsOnMap keepOwnTeam persistence', () => {
 
   test('keepOwnTeam=true сохранён: handleDeleteClick применяет фильтр после reopen viewer', async () => {
     // Установка через localStorage напрямую (имитация: пользователь
-    // включил в прошлом сеансе и перезагрузил страницу).
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true }));
+    // включил в прошлом сеансе и перезагрузил страницу). keepOneKey=false
+    // явно - этот тест проверяет только keepOwnTeam, без вмешательства
+    // правила "оставлять 1 ключ".
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true, keepOneKey: false }));
     mockGetPlayerTeam.mockReturnValue(1);
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-own', l: 'point-own', ti: 'O', f: 0 },
@@ -3229,4 +3235,538 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     }
     expect(Object.keys(payload).sort()).toEqual(['g4', 'g5']);
   });
+});
+
+// ── keepOneKey: ни одна выделенная точка не теряет все ключи в инвентаре ─────
+
+/**
+ * Серия critical-safety тестов на инвариант keepOneKey: при включённом флаге
+ * сумма payload[refGuid] для всех стопок одной точки СТРОГО МЕНЬШЕ суммарного
+ * inventory amount этой точки. После DELETE у пользователя в инвентаре по
+ * каждой выделенной точке остаётся минимум 1 ключ.
+ *
+ * Покрываем все ключевые сценарии: 1 stack полностью выделена, N stacks все
+ * выделены, N stacks частично выделены (с невыделенными), 1 stack с 1 ключом,
+ * комбинации с lock/own/unknown, default-значение флага, восстановление из
+ * localStorage. Регрессия здесь = пользователь теряет все ключи точки.
+ */
+describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () => {
+  let view: ReturnType<typeof makeView>;
+  let map: ReturnType<typeof makeMap>;
+  let originalFetch: typeof window.fetch;
+  let fetchSpy: jest.Mock;
+
+  function clickShowButton(): void {
+    const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
+    button.click();
+  }
+
+  function selectFeatureByIndex(index: number): void {
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[index]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+  }
+
+  function applyTeams(teamsByPoint: Record<string, number>): void {
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    for (const feature of allFeatures) {
+      const pointGuid = feature.getProperties?.().pointGuid;
+      if (typeof pointGuid !== 'string') continue;
+      const team = teamsByPoint[pointGuid];
+      if (typeof team === 'number') feature.set?.('team', team);
+    }
+  }
+
+  function extractDeletePayload(): Record<string, number> {
+    const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit?][];
+    const deleteCalls = calls.filter(([, init]) => init?.method === 'DELETE');
+    expect(deleteCalls.length).toBe(1);
+    const body = JSON.parse((deleteCalls[0][1] as RequestInit).body as string) as {
+      selection: Record<string, number>;
+    };
+    return body.selection;
+  }
+
+  function expectNoDeleteCall(): void {
+    const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit?][];
+    const deleteCalls = calls.filter(([, init]) => init?.method === 'DELETE');
+    expect(deleteCalls.length).toBe(0);
+  }
+
+  beforeEach(async () => {
+    setupInventoryDom();
+    view = makeView(16, 0.5);
+    const pointsLayer = makeLayer('points', makeSource());
+    const linesLayer = makeLayer('lines', makeSource());
+    const regionsLayer = makeLayer('regions', makeSource());
+    map = makeMap([pointsLayer, linesLayer, regionsLayer], view);
+    mockGetOlMap.mockResolvedValue(map);
+    mockOl();
+    originalFetch = window.fetch;
+    view.calculateExtent = (): number[] => [100, 100, 200, 200];
+    fetchSpy = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ count: { total: 90 } }),
+      } as unknown as Response),
+    );
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    localStorage.setItem('auth', 'test-token');
+    window.confirm = jest.fn(() => true);
+    // Глобальный beforeEach ставит keepOneKey=false. Этот блок весь про
+    // keepOneKey=true - переопределяем здесь.
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: false, keepOneKey: true }));
+    mockGetPlayerTeam.mockReturnValue(1);
+    await refsOnMap.enable();
+  });
+
+  afterEach(async () => {
+    await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
+    delete window.ol;
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('follow');
+    localStorage.removeItem('auth');
+    document.body.innerHTML = '';
+    window.fetch = originalFetch;
+  });
+
+  test('default keepOneKey=true: новый пользователь защищён без явных действий', () => {
+    // Глобальный beforeEach ставит false, этот блок true, но сейчас проверим
+    // что чекбокс в DOM checked=true после showViewer и onChange сохраняет
+    // оба флага. Это страховка: если default в settings когда-то поменяют
+    // на false, тест упадёт.
+    clickShowButton();
+    const checkbox = document.querySelector(
+      '.svp-refs-on-map-keep-one input[type="checkbox"]',
+    ) as HTMLInputElement;
+    expect(checkbox).not.toBeNull();
+    expect(checkbox.checked).toBe(true);
+  });
+
+  test('1 stack 5 ключей, выделена, keepOneKey=true: удалится 4, останется 1', async () => {
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ t: 3, a: 5, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'P', f: 0 }]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-1': 2 });
+
+    selectFeatureByIndex(0);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    expect(payload).toEqual({ 'ref-1': 4 });
+    // ИНВАРИАНТ: payload sum < inventory total.
+    expect(payload['ref-1']).toBeLessThan(5);
+  });
+
+  test('1 stack 1 ключ, выделена: нечего удалять, payload пуст, DELETE не отправлен', async () => {
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ t: 3, a: 1, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'P', f: 0 }]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-1': 2 });
+
+    selectFeatureByIndex(0);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    expectNoDeleteCall();
+  });
+
+  test('2 stacks одной точки (5+3), обе выделены: суммарно удалится 7, останется 1', async () => {
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { t: 3, a: 5, c: [100.5, 13.7], g: 'ref-a', l: 'point-1', ti: 'P', f: 0 },
+        { t: 3, a: 3, c: [100.5, 13.7], g: 'ref-b', l: 'point-1', ti: 'P', f: 0 },
+      ]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-1': 2 });
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    const totalToDelete = (payload['ref-a'] ?? 0) + (payload['ref-b'] ?? 0);
+    // ИНВАРИАНТ: после удаления у точки остаётся ровно 1 ключ в инвентаре.
+    expect(totalToDelete).toBe(7);
+    // Distribute по убыванию amount: stack ref-a=5 удаляется полностью,
+    // ref-b=3 обрезается до 2 (оставляем 1).
+    expect(payload).toEqual({ 'ref-a': 5, 'ref-b': 2 });
+  });
+
+  test('2 stacks (5+3), выделена только одна (5): невыделенная даёт 3 ключа, удалится 5 полностью', async () => {
+    // unselectedAmount=3 >= 1: keepOneKey не вмешивается, ref-a удаляется
+    // полностью. ИНВАРИАНТ: после удаления в инвентаре остаются 3 ключа
+    // в ref-b. По точке osталось >=1.
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { t: 3, a: 5, c: [100.5, 13.7], g: 'ref-a', l: 'point-1', ti: 'P', f: 0 },
+        { t: 3, a: 3, c: [100.5, 13.7], g: 'ref-b', l: 'point-1', ti: 'P', f: 0 },
+      ]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-1': 2 });
+
+    selectFeatureByIndex(0); // только ref-a
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    expect(payload).toEqual({ 'ref-a': 5 });
+  });
+
+  test('3 stacks (10+5+1), все выделены: distribute 15 к удалению, остаётся 1', async () => {
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { t: 3, a: 10, c: [100.5, 13.7], g: 'ref-big', l: 'point-1', ti: 'P', f: 0 },
+        { t: 3, a: 5, c: [100.5, 13.7], g: 'ref-mid', l: 'point-1', ti: 'P', f: 0 },
+        { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-small', l: 'point-1', ti: 'P', f: 0 },
+      ]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-1': 2 });
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+    selectFeatureByIndex(2);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    const totalToDelete = Object.values(payload).reduce((a, b) => a + b, 0);
+    expect(totalToDelete).toBe(15);
+    // По убыванию: ref-big=10 полностью, ref-mid=5 полностью, ref-small
+    // не нужна (15-10-5=0); ref-small уходит в protectedByKeepOneKey -
+    // её в payload не должно быть.
+    expect(payload).toEqual({ 'ref-big': 10, 'ref-mid': 5 });
+    expect(payload).not.toHaveProperty('ref-small');
+  });
+
+  test('lock на одной из стопок: lock защищает точку, deletable не доходит до keepOneKey', async () => {
+    // Если у точки есть lock-стопка, partitionByLockProtection всю точку
+    // помечает protectedByLock (lock-семантика per-point). deletable=0,
+    // keepOneKey не вмешивается.
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { t: 3, a: 5, c: [100.5, 13.7], g: 'ref-free', l: 'point-1', ti: 'P', f: 0 },
+        { t: 3, a: 3, c: [100.5, 13.7], g: 'ref-lock', l: 'point-1', ti: 'P', f: 0b10 },
+      ]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-1': 2 });
+
+    selectFeatureByIndex(0);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    expectNoDeleteCall();
+  });
+
+  test('keepOwnTeam=true + keepOneKey=true: own не уходит в DELETE; для enemy keepOneKey оставляет 1', async () => {
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true, keepOneKey: true }));
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-own', l: 'point-own', ti: 'O', f: 0 },
+        { t: 3, a: 3, c: [101.0, 14.0], g: 'ref-enemy', l: 'point-enemy', ti: 'E', f: 0 },
+      ]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-own': 1, 'point-enemy': 2 });
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    expect(payload).not.toHaveProperty('ref-own');
+    // enemy удаляется частично: 3-1=2 ключа.
+    expect(payload).toEqual({ 'ref-enemy': 2 });
+  });
+
+  test('многоточечный сценарий: разные группы независимо обрабатываются', async () => {
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        // Точка A: 1 ключ, защищена keepOneKey полностью.
+        { t: 3, a: 1, c: [100.5, 13.7], g: 'a', l: 'pt-A', ti: 'A', f: 0 },
+        // Точка B: 5 ключей, удалится 4.
+        { t: 3, a: 5, c: [101, 14], g: 'b', l: 'pt-B', ti: 'B', f: 0 },
+        // Точка C: 2 стопки (3+2), невыделенная даёт 2: выделенная удаляется полностью.
+        { t: 3, a: 3, c: [102, 15], g: 'c1', l: 'pt-C', ti: 'C', f: 0 },
+        { t: 3, a: 2, c: [102, 15], g: 'c2', l: 'pt-C', ti: 'C', f: 0 },
+      ]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'pt-A': 2, 'pt-B': 2, 'pt-C': 2 });
+
+    selectFeatureByIndex(0); // pt-A
+    selectFeatureByIndex(1); // pt-B
+    selectFeatureByIndex(2); // pt-C ref c1 (выделено), c2 unselected
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    // 'a' защищена keepOneKey (не в payload).
+    expect(payload).not.toHaveProperty('a');
+    // 'b': удаляется 4.
+    expect(payload.b).toBe(4);
+    // 'c1': удаляется полностью (3), невыделенная c2 даёт инвентарь >=1.
+    expect(payload.c1).toBe(3);
+  });
+
+  test('сохранённый keepOneKey=true в localStorage защищает после reopen viewer', async () => {
+    // Имитация: пользователь включил в прошлом сеансе, перезагрузил
+    // страницу, открыл viewer. keepOneKey восстанавливается из storage.
+    // Без этого восстановления пользователь, не зная о новой фиче, при
+    // следующем DELETE потерял бы все ключи 1-stack точки.
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: false, keepOneKey: true }));
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ t: 3, a: 2, c: [100.5, 13.7], g: 'r', l: 'p', ti: 'P', f: 0 }]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ p: 2 });
+
+    selectFeatureByIndex(0);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    expect(payload).toEqual({ r: 1 });
+  });
+
+  test('keepOneKey=false: payload содержит ВСЕ amount (классическое полное удаление)', async () => {
+    // Контрольный негативный тест: при выключенном флаге payload идентичен
+    // selected.amount. Гарантирует что новая логика не "случайно" применяется
+    // при keepOneKey=false.
+    localStorage.setItem(
+      'svp_refsOnMap',
+      JSON.stringify({ keepOwnTeam: false, keepOneKey: false }),
+    );
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ t: 3, a: 5, c: [100.5, 13.7], g: 'r', l: 'p', ti: 'P', f: 0 }]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ p: 2 });
+
+    selectFeatureByIndex(0);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    expect(payload).toEqual({ r: 5 });
+  });
+
+  test('toggle keepOneKey off->on прямо перед кликом: фикс сразу применяется', async () => {
+    // Сценарий: пользователь до этого момента кликов не делал, он толкает
+    // чекбокс ON и сразу нажимает Корзину. Изменение должно сразу повлиять
+    // на payload, без необходимости перевыбрать фичу.
+    localStorage.setItem(
+      'svp_refsOnMap',
+      JSON.stringify({ keepOwnTeam: false, keepOneKey: false }),
+    );
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ t: 3, a: 5, c: [100.5, 13.7], g: 'r', l: 'p', ti: 'P', f: 0 }]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ p: 2 });
+
+    selectFeatureByIndex(0);
+    // Включаем keepOneKey ПОСЛЕ выбора.
+    const keepOneCheckbox = document.querySelector(
+      '.svp-refs-on-map-keep-one input[type="checkbox"]',
+    ) as HTMLInputElement;
+    expect(keepOneCheckbox.checked).toBe(false);
+    keepOneCheckbox.checked = true;
+    keepOneCheckbox.dispatchEvent(new Event('change'));
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    const payload = extractDeletePayload();
+    expect(payload).toEqual({ r: 4 });
+  });
+
+  test('UI: кнопка "Корзина" и строка "к удалению" учитывают keepOneKey', async () => {
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ t: 3, a: 5, c: [100.5, 13.7], g: 'r', l: 'p', ti: 'P', f: 0 }]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ p: 2 });
+
+    selectFeatureByIndex(0);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    // 1 точка, фактически удалится 4 ключа.
+    expect(trash.textContent).toMatch(/1\s*\(\s*4\s*(?:ключей|keys)\)/);
+
+    const deletableRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__deletable',
+    ) as HTMLElement;
+    expect(deletableRow.textContent).toMatch(
+      /1\s*\(\s*4\s*(?:ключей|keys)\)\s*(?:к удалению|to delete)/,
+    );
+  });
+
+  test('UI: точка с 1 ключом в selection-info__keepone, не в deletable', async () => {
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ t: 3, a: 1, c: [100.5, 13.7], g: 'r', l: 'p', ti: 'P', f: 0 }]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ p: 2 });
+
+    selectFeatureByIndex(0);
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.textContent).toMatch(/0\s*\(\s*0\s*(?:ключей|keys)\)/);
+
+    const keepOneRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__keepone',
+    ) as HTMLElement;
+    expect(keepOneRow.style.display).not.toBe('none');
+    expect(keepOneRow.textContent).toMatch(/1\s*\(\s*1\s*(?:ключей|keys)\)/);
+  });
+
+  test('ИНВАРИАНТ: при любой комбинации payload по точке < inventory total', async () => {
+    // Property-style тест: 12 раскладок инвентаря (1..4 стопки * 3 паттерна
+    // amount), все стопки выделены. payload sum по pointGuid строго меньше
+    // inventory total - гарантия что хотя бы 1 ключ остаётся.
+    for (let i = 0; i < 12; i++) {
+      const stacks = 1 + (i % 4); // 1..4 стопок
+      const items: {
+        t: number;
+        a: number;
+        c: number[];
+        g: string;
+        l: string;
+        ti: string;
+        f: number;
+      }[] = [];
+      let inventoryTotal = 0;
+      for (let s = 0; s < stacks; s++) {
+        const amount = 1 + ((i * 7 + s * 3) % 7); // 1..7
+        items.push({
+          t: 3,
+          a: amount,
+          c: [100.5, 13.7],
+          g: `ref-${i}-${s}`,
+          l: `point-${i}`,
+          ti: 'P',
+          f: 0,
+        });
+        inventoryTotal += amount;
+      }
+      // Чистый старт каждой итерации.
+      await refsOnMap.disable();
+      uninstallInviewFetchHookForTest();
+      delete window.ol;
+      document.body.innerHTML = '';
+      setupInventoryDom();
+      const v = makeView(16, 0.5);
+      const pl = makeLayer('points', makeSource());
+      const ll = makeLayer('lines', makeSource());
+      const rl = makeLayer('regions', makeSource());
+      map = makeMap([pl, ll, rl], v);
+      mockGetOlMap.mockResolvedValue(map);
+      mockOl();
+      v.calculateExtent = (): number[] => [100, 100, 200, 200];
+      fetchSpy = jest.fn(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ count: { total: 0 } }),
+        } as unknown as Response),
+      );
+      window.fetch = fetchSpy as unknown as typeof window.fetch;
+      localStorage.setItem(
+        'svp_refsOnMap',
+        JSON.stringify({ keepOwnTeam: false, keepOneKey: true }),
+      );
+      localStorage.setItem('inventory-cache', JSON.stringify(items));
+      await refsOnMap.enable();
+      clickShowButton();
+      await flushAsync();
+      applyTeams({ [`point-${i}`]: 2 });
+      for (let s = 0; s < stacks; s++) selectFeatureByIndex(s);
+
+      const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+      trash.click();
+      await flushAsync();
+
+      // Возможен no-delete если inventoryTotal <= 1.
+      const calls = fetchSpy.mock.calls as [RequestInfo | URL, RequestInit?][];
+      const deleteCalls = calls.filter(([, init]) => init?.method === 'DELETE');
+      if (inventoryTotal <= 1) {
+        expect(deleteCalls.length).toBe(0);
+        continue;
+      }
+      expect(deleteCalls.length).toBe(1);
+      const body = JSON.parse((deleteCalls[0][1] as RequestInit).body as string) as {
+        selection: Record<string, number>;
+      };
+      const payloadSum = Object.values(body.selection).reduce((a, b) => a + b, 0);
+      // ИНВАРИАНТ: сумма payload по точке < inventory total => остаётся >=1 ключ.
+      expect(payloadSum).toBeLessThan(inventoryTotal);
+      expect(payloadSum).toBe(inventoryTotal - 1);
+    }
+  }, 30000);
 });

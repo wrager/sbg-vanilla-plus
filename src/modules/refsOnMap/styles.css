@@ -130,9 +130,33 @@
   cursor: pointer;
 }
 
-.svp-refs-on-map-selection-info {
+.svp-refs-on-map-keep-one {
   position: fixed;
   bottom: 122px;
+  right: 8px;
+  z-index: 10;
+  background: var(--background-transp);
+  border: 1px solid var(--border-transp);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+
+.svp-refs-on-map-keep-one input[type='checkbox'] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.svp-refs-on-map-selection-info {
+  position: fixed;
+  bottom: 158px;
   right: 8px;
   z-index: 10;
   background: var(--background-transp);
