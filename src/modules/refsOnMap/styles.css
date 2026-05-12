@@ -23,20 +23,10 @@
   bottom: 45px;
   right: 8px;
   z-index: 10;
-  box-sizing: border-box;
-  background: var(--background-transp);
-  border: 1px solid var(--border-transp);
-  backdrop-filter: blur(8px);
-  color: var(--text);
-  font-size: 14px;
   height: 38px;
-  padding: 0 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  min-width: 48px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  border: none;
+  border-radius: 3px;
+  font-weight: bold;
 }
 
 .svp-refs-on-map-trash:disabled {
@@ -91,19 +81,11 @@
   bottom: 4px;
   right: 8px;
   z-index: 10;
-  box-sizing: border-box;
-  background: var(--background-transp);
-  border: 1px solid var(--border-transp);
-  backdrop-filter: blur(8px);
-  color: var(--text);
+  width: 38px;
   height: 38px;
-  padding: 0 10px;
-  border-radius: 8px;
-  cursor: pointer;
-  user-select: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  border: none;
+  border-radius: 3px;
+  font-weight: bold;
 }
 
 .svp-refs-on-map-keep-own {
