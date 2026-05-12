@@ -2092,19 +2092,11 @@ describe('refsOnMap cancel button', () => {
     expect(document.querySelector('.svp-refs-on-map-cancel')).toBeNull();
   });
 
-  test('cancel содержит SVG-иконку крестика, не текст', () => {
+  test('cancel содержит текст "Отменить" / "Cancel"', () => {
     const cancel = document.querySelector('.svp-refs-on-map-cancel') as HTMLButtonElement;
-    const svg = cancel.querySelector('svg');
-    expect(svg).not.toBeNull();
-    // Две диагональные line - линии крестика.
-    expect(cancel.querySelectorAll('svg path').length).toBe(2);
-    // Содержимое - не plain text (текстовых детей нет, кроме whitespace).
-    const directText = Array.from(cancel.childNodes)
-      .filter((n) => n.nodeType === Node.TEXT_NODE)
-      .map((n) => n.textContent ?? '')
-      .join('')
-      .trim();
-    expect(directText).toBe('');
+    expect(cancel.textContent).toMatch(/(?:Отменить|Cancel)/);
+    // SVG-иконки больше нет (текстовая кнопка).
+    expect(cancel.querySelector('svg')).toBeNull();
   });
 });
 
