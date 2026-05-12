@@ -767,11 +767,23 @@ function updateSelectionUi(): void {
     selectionInfoEl.style.display = hasSelection ? '' : 'none';
   }
   if (hasSelection) {
+    // "Из них:" - только когда после total идёт хотя бы одна под-строка
+    // (lock / own / unknown). Иначе total оканчивается точкой без
+    // продолжения, чтобы не висел сирота-двоеточие в UI.
+    const hasAnySubrow =
+      breakdown.lockPoints > 0 ||
+      (keepOwnTeam && breakdown.ownPoints > 0) ||
+      (keepOwnTeam && breakdown.unknownPoints > 0);
     if (selectionInfoTotalRow) {
-      selectionInfoTotalRow.textContent = t({
-        en: `Selected: ${breakdown.selectedPoints} (${breakdown.selectedKeys} keys). Of them:`,
-        ru: `Выделено: ${breakdown.selectedPoints} (${breakdown.selectedKeys} ключей). Из них:`,
-      });
+      selectionInfoTotalRow.textContent = hasAnySubrow
+        ? t({
+            en: `Selected: ${breakdown.selectedPoints} (${breakdown.selectedKeys} keys). Of them:`,
+            ru: `Выделено: ${breakdown.selectedPoints} (${breakdown.selectedKeys} ключей). Из них:`,
+          })
+        : t({
+            en: `Selected: ${breakdown.selectedPoints} (${breakdown.selectedKeys} keys)`,
+            ru: `Выделено: ${breakdown.selectedPoints} (${breakdown.selectedKeys} ключей)`,
+          });
     }
     // Строки lock / own / unknown / deletable disjoint - сумма всех четырёх
     // равна selected. Каждая опциональная: показывается только когда bucket

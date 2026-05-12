@@ -2698,6 +2698,27 @@ describe('refsOnMap selection breakdown UI', () => {
       '.svp-refs-on-map-selection-info__unknown',
     ) as HTMLElement;
     expect(unknown.style.display).toBe('none');
+
+    // Под-строк нет -> total БЕЗ "Из них:" в конце.
+    expect(total.textContent).not.toMatch(/(?:Из них|Of them):/);
+  });
+
+  test('"Из них:" присутствует когда есть хотя бы одна под-строка (lock)', async () => {
+    const items = [
+      { t: 3, a: 3, c: [100, 13], g: 'ref-lock', l: 'point-lock', ti: 'L', f: 0b10 },
+      { t: 3, a: 2, c: [101, 14], g: 'ref-free', l: 'point-free', ti: 'F', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-lock': 1, 'point-free': 2 });
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+
+    const total = document.querySelector('.svp-refs-on-map-selection-info__total') as HTMLElement;
+    // lock>0 -> "Из них:" должен присутствовать.
+    expect(total.textContent).toMatch(/(?:Из них|Of them):/);
   });
 
   test('keepOwnTeam=true: own-row видна, deletable исключает своих, protected пуст без lock', async () => {
