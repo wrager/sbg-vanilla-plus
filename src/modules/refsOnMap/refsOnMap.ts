@@ -694,23 +694,24 @@ function computeSelectionBreakdown(): ISelectionBreakdown {
     protectedByOwnTeam = result.protectedByOwnTeam;
     protectedByUnknownTeam = result.protectedByUnknownTeam;
   }
-  // Bucket'ы lock / own / unknown disjoint по построению partitionByLockProtection.
-  // Финальное deletable разделяется через computeDeletablePayload на:
-  // - реально удаляемые (payload>0) -> deletableFinal/deletableKeysFinal
-  // - защищённые keepOneKey (delete_amount=0 для всех стопок точки) -> keepOneKey
-  // Все 5 bucket'ов disjoint по pointGuid; сумма точек по строкам = selectedPoints.
-  // По ключам disjoint только если keepOneKey-сценарий "точка полностью защищена";
-  // частичные удаления (payload<amount) учитываются в deletableKeys как payload.
-  const { payload, protectedByKeepOneKey } = computeDeletablePayload(deletable, keepOneKey);
-  const deletableFinal: IOlFeature[] = [];
+  // lock / own / unknown disjoint по точкам И по ключам - partitionByLockProtection.
+  // deletable передаётся в computeDeletablePayload: payload (что реально уйдёт
+  // в DELETE) + survivedKeysByPoint (сколько ключей у каждой точки осталось
+  // благодаря правилу "Оставлять 1 ключ"). Частично удалённая точка считается
+  // в обоих счётчиках: payload (то что удалится) и survived (то что осталось).
+  // По ключам строки disjoint, сумма = total. По точкам частично удалённая
+  // считается в deletable И в keepOneKey - это намеренно, формулировка
+  // "X точек сохранят 1 ключ" означает "у X точек правило вернуло >=1 ключ".
+  const { payload, survivedKeysByPoint } = computeDeletablePayload(deletable, keepOneKey);
   let deletableKeysFinal = 0;
   const pointsInPayload = new Set<string>();
   for (const [feature, deleteAmount] of payload) {
-    deletableFinal.push(feature);
     deletableKeysFinal += deleteAmount;
     const guid = getPointGuid(feature);
     if (guid !== null) pointsInPayload.add(guid);
   }
+  let keepOneKeyKeysFinal = 0;
+  for (const keys of survivedKeysByPoint.values()) keepOneKeyKeysFinal += keys;
   return {
     selectedPoints: uniquePointCount(selected),
     selectedKeys: sumAmount(selected),
@@ -722,8 +723,8 @@ function computeSelectionBreakdown(): ISelectionBreakdown {
     ownKeys: sumAmount(protectedByOwnTeam),
     unknownPoints: uniquePointCount(protectedByUnknownTeam),
     unknownKeys: sumAmount(protectedByUnknownTeam),
-    keepOneKeyPoints: uniquePointCount(protectedByKeepOneKey),
-    keepOneKeyKeys: sumAmount(protectedByKeepOneKey),
+    keepOneKeyPoints: survivedKeysByPoint.size,
+    keepOneKeyKeys: keepOneKeyKeysFinal,
   };
 }
 
@@ -785,8 +786,8 @@ function updateSelectionUi(): void {
   if (hasSelection) {
     if (selectionInfoTotalRow) {
       selectionInfoTotalRow.textContent = t({
-        en: `Total: ${breakdown.selectedPoints} (${breakdown.selectedKeys} keys). Of them:`,
-        ru: `Всего: ${breakdown.selectedPoints} (${breakdown.selectedKeys} ключей). Из них:`,
+        en: `Selected: ${breakdown.selectedPoints} (${breakdown.selectedKeys} keys). Of them:`,
+        ru: `Выделено: ${breakdown.selectedPoints} (${breakdown.selectedKeys} ключей). Из них:`,
       });
     }
     // Строки lock / own / unknown / deletable disjoint - сумма всех четырёх
@@ -821,23 +822,24 @@ function updateSelectionUi(): void {
       }
     }
     if (selectionInfoKeepOneRow) {
-      // Показываем только когда keepOneKey активен и есть точки, полностью
-      // защищённые им. Частично-удалённые точки (где 1 ключ остался)
-      // отображены в deletable с уменьшенным amount; отдельная строка про
-      // них не нужна.
+      // Считаем все точки, у которых правило "Оставлять 1 ключ" сохранило
+      // >=1 ключ - и полностью защищённые (delete=0 у всех стопок), и
+      // частично удалённые (где правило обрезает payload, 1 ключ остаётся
+      // в инвентаре). Формулировка "X точек сохранят 1 ключ" про число
+      // точек, не про сумму ключей.
       const showKeepOne = keepOneKey && breakdown.keepOneKeyPoints > 0;
       selectionInfoKeepOneRow.style.display = showKeepOne ? '' : 'none';
       if (showKeepOne) {
         selectionInfoKeepOneRow.textContent = t({
-          en: `${breakdown.keepOneKeyPoints} (${breakdown.keepOneKeyKeys} keys) kept (1 key rule)`,
-          ru: `${breakdown.keepOneKeyPoints} (${breakdown.keepOneKeyKeys} ключей) защищено (правило "1 ключ")`,
+          en: `${breakdown.keepOneKeyPoints} point(s) keep 1 key`,
+          ru: `${breakdown.keepOneKeyPoints} точек сохранят 1 ключ`,
         });
       }
     }
     if (selectionInfoDeletableRow) {
       selectionInfoDeletableRow.textContent = t({
-        en: `${breakdown.deletablePoints} (${breakdown.deletableKeys} keys) to delete`,
-        ru: `${breakdown.deletablePoints} (${breakdown.deletableKeys} ключей) к удалению`,
+        en: `${breakdown.deletableKeys} key(s) to delete`,
+        ru: `${breakdown.deletableKeys} ключей к удалению`,
       });
     }
   }
@@ -1070,16 +1072,28 @@ function sumAmount(features: IOlFeature[]): number {
 function computeDeletablePayload(
   deletable: IOlFeature[],
   keepOneKeyActive: boolean,
-): { payload: Map<IOlFeature, number>; protectedByKeepOneKey: IOlFeature[] } {
+): {
+  payload: Map<IOlFeature, number>;
+  protectedByKeepOneKey: IOlFeature[];
+  // survivedKeysByPoint: pointGuid -> сколько ключей у этой точки осталось
+  // в инвентаре благодаря правилу. Полностью защищённые точки (delete_amount=0
+  // у всех стопок) - selectedAmount. Частично удалённые (где правило обрезало
+  // payload) - 1 ключ остался. Точки без вмешательства правила (выкл фильтр
+  // или невыделенные стопки уже дают >=1) тут НЕ присутствуют. Используется
+  // для счётчика "X точек сохранят 1 ключ" в UI: считаются ВСЕ точки, по
+  // которым правило сохранило хотя бы 1 ключ - и полностью, и частично.
+  survivedKeysByPoint: Map<string, number>;
+} {
   const payload = new Map<IOlFeature, number>();
   const protectedByKeepOneKey: IOlFeature[] = [];
+  const survivedKeysByPoint = new Map<string, number>();
 
   if (!keepOneKeyActive) {
     for (const feature of deletable) {
       const amount = (feature.getProperties?.() ?? {}).amount;
       if (typeof amount === 'number') payload.set(feature, amount);
     }
-    return { payload, protectedByKeepOneKey };
+    return { payload, protectedByKeepOneKey, survivedKeysByPoint };
   }
 
   // Группа: pointGuid -> features этой точки в deletable.
@@ -1125,8 +1139,14 @@ function computeDeletablePayload(
     if (toDeleteTotal <= 0) {
       // selectedAmount <= 1: нечего удалять без нарушения инварианта.
       for (const feature of features) protectedByKeepOneKey.push(feature);
+      // Точка полностью защищена правилом - все её ключи (selectedAmount,
+      // обычно 0 или 1) "сохранены".
+      survivedKeysByPoint.set(pointGuid, selectedAmount);
       continue;
     }
+    // Частично удалена: правило обрезает payload, в инвентаре остаётся 1
+    // ключ. Записываем 1 ключ как "сохранённый" по этой точке.
+    survivedKeysByPoint.set(pointGuid, 1);
 
     // Distribute. Sort by amount desc, ties по feature id (детерминированно
     // для тестов и для воспроизводимого DELETE-payload).
@@ -1156,7 +1176,7 @@ function computeDeletablePayload(
     }
   }
 
-  return { payload, protectedByKeepOneKey };
+  return { payload, protectedByKeepOneKey, survivedKeysByPoint };
 }
 
 async function handleDeleteClick(): Promise<void> {
