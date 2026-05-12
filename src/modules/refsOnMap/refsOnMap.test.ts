@@ -2361,6 +2361,85 @@ describe('refsOnMap progress + interaction lock', () => {
     slow.resolveAll();
     await flushAsync();
   });
+
+  test('фоновая загрузка НЕ-выбранных точек: trash НЕ disabled (selection-aware)', async () => {
+    // 6 точек: первые 5 быстро резолвятся (батч 1 worker'а), 6-я (bg-pt)
+    // медленно. Между батчами worker ждёт delay(100ms). В этом окне
+    // selected-pt (одна из первых 5) уже не в queue/in-flight, а bg-pt
+    // ещё не взят. teamsLoading=true глобально, но selection-aware
+    // проверка должна разблокировать trash.
+    const items = [
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-1', l: 'selected-pt', ti: 'S', f: 0 },
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-2', l: 'pt-2', ti: '2', f: 0 },
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-3', l: 'pt-3', ti: '3', f: 0 },
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-4', l: 'pt-4', ti: '4', f: 0 },
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-5', l: 'pt-5', ti: '5', f: 0 },
+      { t: 3, a: 8, c: [101.0, 14.0], g: 'ref-bg', l: 'bg-pt', ti: 'B', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    const pending: (() => void)[] = [];
+    fetchSpy.mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/api/point')) {
+        if (url.includes('bg-pt')) {
+          return new Promise<Response>((resolve) => {
+            pending.push(() => {
+              resolve({
+                ok: true,
+                json: () => Promise.resolve({ data: { te: 2 } }),
+              } as unknown as Response);
+            });
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: { te: 1 } }),
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response);
+    });
+    clickShowButton();
+    // Batch 1 worker'а резолвит 5 точек (включая selected-pt). Ждём реально
+    // 150ms, чтобы дошли до delay(100ms) между батчами; bg-pt в этот момент
+    // уже взят в batch 2 (в-полёте) и ждёт slow Promise.
+    await new Promise((r) => setTimeout(r, 150));
+    await flushAsync();
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    const selectedFeature = allFeatures.find(
+      (f) => f.getProperties?.().pointGuid === 'selected-pt',
+    );
+    expect(selectedFeature).toBeDefined();
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        if (selectedFeature) callback(selectedFeature);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    const checkbox = document.querySelector(
+      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+    ) as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.disabled).toBe(false);
+    expect(trash.dataset.loading).toBe('false');
+    // Прогресс-бар остаётся виден - фоновая загрузка для bg-pt идёт.
+    const progress = document.querySelector('.svp-refs-on-map-progress') as HTMLElement;
+    expect(progress.style.display).not.toBe('none');
+
+    // Дорезолвим bg-pt чтобы worker завершился до afterEach.
+    for (const r of pending) r();
+    await flushAsync();
+  });
 });
 
 // ── selection breakdown UI ───────────────────────────────────────────────────

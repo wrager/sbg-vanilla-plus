@@ -526,6 +526,27 @@ function uniquePointCount(features: IOlFeature[]): number {
 }
 
 /**
+ * true если среди выбранных есть хоть одна точка, чья команда сейчас
+ * загружается (guid в teamLoadQueue или teamLoadInFlight). Используется
+ * для решения, надо ли блокировать trashButton при keepOwnTeam: общая
+ * фоновая загрузка для невыбранных точек удалению не мешает - lock
+ * защищается через inventory-cache.f, а фильтр свои читает team только
+ * у выбранных. Заменяет старую проверку global teamsLoading, которая
+ * блокировала кнопку при любой фоновой загрузке.
+ */
+function hasSelectedPointsLoadingTeam(): boolean {
+  if (!refsSource) return false;
+  for (const feature of refsSource.getFeatures()) {
+    const properties = feature.getProperties?.() ?? {};
+    if (properties.isSelected !== true) continue;
+    const guid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+    if (guid === null) continue;
+    if (teamLoadQueue.has(guid) || teamLoadInFlight.has(guid)) return true;
+  }
+  return false;
+}
+
+/**
  * Per-feature разбивка текущего selection'а на bucket'ы lock/own/unknown/deletable
  * через тот же `partitionByLockProtection`, что применяется при handleDeleteClick,
  * чтобы UI всегда показывал реальный исход кнопки. Считает уникальные точки
@@ -608,13 +629,14 @@ function updateSelectionUi(): void {
         : '';
     }
     trashButton.style.visibility = hasSelection ? 'visible' : 'hidden';
-    // Блокировка по teamsLoading - только при включённом keepOwnTeam:
-    // фильтр свои опирается на финальные значения `team` у фич, до их
-    // загрузки удаление с этим фильтром может потерять защиту "своего
-    // цвета". Без фильтра удалять можно безопасно - lock и так
-    // защищён через inventory-cache.f. Disabled-state снимается из
-    // applyTeamsLoadedState и из onChange чекбокса.
-    const isLoading = teamsLoading && keepOwnTeam;
+    // Блокировка только при включённом keepOwnTeam И когда хотя бы один
+    // выбранный guid реально в очереди загрузки команды (queue/in-flight).
+    // Фоновая загрузка для невыбранных точек (visible extent moveend, /inview
+    // enrichment) удалению не мешает - фильтр свои читает team только у
+    // selected, lock защищается через inventory-cache.f. Без фильтра
+    // удаление безопасно в любом случае. Пересчёт триггерится из
+    // updateSelectionUi на toggle/checkbox/batch worker'а.
+    const isLoading = keepOwnTeam && hasSelectedPointsLoadingTeam();
     trashButton.disabled = isLoading;
     // data-loading переключает видимость default/loading icon span'ов через
     // CSS селекторы [data-loading="true"]. SVG-спиннер остаётся mounted
@@ -866,13 +888,12 @@ async function handleDeleteClick(): Promise<void> {
   if (selected.length === 0) return;
 
   // Дополнительный guard поверх UI-блокировки: если по любой причине клик
-  // прошёл во время загрузки (race с MutationObserver, программный вызов
-  // из тестов, ручной dispatchEvent) И при включённом keepOwnTeam -
-  // удаление запрещено, потому что фильтр свои читает feature.team,
-  // который пока что undefined для не загруженных точек. Без фильтра
-  // (keepOwnTeam=false) загрузка team не нужна - lock защищается через
-  // inventory-cache.f и не зависит от team.
-  if (teamsLoading && keepOwnTeam) {
+  // прошёл во время загрузки команды для одной из выбранных точек И при
+  // включённом keepOwnTeam - удаление запрещено, потому что фильтр свои
+  // читает feature.team у selected, и до резолва точка с team=undefined
+  // могла бы попасть в payload. Фоновая загрузка для невыбранных не
+  // блокирует, см. updateSelectionUi.
+  if (keepOwnTeam && hasSelectedPointsLoadingTeam()) {
     showToast(
       t({
         en: 'Loading team data, please wait',
@@ -1139,6 +1160,10 @@ async function runTeamLoadWorker(): Promise<void> {
       teamLoadDone++;
     }
     updateProgress(teamLoadDone, teamLoadTotal);
+    // Trash.disabled зависит от teamLoadQueue/teamLoadInFlight для selected
+    // точек. После batch'а guid'ы выбранных точек могут уйти из in-flight -
+    // надо переоценить состояние кнопки, не дожидаясь следующего toggle.
+    updateSelectionUi();
     if (teamLoadQueue.size > 0) await delay(TEAM_BATCH_DELAY_MS);
   }
 
