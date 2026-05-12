@@ -38,7 +38,9 @@ const COLLAPSIBLE_EXPAND_ID = 'svp-top-expand';
 // ── team loading ─────────────────────────────────────────────────────────────
 
 interface IPointApiResponse {
-  data?: { te?: number };
+  // te: number = команда; null = нейтральная точка (нет владельца); undefined =
+  // поле отсутствует (старый формат или ошибочный ответ).
+  data?: { te?: number | null };
 }
 
 function isPointApiResponse(value: unknown): value is IPointApiResponse {
@@ -62,17 +64,26 @@ function isInviewResponse(value: unknown): value is IInviewResponse {
   return typeof value === 'object' && value !== null;
 }
 
-async function fetchPointTeam(pointGuid: string): Promise<number | null> {
+/**
+ * Result discriminated union: number (конкретная команда), null (нейтральная
+ * точка - сервер ответил `te: null`, у точки нет владельца), 'failed' (fetch
+ * упал или формат ответа не распознан). Различать важно: neutral - легитимное
+ * состояние, точка не своя и не чужая; failed - реальная проблема загрузки,
+ * UI обязан показать unknown-fallback. До разделения оба случая склеивались в
+ * null, и neutral-точки попадали в protectedByUnknownTeam при keepOwnTeam=true.
+ */
+async function fetchPointTeam(pointGuid: string): Promise<number | null | 'failed'> {
   try {
     const response = await fetch(`/api/point?guid=${pointGuid}&status=1`);
     const json: unknown = await response.json();
-    if (isPointApiResponse(json) && typeof json.data?.te === 'number') {
-      return json.data.te;
+    if (isPointApiResponse(json)) {
+      if (typeof json.data?.te === 'number') return json.data.te;
+      if (json.data?.te === null) return null;
     }
   } catch {
-    // leave neutral color on error
+    // fall through to 'failed'
   }
-  return null;
+  return 'failed';
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -171,20 +182,30 @@ let beforeOpenFollow: string | null = null;
 // loadRefsOnMapSettings при открытии viewer.
 let keepOwnTeam = false;
 /**
- * Кэш команд точек. Ключ - pointGuid. Значение - число (команда) либо
- * `null` ("пытались загрузить через /api/point, ответ без data.te либо
- * fetch упал"). Запись `null` нужна для идемпотентности повторных попыток:
- * `enqueueVisibleForLoad.teamCache.has(guid)` skip'ит и успешные, и
- * провалившиеся попытки. Без `null` каждый последующий moveend через
- * extent заново ставил такие точки в очередь, worker снова дёргал
- * /api/point, получал null - бесконечный loop запросов для точек, чью
- * команду сервер не возвращает (без owner, удалённые, rate-limited).
+/**
+ * Кэш команд точек. Ключ - pointGuid. Значения:
+ * - `number` - конкретная команда (1..4).
+ * - `null` - нейтральная точка: сервер ответил 200 OK с `data.te: null`,
+ *   у точки нет владельца (легитимное игровое состояние).
+ * - `'failed'` - fetch упал, ответ нераспознан, либо сервер не вернул
+ *   ни число, ни null. Реальная проблема загрузки, требует fail-safe защиты.
  *
- * feature.team устанавливается только когда команда известна (number);
- * `null` оставляет feature.team=undefined, что корректно классифицируется
- * как `protectedByUnknownTeam` fail-safe в partitionByLockProtection.
+ * Раньше neutral и failed склеивались в `null`, и нейтральные точки попадали
+ * в `protectedByUnknownTeam` при keepOwnTeam=true - пользователь видел "X
+ * неизвестного цвета" после полной отработки worker'а и не понимал, почему
+ * deletable не растёт. Дискриминация состояний нужна для корректного UI.
+ *
+ * Запись любого из трёх значений нужна для идемпотентности повторных
+ * попыток: `teamCache.has(guid)` skip'ит и успешные, и нейтральные, и
+ * провалившиеся, иначе каждый moveend через extent заново ставил бы их в
+ * очередь и worker долбил бы /api/point бесконечно.
+ *
+ * feature.team устанавливается для number и null (neutral - валидное
+ * состояние, partitionByLockProtection трактует null как "не своя"). Для
+ * 'failed' feature.team остаётся undefined, partitionByLockProtection
+ * относит такую точку в protectedByUnknownTeam fail-safe.
  */
-const teamCache = new Map<string, number | null>();
+const teamCache = new Map<string, number | null | 'failed'>();
 let teamLoadAborted = false;
 // Пока true - viewer догружает команды точек, выбор по клику и trashButton
 // заблокированы. Сбрасывается в false когда очередь fallback /api/point
@@ -760,8 +781,12 @@ function toggleFeatureSelection(feature: IOlFeature): void {
   // просто "не догружено".
   if (!isSelected) {
     const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
-    const hasKnownTeam = typeof properties.team === 'number';
-    if (pointGuid !== null && !hasKnownTeam) requestTeamLoad(pointGuid);
+    // team может быть number (известна), null (neutral - тоже известная,
+    // загрузки не требует) или undefined (не загружено). requestTeamLoad
+    // нужен только для undefined; сам он дополнительно skip'ит, если
+    // teamCache.has(guid) уже что-то записал.
+    const teamIsLoaded = typeof properties.team === 'number' || properties.team === null;
+    if (pointGuid !== null && !teamIsLoaded) requestTeamLoad(pointGuid);
   }
   updateSelectionUi();
 }
@@ -882,12 +907,17 @@ function partitionByLockProtection(
       continue;
     }
     if (ownTeamFilter !== null) {
-      const team = typeof properties.team === 'number' ? properties.team : undefined;
+      // feature.team:
+      // - number: конкретная команда. Сравниваем с playerTeam.
+      // - null: нейтральная точка (сервер вернул te:null). Не своя -> deletable.
+      // - undefined: команда не загружена (fetch failed либо точка ни в visible
+      //   extent, ни в очереди). Fail-safe -> protectedByUnknownTeam.
+      const team: unknown = properties.team;
       if (team === undefined) {
         protectedByUnknownTeam.push(feature);
         continue;
       }
-      if (team === ownTeamFilter.playerTeam) {
+      if (typeof team === 'number' && team === ownTeamFilter.playerTeam) {
         protectedByOwnTeam.push(feature);
         continue;
       }
@@ -1169,14 +1199,16 @@ async function runTeamLoadWorker(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- checked between awaits, hideViewer мог выставить
     if (teamLoadAborted) break;
     for (const { pointGuid, team } of results) {
-      // Пишем результат в teamCache ВСЕГДА - и number, и null. null = "уже
-      // пытались, сервер не вернул команду"; повторные enqueueVisibleForLoad
-      // на следующих moveend увидят teamCache.has(guid)=true и не поставят
-      // guid в очередь снова. Без этого one та же "мёртвая" точка вечно
-      // запрашивалась бы через /api/point на каждом zoom/pan.
+      // Пишем результат в teamCache ВСЕГДА - и number, и null (neutral), и
+      // 'failed'. teamCache.has(guid) skip'ит и успешные, и нейтральные, и
+      // провалившиеся - иначе каждый moveend через extent заново ставил бы
+      // их в очередь, и worker долбил бы /api/point бесконечно.
       teamCache.set(pointGuid, team);
       teamLoadInFlight.delete(pointGuid);
-      if (team !== null && refsSource) {
+      // feature.team устанавливается для number и null (neutral - валидный
+      // ответ "у точки нет владельца"). Для 'failed' оставляем undefined,
+      // чтобы partitionByLockProtection отнёс точку в protectedByUnknownTeam.
+      if (team !== 'failed' && refsSource) {
         for (const feature of refsSource.getFeatures()) {
           const properties = feature.getProperties?.() ?? {};
           if (properties.pointGuid === pointGuid) {
@@ -1310,10 +1342,11 @@ function showViewer(): void {
     feature.set?.('pointGuid', ref.l);
     feature.set?.('isSelected', false);
 
-    // cachedTeam может быть null ("пытались, не получилось") - не ставим
-    // feature.team, оставляем undefined для protectedByUnknownTeam fail-safe.
+    // teamCache хранит number | null (neutral) | 'failed'. Для number и null
+    // ставим feature.team; для 'failed' и missing - оставляем undefined,
+    // partitionByLockProtection отнесёт точку в protectedByUnknownTeam fail-safe.
     const cachedTeam = teamCache.get(ref.l);
-    if (typeof cachedTeam === 'number') {
+    if (typeof cachedTeam === 'number' || cachedTeam === null) {
       feature.set?.('team', cachedTeam);
     }
 

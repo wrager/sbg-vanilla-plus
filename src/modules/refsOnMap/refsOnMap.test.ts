@@ -1741,12 +1741,12 @@ describe('refsOnMap visible-only active pull', () => {
     expect(document.querySelector('.svp-toast')).toBeNull();
   });
 
-  test('/api/point возвращает null: повторный moveend НЕ перезапрашивает ту же точку', async () => {
-    // fetchPointTeam null = "сервер не вернул data.te" (точка без owner,
-    // удалённая, rate-limited). Раньше каждый moveend возвращал такой guid
-    // в очередь, worker дёргал /api/point снова и снова - loop. Сейчас
-    // worker пишет null в teamCache, enqueueVisibleForLoad skip'ит.
-    const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-null', ti: 'X', f: 0 }];
+  test('/api/point fetch failure: повторный moveend НЕ перезапрашивает ту же точку', async () => {
+    // fetchPointTeam возвращает 'failed' когда ответ нераспознан (нет ни
+    // числового data.te, ни data.te:null). Раньше каждый moveend возвращал
+    // такой guid в очередь, worker дёргал /api/point снова - loop. Сейчас
+    // worker пишет 'failed' в teamCache, enqueueVisibleForLoad skip'ит.
+    const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-fail', ti: 'X', f: 0 }];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
     // Возвращаем пустой объект - data.te отсутствует.
     teamFetchSpy.mockImplementation(() =>
@@ -1759,7 +1759,7 @@ describe('refsOnMap visible-only active pull', () => {
     clickShowButton();
     await flushAsync();
 
-    // Первый раз: /api/point вызван 1 раз для point-null.
+    // Первый раз: /api/point вызван 1 раз для point-fail.
     expect(teamFetchSpy).toHaveBeenCalledTimes(1);
 
     // Эмулируем серию moveend на том же extent.
@@ -1770,16 +1770,15 @@ describe('refsOnMap visible-only active pull', () => {
     emitMoveend();
     await flushAsync();
 
-    // Никаких повторных запросов: точка уже в teamCache как null.
+    // Никаких повторных запросов: точка уже в teamCache как 'failed'.
     expect(teamFetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  test('feature.team остаётся undefined для точек с null в teamCache (fail-safe protection)', async () => {
-    // Семантика "team неизвестна" сохраняется: feature.team НЕ
-    // устанавливается на null, остаётся undefined. partitionByLockProtection
-    // классифицирует такие точки как protectedByUnknownTeam при
-    // keepOwnTeam=true.
-    const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-null', ti: 'X', f: 0 }];
+  test('feature.team остаётся undefined для точек с failed-fetch в teamCache (fail-safe protection)', async () => {
+    // fetch упал / ответ нераспознан -> teamCache='failed', feature.team
+    // остаётся undefined. partitionByLockProtection классифицирует такие
+    // точки как protectedByUnknownTeam при keepOwnTeam=true.
+    const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-fail', ti: 'X', f: 0 }];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
     teamFetchSpy.mockImplementation(() =>
       Promise.resolve({
@@ -1795,6 +1794,53 @@ describe('refsOnMap visible-only active pull', () => {
       (r) => r.value as IOlFeature,
     );
     expect(features[0].getProperties?.().team).toBeUndefined();
+  });
+
+  test('/api/point data.te:null (neutral): feature.team=null, точка deletable при keepOwnTeam=true', async () => {
+    // Сервер вернул 200 OK с data.te:null - точка нейтральная, у неё нет
+    // владельца. feature.team=null (а НЕ undefined), partitionByLockProtection
+    // отнесёт точку в deletable (не своя), не в protectedByUnknownTeam.
+    // Раньше neutral и failed склеивались, и пользователь видел "unknown
+    // team" в UI даже после полной отработки worker'а.
+    const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-neutral', ti: 'N', f: 0 }];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    teamFetchSpy.mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ data: { te: null } }),
+      } as unknown as Response),
+    );
+    setExtent([-1000, -1000, 1000, 1000]);
+    clickShowButton();
+    await flushAsync();
+
+    const features = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    // feature.team === null (neutral marker), не undefined.
+    expect(features[0].getProperties?.().team).toBeNull();
+
+    // Выделяем точку, включаем keepOwnTeam. UI breakdown:
+    const clickHandler = map._clickListeners[0];
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(features[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    const checkbox = document.querySelector(
+      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+    ) as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+
+    // Точка в deletable, НЕ в unknown.
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.textContent).toMatch(/1\s*\(\s*4\s*(?:ключей|keys)\)/);
+    const unknownRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__unknown',
+    ) as HTMLElement;
+    expect(unknownRow.style.display).toBe('none');
   });
 });
 
