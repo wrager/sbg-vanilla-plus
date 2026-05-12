@@ -2713,7 +2713,7 @@ describe('refsOnMap selection breakdown UI', () => {
     expect(total.textContent).not.toMatch(/(?:Из них|Of them):/);
   });
 
-  test('keepOne-row: показывает X (Y ключей) когда правило "1 ключ" сработало', async () => {
+  test('keepOne-row: показывает "X последних ключей останутся" когда правило сработало', async () => {
     // Точка с 1 ключом - полностью защищена правилом (toDeleteTotal<=0,
     // selectedAmount=1 идёт в survivedKeysByPoint). keepOneKey=true по
     // умолчанию (см. refsOnMapSettings). beforeEach глобально ставит
@@ -2732,7 +2732,9 @@ describe('refsOnMap selection breakdown UI', () => {
       '.svp-refs-on-map-selection-info__keepone',
     ) as HTMLElement;
     expect(keepOneRow.style.display).not.toBe('none');
-    expect(keepOneRow.textContent).toMatch(/1\s*\(\s*1\s*(?:ключей|keys)\)\s*(?:по правилу|kept)/);
+    expect(keepOneRow.textContent).toMatch(
+      /1\s*(?:последних ключей останутся|last key\(s\) will stay)/,
+    );
   });
 
   test('keepOne-row скрыт при keepOneKey=false', async () => {

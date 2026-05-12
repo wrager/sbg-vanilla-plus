@@ -837,14 +837,14 @@ function updateSelectionUi(): void {
     if (selectionInfoKeepOneRow) {
       // Показываем сохранённые правилом ключи: и полностью защищённые точки
       // (точки с 1 ключом, которые правило не трогает), и частично удалённые
-      // (где правило обрезает payload, 1 ключ остаётся). Формулировка про
-      // ключи - они и есть основной "не удалится" фактор правила.
+      // (где правило обрезает payload, 1 ключ остаётся). Число - сумма
+      // ключей, оставленных в инвентаре благодаря правилу.
       const showKeepOne = keepOneKey && breakdown.keepOneKeyPoints > 0;
       selectionInfoKeepOneRow.style.display = showKeepOne ? '' : 'none';
       if (showKeepOne) {
         selectionInfoKeepOneRow.textContent = t({
-          en: `${breakdown.keepOneKeyPoints} (${breakdown.keepOneKeyKeys} keys) kept by "1 key" rule`,
-          ru: `${breakdown.keepOneKeyPoints} (${breakdown.keepOneKeyKeys} ключей) по правилу "1 ключ"`,
+          en: `${breakdown.keepOneKeyKeys} last key(s) will stay`,
+          ru: `${breakdown.keepOneKeyKeys} последних ключей останутся`,
         });
       }
     }
