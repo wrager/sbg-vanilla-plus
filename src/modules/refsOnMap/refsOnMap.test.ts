@@ -2593,15 +2593,20 @@ describe('refsOnMap selection breakdown UI', () => {
     const total = document.querySelector('.svp-refs-on-map-selection-info__total') as HTMLElement;
     expect(total.textContent).toMatch(/(?:Всего|Total):\s*2\s*\(\s*6\s*(?:ключей|keys)\)/);
 
+    // lock=0 -> protected row hidden. own/unknown тоже hidden при
+    // keepOwnTeam=false. Видимы только total и deletable.
     const protectedRow = document.querySelector(
       '.svp-refs-on-map-selection-info__protected',
     ) as HTMLElement;
-    expect(protectedRow.textContent).toMatch(
-      /0\s*\(\s*0\s*(?:ключей|keys)\)\s*(?:защищено|protected)/,
-    );
+    expect(protectedRow.style.display).toBe('none');
 
     const own = document.querySelector('.svp-refs-on-map-selection-info__own') as HTMLElement;
     expect(own.style.display).toBe('none');
+
+    const unknown = document.querySelector(
+      '.svp-refs-on-map-selection-info__unknown',
+    ) as HTMLElement;
+    expect(unknown.style.display).toBe('none');
 
     const deletableRow = document.querySelector(
       '.svp-refs-on-map-selection-info__deletable',
@@ -2611,7 +2616,7 @@ describe('refsOnMap selection breakdown UI', () => {
     );
   });
 
-  test('keepOwnTeam=true: own-row видна, deletable исключает своих, protected растёт', async () => {
+  test('keepOwnTeam=true: own-row видна, deletable исключает своих, protected пуст без lock', async () => {
     setInventoryTwoPointsThreeStacks();
     clickShowButton();
     await flushAsync();
@@ -2631,16 +2636,21 @@ describe('refsOnMap selection breakdown UI', () => {
     // 2 точки (5 own + 2 enemy = 7 ключей суммарно). Из них:
     expect(total.textContent).toMatch(/(?:Всего|Total):\s*2\s*\(\s*7\s*(?:ключей|keys)\)/);
 
+    // lock=0 -> protected row hidden. own=1 (5 keys) visible.
     const protectedRow = document.querySelector(
       '.svp-refs-on-map-selection-info__protected',
     ) as HTMLElement;
-    expect(protectedRow.textContent).toMatch(
-      /1\s*\(\s*5\s*(?:ключей|keys)\)\s*(?:защищено|protected)/,
-    );
+    expect(protectedRow.style.display).toBe('none');
 
     const own = document.querySelector('.svp-refs-on-map-selection-info__own') as HTMLElement;
     expect(own.style.display).not.toBe('none');
     expect(own.textContent).toMatch(/1\s*\(\s*5\s*(?:ключей|keys)\)\s*(?:своего цвета|own team)/);
+
+    // unknown=0 -> unknown row hidden.
+    const unknown = document.querySelector(
+      '.svp-refs-on-map-selection-info__unknown',
+    ) as HTMLElement;
+    expect(unknown.style.display).toBe('none');
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     // Удаляется enemy: 1 точка (2 ключа).
@@ -2745,6 +2755,64 @@ describe('refsOnMap selection breakdown UI', () => {
 
     clickCloseButton();
     expect(info.style.display).toBe('none');
+  });
+
+  test('disjoint строки lock/own/unknown/deletable: сумма = total', async () => {
+    // 4 точки: lock, own, enemy, unknown (без team). keepOwnTeam=true.
+    // Каждый bucket - 1 точка, 1 ключ. Строки lock/own/unknown/deletable
+    // должны быть disjoint, в сумме = 4 (total).
+    const items = [
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-lock', l: 'point-lock', ti: 'L', f: 0b10 },
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-own', l: 'point-own', ti: 'O', f: 0 },
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-enemy', l: 'point-enemy', ti: 'E', f: 0 },
+      { t: 3, a: 1, c: [100.5, 13.7], g: 'ref-unk', l: 'point-unk', ti: 'U', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    // Команда заполнена для всех, кроме point-unk.
+    applyTeams({ 'point-lock': 2, 'point-own': 1, 'point-enemy': 3 });
+
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+    selectFeatureByIndex(2);
+    selectFeatureByIndex(3);
+
+    const checkbox = document.querySelector(
+      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+    ) as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+
+    const total = document.querySelector('.svp-refs-on-map-selection-info__total') as HTMLElement;
+    expect(total.textContent).toMatch(/(?:Всего|Total):\s*4\s*\(\s*4\s*(?:ключей|keys)\)/);
+
+    const protectedRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__protected',
+    ) as HTMLElement;
+    expect(protectedRow.style.display).not.toBe('none');
+    expect(protectedRow.textContent).toMatch(
+      /1\s*\(\s*1\s*(?:ключей|keys)\)\s*(?:защищено|protected)/,
+    );
+
+    const own = document.querySelector('.svp-refs-on-map-selection-info__own') as HTMLElement;
+    expect(own.style.display).not.toBe('none');
+    expect(own.textContent).toMatch(/1\s*\(\s*1\s*(?:ключей|keys)\)\s*(?:своего цвета|own team)/);
+
+    const unknown = document.querySelector(
+      '.svp-refs-on-map-selection-info__unknown',
+    ) as HTMLElement;
+    expect(unknown.style.display).not.toBe('none');
+    expect(unknown.textContent).toMatch(
+      /1\s*\(\s*1\s*(?:ключей|keys)\)\s*(?:неизвестного цвета|unknown team)/,
+    );
+
+    const deletableRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__deletable',
+    ) as HTMLElement;
+    expect(deletableRow.textContent).toMatch(
+      /1\s*\(\s*1\s*(?:ключей|keys)\)\s*(?:к удалению|to delete)/,
+    );
   });
 });
 
@@ -2995,14 +3063,20 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     selectFeatureByIndex(1);
     enableKeepOwn();
 
-    // UI: всё в protected, deletable=0.
+    // UI: всё в unknown (defensive playerTeam=null), deletable=0.
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     expect(trash.textContent).toMatch(/0\s*\(\s*0\s*(?:ключей|keys)\)/);
+    // lock=0, own=0 -> protected/own row hidden. unknown=2.
     const protectedRow = document.querySelector(
       '.svp-refs-on-map-selection-info__protected',
     ) as HTMLElement;
-    expect(protectedRow.textContent).toMatch(
-      /2\s*\(\s*6\s*(?:ключей|keys)\)\s*(?:защищено|protected)/,
+    expect(protectedRow.style.display).toBe('none');
+    const unknownRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__unknown',
+    ) as HTMLElement;
+    expect(unknownRow.style.display).not.toBe('none');
+    expect(unknownRow.textContent).toMatch(
+      /2\s*\(\s*6\s*(?:ключей|keys)\)\s*(?:неизвестного цвета|unknown team)/,
     );
 
     trash.click();

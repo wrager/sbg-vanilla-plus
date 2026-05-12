@@ -155,6 +155,7 @@ let selectionInfoEl: HTMLDivElement | null = null;
 let selectionInfoTotalRow: HTMLDivElement | null = null;
 let selectionInfoProtectedRow: HTMLDivElement | null = null;
 let selectionInfoOwnRow: HTMLDivElement | null = null;
+let selectionInfoUnknownRow: HTMLDivElement | null = null;
 let selectionInfoDeletableRow: HTMLDivElement | null = null;
 let tabClickHandler: ((event: Event) => void) | null = null;
 let mapClickHandler: ((event: IOlMapEvent) => void) | null = null;
@@ -494,10 +495,12 @@ interface ISelectionBreakdown {
   selectedKeys: number;
   deletablePoints: number;
   deletableKeys: number;
-  protectedPoints: number;
-  protectedKeys: number;
+  lockPoints: number;
+  lockKeys: number;
   ownPoints: number;
   ownKeys: number;
+  unknownPoints: number;
+  unknownKeys: number;
 }
 
 const EMPTY_BREAKDOWN: ISelectionBreakdown = {
@@ -505,10 +508,12 @@ const EMPTY_BREAKDOWN: ISelectionBreakdown = {
   selectedKeys: 0,
   deletablePoints: 0,
   deletableKeys: 0,
-  protectedPoints: 0,
-  protectedKeys: 0,
+  lockPoints: 0,
+  lockKeys: 0,
   ownPoints: 0,
   ownKeys: 0,
+  unknownPoints: 0,
+  unknownKeys: 0,
 };
 
 function getPointGuid(feature: IOlFeature): string | null {
@@ -594,17 +599,20 @@ function computeSelectionBreakdown(): ISelectionBreakdown {
     protectedByOwnTeam = result.protectedByOwnTeam;
     protectedByUnknownTeam = result.protectedByUnknownTeam;
   }
-  const protectedAll = [...protectedByLock, ...protectedByOwnTeam, ...protectedByUnknownTeam];
-
+  // Bucket'ы lock / own / unknown / deletable disjoint по построению
+  // partitionByLockProtection (см. continue на каждой ветке). В UI каждая
+  // строка показывает свой bucket; сумма всех четырёх = selected.
   return {
     selectedPoints: uniquePointCount(selected),
     selectedKeys: sumAmount(selected),
     deletablePoints: uniquePointCount(deletable),
     deletableKeys: sumAmount(deletable),
-    protectedPoints: uniquePointCount(protectedAll),
-    protectedKeys: sumAmount(protectedAll),
+    lockPoints: uniquePointCount(protectedByLock),
+    lockKeys: sumAmount(protectedByLock),
     ownPoints: uniquePointCount(protectedByOwnTeam),
     ownKeys: sumAmount(protectedByOwnTeam),
+    unknownPoints: uniquePointCount(protectedByUnknownTeam),
+    unknownKeys: sumAmount(protectedByUnknownTeam),
   };
 }
 
@@ -666,18 +674,37 @@ function updateSelectionUi(): void {
         ru: `Всего: ${breakdown.selectedPoints} (${breakdown.selectedKeys} ключей). Из них:`,
       });
     }
+    // Строки lock / own / unknown / deletable disjoint - сумма всех четырёх
+    // равна selected. Каждая опциональная: показывается только когда bucket
+    // не пуст (и для own/unknown - дополнительно при keepOwnTeam=true,
+    // потому что без фильтра unknown идёт в deletable, а own - тоже).
     if (selectionInfoProtectedRow) {
-      selectionInfoProtectedRow.textContent = t({
-        en: `${breakdown.protectedPoints} (${breakdown.protectedKeys} keys) protected`,
-        ru: `${breakdown.protectedPoints} (${breakdown.protectedKeys} ключей) защищено`,
-      });
+      const showLock = breakdown.lockPoints > 0;
+      selectionInfoProtectedRow.style.display = showLock ? '' : 'none';
+      if (showLock) {
+        selectionInfoProtectedRow.textContent = t({
+          en: `${breakdown.lockPoints} (${breakdown.lockKeys} keys) protected`,
+          ru: `${breakdown.lockPoints} (${breakdown.lockKeys} ключей) защищено`,
+        });
+      }
     }
     if (selectionInfoOwnRow) {
-      selectionInfoOwnRow.style.display = keepOwnTeam ? '' : 'none';
-      if (keepOwnTeam) {
+      const showOwn = keepOwnTeam && breakdown.ownPoints > 0;
+      selectionInfoOwnRow.style.display = showOwn ? '' : 'none';
+      if (showOwn) {
         selectionInfoOwnRow.textContent = t({
           en: `${breakdown.ownPoints} (${breakdown.ownKeys} keys) own team`,
           ru: `${breakdown.ownPoints} (${breakdown.ownKeys} ключей) своего цвета`,
+        });
+      }
+    }
+    if (selectionInfoUnknownRow) {
+      const showUnknown = keepOwnTeam && breakdown.unknownPoints > 0;
+      selectionInfoUnknownRow.style.display = showUnknown ? '' : 'none';
+      if (showUnknown) {
+        selectionInfoUnknownRow.textContent = t({
+          en: `${breakdown.unknownPoints} (${breakdown.unknownKeys} keys) unknown team`,
+          ru: `${breakdown.unknownPoints} (${breakdown.unknownKeys} ключей) неизвестного цвета`,
         });
       }
     }
@@ -1571,10 +1598,12 @@ export const refsOnMap: IFeatureModule = {
           keepOwnTeamLabel.appendChild(keepOwnTeamText);
           document.body.appendChild(keepOwnTeamLabel);
 
-          // Selection info: 4 строки, total + protected + own (видна
-          // только при keepOwnTeam=true) + deletable (зеркало счётчика
-          // на кнопке "Корзина"). Видим только при hasSelection -
-          // синхронизация в updateSelectionUi.
+          // Selection info: до 5 строк - total + protected (lock) + own +
+          // unknown (последние две только при keepOwnTeam=true) + deletable
+          // (зеркало счётчика на кнопке "Корзина"). Bucket'ы lock/own/
+          // unknown/deletable disjoint, сумма = total. Каждая строка кроме
+          // total и deletable опциональна - hide when bucket=0. Видим блок
+          // только при hasSelection - синхронизация в updateSelectionUi.
           selectionInfoEl = document.createElement('div');
           selectionInfoEl.className = 'svp-refs-on-map-selection-info';
           selectionInfoEl.style.display = 'none';
@@ -1582,14 +1611,19 @@ export const refsOnMap: IFeatureModule = {
           selectionInfoTotalRow.className = 'svp-refs-on-map-selection-info__total';
           selectionInfoProtectedRow = document.createElement('div');
           selectionInfoProtectedRow.className = 'svp-refs-on-map-selection-info__protected';
+          selectionInfoProtectedRow.style.display = 'none';
           selectionInfoOwnRow = document.createElement('div');
           selectionInfoOwnRow.className = 'svp-refs-on-map-selection-info__own';
           selectionInfoOwnRow.style.display = 'none';
+          selectionInfoUnknownRow = document.createElement('div');
+          selectionInfoUnknownRow.className = 'svp-refs-on-map-selection-info__unknown';
+          selectionInfoUnknownRow.style.display = 'none';
           selectionInfoDeletableRow = document.createElement('div');
           selectionInfoDeletableRow.className = 'svp-refs-on-map-selection-info__deletable';
           selectionInfoEl.appendChild(selectionInfoTotalRow);
           selectionInfoEl.appendChild(selectionInfoProtectedRow);
           selectionInfoEl.appendChild(selectionInfoOwnRow);
+          selectionInfoEl.appendChild(selectionInfoUnknownRow);
           selectionInfoEl.appendChild(selectionInfoDeletableRow);
           document.body.appendChild(selectionInfoEl);
         } catch (error) {
@@ -1677,6 +1711,7 @@ function cleanupEnableSideEffects(): void {
   selectionInfoTotalRow = null;
   selectionInfoProtectedRow = null;
   selectionInfoOwnRow = null;
+  selectionInfoUnknownRow = null;
   selectionInfoDeletableRow = null;
 
   if (tabClickHandler) {
