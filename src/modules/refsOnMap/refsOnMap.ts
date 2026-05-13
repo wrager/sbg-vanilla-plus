@@ -362,6 +362,21 @@ export function uninstallInviewFetchHookForTest(): void {
 function handleInviewResponse(points: IInviewPoint[]): void {
   if (!viewerOpen || !refsSource) return;
 
+  // pointGuid -> список фич этой точки (одной точке соответствует несколько
+  // стопок-фич). Строим один раз перед циклом по points: вложенный обход
+  // refsSource.getFeatures() для каждой inview-точки дал бы O(P*F), что на
+  // больших инвентарях (1000 фич / 50 inview точек = 50k iterations на
+  // каждый moveend) ощутимо.
+  const featuresByPointGuid = new Map<string, IOlFeature[]>();
+  for (const feature of refsSource.getFeatures()) {
+    const properties = feature.getProperties?.() ?? {};
+    const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+    if (pointGuid === null) continue;
+    const list = featuresByPointGuid.get(pointGuid);
+    if (list) list.push(feature);
+    else featuresByPointGuid.set(pointGuid, [feature]);
+  }
+
   let queueDeleted = 0;
   for (const point of points) {
     if (typeof point.g !== 'string') continue;
@@ -371,9 +386,9 @@ function handleInviewResponse(points: IInviewPoint[]): void {
       teamLoadQueue.delete(point.g);
       queueDeleted++;
     }
-    for (const feature of refsSource.getFeatures()) {
-      const properties = feature.getProperties?.() ?? {};
-      if (properties.pointGuid === point.g) {
+    const features = featuresByPointGuid.get(point.g);
+    if (features) {
+      for (const feature of features) {
         feature.set?.('team', point.t);
       }
     }
