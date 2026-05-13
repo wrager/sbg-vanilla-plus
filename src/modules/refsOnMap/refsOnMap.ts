@@ -668,7 +668,9 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
             fill: new OlFill({ color: textColor }),
             stroke: new OlStroke({ color: backgroundColor, width: 3 }),
           }),
-          zIndex: 2,
+          // Выше круга выделения (zIndex=3) - "=1" остаётся читаемым поверх
+          // оранжевого fill, не теряется под ним.
+          zIndex: 4,
         }),
       );
     } else if (zoom >= AMOUNT_ZOOM) {
