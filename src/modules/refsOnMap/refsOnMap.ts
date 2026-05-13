@@ -590,8 +590,12 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
     const baseRadius = zoom >= 16 ? 10 : 8;
     const radius = isSelected ? baseRadius * 1.4 : baseRadius;
 
-    // CUI style: transparent fill + colored stroke; selected = orange.
-    const selectedFillAlpha = isProtectedHighlight ? '80' : '';
+    // CUI style: transparent fill + colored stroke. Выделенный кружок ВСЕГДА
+    // двухцветный (fill полупрозрачный SELECTED_COLOR, stroke - solid
+    // SELECTED_COLOR), чтобы граница и заливка различались. Защищённые
+    // выделенные дополнительно ослаблены до 25% - визуально видно, что
+    // точка выделена, но "не пойдёт в удаление".
+    const selectedFillAlpha = isProtectedHighlight ? '40' : '80';
     const fillColor = isSelected ? SELECTED_COLOR + selectedFillAlpha : teamColor + '40';
     const strokeColor = isSelected ? SELECTED_COLOR : teamColor;
     const strokeWidth = isSelected ? 4 : 3;
