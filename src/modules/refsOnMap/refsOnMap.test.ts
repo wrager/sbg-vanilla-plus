@@ -946,7 +946,9 @@ describe('refsOnMap lock protection', () => {
 
   test('двойной клик по trash шлёт только один DELETE', async () => {
     // Между confirm() и завершением fetch trash остаётся видим. Без guard'а
-    // повторный тап шлёт второй идентичный DELETE на сервер.
+    // повторный тап шлёт второй идентичный DELETE на сервер. Используем
+    // never-resolving Promise: первый click уходит в await, второй click
+    // не должен дойти до fetch.
     setInventoryCacheWithLocks();
     clickShowButton();
     await flushAsync();
@@ -962,26 +964,31 @@ describe('refsOnMap lock protection', () => {
     clickHandler({ pixel: [0, 0] });
 
     window.confirm = jest.fn(() => true);
-    // Медленный DELETE: resolve через setTimeout. Двойной клик происходит
-    // ДО завершения первого fetch.
+    let resolveResponse: (value: Response) => void = () => {
+      /* set in fetchSpy */
+    };
     const fetchSpy = jest.fn(
       () =>
         new Promise<Response>((resolve) => {
-          setTimeout(() => {
-            resolve({
-              json: () => Promise.resolve({ count: { total: 90 } }),
-            } as unknown as Response);
-          }, 50);
+          resolveResponse = resolve;
         }),
     );
     window.fetch = fetchSpy as unknown as typeof window.fetch;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     trash.click();
+    await Promise.resolve();
     trash.click();
-    await flushAsync();
+    await Promise.resolve();
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    // Развязываем pending await fetch, чтобы handleDeleteClick дошёл до
+    // finally и не лип в event loop между тестами.
+    resolveResponse({
+      json: () => Promise.resolve({ count: { total: 90 } }),
+    } as unknown as Response);
+    await flushAsync();
   });
 
   test('all-locked selection: trash disabled, click игнорируется (fetch не идёт)', async () => {
