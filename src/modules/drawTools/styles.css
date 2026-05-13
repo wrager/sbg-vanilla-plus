@@ -44,9 +44,12 @@
 }
 
 /* SVG масштабируется от font-size кнопки: на desktop (16px) даёт 16px иконку,
-   на mobile (24px при 1.5em) — 24px, что повторяет визуальную плотность глифа
-   "Δ" внутри picker button. Без этого иконка 16x16 на mobile-кнопке 33x33
-   выглядит провисшей. */
+   на mobile 321-425px (24px при 1.5em) - 24px, что повторяет визуальную
+   плотность глифа "Δ" внутри picker button. На этом же диапазоне кнопка
+   вырастает до ~33px по тому же font-size pattern, что у .region-picker;
+   без width/height: 1em SVG остаётся 16px и проваливается внутри 33x33.
+   На extra-small (<=320px, font-size возвращается к 1em) и desktop кнопка
+   ~22x22 с иконкой 16x16 - тот же ratio, ничего не провисает. */
 .svp-draw-tools-control button svg {
   display: block;
   margin: auto;
