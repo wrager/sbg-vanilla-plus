@@ -2820,6 +2820,36 @@ describe('refsOnMap selection breakdown UI', () => {
     );
   });
 
+  test('toDelete-row: показывает "К удалению: X ключей"', async () => {
+    const items = [{ t: 3, a: 5, c: [100, 13], g: 'r', l: 'p', ti: 'P', f: 0 }];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ p: 2 });
+    selectFeatureByIndex(0);
+
+    const toDeleteRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__todelete',
+    ) as HTMLElement;
+    expect(toDeleteRow).not.toBeNull();
+    expect(toDeleteRow.textContent).toMatch(/5\s*(?:ключ\(ей\)|key\(s\))/);
+  });
+
+  test('toDelete-row: при защите всего выбора показывает 0', async () => {
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keep' }));
+    const items = [{ t: 3, a: 5, c: [100, 13], g: 'r', l: 'p', ti: 'P', f: 0 }];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ p: 1 });
+    selectFeatureByIndex(0);
+
+    const toDeleteRow = document.querySelector(
+      '.svp-refs-on-map-selection-info__todelete',
+    ) as HTMLElement;
+    expect(toDeleteRow.textContent).toMatch(/0\s*(?:ключ\(ей\)|key\(s\))/);
+  });
+
   test('keepOne-row скрыт при keepOneKey=false', async () => {
     // Глобальный beforeEach уже ставит keepOneKey=false.
     const items = [{ t: 3, a: 1, c: [100, 13], g: 'r', l: 'p', ti: 'P', f: 0 }];

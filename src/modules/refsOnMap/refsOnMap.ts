@@ -199,6 +199,7 @@ let selectionInfoProtectedRow: HTMLDivElement | null = null;
 let selectionInfoOwnRow: HTMLDivElement | null = null;
 let selectionInfoUnknownRow: HTMLDivElement | null = null;
 let selectionInfoKeepOneRow: HTMLDivElement | null = null;
+let selectionInfoToDeleteRow: HTMLDivElement | null = null;
 let tabClickHandler: ((event: Event) => void) | null = null;
 let mapClickHandler: ((event: IOlMapEvent) => void) | null = null;
 let viewMoveHandler: (() => void) | null = null;
@@ -966,6 +967,15 @@ function updateSelectionUi(): void {
           ru: `${breakdown.keepOneKeyKeys} последних ключей останутся`,
         });
       }
+    }
+    if (selectionInfoToDeleteRow) {
+      // Итоговое число ключей в payload DELETE. Видна всегда при наличии
+      // selection - даже если 0, пользователь должен видеть факт "ничего не
+      // уйдёт в удаление" (например, всё защищено).
+      selectionInfoToDeleteRow.textContent = t({
+        en: `To delete: ${breakdown.deletableKeys} key(s)`,
+        ru: `К удалению: ${breakdown.deletableKeys} ключ(ей)`,
+      });
     }
   }
 }
@@ -2031,11 +2041,14 @@ export const refsOnMap: IFeatureModule = {
           selectionInfoKeepOneRow = document.createElement('div');
           selectionInfoKeepOneRow.className = 'svp-refs-on-map-selection-info__keepone';
           selectionInfoKeepOneRow.style.display = 'none';
+          selectionInfoToDeleteRow = document.createElement('div');
+          selectionInfoToDeleteRow.className = 'svp-refs-on-map-selection-info__todelete';
           selectionInfoEl.appendChild(selectionInfoTotalRow);
           selectionInfoEl.appendChild(selectionInfoProtectedRow);
           selectionInfoEl.appendChild(selectionInfoOwnRow);
           selectionInfoEl.appendChild(selectionInfoUnknownRow);
           selectionInfoEl.appendChild(selectionInfoKeepOneRow);
+          selectionInfoEl.appendChild(selectionInfoToDeleteRow);
           document.body.appendChild(selectionInfoEl);
         } catch (error) {
           // Частичный успех enable() оставил бы hidden-кнопки/слой в DOM
@@ -2129,6 +2142,7 @@ function cleanupEnableSideEffects(): void {
   selectionInfoOwnRow = null;
   selectionInfoUnknownRow = null;
   selectionInfoKeepOneRow = null;
+  selectionInfoToDeleteRow = null;
 
   if (tabClickHandler) {
     const tabContainer = $('.inventory__tabs');
