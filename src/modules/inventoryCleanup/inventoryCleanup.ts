@@ -82,8 +82,8 @@ async function runCleanupImpl(): Promise<void> {
   const items = parseInventoryCache();
   if (items.length === 0) return;
 
-  // Защита ключей: нативные locked точки (item.f & 0b10) защищены
-  // calculateDeletions/inventoryApi-guard'ами безусловно. Дополнительная
+  // Защита ключей: защищённые точки (lock 0b10 или favorite 0b01 поля
+  // item.f) защищены calculateDeletions/inventoryApi-guard'ами безусловно. Дополнительная
   // блокировка удаления ключей нужна, пока пользователь не подтвердил
   // миграцию SVP/CUI-избранных в native lock - иначе автоочистка удалила бы
   // legacy-favorited ключи, которые ещё не помечены замочком в игре.
@@ -125,7 +125,8 @@ async function runCleanupImpl(): Promise<void> {
 
   try {
     // Финальный guard: deleteInventoryItems перечитает свежий inventory-cache
-    // и проверит, что все удаляемые ключи всё ещё не locked (бит 0b10 поля f).
+    // и проверит, что все удаляемые ключи всё ещё не относятся к защищённым
+    // точкам (lock 0b10 или favorite 0b01 поля f).
     const result = await deleteInventoryItems(deletions);
     updateInventoryCache(deletions);
     updatePointRefCount();
