@@ -1,4 +1,9 @@
-import { getTeamColor, refsOnMap, uninstallInviewFetchHookForTest } from './refsOnMap';
+import {
+  colorWithAlpha,
+  getTeamColor,
+  refsOnMap,
+  uninstallInviewFetchHookForTest,
+} from './refsOnMap';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -278,6 +283,28 @@ describe('refsOnMap metadata', () => {
     expect(refsOnMap.name.en).toBeTruthy();
     expect(refsOnMap.description.ru).toBeTruthy();
     expect(refsOnMap.description.en).toBeTruthy();
+  });
+});
+
+describe('refsOnMap colorWithAlpha', () => {
+  test('короткий hex -> rgba', () => {
+    expect(colorWithAlpha('#0B0', 0.25)).toBe('rgba(0, 187, 0, 0.25)');
+  });
+
+  test('полный hex -> rgba', () => {
+    expect(colorWithAlpha('#00BB00', 0.5)).toBe('rgba(0, 187, 0, 0.5)');
+  });
+
+  test('rgb() -> rgba', () => {
+    expect(colorWithAlpha('rgb(255, 0, 0)', 1)).toBe('rgba(255, 0, 0, 1)');
+  });
+
+  test('rgba() (8-cyf эквивалент с alpha) -> rgba с новым alpha', () => {
+    expect(colorWithAlpha('rgba(0, 100, 200, 0.8)', 0.25)).toBe('rgba(0, 100, 200, 0.25)');
+  });
+
+  test('некорректный color -> возвращается as-is', () => {
+    expect(colorWithAlpha('not-a-color-xyz', 0.5)).toBe('not-a-color-xyz');
   });
 });
 

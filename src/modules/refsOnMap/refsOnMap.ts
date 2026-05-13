@@ -469,6 +469,40 @@ function expandHexColor(color: string): string {
   return color;
 }
 
+// Кэш парсинга цвета в rgb-компоненты. CSS-переменные --team-N задаются
+// один раз в variables.css и в рантайме не меняются, парсинг через DOM-node
+// безопасно кэшировать. Иначе getComputedStyle вызывался бы при каждом
+// рендере каждой фичи (force reflow).
+const COLOR_RGB_CACHE = new Map<string, { r: number; g: number; b: number } | null>();
+
+/**
+ * Парсит любой CSS color (short/full hex, rgb/rgba(), named, hsl) в rgb через
+ * computed style временного DOM-node. Возвращает null, если браузер не смог
+ * интерпретировать color. Заменяет конкатенацию '+ "40"' к строке цвета:
+ * для нестандартных --team-N (rgb(), hsl(), 8-cyf hex с alpha, named) такая
+ * конкатенация давала невалидный hex и OL не рисовал точку.
+ */
+function parseColorToRgb(color: string): { r: number; g: number; b: number } | null {
+  if (COLOR_RGB_CACHE.has(color)) {
+    return COLOR_RGB_CACHE.get(color) ?? null;
+  }
+  const probe = document.createElement('div');
+  probe.style.color = color;
+  document.body.appendChild(probe);
+  const computed = getComputedStyle(probe).color;
+  probe.remove();
+  const match = /^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(computed);
+  const rgb = match ? { r: Number(match[1]), g: Number(match[2]), b: Number(match[3]) } : null;
+  COLOR_RGB_CACHE.set(color, rgb);
+  return rgb;
+}
+
+export function colorWithAlpha(color: string, alpha: number): string {
+  const rgb = parseColorToRgb(color);
+  if (!rgb) return color;
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
 export function getTeamColor(team: number | null | undefined): string {
   if (team === null) return NEUTRAL_COLOR;
   // undefined -> --team-0 (нейтральный цвет палитры игры): пока команда не
@@ -620,8 +654,10 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
     // (alpha 50%, видно "к удалению"). Выделенный защищённый (не пойдёт
     // в payload) - fill полностью прозрачный: только обводка держит
     // индикацию selected-state, оранжевый не намекает на удаление.
-    const selectedFillAlpha = willNotBeDeleted ? '00' : '80';
-    const fillColor = isSelected ? SELECTED_COLOR + selectedFillAlpha : teamColor + '40';
+    const selectedFillAlpha = willNotBeDeleted ? 0 : 0.5;
+    const fillColor = isSelected
+      ? colorWithAlpha(SELECTED_COLOR, selectedFillAlpha)
+      : colorWithAlpha(teamColor, 0.25);
     const strokeColor = isSelected ? SELECTED_COLOR : teamColor;
     const strokeWidth = isSelected ? 4 : 3;
 
