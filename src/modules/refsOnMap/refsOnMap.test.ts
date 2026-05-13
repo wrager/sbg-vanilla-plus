@@ -1311,10 +1311,9 @@ describe('refsOnMap own-team protection', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const toast = document.querySelector('.svp-toast')?.textContent ?? '';
-    // В едином тосте после удаления "свои оставлены" подписаны цветом
-    // команды игрока (playerTeam=1 -> "red" / "красные"), а не "свои".
-    expect(toast).toMatch(/red|красные/i);
-    expect(toast).not.toMatch(/unknown|не загружен/i);
+    // Тост-итог после успешного удаления: "Y ключ(ей) от X точ(ек) успешно
+    // удалены". Перечисления защит больше нет (см. buildPostDeleteToast).
+    expect(toast).toMatch(/успешно удалены|deleted successfully/i);
   });
 });
 

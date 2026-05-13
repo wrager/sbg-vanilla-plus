@@ -1349,6 +1349,9 @@ async function handleDeleteClick(): Promise<void> {
     const response = await deleteRefsFromServer(items);
     if (response.error) {
       console.error(`[SVP] ${MODULE_ID}: deletion error:`, response.error);
+      // Сервер вернул ошибку - НИЧЕГО не удалилось. Показываем тост с
+      // только error-строкой, deleted-часть = 0.
+      showToast(buildPostDeleteToast(0, 0, overallToDelete, pointsInPayload.size));
       return;
     }
 
@@ -1387,87 +1390,40 @@ async function handleDeleteClick(): Promise<void> {
       updateInventoryCounter(response.count.total);
     }
 
-    // Item 3: один тост вместо четырёх. Сводка по всем непустым bucket'ам
-    // в одной многострочной нотификации - пользователь видит итог удаления
-    // и причины защит в одном месте, без перекрывающихся тостов.
-    const summaryToast = buildSummaryToast(
-      overallToDelete,
-      pointsInPayload.size,
-      lockBucket,
-      ownBucket,
-      unknownBucket,
-      keepOneBucket,
-    );
-    if (summaryToast !== '') {
-      showToast(summaryToast);
-    }
+    showToast(buildPostDeleteToast(overallToDelete, pointsInPayload.size, 0, 0));
 
     updateSelectionUi();
   } catch (error) {
     console.error(`[SVP] ${MODULE_ID}: deletion failed:`, error);
+    showToast(buildPostDeleteToast(0, 0, overallToDelete, pointsInPayload.size));
   }
 }
 
 /**
- * Многострочный тост после успешного удаления: первая строка - "удалено N
- * ключей с M точек", далее непустые bucket'ы. Каждая строка - отдельная
- * причина защиты. Один showToast вместо четырёх (Item 3), чтобы тосты не
- * перекрывались. \n между строками отображается через CSS white-space:
- * pre-line на тосте.
+ * Тост по итогу удаления. Полностью успешный запрос -> одна строка
+ * "Y ключей от X точек успешно удалены". Если часть/всё провалилось -
+ * две строки: успешно-удалённая часть + предупреждение "Ошибка удаления...".
  */
-function buildSummaryToast(
+function buildPostDeleteToast(
   deletedKeys: number,
   deletedPoints: number,
-  lockBucket: IOlFeature[],
-  ownBucket: IOlFeature[],
-  unknownBucket: IOlFeature[],
-  keepOneBucket: IOlFeature[],
+  failedKeys: number,
+  failedPoints: number,
 ): string {
-  const lines: string[] = [];
-  lines.push(
-    t({
-      en: `Deleted ${deletedKeys} key(s) from ${deletedPoints} point(s).`,
-      ru: `Удалено ${deletedKeys} ключ(ей) с ${deletedPoints} точ(ек).`,
-    }),
-  );
-  if (lockBucket.length > 0) {
-    lines.push(
-      t({
-        en: `Locked: ${lockBucket.length} key(s) kept.`,
-        ru: `Locked: ${lockBucket.length} ключ(ей) оставлено.`,
-      }),
-    );
+  if (failedKeys === 0) {
+    return t({
+      en: `${deletedKeys} key(s) from ${deletedPoints} point(s) deleted successfully.`,
+      ru: `${deletedKeys} ключ(ей) от ${deletedPoints} точ(ек) успешно удалены.`,
+    });
   }
-  if (ownBucket.length > 0) {
-    const color = getPlayerTeamColorName();
-    lines.push(
-      t({
-        en: color
-          ? `${color.en}: ${ownBucket.length} key(s) kept.`
-          : `Own team: ${ownBucket.length} key(s) kept.`,
-        ru: color
-          ? `${color.ru}: ${ownBucket.length} ключ(ей) оставлено.`
-          : `Свои: ${ownBucket.length} ключ(ей) оставлено.`,
-      }),
-    );
-  }
-  if (unknownBucket.length > 0) {
-    lines.push(
-      t({
-        en: `Unknown team color: ${unknownBucket.length} key(s) kept.`,
-        ru: `Цвет команды не загружен: ${unknownBucket.length} ключ(ей) оставлено.`,
-      }),
-    );
-  }
-  if (keepOneBucket.length > 0) {
-    lines.push(
-      t({
-        en: `Keep 1 key: ${keepOneBucket.length} stack(s) not fully deleted.`,
-        ru: `"Оставлять 1 ключ": ${keepOneBucket.length} стопк(и) сохранено.`,
-      }),
-    );
-  }
-  return lines.join('\n');
+  return t({
+    en:
+      `${deletedKeys} key(s) from ${deletedPoints} point(s) deleted.\n` +
+      `⚠️ Failed to delete ${failedKeys} key(s) from ${failedPoints} point(s)`,
+    ru:
+      `${deletedKeys} ключ(ей) от ${deletedPoints} точ(ек) удалены.\n` +
+      `⚠️ Ошибка удаления ${failedKeys} ключ(ей) от ${failedPoints} точ(ек)`,
+  });
 }
 
 /**
