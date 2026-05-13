@@ -16,6 +16,7 @@
   text-align: center;
   box-sizing: border-box;
   cursor: pointer;
+  white-space: pre-line;
 }
 
 .svp-toast-hide {

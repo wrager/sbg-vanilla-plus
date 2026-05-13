@@ -315,13 +315,11 @@ async function flushAsync(): Promise<void> {
   }
 }
 
-// keepOwnTeam и keepOneKey персистентны в localStorage (svp_refsOnMap).
-// Для большинства тестов keepOneKey=true мешал бы существующим инвариантам
-// (тесты на partition/lock/own написаны без учёта "оставить 1 ключ").
-// Глобально форсим оба флага в false; тесты блока про keepOneKey явно
-// перезаписывают свой стартовый state через saveRefsOnMapSettings.
+// ownTeamMode персистентен в localStorage (svp_refsOnMap). Для большинства
+// тестов 'delete' (без защит) сохраняет старые ожидания; тесты режимов keep
+// и keepOne явно перезаписывают этот state через saveRefsOnMapSettings.
 beforeEach(() => {
-  localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: false, keepOneKey: false }));
+  localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'delete' }));
 });
 
 describe('refsOnMap enable/disable', () => {
@@ -876,7 +874,7 @@ describe('refsOnMap own-team protection', () => {
    */
   function enableKeepOwnTeamCheckbox(): void {
     const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+      '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
@@ -1232,7 +1230,9 @@ describe('refsOnMap own-team protection', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const toast = document.querySelector('.svp-toast')?.textContent ?? '';
-    expect(toast).toMatch(/свои|own team/i);
+    // В едином тосте после удаления "свои оставлены" подписаны цветом
+    // команды игрока (playerTeam=1 -> "red" / "красные"), а не "свои".
+    expect(toast).toMatch(/red|красные/i);
     expect(toast).not.toMatch(/unknown|не загружен/i);
   });
 });
@@ -1731,7 +1731,7 @@ describe('refsOnMap visible-only active pull', () => {
     );
     clickHandler({ pixel: [0, 0] });
     const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+      '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
@@ -1835,7 +1835,7 @@ describe('refsOnMap visible-only active pull', () => {
     );
     clickHandler({ pixel: [0, 0] });
     const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+      '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
@@ -1898,22 +1898,22 @@ describe('refsOnMap checkbox visibility', () => {
     window.fetch = originalFetch;
   });
 
-  test('viewer открыт, 0 selected: чекбокс hidden', async () => {
+  test('viewer открыт, 0 selected: radio-блок hidden', async () => {
     setInventory();
     clickShowButton();
     await flushAsync();
 
-    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
-    expect(label).not.toBeNull();
-    expect(label.style.display).toBe('none');
+    const modeBlock = document.querySelector('.svp-refs-on-map-mode') as HTMLElement;
+    expect(modeBlock).not.toBeNull();
+    expect(modeBlock.style.display).toBe('none');
   });
 
-  test('select feature: чекбокс становится visible; deselect: скрывается обратно', async () => {
+  test('select feature: radio-блок становится visible; deselect: скрывается обратно', async () => {
     setInventory();
     clickShowButton();
     await flushAsync();
 
-    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
+    const modeBlock = document.querySelector('.svp-refs-on-map-mode') as HTMLElement;
     const clickHandler = map._clickListeners[0];
     const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
       (r) => r.value as IOlFeature,
@@ -1926,18 +1926,20 @@ describe('refsOnMap checkbox visibility', () => {
 
     // Select.
     clickHandler({ pixel: [0, 0] });
-    expect(label.style.display).not.toBe('none');
+    expect(modeBlock.style.display).not.toBe('none');
 
-    // Deselect (повторный клик на ту же фичу).
-    clickHandler({ pixel: [0, 0] });
-    expect(label.style.display).toBe('none');
+    // Deselect через Cancel-кнопку (в новой модели повторный клик НЕ снимает
+    // выделение, см. Item 1).
+    const cancel = document.querySelector('.svp-refs-on-map-cancel') as HTMLElement;
+    cancel.click();
+    expect(modeBlock.style.display).toBe('none');
   });
 
   test('team=1 (красные): текст чекбокса "Не удалять красные"', () => {
     mockGetPlayerTeam.mockReturnValue(1);
     setInventory();
     clickShowButton();
-    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
+    const label = document.querySelector('.svp-refs-on-map-mode__option--keep') as HTMLElement;
     expect(label.textContent).toMatch(/(?:Не удалять красные|Keep red)/);
   });
 
@@ -1945,7 +1947,7 @@ describe('refsOnMap checkbox visibility', () => {
     mockGetPlayerTeam.mockReturnValue(2);
     setInventory();
     clickShowButton();
-    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
+    const label = document.querySelector('.svp-refs-on-map-mode__option--keep') as HTMLElement;
     expect(label.textContent).toMatch(/(?:Не удалять зелёные|Keep green)/);
   });
 
@@ -1953,7 +1955,7 @@ describe('refsOnMap checkbox visibility', () => {
     mockGetPlayerTeam.mockReturnValue(3);
     setInventory();
     clickShowButton();
-    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
+    const label = document.querySelector('.svp-refs-on-map-mode__option--keep') as HTMLElement;
     expect(label.textContent).toMatch(/(?:Не удалять синие|Keep blue)/);
   });
 
@@ -1961,7 +1963,7 @@ describe('refsOnMap checkbox visibility', () => {
     mockGetPlayerTeam.mockReturnValue(null);
     setInventory();
     clickShowButton();
-    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
+    const label = document.querySelector('.svp-refs-on-map-mode__option--keep') as HTMLElement;
     expect(label.textContent).toMatch(/(?:Не удалять свои|Keep own team)/);
   });
 
@@ -1969,7 +1971,7 @@ describe('refsOnMap checkbox visibility', () => {
     setInventory();
     mockGetPlayerTeam.mockReturnValue(2);
     clickShowButton();
-    const label = document.querySelector('.svp-refs-on-map-keep-own') as HTMLElement;
+    const label = document.querySelector('.svp-refs-on-map-mode__option--keep') as HTMLElement;
     expect(label.textContent).toMatch(/(?:Не удалять зелёные|Keep green)/);
 
     // Закрываем viewer, меняем команду игрока, открываем снова.
@@ -2157,35 +2159,36 @@ describe('refsOnMap keepOwnTeam persistence', () => {
     window.fetch = originalFetch;
   });
 
-  test('toggle чекбокса сохраняется в localStorage svp_refsOnMap', () => {
+  test('выбор radio сохраняется в localStorage svp_refsOnMap', () => {
     setInventory();
     clickShowButton();
-    const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+    const keepRadio = document.querySelector(
+      '.svp-refs-on-map-mode__option--keep input[type="radio"]',
+    ) as HTMLInputElement;
+    const deleteRadio = document.querySelector(
+      '.svp-refs-on-map-mode__option--delete input[type="radio"]',
     ) as HTMLInputElement;
 
-    expect(checkbox.checked).toBe(false);
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
+    expect(keepRadio.checked).toBe(false);
+    keepRadio.checked = true;
+    keepRadio.dispatchEvent(new Event('change'));
     expect(JSON.parse(localStorage.getItem('svp_refsOnMap') ?? '{}')).toEqual({
-      keepOwnTeam: true,
-      keepOneKey: false,
+      ownTeamMode: 'keep',
     });
 
-    checkbox.checked = false;
-    checkbox.dispatchEvent(new Event('change'));
+    deleteRadio.checked = true;
+    deleteRadio.dispatchEvent(new Event('change'));
     expect(JSON.parse(localStorage.getItem('svp_refsOnMap') ?? '{}')).toEqual({
-      keepOwnTeam: false,
-      keepOneKey: false,
+      ownTeamMode: 'delete',
     });
   });
 
   test('повторное открытие viewer восстанавливает state чекбокса из storage', () => {
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true, keepOneKey: false }));
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keep' }));
     setInventory();
     clickShowButton();
     const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+      '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
     expect(checkbox.checked).toBe(true);
 
@@ -2199,7 +2202,7 @@ describe('refsOnMap keepOwnTeam persistence', () => {
     // включил в прошлом сеансе и перезагрузил страницу). keepOneKey=false
     // явно - этот тест проверяет только keepOwnTeam, без вмешательства
     // правила "оставлять 1 ключ".
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true, keepOneKey: false }));
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keep' }));
     mockGetPlayerTeam.mockReturnValue(1);
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-own', l: 'point-own', ti: 'O', f: 0 },
@@ -2370,7 +2373,7 @@ describe('refsOnMap progress + interaction lock', () => {
     );
     clickHandler({ pixel: [0, 0] });
     const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+      '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
@@ -2525,7 +2528,7 @@ describe('refsOnMap progress + interaction lock', () => {
     clickHandler({ pixel: [0, 0] });
 
     const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+      '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
@@ -2714,17 +2717,16 @@ describe('refsOnMap selection breakdown UI', () => {
   });
 
   test('keepOne-row: показывает "X последних ключей останутся" когда правило сработало', async () => {
-    // Точка с 1 ключом - полностью защищена правилом (toDeleteTotal<=0,
-    // selectedAmount=1 идёт в survivedKeysByPoint). keepOneKey=true по
-    // умолчанию (см. refsOnMapSettings). beforeEach глобально ставит
-    // keepOneKey=false для совместимости со старыми тестами - явно
-    // переопределяем.
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: false, keepOneKey: true }));
+    // keepOne в новой модели применяется ТОЛЬКО к своим - ставим точку
+    // team=1, совпадающую с playerTeam=1 (см. beforeEach блока). Точка с 1
+    // ключом - полностью защищена правилом: classifyFeatures отдаёт
+    // deletion=keepOneTrimmed, toSurvive=1.
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keepOne' }));
     const items = [{ t: 3, a: 1, c: [100, 13], g: 'r', l: 'p', ti: 'P', f: 0 }];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
     clickShowButton();
     await flushAsync();
-    applyTeams({ p: 2 });
+    applyTeams({ p: 1 });
 
     selectFeatureByIndex(0);
 
@@ -2781,7 +2783,7 @@ describe('refsOnMap selection breakdown UI', () => {
     selectFeatureByIndex(2); // point-enemy (2)
 
     const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+      '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
@@ -2824,7 +2826,7 @@ describe('refsOnMap selection breakdown UI', () => {
     selectFeatureByIndex(2);
 
     const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+      '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
@@ -2846,7 +2848,7 @@ describe('refsOnMap selection breakdown UI', () => {
     selectFeatureByIndex(2);
 
     const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+      '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
@@ -2880,7 +2882,7 @@ describe('refsOnMap selection breakdown UI', () => {
     expect(own.style.display).toBe('none');
   });
 
-  test('toggle keepOwnTeam пересчитывает breakdown без повторного клика по фиче', async () => {
+  test('переключение radio mode пересчитывает breakdown без повторного клика по фиче', async () => {
     setInventoryTwoPointsThreeStacks();
     clickShowButton();
     await flushAsync();
@@ -2890,22 +2892,25 @@ describe('refsOnMap selection breakdown UI', () => {
     selectFeatureByIndex(2); // point-enemy (2)
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
-    // OFF: обе точки в deletable -> 2 (6 ключей).
+    // delete (дефолт глобального beforeEach): обе точки в deletable -> 2 (6 ключей).
     expect(trash.textContent).toMatch(/2\s*\(\s*6\s*(?:ключей|keys)\)/);
 
-    const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+    const keepRadio = document.querySelector(
+      '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
+    const deleteRadio = document.querySelector(
+      '.svp-refs-on-map-mode__option--delete input[type="radio"]',
+    ) as HTMLInputElement;
+    keepRadio.checked = true;
+    keepRadio.dispatchEvent(new Event('change'));
 
-    // ON: own (point-own, 4 ключа) защищён -> 1 точка (2 ключа).
+    // keep: own (point-own, 4 ключа) защищён -> 1 точка (2 ключа).
     expect(trash.textContent).toMatch(/1\s*\(\s*2\s*(?:ключей|keys)\)/);
 
-    checkbox.checked = false;
-    checkbox.dispatchEvent(new Event('change'));
+    deleteRadio.checked = true;
+    deleteRadio.dispatchEvent(new Event('change'));
 
-    // OFF снова: обе в deletable.
+    // delete снова: обе в deletable.
     expect(trash.textContent).toMatch(/2\s*\(\s*6\s*(?:ключей|keys)\)/);
   });
 
@@ -2988,7 +2993,7 @@ describe('refsOnMap selection breakdown UI', () => {
     selectFeatureByIndex(3);
 
     const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+      '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
@@ -3067,7 +3072,7 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
 
   function enableKeepOwn(): void {
     const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-own input[type="checkbox"]',
+      '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
@@ -3248,9 +3253,10 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     expect(payload).not.toHaveProperty('unk');
   });
 
-  test('keepOwnTeam=true + playerTeam=null: удаление полностью заблокировано (НИ ОДИН guid не уходит)', async () => {
-    // Defensive case: handleDeleteClick должен блокировать; computeSelectionBreakdown
-    // показывает всё как protected, на кнопке "0 (0 ключей)".
+  test('mode=keep + playerTeam=null: удаление полностью заблокировано (НИ ОДИН guid не уходит)', async () => {
+    // Defensive: при mode=keep/keepOne и playerTeam=null handleDeleteClick
+    // блокирует DELETE отдельным guard'ом, потому что мы не можем
+    // определить, какие точки "свои" - выполнить заявленную защиту нельзя.
     mockGetPlayerTeam.mockReturnValue(null);
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-own', l: 'point-own', ti: 'O', f: 0 },
@@ -3265,22 +3271,7 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     selectFeatureByIndex(1);
     enableKeepOwn();
 
-    // UI: всё в unknown (defensive playerTeam=null), deletable=0.
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
-    expect(trash.textContent).toMatch(/0\s*\(\s*0\s*(?:ключей|keys)\)/);
-    // lock=0, own=0 -> protected/own row hidden. unknown=2.
-    const protectedRow = document.querySelector(
-      '.svp-refs-on-map-selection-info__protected',
-    ) as HTMLElement;
-    expect(protectedRow.style.display).toBe('none');
-    const unknownRow = document.querySelector(
-      '.svp-refs-on-map-selection-info__unknown',
-    ) as HTMLElement;
-    expect(unknownRow.style.display).not.toBe('none');
-    expect(unknownRow.textContent).toMatch(
-      /2\s*\(\s*6\s*(?:ключей|keys)\)\s*(?:неизвестного цвета|unknown team)/,
-    );
-
     trash.click();
     await flushAsync();
 
@@ -3472,10 +3463,12 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     window.fetch = fetchSpy as unknown as typeof window.fetch;
     localStorage.setItem('auth', 'test-token');
     window.confirm = jest.fn(() => true);
-    // Глобальный beforeEach ставит keepOneKey=false. Этот блок весь про
-    // keepOneKey=true - переопределяем здесь.
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: false, keepOneKey: true }));
-    mockGetPlayerTeam.mockReturnValue(1);
+    // Глобальный beforeEach ставит mode=delete. Блок весь про keepOne -
+    // переопределяем. playerTeam=2 совпадает с team точек в этих тестах
+    // (applyTeams чаще всего ставит team=2), потому что keepOne в новой
+    // модели применяется ТОЛЬКО к своим - чужие удаляются полностью.
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keepOne' }));
+    mockGetPlayerTeam.mockReturnValue(2);
     await refsOnMap.enable();
   });
 
@@ -3497,7 +3490,7 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     // на false, тест упадёт.
     clickShowButton();
     const checkbox = document.querySelector(
-      '.svp-refs-on-map-keep-one input[type="checkbox"]',
+      '.svp-refs-on-map-mode__option--keepOne input[type="radio"]',
     ) as HTMLInputElement;
     expect(checkbox).not.toBeNull();
     expect(checkbox.checked).toBe(true);
@@ -3650,8 +3643,10 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     expectNoDeleteCall();
   });
 
-  test('keepOwnTeam=true + keepOneKey=true: own не уходит в DELETE; для enemy keepOneKey оставляет 1', async () => {
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: true, keepOneKey: true }));
+  test('mode=keepOne: своя точка обрезается до 1 ключа, чужая удаляется полностью', async () => {
+    // В новой модели keepOne применяется ТОЛЬКО к своим. Чужие удаляются
+    // целиком. playerTeam=2 (см. beforeEach), point-own.team=2, point-enemy.team=1.
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keepOne' }));
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([
@@ -3661,7 +3656,7 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     );
     clickShowButton();
     await flushAsync();
-    applyTeams({ 'point-own': 1, 'point-enemy': 2 });
+    applyTeams({ 'point-own': 2, 'point-enemy': 1 });
 
     selectFeatureByIndex(0);
     selectFeatureByIndex(1);
@@ -3671,9 +3666,8 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     await flushAsync();
 
     const payload = extractDeletePayload();
-    expect(payload).not.toHaveProperty('ref-own');
-    // enemy удаляется частично: 3-1=2 ключа.
-    expect(payload).toEqual({ 'ref-enemy': 2 });
+    // own обрезана до 1 ключа: 4-1=3. enemy удаляется целиком: 3.
+    expect(payload).toEqual({ 'ref-own': 3, 'ref-enemy': 3 });
   });
 
   test('многоточечный сценарий: разные группы независимо обрабатываются', async () => {
@@ -3715,7 +3709,7 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     // страницу, открыл viewer. keepOneKey восстанавливается из storage.
     // Без этого восстановления пользователь, не зная о новой фиче, при
     // следующем DELETE потерял бы все ключи 1-stack точки.
-    localStorage.setItem('svp_refsOnMap', JSON.stringify({ keepOwnTeam: false, keepOneKey: true }));
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keepOne' }));
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ t: 3, a: 2, c: [100.5, 13.7], g: 'r', l: 'p', ti: 'P', f: 0 }]),
@@ -3738,10 +3732,7 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     // Контрольный негативный тест: при выключенном флаге payload идентичен
     // selected.amount. Гарантирует что новая логика не "случайно" применяется
     // при keepOneKey=false.
-    localStorage.setItem(
-      'svp_refsOnMap',
-      JSON.stringify({ keepOwnTeam: false, keepOneKey: false }),
-    );
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'delete' }));
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ t: 3, a: 5, c: [100.5, 13.7], g: 'r', l: 'p', ti: 'P', f: 0 }]),
@@ -3764,10 +3755,7 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     // Сценарий: пользователь до этого момента кликов не делал, он толкает
     // чекбокс ON и сразу нажимает Корзину. Изменение должно сразу повлиять
     // на payload, без необходимости перевыбрать фичу.
-    localStorage.setItem(
-      'svp_refsOnMap',
-      JSON.stringify({ keepOwnTeam: false, keepOneKey: false }),
-    );
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'delete' }));
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ t: 3, a: 5, c: [100.5, 13.7], g: 'r', l: 'p', ti: 'P', f: 0 }]),
@@ -3779,7 +3767,7 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     selectFeatureByIndex(0);
     // Включаем keepOneKey ПОСЛЕ выбора.
     const keepOneCheckbox = document.querySelector(
-      '.svp-refs-on-map-keep-one input[type="checkbox"]',
+      '.svp-refs-on-map-mode__option--keepOne input[type="radio"]',
     ) as HTMLInputElement;
     expect(keepOneCheckbox.checked).toBe(false);
     keepOneCheckbox.checked = true;
@@ -3877,10 +3865,7 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
         } as unknown as Response),
       );
       window.fetch = fetchSpy as unknown as typeof window.fetch;
-      localStorage.setItem(
-        'svp_refsOnMap',
-        JSON.stringify({ keepOwnTeam: false, keepOneKey: true }),
-      );
+      localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keepOne' }));
       localStorage.setItem('inventory-cache', JSON.stringify(items));
       await refsOnMap.enable();
       clickShowButton();

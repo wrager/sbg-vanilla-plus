@@ -11,60 +11,58 @@ describe('refsOnMapSettings', () => {
     localStorage.removeItem(STORAGE_KEY);
   });
 
-  test('defaultRefsOnMapSettings: keepOwnTeam=false, keepOneKey=true', () => {
-    expect(defaultRefsOnMapSettings()).toEqual({ keepOwnTeam: false, keepOneKey: true });
+  test('defaultRefsOnMapSettings: ownTeamMode=keepOne', () => {
+    expect(defaultRefsOnMapSettings()).toEqual({ ownTeamMode: 'keepOne' });
   });
 
   test('load при отсутствии записи возвращает дефолт', () => {
-    expect(loadRefsOnMapSettings()).toEqual({ keepOwnTeam: false, keepOneKey: true });
+    expect(loadRefsOnMapSettings()).toEqual({ ownTeamMode: 'keepOne' });
   });
 
   test('load при невалидном JSON возвращает дефолт', () => {
     localStorage.setItem(STORAGE_KEY, 'not-json');
-    expect(loadRefsOnMapSettings()).toEqual({ keepOwnTeam: false, keepOneKey: true });
+    expect(loadRefsOnMapSettings()).toEqual({ ownTeamMode: 'keepOne' });
   });
 
   test('load при невалидной структуре (не объект) возвращает дефолт', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(42));
-    expect(loadRefsOnMapSettings()).toEqual({ keepOwnTeam: false, keepOneKey: true });
+    expect(loadRefsOnMapSettings()).toEqual({ ownTeamMode: 'keepOne' });
   });
 
   test('load при невалидной структуре (null) возвращает дефолт', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(null));
-    expect(loadRefsOnMapSettings()).toEqual({ keepOwnTeam: false, keepOneKey: true });
+    expect(loadRefsOnMapSettings()).toEqual({ ownTeamMode: 'keepOne' });
   });
 
-  test('load старой записи без keepOneKey возвращает keepOneKey=true (fail-safe)', () => {
-    // Записи у пользователей до добавления флага содержат только keepOwnTeam.
-    // Чтение должно вернуть keepOneKey=true, иначе пользователь, не знающий
-    // о новой фиче, при следующем DELETE может потерять все ключи точки.
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ keepOwnTeam: true }));
-    expect(loadRefsOnMapSettings()).toEqual({ keepOwnTeam: true, keepOneKey: true });
+  test('load старого формата { keepOwnTeam, keepOneKey } возвращает дефолт', () => {
+    // Миграции нет: старый формат не имеет поля ownTeamMode, отдаётся дефолт.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ keepOwnTeam: true, keepOneKey: false }));
+    expect(loadRefsOnMapSettings()).toEqual({ ownTeamMode: 'keepOne' });
   });
 
-  test('load записи с keepOneKey=false читается как false (явный opt-out)', () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ keepOwnTeam: false, keepOneKey: false }));
-    expect(loadRefsOnMapSettings()).toEqual({ keepOwnTeam: false, keepOneKey: false });
+  test('load с ownTeamMode не из допустимого набора возвращает дефолт', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ownTeamMode: 'unknown' }));
+    expect(loadRefsOnMapSettings()).toEqual({ ownTeamMode: 'keepOne' });
   });
 
-  test('load записи с keepOneKey не-boolean возвращает default true (fail-safe)', () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ keepOwnTeam: false, keepOneKey: 'broken' }));
-    expect(loadRefsOnMapSettings()).toEqual({ keepOwnTeam: false, keepOneKey: true });
+  test('load: ownTeamMode=delete читается корректно', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ownTeamMode: 'delete' }));
+    expect(loadRefsOnMapSettings()).toEqual({ ownTeamMode: 'delete' });
   });
 
-  test('load записи без keepOwnTeam возвращает keepOwnTeam=false (default)', () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ keepOneKey: true }));
-    expect(loadRefsOnMapSettings()).toEqual({ keepOwnTeam: false, keepOneKey: true });
+  test('load: ownTeamMode=keep читается корректно', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ownTeamMode: 'keep' }));
+    expect(loadRefsOnMapSettings()).toEqual({ ownTeamMode: 'keep' });
   });
 
   test('round-trip: save -> load возвращает то же значение', () => {
-    saveRefsOnMapSettings({ keepOwnTeam: true, keepOneKey: false });
-    expect(loadRefsOnMapSettings()).toEqual({ keepOwnTeam: true, keepOneKey: false });
+    saveRefsOnMapSettings({ ownTeamMode: 'delete' });
+    expect(loadRefsOnMapSettings()).toEqual({ ownTeamMode: 'delete' });
   });
 
   test('save перезаписывает предыдущее значение', () => {
-    saveRefsOnMapSettings({ keepOwnTeam: true, keepOneKey: true });
-    saveRefsOnMapSettings({ keepOwnTeam: false, keepOneKey: false });
-    expect(loadRefsOnMapSettings()).toEqual({ keepOwnTeam: false, keepOneKey: false });
+    saveRefsOnMapSettings({ ownTeamMode: 'keep' });
+    saveRefsOnMapSettings({ ownTeamMode: 'delete' });
+    expect(loadRefsOnMapSettings()).toEqual({ ownTeamMode: 'delete' });
   });
 });
