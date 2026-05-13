@@ -978,7 +978,6 @@ function createControlElement(): HTMLDivElement {
   const button = document.createElement('button');
   button.type = 'button';
   button.id = CONTROL_BUTTON_ID;
-  button.className = 'svp-draw-tools-control-button';
   button.title = t({ en: 'Draw tools', ru: 'Инструменты рисования' });
   button.addEventListener('click', toggleToolbar);
   applySvgIcon(button, ICON_DRAW_TOOLS);
