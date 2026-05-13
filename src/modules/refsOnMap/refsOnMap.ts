@@ -236,25 +236,21 @@ let ownTeamMode: OwnTeamMode = 'keepOne';
  * - `number` - конкретная команда (1..4).
  * - `null` - нейтральная точка: сервер ответил 200 OK с `data.te: null`,
  *   у точки нет владельца (легитимное игровое состояние).
- * - `'failed'` - fetch упал, ответ нераспознан, либо сервер не вернул
- *   ни число, ни null. Реальная проблема загрузки, требует fail-safe защиты.
  *
- * Раньше neutral и failed склеивались в `null`, и нейтральные точки попадали
- * в `protectedByUnknownTeam` при keepOwnTeam=true - пользователь видел "X
- * неизвестного цвета" после полной отработки worker'а и не понимал, почему
- * deletable не растёт. Дискриминация состояний нужна для корректного UI.
- *
- * Запись любого из трёх значений нужна для идемпотентности повторных
- * попыток: `teamCache.has(guid)` skip'ит и успешные, и нейтральные, и
- * провалившиеся, иначе каждый moveend через extent заново ставил бы их в
- * очередь и worker долбил бы /api/point бесконечно.
+ * Failed-результаты в кэш НЕ пишутся: следующий moveend через extent
+ * поставит guid в очередь заново и worker попробует /api/point снова.
+ * Альтернатива была бы навсегда фиксировать 'failed' (active pull и
+ * worker double-check skip'ают такой guid, пока пользователь не сделает
+ * disable/enable модуля или reload). Цена - временный лишний запрос на
+ * каждый moveend в случае постоянно падающего /api/point; экономия -
+ * автоматическое восстановление без перезапуска.
  *
  * feature.team устанавливается для number и null (neutral - валидное
- * состояние, partitionByLockProtection трактует null как "не своя"). Для
- * 'failed' feature.team остаётся undefined, partitionByLockProtection
- * относит такую точку в protectedByUnknownTeam fail-safe.
+ * состояние, classifyFeatures трактует null как "не своя"). Для не
+ * закэшированных guid'ов feature.team остаётся undefined,
+ * classifyFeatures относит такую точку в unknownProtected fail-safe.
  */
-const teamCache = new Map<string, number | null | 'failed'>();
+const teamCache = new Map<string, number | null>();
 let teamLoadAborted = false;
 // Пока true - viewer догружает команды точек, выбор по клику и trashButton
 // заблокированы. Сбрасывается в false когда очередь fallback /api/point
@@ -1602,16 +1598,18 @@ async function runTeamLoadWorker(): Promise<void> {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- checked between awaits, hideViewer мог выставить
     if (teamLoadAborted) break;
     for (const { pointGuid, team } of results) {
-      // Пишем результат в teamCache ВСЕГДА - и number, и null (neutral), и
-      // 'failed'. teamCache.has(guid) skip'ит и успешные, и нейтральные, и
-      // провалившиеся - иначе каждый moveend через extent заново ставил бы
-      // их в очередь, и worker долбил бы /api/point бесконечно.
-      teamCache.set(pointGuid, team);
       teamLoadInFlight.delete(pointGuid);
+      teamLoadDone++;
+      if (team === 'failed') {
+        // НЕ пишем в кэш: следующий moveend поставит guid снова в очередь,
+        // worker сделает повторную попытку. feature.team остаётся undefined,
+        // classifyFeatures относит точку в unknownProtected fail-safe.
+        continue;
+      }
+      teamCache.set(pointGuid, team);
       // feature.team устанавливается для number и null (neutral - валидный
-      // ответ "у точки нет владельца"). Для 'failed' оставляем undefined,
-      // чтобы partitionByLockProtection отнёс точку в protectedByUnknownTeam.
-      if (team !== 'failed' && refsSource) {
+      // ответ "у точки нет владельца").
+      if (refsSource) {
         for (const feature of refsSource.getFeatures()) {
           const properties = feature.getProperties?.() ?? {};
           if (properties.pointGuid === pointGuid) {
@@ -1619,7 +1617,6 @@ async function runTeamLoadWorker(): Promise<void> {
           }
         }
       }
-      teamLoadDone++;
     }
     updateProgress(teamLoadDone, teamLoadTotal);
     // Trash.disabled зависит от teamLoadQueue/teamLoadInFlight для selected

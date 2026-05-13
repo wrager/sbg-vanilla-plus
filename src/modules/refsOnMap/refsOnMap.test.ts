@@ -1370,6 +1370,11 @@ describe('refsOnMap own-team protection', () => {
     clickHandler({ pixel: [0, 0] });
 
     enableKeepOwnTeamCheckbox();
+    // worker мог дёрнуть /api/point на default-fetch для point-unknown
+    // (failed, не кэшируется по решению "не писать failed в teamCache").
+    // Даём worker'у завершиться до установки fetchSpy, чтобы остался
+    // только DELETE-fetch в качестве вызова.
+    await flushAsync();
 
     window.confirm = jest.fn(() => true);
     const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
@@ -1383,11 +1388,14 @@ describe('refsOnMap own-team protection', () => {
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushAsync();
 
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    const deleteCall = fetchSpy.mock.calls.find(
+      ([url, init]) =>
+        typeof url === 'string' && url === '/api/inventory' && init?.method === 'DELETE',
+    );
+    if (!deleteCall) throw new Error('DELETE call not found');
+    const init = deleteCall[1] as RequestInit;
     const body = JSON.parse(init.body as string) as { selection: Record<string, number> };
     expect(body.selection).not.toHaveProperty('ref-1');
     expect(body.selection).toHaveProperty('ref-2');
@@ -2031,14 +2039,15 @@ describe('refsOnMap visible-only active pull', () => {
     expect(document.querySelector('.svp-toast')).toBeNull();
   });
 
-  test('/api/point fetch failure: повторный moveend НЕ перезапрашивает ту же точку', async () => {
-    // fetchPointTeam возвращает 'failed' когда ответ нераспознан (нет ни
-    // числового data.te, ни data.te:null). Раньше каждый moveend возвращал
-    // такой guid в очередь, worker дёргал /api/point снова - loop. Сейчас
-    // worker пишет 'failed' в teamCache, enqueueVisibleForLoad skip'ит.
+  test('/api/point fetch failure: повторный moveend retry-ит ту же точку', async () => {
+    // fetchPointTeam возвращает 'failed' когда ответ нераспознан. По решению
+    // "не писать failed в teamCache" worker НЕ кэширует такой результат -
+    // следующий moveend через extent ставит guid снова в очередь, worker
+    // делает повторную попытку. Цена: лишний запрос на каждый moveend если
+    // /api/point постоянно падает. Польза: автоматическое восстановление,
+    // как только сервер начнёт отвечать снова, без disable/enable модуля.
     const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-fail', ti: 'X', f: 0 }];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
-    // Возвращаем пустой объект - data.te отсутствует.
     teamFetchSpy.mockImplementation(() =>
       Promise.resolve({
         ok: true,
@@ -2049,19 +2058,15 @@ describe('refsOnMap visible-only active pull', () => {
     clickShowButton();
     await flushAsync();
 
-    // Первый раз: /api/point вызван 1 раз для point-fail.
     expect(teamFetchSpy).toHaveBeenCalledTimes(1);
 
-    // Эмулируем серию moveend на том же extent.
+    // Каждый последующий moveend повторно ставит point-fail в очередь.
     emitMoveend();
     await flushAsync();
+    expect(teamFetchSpy).toHaveBeenCalledTimes(2);
     emitMoveend();
     await flushAsync();
-    emitMoveend();
-    await flushAsync();
-
-    // Никаких повторных запросов: точка уже в teamCache как 'failed'.
-    expect(teamFetchSpy).toHaveBeenCalledTimes(1);
+    expect(teamFetchSpy).toHaveBeenCalledTimes(3);
   });
 
   test('feature.team остаётся undefined для точек с failed-fetch в teamCache (fail-safe protection)', async () => {
