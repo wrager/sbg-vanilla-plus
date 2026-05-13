@@ -1002,12 +1002,20 @@ async function mountOlControl(myToken: number): Promise<boolean> {
   // viewport). Если control оторвался от документа — снова приклеиваем после
   // актуального picker'а (re-find динамически на случай, если игра пересоздала
   // и сам picker, заменив старый узел новым).
+  //
+  // observe нацелен на parent picker'а (body для .region-picker) c childList
+  // БЕЗ subtree: scope сужен до прямых детей этого контейнера, callback
+  // дёргается только на add/remove самих узлов picker/control/соседей по
+  // body, а не на каждую DOM-мутацию игры (попапы, ввод, инвентарь). Если
+  // игра когда-нибудь пересоздаст и сам контейнер picker'а - control
+  // пере-смонтируется при следующем enable.
+  const observerTarget = picker.parentElement ?? document.body;
   controlMutationObserver = new MutationObserver(() => {
     if (!controlElement || controlElement.isConnected) return;
     const fresh = document.querySelector<HTMLElement>(REGION_PICKER_SELECTOR);
     fresh?.after(controlElement);
   });
-  controlMutationObserver.observe(document.body, { childList: true, subtree: true });
+  controlMutationObserver.observe(observerTarget, { childList: true });
 
   return true;
 }
