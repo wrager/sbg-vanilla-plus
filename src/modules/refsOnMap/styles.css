@@ -125,13 +125,17 @@
   border-radius: 8px;
   line-height: 1.4;
   pointer-events: none;
-  /* В bottom-stack нет фиксированной ширины контейнера, поэтому длинные
-   * строки селекшен-инфо могут вытянуть stack за пределы viewport.
-   * max-width ограничивает ширину блока, overflow-wrap переносит длинные
-   * сегменты по любым местам, white-space: normal разрешает перенос строк. */
+  box-sizing: border-box;
+  /* min-width: 0 - корневая правка переноса: по дефолту flex-item имеет
+   * min-width: auto (= min-content), что НЕ ПОЗВОЛЯЕТ блоку быть уже
+   * самой длинной строки текста, и max-width/overflow-wrap не помогают.
+   * После min-width:0 блок может сжаться до ширины stack-контейнера,
+   * а white-space:normal + word-break:break-word переносят содержимое. */
+  min-width: 0;
   max-width: calc(100vw - 32px);
   white-space: normal;
-  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .svp-refs-on-map-progress {
