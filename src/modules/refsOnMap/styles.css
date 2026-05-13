@@ -125,6 +125,13 @@
   border-radius: 8px;
   line-height: 1.4;
   pointer-events: none;
+  /* В bottom-stack нет фиксированной ширины контейнера, поэтому длинные
+   * строки селекшен-инфо могут вытянуть stack за пределы viewport.
+   * max-width ограничивает ширину блока, overflow-wrap переносит длинные
+   * сегменты по любым местам, white-space: normal разрешает перенос строк. */
+  max-width: calc(100vw - 32px);
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .svp-refs-on-map-progress {
