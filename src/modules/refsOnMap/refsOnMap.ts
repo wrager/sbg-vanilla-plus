@@ -539,16 +539,21 @@ const LOCK_ICON_SVG_PATH =
 const STAR_ICON_SVG_PATH =
   '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="white" stroke="black" stroke-width="1.5"/>';
 
-// base64 надёжнее URL-encoded SVG: charset=utf-8,<...> в некоторых
-// браузерах ломается на кавычках/процентах внутри path-данных, а OL Icon
-// тихо не рисует фичу без явной ошибки в консоли. base64 убирает класс
-// проблем "иконка не видна, в DOM нет ошибок" целиком.
+// SVG имеет явный width/height (24x24), чтобы у браузера не было сомнений
+// в естественном размере. Без size-атрибутов SVG-data-URL в OL Icon
+// измеряется в 0px и иконка не рисуется. imgSize в OlIcon - legacy-вариант
+// сообщить OL размер для масштабирования; работает в любой версии OL,
+// в отличие от width/height (Available since OL 6.5).
+const ICON_NATURAL_SIZE = 24;
+const ICON_DISPLAY_SIZE = 18;
+
 function buildIconDataUrl(path: string): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">${path}</svg>`;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" ` +
+    `width="${ICON_NATURAL_SIZE}" height="${ICON_NATURAL_SIZE}" ` +
+    `viewBox="0 0 ${ICON_NATURAL_SIZE} ${ICON_NATURAL_SIZE}">${path}</svg>`;
   return 'data:image/svg+xml;base64,' + btoa(svg);
 }
-
-const ICON_SIZE = 18;
 
 function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
   return (feature: IOlFeature) => {
@@ -631,8 +636,8 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
         new OlStyle({
           image: new OlIcon({
             src: buildIconDataUrl(LOCK_ICON_SVG_PATH),
-            width: ICON_SIZE,
-            height: ICON_SIZE,
+            imgSize: [ICON_NATURAL_SIZE, ICON_NATURAL_SIZE],
+            scale: ICON_DISPLAY_SIZE / ICON_NATURAL_SIZE,
             opacity: 0.5,
           }),
           zIndex: 4,
@@ -640,8 +645,8 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
         new OlStyle({
           image: new OlIcon({
             src: buildIconDataUrl(STAR_ICON_SVG_PATH),
-            width: ICON_SIZE,
-            height: ICON_SIZE,
+            imgSize: [ICON_NATURAL_SIZE, ICON_NATURAL_SIZE],
+            scale: ICON_DISPLAY_SIZE / ICON_NATURAL_SIZE,
             opacity: 0.5,
           }),
           zIndex: 4,
@@ -652,8 +657,8 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
         new OlStyle({
           image: new OlIcon({
             src: buildIconDataUrl(LOCK_ICON_SVG_PATH),
-            width: ICON_SIZE,
-            height: ICON_SIZE,
+            imgSize: [ICON_NATURAL_SIZE, ICON_NATURAL_SIZE],
+            scale: ICON_DISPLAY_SIZE / ICON_NATURAL_SIZE,
           }),
           zIndex: 4,
         }),
@@ -663,8 +668,8 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
         new OlStyle({
           image: new OlIcon({
             src: buildIconDataUrl(STAR_ICON_SVG_PATH),
-            width: ICON_SIZE,
-            height: ICON_SIZE,
+            imgSize: [ICON_NATURAL_SIZE, ICON_NATURAL_SIZE],
+            scale: ICON_DISPLAY_SIZE / ICON_NATURAL_SIZE,
           }),
           zIndex: 4,
         }),
