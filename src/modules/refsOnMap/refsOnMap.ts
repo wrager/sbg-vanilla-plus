@@ -673,7 +673,10 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
           zIndex: 4,
         }),
       );
-    } else if (zoom >= AMOUNT_ZOOM) {
+    } else if (zoom >= AMOUNT_ZOOM && !(isSelected && ownTeamMode === 'keep')) {
+      // В режиме keep выделенные точки не показывают amount: своих не удаляем
+      // (число = 0), для остальных выделенных amount к удалению уже виден
+      // на trash-кнопке - дублировать на самой точке шумно.
       styles.push(
         new OlStyle({
           text: new OlText({
