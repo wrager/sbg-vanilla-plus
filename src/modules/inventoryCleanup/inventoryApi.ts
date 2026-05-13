@@ -76,17 +76,20 @@ export async function deleteInventoryItems(
     : new Set<string>();
   // Удаление ключей разрешено только если ВСЕ реф-стопки в свежем кэше имеют
   // поле `f`. Раньше проверялось `some` (хотя бы одна), но при mix-кэше (часть
-  // стопок с `f`, часть без) стопки без `f` не попадают в `lockedPointGuids`
-  // (там `if (item.f === undefined) continue`) и могли быть удалены, даже если
-  // их точка по логике должна быть защищена. На 0.6.1+ сервер всегда отдаёт `f`
-  // для всех refs, mix маловероятен, но `every` исключает класс ошибки целиком,
-  // не полагаясь на неявные предположения о поведении сервера.
+  // стопок с `f`, часть без) стопки без `f` не попадают в
+  // `freshProtectedPointGuids` (там `if (item.f === undefined) continue`) и
+  // могли быть удалены, даже если их точка по логике должна быть защищена. На
+  // 0.6.1+ сервер всегда отдаёт `f` для всех refs, mix маловероятен, но
+  // `every` исключает класс ошибки целиком, не полагаясь на неявные
+  // предположения о поведении сервера.
   const refStacks = freshCache.filter(isInventoryReference);
   const lockSupportAvailable =
     refStacks.length > 0 && refStacks.every((item) => item.f !== undefined);
 
   if (hasReferences && !lockSupportAvailable) {
-    throw new Error('Удаление ключей запрещено: нативный lock недоступен (guard)');
+    throw new Error(
+      'Удаление ключей запрещено: нативная защита (lock/favorite) недоступна (guard)',
+    );
   }
 
   for (const entry of deletions) {

@@ -226,7 +226,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
     await expect(deleteInventoryItems(deletions)).rejects.toThrow(
-      'Удаление ключей запрещено: нативный lock недоступен',
+      'Удаление ключей запрещено: нативная защита (lock/favorite) недоступна',
     );
     expect(mockFetch).not.toHaveBeenCalled();
   });
@@ -246,9 +246,9 @@ describe('deleteInventoryItems', () => {
 
   test('guard: mix-кэш (часть стопок без f) блокирует удаление', async () => {
     // Раньше lockSupportAvailable считался через some — хватало одной стопки
-    // с f. Стопки без f не попадают в lockedPointGuids, и удаление их ключей
-    // могло пройти, даже если их точка фактически защищена. Теперь every —
-    // mix блокируется целиком.
+    // с f. Стопки без f не попадают в freshProtectedPointGuids, и удаление их
+    // ключей могло пройти, даже если их точка фактически защищена. Теперь
+    // every — mix блокируется целиком.
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([
@@ -259,7 +259,9 @@ describe('deleteInventoryItems', () => {
     const deletions: IDeletionEntry[] = [
       { guid: 'r1', type: 3, level: null, amount: 1, pointGuid: 'p1' },
     ];
-    await expect(deleteInventoryItems(deletions)).rejects.toThrow('нативный lock недоступен');
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+      'нативная защита (lock/favorite) недоступна',
+    );
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
