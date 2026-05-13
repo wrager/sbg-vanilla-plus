@@ -28,15 +28,34 @@ export function readFullInventoryReferences(): IInventoryReferenceFull[] {
 }
 
 /**
+ * Базовая агрегация per-point по битовой маске флага `f`. Не экспортируется
+ * наружу: публичный API ниже (`buildLockedPointGuids`, `buildProtectedPointGuids`)
+ * фиксирует доменно-значимые маски, чтобы вызывающий код не передавал сырые
+ * биты. Объединение в одной функции исключает класс ошибки рассинхрона guard
+ * `item.f === undefined` и фильтра `isInventoryReference` при будущих правках
+ * (добавление третьей маски, изменение формата `f`).
+ *
+ * Принимает `unknown[]` - позволяет передавать сырой `inventory-cache` без
+ * предварительной фильтрации; внутренний `isInventoryReference` отсеивает
+ * не-рефы и стопки без поля `f`.
+ */
+function buildPointGuidsByFlagMask(items: readonly unknown[], mask: number): Set<string> {
+  const result = new Set<string>();
+  for (const item of items) {
+    if (!isInventoryReference(item)) continue;
+    if (item.f === undefined) continue;
+    if ((item.f & mask) === 0) continue;
+    result.add(item.l);
+  }
+  return result;
+}
+
+/**
  * Возвращает GUID'ы точек, у которых хотя бы одна стопка ключей помечена
  * флагом lock (бит 1 поля `f`, refs/game/script.js:3405). Стопки - деталь
  * хранения; в UI игрок видит точку, и lock-семантика пользователю «защитить
  * ключи этой точки от удаления». Поэтому агрегируем per-point: одна locked
  * стопка - вся точка под защитой.
- *
- * Принимает `unknown[]` - позволяет передавать сырой `inventory-cache` без
- * предварительной фильтрации; внутренний `isInventoryReference` отсеивает
- * не-рефы и стопки без поля `f`.
  *
  * Используется для логики миграции legacy SVP/CUI-избранных в нативный lock
  * (`favoritesMigration/migrationApi.ts`), где нужен именно lock-бит, а не
@@ -44,14 +63,7 @@ export function readFullInventoryReferences(): IInventoryReferenceFull[] {
  * `buildProtectedPointGuids` (ниже): она ловит и lock, и favorite.
  */
 export function buildLockedPointGuids(items: readonly unknown[]): Set<string> {
-  const locked = new Set<string>();
-  for (const item of items) {
-    if (!isInventoryReference(item)) continue;
-    if (item.f === undefined) continue;
-    if ((item.f & MARK_FLAG_BITS.locked) === 0) continue;
-    locked.add(item.l);
-  }
-  return locked;
+  return buildPointGuidsByFlagMask(items, MARK_FLAG_BITS.locked);
 }
 
 /**
@@ -64,18 +76,10 @@ export function buildLockedPointGuids(items: readonly unknown[]): Set<string> {
  *
  * Per-point агрегация та же, что и у `buildLockedPointGuids`: одна
  * защищённая стопка - вся точка под защитой. Игрок видит точку, не стопку.
- *
- * Принимает `unknown[]` - позволяет передавать сырой `inventory-cache` без
- * предварительной фильтрации; внутренний `isInventoryReference` отсеивает
- * не-рефы и стопки без поля `f`.
  */
 export function buildProtectedPointGuids(items: readonly unknown[]): Set<string> {
-  const protectedGuids = new Set<string>();
-  for (const item of items) {
-    if (!isInventoryReference(item)) continue;
-    if (item.f === undefined) continue;
-    if ((item.f & 0b11) === 0) continue;
-    protectedGuids.add(item.l);
-  }
-  return protectedGuids;
+  return buildPointGuidsByFlagMask(
+    items,
+    MARK_FLAG_BITS.favorite | MARK_FLAG_BITS.locked,
+  );
 }
