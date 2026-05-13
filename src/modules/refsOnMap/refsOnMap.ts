@@ -96,7 +96,7 @@ async function fetchPointTeam(pointGuid: string): Promise<number | null | 'faile
   return 'failed';
 }
 
-function delay(milliseconds: number): Promise<void> {
+function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
@@ -1562,7 +1562,7 @@ async function runTeamLoadWorker(): Promise<void> {
     // точек. После batch'а guid'ы выбранных точек могут уйти из in-flight -
     // надо переоценить состояние кнопки, не дожидаясь следующего toggle.
     updateSelectionUi();
-    if (teamLoadQueue.size > 0) await delay(TEAM_BATCH_DELAY_MS);
+    if (teamLoadQueue.size > 0) await sleep(TEAM_BATCH_DELAY_MS);
   }
 
   teamLoadInProgress = false;

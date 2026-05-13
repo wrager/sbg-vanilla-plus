@@ -2545,7 +2545,7 @@ describe('refsOnMap progress + interaction lock', () => {
 
   test('фоновая загрузка НЕ-выбранных точек: trash НЕ disabled (selection-aware)', async () => {
     // 6 точек: первые 5 быстро резолвятся (батч 1 worker'а), 6-я (bg-pt)
-    // медленно. Между батчами worker ждёт delay(100ms). В этом окне
+    // медленно. Между батчами worker ждёт sleep(100ms). В этом окне
     // selected-pt (одна из первых 5) уже не в queue/in-flight, а bg-pt
     // ещё не взят. teamsLoading=true глобально, но selection-aware
     // проверка должна разблокировать trash.
@@ -2587,7 +2587,7 @@ describe('refsOnMap progress + interaction lock', () => {
     });
     clickShowButton();
     // Batch 1 worker'а резолвит 5 точек (включая selected-pt). Ждём реально
-    // 150ms, чтобы дошли до delay(100ms) между батчами; bg-pt в этот момент
+    // 150ms, чтобы дошли до sleep(100ms) между батчами; bg-pt в этот момент
     // уже взят в batch 2 (в-полёте) и ждёт slow Promise.
     await new Promise((r) => setTimeout(r, 150));
     await flushAsync();
@@ -3268,7 +3268,7 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     selectFeatureByIndex(3);
     enableKeepOwn();
     // selection-driven загрузка ставит point-unk в очередь worker'а.
-    // Worker делает batch + delay(100ms) перед следующим - flushAsync
+    // Worker делает batch + sleep(100ms) перед следующим - flushAsync
     // покрывает только setTimeout(0). Ждём реально.
     await new Promise((r) => setTimeout(r, 200));
     await flushAsync();
@@ -3473,8 +3473,8 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     selectFeatureByIndex(4);
     enableKeepOwn();
     // selection-driven загрузка ставит p-lock + p-unk в очередь. Worker
-    // обрабатывает первую (p-lock) сразу, потом await delay(100ms) перед
-    // p-unk. flushAsync (setTimeout 0) не покрывает delay - ждём реально.
+    // обрабатывает первую (p-lock) сразу, потом await sleep(100ms) перед
+    // p-unk. flushAsync (setTimeout 0) не покрывает sleep - ждём реально.
     await new Promise((r) => setTimeout(r, 200));
     await flushAsync();
 
