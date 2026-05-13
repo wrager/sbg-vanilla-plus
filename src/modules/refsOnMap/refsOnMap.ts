@@ -954,6 +954,13 @@ function updateSelectionUi(): void {
   const hasSelection = breakdown.selectedPoints > 0;
   const protectiveMode = ownTeamMode === 'keep' || ownTeamMode === 'keepOne';
 
+  // Радио-метки зависят от цвета команды игрока: getPlayerTeam() мог
+  // измениться mid-сессии (логин/выход без F5). Перечитываем тексты на
+  // каждом updateSelectionUi, чтобы метки 'Удалять красные' не врали.
+  setTextIfChanged(modeLabelDelete, t(getModeLabelDelete()));
+  setTextIfChanged(modeLabelKeep, t(getModeLabelKeep()));
+  setTextIfChanged(modeLabelKeepOne, t(getModeLabelKeepOne()));
+
   if (trashButton) {
     const trashLabel = trashButton.querySelector<HTMLSpanElement>('.svp-refs-on-map-trash-label');
     setTextIfChanged(
