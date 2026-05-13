@@ -17,11 +17,20 @@
   transform: translateY(200%);
 }
 
-/* Размер кнопки — 1.375em от font-size button (наследуется .ol-control button
+/* Размер кнопки - 1.375em от font-size button (наследуется .ol-control button
    из ol.css). Для совпадения с native .region-picker button нам нужен ТОТ ЖЕ
    font-size на тех же viewport, что и у picker'а: на узких экранах игра
    увеличивает picker button до 1.5em (см. game style@0.6.1.css), и без
-   аналогичного правила наша кнопка остаётся на 1em и выглядит мельче. */
+   аналогичного правила наша кнопка остаётся на 1em и выглядит мельче.
+
+   ВАЖНО: пороги 425/320 и значения 1.5em/1em - точная копия игрового
+   style@0.6.1.css, правила `.region-picker button` (его сейчас НЕТ в
+   refs/game/css/). Coupling нигде программно не зафиксирован: npm test не
+   ловит рассинхрон (jsdom не считает media queries), визуально ловится
+   только на устройстве. При обновлении игры обязательно сверить эти media
+   queries с актуальным правилом `.region-picker button` в игровом
+   style.css - если игра изменит пороги или значения, наша кнопка тихо
+   разойдётся с picker'ом по размеру на mobile. */
 @media (max-width: 425px) {
   .svp-draw-tools-control button {
     font-size: 1.5em;
