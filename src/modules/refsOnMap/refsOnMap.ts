@@ -596,7 +596,7 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
         deletionState === 'ownProtected' ||
         deletionState === 'unknownProtected' ||
         (deletionState === 'keepOneTrimmed' && toDelete === 0));
-    // Item 6b: текст "=1" для выделенных, у которых правило keepOne после
+    // Текст "=1" для выделенных, у которых правило keepOne после
     // удаления оставит ровно 1 ключ (deletion=keepOneTrimmed и toSurvive=1).
     const showOneSurvived = isSelected && deletionState === 'keepOneTrimmed' && toSurvive === 1;
 
@@ -1086,7 +1086,7 @@ function clearSelection(): void {
 
 function handleMapClick(event: IOlMapEvent): void {
   if (!olMap?.forEachFeatureAtPixel) return;
-  // Item 1: при перекрытии точек под пикселем клик ВЫБИРАЕТ все, никогда
+  // При перекрытии точек под пикселем клик ВЫБИРАЕТ все, никогда
   // не снимает. Раньше каждая фича toggle'илась независимо, и две
   // перекрывающихся точки переключались "в разные стороны". Снять
   // выделение можно только Cancel-кнопкой (clearSelection).
@@ -1374,7 +1374,7 @@ async function handleDeleteClick(): Promise<void> {
       }
     }
 
-    // Item 2: после успешного удаления снимаем isSelected у ВСЕХ оставшихся
+    // После успешного удаления снимаем isSelected у ВСЕХ оставшихся
     // в source фич (защищённые точки видны, но больше не выделены - готовы
     // к новому циклу выбора).
     for (const feature of refsSource.getFeatures()) {
