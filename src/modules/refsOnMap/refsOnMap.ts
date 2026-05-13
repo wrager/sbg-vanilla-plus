@@ -1600,6 +1600,10 @@ async function runTeamLoadWorker(): Promise<void> {
     for (const { pointGuid, team } of results) {
       teamLoadInFlight.delete(pointGuid);
       teamLoadDone++;
+      // Между извлечением guid'а из очереди и завершением fetchPointTeam
+      // /api/inview-hook мог уже принести валидную команду этой точки -
+      // hook-данные свежее, не перетираем их worker-результатом.
+      if (teamCache.get(pointGuid) !== undefined) continue;
       if (team === 'failed') {
         // НЕ пишем в кэш: следующий moveend поставит guid снова в очередь,
         // worker сделает повторную попытку. feature.team остаётся undefined,
