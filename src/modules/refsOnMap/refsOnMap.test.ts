@@ -513,10 +513,10 @@ describe('refsOnMap viewer', () => {
     expect(trash.style.display).toBe('none');
   });
 
-  test('shows locked-note while viewer is open and hides it on close', () => {
+  test('shows protection note while viewer is open and hides it on close', () => {
     setInventoryCache();
     clickShowButton();
-    const note = document.querySelector('.svp-refs-on-map-locked-note') as HTMLElement;
+    const note = document.querySelector('.svp-refs-on-map-protection-note') as HTMLElement;
     expect(note).not.toBeNull();
     expect(note.style.display).toBe('');
     expect(note.textContent).toMatch(/lock|favorite|защищ|замочк|звёздочк/i);
@@ -613,7 +613,7 @@ describe('refsOnMap lock protection', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  test('partitionByLockProtection через handleDeleteClick: locked не уходит в payload', async () => {
+  test('partitionByProtection через handleDeleteClick: locked не уходит в payload', async () => {
     setInventoryCacheWithLocks();
     clickShowButton();
 
@@ -672,7 +672,7 @@ describe('refsOnMap lock protection', () => {
     expect(body.selection).not.toHaveProperty('ref-2');
   });
 
-  test('partitionByLockProtection через handleDeleteClick: favorite не уходит в payload', async () => {
+  test('partitionByProtection через handleDeleteClick: favorite не уходит в payload', async () => {
     // Зеркальный кейс к locked: favorite (бит 0b01) защищает так же, как
     // lock (бит 0b10). Проверяем, что viewer пропускает в payload только
     // незащищённые точки.

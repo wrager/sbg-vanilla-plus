@@ -126,7 +126,7 @@ let refsLayer: IOlLayer | null = null;
 let showButton: HTMLButtonElement | null = null;
 let closeButton: HTMLButtonElement | null = null;
 let trashButton: HTMLButtonElement | null = null;
-let lockedNote: HTMLDivElement | null = null;
+let protectionNote: HTMLDivElement | null = null;
 let tabClickHandler: ((event: Event) => void) | null = null;
 let mapClickHandler: ((event: IOlMapEvent) => void) | null = null;
 let viewerOpen = false;
@@ -285,7 +285,7 @@ function handleMapClick(event: IOlMapEvent): void {
  * без pointGuid (теоретически возможны при сломанном кэше) трактуются как
  * unprotected, чтобы не блокировать удаление по неверной причине.
  */
-function partitionByLockProtection(features: IOlFeature[]): {
+function partitionByProtection(features: IOlFeature[]): {
   deletable: IOlFeature[];
   protectedRefs: IOlFeature[];
 } {
@@ -343,7 +343,7 @@ async function handleDeleteClick(): Promise<void> {
   // Семантика общая для всех модулей, работающих с массовым удалением
   // ключей: refsOnMap, slowRefsDelete, cleanupCalculator (см. README
   // inventoryCleanup).
-  const { deletable, protectedRefs } = partitionByLockProtection(selectedFeatures);
+  const { deletable, protectedRefs } = partitionByProtection(selectedFeatures);
 
   if (deletable.length === 0) {
     showToast(
@@ -590,7 +590,7 @@ function showViewer(): void {
     trashButton.style.visibility = 'hidden';
     trashButton.style.display = '';
   }
-  if (lockedNote) lockedNote.style.display = '';
+  if (protectionNote) protectionNote.style.display = '';
 
   // Attach click handler for selection
   mapClickHandler = handleMapClick;
@@ -621,7 +621,7 @@ function hideViewer(): void {
 
   if (closeButton) closeButton.style.display = 'none';
   if (trashButton) trashButton.style.display = 'none';
-  if (lockedNote) lockedNote.style.display = 'none';
+  if (protectionNote) protectionNote.style.display = 'none';
 
   const view = olMap?.getView();
   if (view) {
@@ -734,14 +734,14 @@ export const refsOnMap: IFeatureModule = {
           // viewer-режиме, чтобы пользователь сразу понимал, что часть
           // выбранного при удалении будет пропущена. Та же семантика
           // используется в slowRefsDelete и cleanupCalculator.
-          lockedNote = document.createElement('div');
-          lockedNote.className = 'svp-refs-on-map-locked-note';
-          lockedNote.textContent = t({
+          protectionNote = document.createElement('div');
+          protectionNote.className = 'svp-refs-on-map-protection-note';
+          protectionNote.textContent = t({
             en: 'Keys of points with lock or favorite are protected and not deleted',
             ru: 'Ключи точек с замочком или звёздочкой защищены и не удаляются',
           });
-          lockedNote.style.display = 'none';
-          document.body.appendChild(lockedNote);
+          protectionNote.style.display = 'none';
+          document.body.appendChild(protectionNote);
         } catch (error) {
           // Частичный успех enable() оставил бы hidden-кнопки/слой в DOM
           // (модуль помечен failed, но disable() автоматически не вызывается).
@@ -796,9 +796,9 @@ function cleanupEnableSideEffects(): void {
     trashButton = null;
   }
 
-  if (lockedNote) {
-    lockedNote.remove();
-    lockedNote = null;
+  if (protectionNote) {
+    protectionNote.remove();
+    protectionNote = null;
   }
 
   if (tabClickHandler) {
