@@ -183,6 +183,11 @@ let showButton: HTMLButtonElement | null = null;
 let closeButton: HTMLButtonElement | null = null;
 let trashButton: HTMLButtonElement | null = null;
 let cancelButton: HTMLButtonElement | null = null;
+// Общий fixed-контейнер в правом нижнем углу для всех viewer-блоков
+// (selectionInfo / mode / trash / cancel) - flex column с gap. Поведение:
+// каждый блок управляет своей visibility (display: none/'') как раньше,
+// общий gap соблюдается даже при свёрнутых элементах за счёт flexbox.
+let bottomStack: HTMLDivElement | null = null;
 let progressContainer: HTMLDivElement | null = null;
 let progressBar: HTMLDivElement | null = null;
 let progressCounter: HTMLDivElement | null = null;
@@ -1900,6 +1905,14 @@ export const refsOnMap: IFeatureModule = {
           // создаётся один раз, поэтому CSS animation крутится непрерывно
           // (innerHTML на каждом updateSelectionUi пересоздавал бы node и
           // перезапускал бы keyframe).
+          // bottomStack создаётся до trash/cancel/mode/selectionInfo и
+          // принимает их через appendChild в конце enable - один контейнер
+          // в правом нижнем углу с flex-column. Порядок детей фиксируется
+          // явным порядком appendChild ниже, а не порядком создания.
+          bottomStack = document.createElement('div');
+          bottomStack.className = 'svp-refs-on-map-bottom-stack';
+          document.body.appendChild(bottomStack);
+
           trashButton = document.createElement('button');
           trashButton.className = 'svp-refs-on-map-trash';
           trashButton.dataset.loading = 'false';
@@ -1920,7 +1933,6 @@ export const refsOnMap: IFeatureModule = {
           trashButton.appendChild(trashIconDefault);
           trashButton.appendChild(trashIconLoading);
           trashButton.appendChild(trashLabel);
-          document.body.appendChild(trashButton);
 
           // Cancel button - снимает выделение всех выбранных точек. Видна
           // только при наличии выбора (updateSelectionUi).
@@ -1929,7 +1941,6 @@ export const refsOnMap: IFeatureModule = {
           cancelButton.textContent = t({ en: 'Cancel', ru: 'Отменить' });
           cancelButton.style.visibility = 'hidden';
           cancelButton.addEventListener('click', clearSelection);
-          document.body.appendChild(cancelButton);
 
           // Прогресс-бар fallback /api/point: виден пока teamsLoading=true,
           // после полной загрузки скрывается (applyTeamsLoadedState). Пока
@@ -2017,7 +2028,7 @@ export const refsOnMap: IFeatureModule = {
             modeContainer.appendChild(optionLabel);
             builder.ref(input, textSpan);
           }
-          document.body.appendChild(modeContainer);
+          // appendChild к bottomStack делается ниже в нужном порядке.
 
           // Selection info: до 4 строк - total + protected (lock) + own +
           // unknown (последние две только при keepOwnTeam=true). Каждая
@@ -2049,7 +2060,13 @@ export const refsOnMap: IFeatureModule = {
           selectionInfoEl.appendChild(selectionInfoUnknownRow);
           selectionInfoEl.appendChild(selectionInfoKeepOneRow);
           selectionInfoEl.appendChild(selectionInfoToDeleteRow);
-          document.body.appendChild(selectionInfoEl);
+
+          // Окончательный порядок детей bottomStack (flex column сверху
+          // вниз): selectionInfo, mode, trash, cancel.
+          bottomStack.appendChild(selectionInfoEl);
+          bottomStack.appendChild(modeContainer);
+          bottomStack.appendChild(trashButton);
+          bottomStack.appendChild(cancelButton);
         } catch (error) {
           // Частичный успех enable() оставил бы hidden-кнопки/слой в DOM
           // (модуль помечен failed, но disable() автоматически не вызывается).
@@ -2143,6 +2160,11 @@ function cleanupEnableSideEffects(): void {
   selectionInfoUnknownRow = null;
   selectionInfoKeepOneRow = null;
   selectionInfoToDeleteRow = null;
+
+  if (bottomStack) {
+    bottomStack.remove();
+    bottomStack = null;
+  }
 
   if (tabClickHandler) {
     const tabContainer = $('.inventory__tabs');
