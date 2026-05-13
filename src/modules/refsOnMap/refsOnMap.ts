@@ -1400,9 +1400,10 @@ async function handleDeleteClick(): Promise<void> {
 }
 
 /**
- * Тост по итогу удаления. Полностью успешный запрос -> одна строка
- * "Y ключей от X точек успешно удалены". Если часть/всё провалилось -
- * две строки: успешно-удалённая часть + предупреждение "Ошибка удаления...".
+ * Тост по итогу удаления. Сервер возвращает либо 200 OK на весь запрос,
+ * либо ошибку - частичного успеха не бывает, поэтому failed либо 0 (тогда
+ * deletedKeys=всё), либо =overallToDelete (тогда deletedKeys=0). Один из
+ * двух текстов: успех или ошибка - без двухстрочного смешения.
  */
 function buildPostDeleteToast(
   deletedKeys: number,
@@ -1417,12 +1418,8 @@ function buildPostDeleteToast(
     });
   }
   return t({
-    en:
-      `${deletedKeys} key(s) from ${deletedPoints} point(s) deleted.\n` +
-      `⚠️ Failed to delete ${failedKeys} key(s) from ${failedPoints} point(s)`,
-    ru:
-      `${deletedKeys} ключ(ей) от ${deletedPoints} точ(ек) удалены.\n` +
-      `⚠️ Ошибка удаления ${failedKeys} ключ(ей) от ${failedPoints} точ(ек)`,
+    en: `⚠️ Failed to delete ${failedKeys} key(s) from ${failedPoints} point(s)`,
+    ru: `⚠️ Ошибка удаления ${failedKeys} ключ(ей) от ${failedPoints} точ(ек)`,
   });
 }
 
