@@ -1813,8 +1813,8 @@ export const refsOnMap: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Refs on map', ru: 'Ключи на карте' },
   description: {
-    en: 'View and manage points with collected keys on the map at any zoom level. Keys of points marked with the native SBG lock are protected.',
-    ru: 'Просмотр и управление точками с ключами на карте на любом масштабе. Ключи точек, помеченных нативным замочком SBG, защищены.',
+    en: 'View and manage points with collected keys on the map at any zoom level. Mode for protecting own-team keys from accidental bulk delete.',
+    ru: 'Просмотр и управление точками с ключами на карте на любом масштабе. Режим защиты ключей своей команды от случайного массового удаления.',
   },
   defaultEnabled: true,
   category: 'feature',
