@@ -271,6 +271,12 @@ const teamLoadInFlight = new Set<string>();
 let teamLoadInProgress = false;
 let teamLoadTotal = 0;
 let teamLoadDone = 0;
+// Поколение worker'а: showViewer инкрементирует, runTeamLoadWorker сверяет
+// своё захваченное значение перед каждой записью в кэш / feature.team.
+// hideViewer ставит teamLoadAborted=true и сбрасывает state, но старый
+// worker может быть всё ещё в await Promise.all - его последующие записи
+// относятся к завершённой сессии и не должны влиять на новый viewer.
+let teamLoadGeneration = 0;
 
 // ── inview fetch hook ────────────────────────────────────────────────────────
 
@@ -1572,8 +1578,9 @@ function buildAllProtectedToast(
 async function runTeamLoadWorker(): Promise<void> {
   if (teamLoadInProgress) return;
   teamLoadInProgress = true;
+  const myGeneration = teamLoadGeneration;
 
-  while (teamLoadQueue.size > 0 && !teamLoadAborted) {
+  while (teamLoadQueue.size > 0 && !teamLoadAborted && myGeneration === teamLoadGeneration) {
     const batch: string[] = [];
     for (const guid of teamLoadQueue) {
       batch.push(guid);
@@ -1597,6 +1604,10 @@ async function runTeamLoadWorker(): Promise<void> {
     );
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- checked between awaits, hideViewer мог выставить
     if (teamLoadAborted) break;
+    // Если за время await viewer закрылся и заново открылся, generation
+    // увеличился - результаты предыдущей сессии не должны попадать в
+    // новый teamCache / новый refsSource.
+    if (myGeneration !== teamLoadGeneration) break;
     for (const { pointGuid, team } of results) {
       teamLoadInFlight.delete(pointGuid);
       teamLoadDone++;
@@ -1631,7 +1642,10 @@ async function runTeamLoadWorker(): Promise<void> {
   }
 
   teamLoadInProgress = false;
-  if (!teamLoadAborted && teamLoadQueue.size === 0) {
+  // applyTeamsLoadedState вызываем только для актуальной сессии. Если
+  // generation сменился, новый worker уже стартовал в showViewer - его
+  // applyTeamsLoadedState вызовется по окончанию его очереди.
+  if (!teamLoadAborted && myGeneration === teamLoadGeneration && teamLoadQueue.size === 0) {
     applyTeamsLoadedState();
   }
 }
@@ -1781,6 +1795,10 @@ function showViewer(): void {
   }
 
   teamLoadAborted = false;
+  // Новая сессия viewer'а - инкрементируем generation. Старый worker
+  // (если ещё в await после hideViewer) сравнит свой myGeneration с
+  // глобальным и не запишет в новый teamCache / новый refsSource.
+  teamLoadGeneration++;
   resetTeamLoadState();
   // Команды грузятся через перехват /api/inview, который игра дёрнет при
   // ближайшем moveend (или уже дёрнула - команды попали в teamCache). Очередь
