@@ -31,9 +31,9 @@
 - Карта: `getOlMap()` из `src/core/olMap.ts`
 - Слой рисования: отдельный `Vector` layer c `name='svp-draw-tools'`
 - Сериализация: `iitcFormat.ts` (parse/stringify + type guard)
-- UI: floating OL-control под `.region-picker` + toolbar в `document.body`. Позиция control'а пересчитывается через `getBoundingClientRect()` от picker'а; MutationObserver и ResizeObserver следят за DOM/resize, чтобы control оставался прилипшим
+- UI: floating OL-control под `.region-picker` + toolbar в `document.body`. Позиционирование control'а - чисто CSS (`top: 50%` + `transform: translateY(200%)`), без JS-вычислений; на узких viewport дублируются игровые `@media`-правила, чтобы кнопка совпадала с `.region-picker` button по размеру. MutationObserver на parent picker'а (без subtree) переподцепляет control'а к актуальному picker'у через `querySelector`, если игра пересоздаёт DOM
 - Иконки кнопок: свои inline-SVG из `drawToolsIcons.ts`, наследуют `currentColor` от темы
-- Cleanup в `disable()` снимает слой, интеракции, toolbar, OL-control, observer'ы и стили
+- Cleanup в `disable()` снимает слой, интеракции, toolbar, OL-control, MutationObserver и стили
 
 ## Ограничения MVP
 

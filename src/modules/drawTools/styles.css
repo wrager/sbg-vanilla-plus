@@ -1,24 +1,60 @@
-/* control живёт как OL-control под region-picker. Внутренняя button наследует
-   фон/border/cursor от игровых `.ol-control button` правил, мы задаём только
-   квадратный размер 32x32 (как у `.svp-star-center-clear-control button` в
-   drawing-restrictions) и нулевой padding.
-
-   Селектор именно `.svp-draw-tools-control button` (а не `.svp-draw-tools-control-button`):
-   specificity 0,1,1 (класс + element) — равен игровому `.ol-control button` и
-   побеждает source-order'ом. Прежний вариант с classом на самой button давал
-   specificity 0,1,0, проигрывал и кнопка визуально оказывалась мельче соседних
-   OL-controls. `min-height: auto` нужен, чтобы перебить min-height у
-   глобальных button-стилей игры. */
-.svp-draw-tools-control button {
-  width: 33px;
-  height: 33px;
-  min-height: auto;
-  padding: 0;
+/* Слева от карты выстраиваются OL-controls из двух разных контейнеров:
+   `.ol-rotate` и `.ol-zoom` живут внутри `.ol-overlaycontainer-stopevent`,
+   `.region-picker` — прямой ребёнок `body`. Колонка визуально совпадает
+   потому, что оба контейнера занимают 100% viewport и `body` имеет
+   `position: relative` — `top: 50%` отсчитывается от одной и той же высоты.
+   Наш control продолжает колонку через `translateY(200%)` — на одну
+   собственную высоту ниже region-picker'а. */
+.svp-draw-tools-control {
+  /* Защитный override: top/transform полагаются на абсолютное позиционирование
+     control'а, которое ol.css даёт через `.ol-control { position: absolute }`.
+     Если игра когда-нибудь уберёт ol.css или перебьёт это правило - control
+     упадёт в normal flow и top: 50% потеряет referent. Source-order гарантирует,
+     что наш специфичный класс победит дефолт .ol-control. */
+  position: absolute;
+  top: 50%;
+  left: 0.5em;
+  transform: translateY(200%);
 }
 
+/* Размер кнопки - 1.375em от font-size button (наследуется .ol-control button
+   из ol.css). Для совпадения с native .region-picker button нам нужен ТОТ ЖЕ
+   font-size на тех же viewport, что и у picker'а: на узких экранах игра
+   увеличивает picker button до 1.5em (см. game style@0.6.1.css), и без
+   аналогичного правила наша кнопка остаётся на 1em и выглядит мельче.
+
+   ВАЖНО: пороги 425/320 и значения 1.5em/1em - точная копия игрового
+   style@0.6.1.css, правила `.region-picker button` (его сейчас НЕТ в
+   refs/game/css/). Coupling нигде программно не зафиксирован: npm test не
+   ловит рассинхрон (jsdom не считает media queries), визуально ловится
+   только на устройстве. При обновлении игры обязательно сверить эти media
+   queries с актуальным правилом `.region-picker button` в игровом
+   style.css - если игра изменит пороги или значения, наша кнопка тихо
+   разойдётся с picker'ом по размеру на mobile. */
+@media (max-width: 425px) {
+  .svp-draw-tools-control button {
+    font-size: 1.5em;
+  }
+}
+
+@media (max-width: 320px) {
+  .svp-draw-tools-control button {
+    font-size: 1em;
+  }
+}
+
+/* SVG масштабируется от font-size кнопки: на desktop (16px) даёт 16px иконку,
+   на mobile 321-425px (24px при 1.5em) - 24px, что повторяет визуальную
+   плотность глифа "Δ" внутри picker button. На этом же диапазоне кнопка
+   вырастает до ~33px по тому же font-size pattern, что у .region-picker;
+   без width/height: 1em SVG остаётся 16px и проваливается внутри 33x33.
+   На extra-small (<=320px, font-size возвращается к 1em) и desktop кнопка
+   ~22x22 с иконкой 16x16 - тот же ratio, ничего не провисает. */
 .svp-draw-tools-control button svg {
   display: block;
   margin: auto;
+  width: 1em;
+  height: 1em;
 }
 
 /* Не задаём `fill` на уровне CSS: правило перебивало бы inline `fill="none"`,
