@@ -284,13 +284,20 @@ function handleMapClick(event: IOlMapEvent): void {
  * Свойство `pointGuid` фичи сравнивается с set'ом защищённых точек; ref'ы
  * без pointGuid (теоретически возможны при сломанном кэше) трактуются как
  * unprotected, чтобы не блокировать удаление по неверной причине.
+ *
+ * Set защищённых точек принимается параметром, а не считается внутри по
+ * `readInventoryCache()`: handleDeleteClick читает кэш один раз и
+ * переиспользует его и для guard'а isProtectionFlagSupportAvailable, и
+ * для построения Set'а - двойной JSON.parse при больших инвентарях
+ * избыточен.
  */
-function partitionByProtection(features: IOlFeature[]): {
+function partitionByProtection(
+  features: IOlFeature[],
+  protectedPointGuids: Set<string>,
+): {
   deletable: IOlFeature[];
   protectedRefs: IOlFeature[];
 } {
-  const cache = readInventoryCache();
-  const protectedPointGuids = buildProtectedPointGuids(cache);
   const deletable: IOlFeature[] = [];
   const protectedRefs: IOlFeature[] = [];
   for (const feature of features) {
@@ -328,7 +335,11 @@ async function handleDeleteClick(): Promise<void> {
   // целиком) удаление через viewer блокируется тем же путём - пользователь
   // не должен лишиться ключей из-за того, что версия игры не поддерживает
   // нативную защиту.
-  if (!isProtectionFlagSupportAvailable(readInventoryCache())) {
+  // Кэш читается один раз и переиспользуется для проверки support'а и для
+  // расчёта protected-set'а: двойной JSON.parse при больших инвентарях
+  // избыточен.
+  const cache = readInventoryCache();
+  if (!isProtectionFlagSupportAvailable(cache)) {
     showToast(
       t({
         en: 'Native lock support unavailable: server returned no f-flags. Deletion blocked.',
@@ -343,7 +354,8 @@ async function handleDeleteClick(): Promise<void> {
   // Семантика общая для всех модулей, работающих с массовым удалением
   // ключей: refsOnMap, slowRefsDelete, cleanupCalculator (см. README
   // inventoryCleanup).
-  const { deletable, protectedRefs } = partitionByProtection(selectedFeatures);
+  const protectedPointGuids = buildProtectedPointGuids(cache);
+  const { deletable, protectedRefs } = partitionByProtection(selectedFeatures, protectedPointGuids);
 
   if (deletable.length === 0) {
     showToast(
