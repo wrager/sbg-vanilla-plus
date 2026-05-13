@@ -222,7 +222,6 @@ let beforeOpenFollow: string | null = null;
 // - 'keepOne' - у каждой своей точки оставить 1 ключ (если их больше).
 let ownTeamMode: OwnTeamMode = 'keepOne';
 /**
-/**
  * Кэш команд точек. Ключ - pointGuid. Значения:
  * - `number` - конкретная команда (1..4).
  * - `null` - нейтральная точка: сервер ответил 200 OK с `data.te: null`,
