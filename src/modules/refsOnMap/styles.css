@@ -120,7 +120,7 @@
   background: var(--background-transp);
   backdrop-filter: blur(8px);
   color: var(--text);
-  font-size: 10px;
+  font-size: 12px;
   padding: 8px 12px;
   border-radius: 8px;
   line-height: 1.4;
