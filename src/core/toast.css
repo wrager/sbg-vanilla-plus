@@ -13,7 +13,7 @@
   opacity: 1;
   transition: opacity 0.3s ease;
   max-width: 90vw;
-  text-align: center;
+  text-align: left;
   box-sizing: border-box;
   cursor: pointer;
   white-space: pre-line;
