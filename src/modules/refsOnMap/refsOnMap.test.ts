@@ -2819,7 +2819,7 @@ describe('refsOnMap selection breakdown UI', () => {
     );
   });
 
-  test('toDelete-row: показывает "К удалению: X ключей"', async () => {
+  test('toDelete-row: показывает "К удалению: 1 (5 ключей)"', async () => {
     const items = [{ t: 3, a: 5, c: [100, 13], g: 'r', l: 'p', ti: 'P', f: 0 }];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
     clickShowButton();
@@ -2831,10 +2831,10 @@ describe('refsOnMap selection breakdown UI', () => {
       '.svp-refs-on-map-selection-info__todelete',
     ) as HTMLElement;
     expect(toDeleteRow).not.toBeNull();
-    expect(toDeleteRow.textContent).toMatch(/5\s*(?:ключ\(ей\)|key\(s\))/);
+    expect(toDeleteRow.textContent).toMatch(/1\s*\(\s*5\s*(?:ключей|keys)\s*\)/);
   });
 
-  test('toDelete-row: при защите всего выбора показывает 0', async () => {
+  test('toDelete-row: при защите всего выбора показывает 0 (0 ключей)', async () => {
     localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keep' }));
     const items = [{ t: 3, a: 5, c: [100, 13], g: 'r', l: 'p', ti: 'P', f: 0 }];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
@@ -2846,7 +2846,7 @@ describe('refsOnMap selection breakdown UI', () => {
     const toDeleteRow = document.querySelector(
       '.svp-refs-on-map-selection-info__todelete',
     ) as HTMLElement;
-    expect(toDeleteRow.textContent).toMatch(/0\s*(?:ключ\(ей\)|key\(s\))/);
+    expect(toDeleteRow.textContent).toMatch(/0\s*\(\s*0\s*(?:ключей|keys)\s*\)/);
   });
 
   test('keepOne-row скрыт при keepOneKey=false', async () => {

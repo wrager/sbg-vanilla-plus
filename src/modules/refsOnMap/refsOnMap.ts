@@ -1000,8 +1000,8 @@ function updateSelectionUi(): void {
     setTextIfChanged(
       selectionInfoToDeleteRow,
       t({
-        en: `To delete: ${breakdown.deletableKeys} key(s)`,
-        ru: `К удалению: ${breakdown.deletableKeys} ключ(ей)`,
+        en: `To delete: ${breakdown.deletablePoints} (${breakdown.deletableKeys} keys)`,
+        ru: `К удалению: ${breakdown.deletablePoints} (${breakdown.deletableKeys} ключей)`,
       }),
     );
   }
