@@ -599,6 +599,19 @@ describe('refsOnMap viewer', () => {
     expect(inventory.classList.contains('hidden')).toBe(true);
   });
 
+  test('shows toast and no-ops when inventory has no keys', () => {
+    // Кнопка "На карте" видна на вкладке ключей даже при пустом инвентаре
+    // (вкладка показывается, кнопка крепится к её controls). При клике
+    // viewer не открывается, пользователь видит тост.
+    localStorage.setItem('inventory-cache', JSON.stringify([]));
+    clickShowButton();
+
+    const toast = document.querySelector('.svp-toast');
+    expect(toast?.textContent).toBe('No keys in inventory');
+    const close = document.querySelector<HTMLElement>('.svp-refs-on-map-close');
+    expect(close?.style.display).toBe('none');
+  });
+
   test('resets rotation to 0 when opening viewer', () => {
     setInventoryCache();
     clickShowButton();

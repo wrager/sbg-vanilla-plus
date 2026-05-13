@@ -1667,7 +1667,15 @@ function showViewer(): void {
   if (viewerOpen || !olMap || !refsSource) return;
 
   const refs = readFullInventoryReferences();
-  if (refs.length === 0) return;
+  if (refs.length === 0) {
+    showToast(
+      t({
+        en: 'No keys in inventory',
+        ru: 'В инвентаре нет ключей',
+      }),
+    );
+    return;
+  }
 
   const ol = window.ol;
   const OlFeature = ol?.Feature;
