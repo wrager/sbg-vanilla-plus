@@ -161,6 +161,9 @@ function removeRefsFromCacheAndUpdate(
   if (!Array.isArray(items)) return;
   const updated = items.flatMap<unknown>((item) => {
     if (typeof item !== 'object' || item === null) return [item];
+    // as Record - единственный способ обратиться к свойствам после typeof+null
+    // guard; TS сужает до `object`, но не до Record<string, unknown>.
+    // Симметрично с slowRefsDelete.ts:46-48.
     const record = item as Record<string, unknown>;
     if (record.t !== REFS_TAB_TYPE) return [item];
     if (typeof record.g !== 'string') return [item];
