@@ -30,12 +30,13 @@ const AMOUNT_ZOOM = 15;
 const TITLE_ZOOM = 17;
 const TITLE_MAX_LENGTH = 12;
 const SELECTED_COLOR = '#BB7100';
-// UNLOADED_COLOR используется когда команда точки ещё не загружена
-// (feature.team === undefined). Для team === null (нейтральная) читаем
-// --team-0 из палитры игры - так наш слой согласуется с тем, что нативный
-// слой points рисует под нашим. Без разделения оба состояния были одного
-// серого, пользователь не мог отличить "пока неизвестно" от "нейтральная".
-const UNLOADED_COLOR = '#666666';
+// NEUTRAL_COLOR - явный серый для team === null (нейтральная точка, сервер
+// вернул te:null). Не зависит от темы - так нейтральные точки в нашем слое
+// визуально отличаются от непрогруженных. Для team === undefined читаем
+// --team-0 из палитры игры (там #444 на светлой / #CCC на тёмной) - такая
+// точка совпадает по цвету с тем, что нативный слой points рисует под
+// нашим, пока мы не знаем команду.
+const NEUTRAL_COLOR = '#666666';
 const INVENTORY_API = '/api/inventory';
 const REFS_TAB_TYPE = 3;
 const INVIEW_URL_PATTERN = /\/api\/inview(\?|$)/;
@@ -454,12 +455,14 @@ function expandHexColor(color: string): string {
 }
 
 export function getTeamColor(team: number | null | undefined): string {
-  if (team === undefined) return UNLOADED_COLOR;
-  // null -> --team-0 (нейтральная команда в палитре игры). number -> --team-N.
-  const teamIndex = team === null ? 0 : team;
+  if (team === null) return NEUTRAL_COLOR;
+  // undefined -> --team-0 (нейтральный цвет палитры игры): пока команда не
+  // загружена, наш слой совпадает по тону с нативным points под ним.
+  // number -> --team-N.
+  const teamIndex = team === undefined ? 0 : team;
   const property = `--team-${teamIndex}`;
   const raw = getComputedStyle(document.documentElement).getPropertyValue(property).trim();
-  return raw ? expandHexColor(raw) : UNLOADED_COLOR;
+  return raw ? expandHexColor(raw) : NEUTRAL_COLOR;
 }
 
 /**

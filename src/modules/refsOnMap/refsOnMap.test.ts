@@ -286,22 +286,22 @@ describe('refsOnMap getTeamColor', () => {
     document.documentElement.style.cssText = '';
   });
 
-  test('undefined (непрогруженная команда) -> UNLOADED_COLOR #666666', () => {
-    expect(getTeamColor(undefined)).toBe('#666666');
-  });
-
-  test('null (нейтральная) c --team-0=#444 (светлая тема) -> #444444', () => {
-    document.documentElement.style.setProperty('--team-0', '#444');
-    expect(getTeamColor(null)).toBe('#444444');
-  });
-
-  test('null (нейтральная) c --team-0=#CCC (тёмная тема) -> #CCCCCC', () => {
-    document.documentElement.style.setProperty('--team-0', '#CCC');
-    expect(getTeamColor(null)).toBe('#CCCCCC');
-  });
-
-  test('null без определённой --team-0 -> fallback UNLOADED_COLOR #666666', () => {
+  test('null (нейтральная) -> NEUTRAL_COLOR #666666', () => {
     expect(getTeamColor(null)).toBe('#666666');
+  });
+
+  test('undefined (непрогруженная) c --team-0=#444 (светлая тема) -> #444444', () => {
+    document.documentElement.style.setProperty('--team-0', '#444');
+    expect(getTeamColor(undefined)).toBe('#444444');
+  });
+
+  test('undefined (непрогруженная) c --team-0=#CCC (тёмная тема) -> #CCCCCC', () => {
+    document.documentElement.style.setProperty('--team-0', '#CCC');
+    expect(getTeamColor(undefined)).toBe('#CCCCCC');
+  });
+
+  test('undefined без определённой --team-0 -> fallback NEUTRAL_COLOR #666666', () => {
+    expect(getTeamColor(undefined)).toBe('#666666');
   });
 
   test('number c заданной --team-N -> цвет из палитры', () => {
@@ -309,7 +309,7 @@ describe('refsOnMap getTeamColor', () => {
     expect(getTeamColor(2)).toBe('#00BB00');
   });
 
-  test('number без --team-N -> fallback UNLOADED_COLOR #666666', () => {
+  test('number без --team-N -> fallback NEUTRAL_COLOR #666666', () => {
     expect(getTeamColor(5)).toBe('#666666');
   });
 });
