@@ -223,8 +223,10 @@ function applyKeepOneTrimming(
       // selectedAmount <= 1: вся выделенная часть точки защищена правилом.
       for (const feature of group) {
         const amount = getAmount(feature);
+        const current = result.get(feature);
+        if (!current) continue;
         result.set(feature, {
-          ...(result.get(feature) as IFeatureClassification),
+          ...current,
           deletion: 'keepOneTrimmed',
           toDelete: 0,
           toSurvive: amount,
@@ -245,7 +247,8 @@ function applyKeepOneTrimming(
     let remaining = toDeleteTotal;
     for (const feature of sorted) {
       const amount = getAmount(feature);
-      const current = result.get(feature) as IFeatureClassification;
+      const current = result.get(feature);
+      if (!current) continue;
       if (remaining <= 0 || amount <= 0) {
         result.set(feature, {
           ...current,
