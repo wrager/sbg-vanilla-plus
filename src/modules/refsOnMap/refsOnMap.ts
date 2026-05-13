@@ -629,12 +629,12 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
       }),
     ];
 
-    // Item 6b: один слот в центре точки. Приоритет:
-    // 1. lock + favorited - обе иконки, каждая alpha 50% (наложены).
-    // 2. lock - только замок (alpha 100%).
-    // 3. favorited - только звезда (alpha 100%).
+    // Один слот в центре точки. Приоритет сверху вниз:
+    // 1. lock + favorited - обе иконки наложены, каждая opacity 0.7.
+    // 2. lock - только замок (opacity 0.7).
+    // 3. favorited - только звезда (opacity 0.7).
     // 4. =1 (для выделенных с keepOneTrimmed+toSurvive=1) - текст =1.
-    // 5. amount (zoom >= AMOUNT_ZOOM) - текущее поведение.
+    // 5. amount (zoom >= AMOUNT_ZOOM) - число ключей в стопке.
     if (isLocked && isFavorited && OlIcon) {
       styles.push(
         new OlStyle({
