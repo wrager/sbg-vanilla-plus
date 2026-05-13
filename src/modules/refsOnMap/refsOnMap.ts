@@ -688,10 +688,11 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
           zIndex: 4,
         }),
       );
-    } else if (zoom >= AMOUNT_ZOOM && !(isSelected && ownTeamMode === 'keep')) {
-      // В режиме keep выделенные точки не показывают amount: своих не удаляем
-      // (число = 0), для остальных выделенных amount к удалению уже виден
-      // на trash-кнопке - дублировать на самой точке шумно.
+    } else if (zoom >= AMOUNT_ZOOM) {
+      // amount показывается на крупных масштабах ВСЕГДА, когда центральный
+      // слот не занят иконкой/"=1". Раньше скрывался для выделенных в режиме
+      // keep, но пользователь видит на крупных масштабах ожидание полного
+      // числа ключей на точке - amount информативен независимо от mode.
       styles.push(
         new OlStyle({
           text: new OlText({
