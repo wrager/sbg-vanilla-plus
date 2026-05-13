@@ -1943,6 +1943,24 @@ describe('refsOnMap visible-only active pull', () => {
     expect(teamFetchSpy).toHaveBeenCalledTimes(2);
   });
 
+  test('teamCache очищается при hideViewer: повторный show fetch-ит заново', async () => {
+    // Между сессиями viewer точка могла быть перекапчурена другой командой.
+    // hideViewer чистит teamCache, чтобы следующий show грузил актуальные
+    // данные через /inview-hook и active pull, а не использовал stale цвет.
+    setInventory();
+    setExtent([-1000, -1000, 1000, 1000]);
+    clickShowButton();
+    await flushAsync();
+    expect(teamFetchSpy).toHaveBeenCalledTimes(2);
+
+    const closeButton = document.querySelector('.svp-refs-on-map-close') as HTMLElement;
+    closeButton.click();
+
+    clickShowButton();
+    await flushAsync();
+    expect(teamFetchSpy).toHaveBeenCalledTimes(4);
+  });
+
   test('moveend пока worker pending: total НЕ растёт (in-flight guard)', async () => {
     // Сценарий пользователя: zoom туда-сюда увеличивал teamLoadTotal,
     // потому что worker между batch-delete и await Promise.all держал

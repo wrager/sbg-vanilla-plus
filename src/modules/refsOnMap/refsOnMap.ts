@@ -1871,6 +1871,11 @@ function hideViewer(): void {
   // перечитает её через loadRefsOnMapSettings.
   hideProgress();
   resetTeamLoadState();
+  // teamCache очищается между сессиями viewer: точка могла быть перекапчурена
+  // другой командой, пока viewer был закрыт. Повторный showViewer загрузит
+  // команды заново через /inview-hook и active pull. Цена - повторные fetch
+  // при быстром reopen; польза - нет stale цвета команды у feature.
+  teamCache.clear();
 
   if (olMap && mapClickHandler) {
     olMap.un?.('click', mapClickHandler);
