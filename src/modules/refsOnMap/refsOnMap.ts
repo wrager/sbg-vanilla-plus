@@ -1382,18 +1382,18 @@ function classifySelection(selected: IOlFeature[]): {
   return { classifications, lockBucket, ownBucket, unknownBucket, keepOneBucket, payload };
 }
 
-async function handleDeleteClick(): Promise<void> {
-  if (!refsSource) return;
-  const selected = refsSource.getFeatures().filter(isFeatureSelected);
-  if (selected.length === 0) return;
-
-  const protectiveMode = ownTeamMode === 'keep' || ownTeamMode === 'keepOne';
-
-  // Дополнительный guard поверх UI-блокировки: если по любой причине клик
-  // прошёл во время загрузки команды для одной из выбранных точек И при
-  // protective-mode - удаление запрещено, потому что фильтр свои читает
-  // feature.team у selected, и до резолва точка с team=undefined могла бы
-  // попасть в payload. Фоновая загрузка для невыбранных не блокирует.
+/**
+ * Pre-flight guards для DELETE. Возвращает true, если все условия выполнены и
+ * можно собирать payload; false - если показал тост и удаление надо прервать.
+ *
+ * Защищаемые инварианты:
+ * - protective-mode + загружается команда хотя бы одной выбранной точки -
+ *   до резолва точка с team=undefined могла бы попасть в payload.
+ * - mix-кэш (часть стопок без поля `f`) - нельзя полагаться на нативный
+ *   lock, точка по факту locked может быть удалена вслепую.
+ * - protective-mode + playerTeam=null - режим заявлен, выполнить нельзя.
+ */
+function validateDeleteAllowed(protectiveMode: boolean): boolean {
   if (protectiveMode && hasSelectedPointsLoadingTeam()) {
     showToast(
       t({
@@ -1401,15 +1401,8 @@ async function handleDeleteClick(): Promise<void> {
         ru: 'Загружаются данные о командах, подождите',
       }),
     );
-    return;
+    return false;
   }
-
-  // Защита mix-кэша: если хоть одна реф-стопка без поля `f`, нельзя
-  // полагаться на нативный lock - стопки без `f` не попадут в
-  // lockedPointGuids и точки по факту locked могут быть удалены вслепую.
-  // Симметрично с slowRefsDelete и cleanupCalculator. На 0.6.0 (нет `f`
-  // целиком) удаление через viewer тоже блокируется - пользователь не
-  // должен лишиться ключей из-за того что версия игры не поддерживает lock.
   if (!isLockSupportAvailable(readInventoryCache())) {
     showToast(
       t({
@@ -1417,12 +1410,8 @@ async function handleDeleteClick(): Promise<void> {
         ru: 'Нативный lock недоступен (сервер не отдал поле f). Удаление заблокировано.',
       }),
     );
-    return;
+    return false;
   }
-
-  // При protective-mode и playerTeam=null - жёсткий блок: режим заявлен
-  // пользователем, выполнить его мы не можем (не знаем свою команду),
-  // удалять без фильтра нельзя - это нарушение явного намерения.
   if (protectiveMode && getPlayerTeam() === null) {
     showToast(
       t({
@@ -1430,8 +1419,90 @@ async function handleDeleteClick(): Promise<void> {
         ru: 'Не удалось определить команду игрока. Удаление заблокировано (переключите режим на "Удалять", чтобы продолжить).',
       }),
     );
-    return;
+    return false;
   }
+  return true;
+}
+
+interface IDeletePlan {
+  items: Record<string, number>;
+  fullyDeletedGuids: Set<string>;
+  partialUpdates: Map<string, number>;
+  pointsInPayload: Set<string>;
+  overallToDelete: number;
+}
+
+/**
+ * Собирает план DELETE из payload classifySelection: server-items по refGuid
+ * с числом удаляемых, набор полностью удалённых стопок (для удаления из
+ * локального кэша и source) и частично удалённых (amount понижается).
+ */
+function buildDeletePlan(payload: Map<IOlFeature, number>): IDeletePlan {
+  const items: Record<string, number> = {};
+  const fullyDeletedGuids = new Set<string>();
+  const partialUpdates = new Map<string, number>();
+  const pointsInPayload = new Set<string>();
+  let overallToDelete = 0;
+  for (const [feature, deleteAmount] of payload) {
+    overallToDelete += deleteAmount;
+    const guid = getPointGuid(feature);
+    if (guid !== null) pointsInPayload.add(guid);
+    const id = feature.getId();
+    const amount = getAmount(feature);
+    if (typeof id !== 'string' || amount <= 0) continue;
+    items[id] = deleteAmount;
+    if (deleteAmount >= amount) {
+      fullyDeletedGuids.add(id);
+    } else {
+      partialUpdates.set(id, amount - deleteAmount);
+    }
+  }
+  return { items, fullyDeletedGuids, partialUpdates, pointsInPayload, overallToDelete };
+}
+
+/**
+ * Применяет успешное DELETE локально: убирает полностью удалённые фичи из
+ * source, обновляет amount у частично удалённых, снимает isSelected со всех
+ * оставшихся, синхронизирует inventory-cache и счётчик на подписях точек
+ * основной карты.
+ */
+function applyDeletionLocally(
+  source: IOlVectorSource,
+  payload: Map<IOlFeature, number>,
+  plan: IDeletePlan,
+  serverTotal: number | undefined,
+): void {
+  for (const [feature, deleteAmount] of payload) {
+    const amount = getAmount(feature);
+    if (amount <= 0) continue;
+    if (deleteAmount >= amount) {
+      source.removeFeature?.(feature);
+    } else {
+      feature.set?.('amount', amount - deleteAmount);
+    }
+  }
+  for (const feature of source.getFeatures()) {
+    if (isFeatureSelected(feature)) {
+      feature.set?.('isSelected', false);
+    }
+  }
+  removeRefsFromCacheAndUpdate(plan.fullyDeletedGuids, plan.partialUpdates);
+  const affectedPointGuids = Array.from(plan.pointsInPayload);
+  if (affectedPointGuids.length > 0) {
+    void syncRefsCountForPoints(affectedPointGuids);
+  }
+  if (typeof serverTotal === 'number') {
+    updateInventoryCounter(serverTotal);
+  }
+}
+
+async function handleDeleteClick(): Promise<void> {
+  if (!refsSource) return;
+  const selected = refsSource.getFeatures().filter(isFeatureSelected);
+  if (selected.length === 0) return;
+
+  const protectiveMode = ownTeamMode === 'keep' || ownTeamMode === 'keepOne';
+  if (!validateDeleteAllowed(protectiveMode)) return;
 
   // Единый источник: классификатор делит выделение на bucket'ы lock / own /
   // unknown / keepOne и собирает DELETE-payload. UI-сводка уже использует
@@ -1440,43 +1511,17 @@ async function handleDeleteClick(): Promise<void> {
     classifySelection(selected);
 
   if (payload.size === 0) {
-    // Нечего удалять: все защищены. Один информативный тост перечислением
-    // категорий, не отдельные для каждой - см. Item 3.
     showToast(buildAllProtectedToast(lockBucket, ownBucket, unknownBucket, keepOneBucket));
     return;
   }
 
-  const pointsInPayload = new Set<string>();
-  let overallToDelete = 0;
-  for (const [feature, deleteAmount] of payload) {
-    overallToDelete += deleteAmount;
-    const guid = getPointGuid(feature);
-    if (guid !== null) pointsInPayload.add(guid);
-  }
+  const plan = buildDeletePlan(payload);
   const message = t({
-    en: `Delete ${overallToDelete} ref(s) from ${pointsInPayload.size} point(s)?`,
-    ru: `Удалить ${overallToDelete} ключ(ей) от ${pointsInPayload.size} точ(ек)?`,
+    en: `Delete ${plan.overallToDelete} ref(s) from ${plan.pointsInPayload.size} point(s)?`,
+    ru: `Удалить ${plan.overallToDelete} ключ(ей) от ${plan.pointsInPayload.size} точ(ек)?`,
   });
 
   if (!confirm(message)) return;
-
-  // items: refGuid -> deleteAmount. Для частично-удалённых стопок (payload
-  // < amount) сервер обновит amount, а не удалит item. removeRefsFromCache
-  // ниже синхронизирует локальный кэш аналогично.
-  const items: Record<string, number> = {};
-  const fullyDeletedGuids = new Set<string>();
-  const partialUpdates = new Map<string, number>();
-  for (const [feature, deleteAmount] of payload) {
-    const id = feature.getId();
-    const amount = (feature.getProperties?.() ?? {}).amount;
-    if (typeof id !== 'string' || typeof amount !== 'number') continue;
-    items[id] = deleteAmount;
-    if (deleteAmount >= amount) {
-      fullyDeletedGuids.add(id);
-    } else {
-      partialUpdates.set(id, amount - deleteAmount);
-    }
-  }
 
   // Между confirm() и завершением fetch trash остаётся видим и без guard'а
   // повторный тап шлёт второй идентичный DELETE на сервер. Блокируем кнопку
@@ -1485,56 +1530,19 @@ async function handleDeleteClick(): Promise<void> {
   if (trashButton) trashButton.disabled = true;
 
   try {
-    const response = await deleteRefsFromServer(items);
+    const response = await deleteRefsFromServer(plan.items);
     if (response.error) {
       console.error(`[SVP] ${MODULE_ID}: deletion error:`, response.error);
-      // Сервер вернул ошибку - НИЧЕГО не удалилось. Показываем тост с
-      // только error-строкой, deleted-часть = 0.
-      showToast(buildPostDeleteToast(0, 0, overallToDelete, pointsInPayload.size));
+      // Сервер вернул ошибку - НИЧЕГО не удалилось.
+      showToast(buildPostDeleteToast(0, 0, plan.overallToDelete, plan.pointsInPayload.size));
       return;
     }
-
-    // Полностью удалённые фичи убираем из source; частично-удалённые
-    // обновляем amount.
-    for (const [feature, deleteAmount] of payload) {
-      const amount = (feature.getProperties?.() ?? {}).amount;
-      if (typeof amount !== 'number') continue;
-      if (deleteAmount >= amount) {
-        refsSource.removeFeature?.(feature);
-      } else {
-        feature.set?.('amount', amount - deleteAmount);
-      }
-    }
-
-    // После успешного удаления снимаем isSelected у ВСЕХ оставшихся
-    // в source фич (защищённые точки видны, но больше не выделены - готовы
-    // к новому циклу выбора).
-    for (const feature of refsSource.getFeatures()) {
-      if ((feature.getProperties?.() ?? {}).isSelected === true) {
-        feature.set?.('isSelected', false);
-      }
-    }
-
-    // Update local cache: полностью удалённые стопки убираются, частично
-    // обновлённые - меняют amount.
-    removeRefsFromCacheAndUpdate(fullyDeletedGuids, partialUpdates);
-
-    // Sync счётчика ключей на подписи затронутых точек на основной карте.
-    const affectedPointGuids = Array.from(pointsInPayload);
-    if (affectedPointGuids.length > 0) {
-      void syncRefsCountForPoints(affectedPointGuids);
-    }
-
-    if (typeof response.count?.total === 'number') {
-      updateInventoryCounter(response.count.total);
-    }
-
-    showToast(buildPostDeleteToast(overallToDelete, pointsInPayload.size, 0, 0));
-
+    applyDeletionLocally(refsSource, payload, plan, response.count?.total);
+    showToast(buildPostDeleteToast(plan.overallToDelete, plan.pointsInPayload.size, 0, 0));
     updateSelectionUi();
   } catch (error) {
     console.error(`[SVP] ${MODULE_ID}: deletion failed:`, error);
-    showToast(buildPostDeleteToast(0, 0, overallToDelete, pointsInPayload.size));
+    showToast(buildPostDeleteToast(0, 0, plan.overallToDelete, plan.pointsInPayload.size));
   } finally {
     if (trashButton) trashButton.disabled = trashWasDisabled;
     // updateSelectionUi пересчитает disabled на основе нового selection
@@ -1979,6 +1987,187 @@ function hideViewer(): void {
   restoreFollowMode();
 }
 
+// ── viewer DOM construction ──────────────────────────────────────────────────
+
+/**
+ * Trash/delete button с тремя дочерними span'ами: icon-default (эмодзи) +
+ * icon-loading (SVG-спиннер через CSS ::before) + label (счётчик удаляемых).
+ * Один из icon span'ов виден в зависимости от data-loading атрибута.
+ * SVG-спиннер создаётся один раз через CSS animation, поэтому keyframe
+ * крутится непрерывно (innerHTML на каждом updateSelectionUi пересоздавал
+ * бы node и перезапускал бы animation).
+ */
+function createTrashButton(onClick: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.className = 'svp-refs-on-map-trash';
+  button.dataset.loading = 'false';
+  button.style.display = 'none';
+  button.addEventListener('click', onClick);
+  const iconDefault = document.createElement('span');
+  iconDefault.className = 'svp-refs-on-map-trash-icon-default';
+  iconDefault.textContent = '\u{1F5D1}\u{FE0F}';
+  const iconLoading = document.createElement('span');
+  iconLoading.className = 'svp-refs-on-map-trash-icon-loading';
+  const label = document.createElement('span');
+  label.className = 'svp-refs-on-map-trash-label';
+  button.appendChild(iconDefault);
+  button.appendChild(iconLoading);
+  button.appendChild(label);
+  return button;
+}
+
+function createCancelButton(onClick: () => void): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.className = 'svp-refs-on-map-cancel';
+  button.textContent = t({ en: 'Cancel', ru: 'Отменить' });
+  button.style.visibility = 'hidden';
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+interface IProgressUiRefs {
+  container: HTMLDivElement;
+  bar: HTMLDivElement;
+  counter: HTMLDivElement;
+}
+
+/**
+ * Прогресс-бар fallback /api/point. Виден пока teamsLoading=true, после
+ * полной загрузки скрывается (applyTeamsLoadedState). Пока виден, выбор по
+ * клику и trashButton заблокированы - keepOwnTeam фильтру нужны финальные
+ * значения `team` у фич.
+ */
+function createProgressBar(): IProgressUiRefs {
+  const container = document.createElement('div');
+  container.className = 'svp-refs-on-map-progress';
+  container.style.display = 'none';
+  const labelEl = document.createElement('div');
+  labelEl.className = 'svp-refs-on-map-progress-label';
+  labelEl.textContent = t({
+    en: 'Loading team data...',
+    ru: 'Загрузка данных о командах...',
+  });
+  container.appendChild(labelEl);
+  const track = document.createElement('div');
+  track.className = 'svp-refs-on-map-progress-track';
+  const bar = document.createElement('div');
+  bar.className = 'svp-refs-on-map-progress-bar';
+  bar.style.width = '0%';
+  track.appendChild(bar);
+  container.appendChild(track);
+  const counter = document.createElement('div');
+  counter.className = 'svp-refs-on-map-progress-counter';
+  counter.textContent = '0 / 0';
+  container.appendChild(counter);
+  return { container, bar, counter };
+}
+
+interface IModeRadiosRefs {
+  container: HTMLDivElement;
+  radioDelete: HTMLInputElement;
+  radioKeep: HTMLInputElement;
+  radioKeepOne: HTMLInputElement;
+  labelDelete: HTMLSpanElement;
+  labelKeep: HTMLSpanElement;
+  labelKeepOne: HTMLSpanElement;
+}
+
+/**
+ * Radio-блок "Режим защиты своих": 3 варианта (delete / keepOne / keep) в
+ * порядке возрастания защиты. Цвет команды (зелёные/красные/синие) в метках
+ * обновляется в updateSelectionUi через getModeLabelXxx() - тексты тут лишь
+ * первичная инициализация.
+ */
+function createModeRadios(
+  initialMode: OwnTeamMode,
+  onModeChange: (mode: OwnTeamMode) => void,
+): IModeRadiosRefs {
+  const container = document.createElement('div');
+  container.className = 'svp-refs-on-map-mode';
+  container.style.display = 'none';
+
+  function buildOption(
+    mode: OwnTeamMode,
+    text: { en: string; ru: string },
+  ): { input: HTMLInputElement; label: HTMLSpanElement } {
+    const optionLabel = document.createElement('label');
+    optionLabel.className = `svp-refs-on-map-mode__option svp-refs-on-map-mode__option--${mode}`;
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'svp-refs-on-map-mode';
+    input.value = mode;
+    input.checked = initialMode === mode;
+    input.addEventListener('change', () => {
+      if (!input.checked) return;
+      onModeChange(mode);
+    });
+    const textSpan = document.createElement('span');
+    textSpan.textContent = t(text);
+    optionLabel.appendChild(input);
+    optionLabel.appendChild(textSpan);
+    container.appendChild(optionLabel);
+    return { input, label: textSpan };
+  }
+
+  const deleteOption = buildOption('delete', getModeLabelDelete());
+  const keepOneOption = buildOption('keepOne', getModeLabelKeepOne());
+  const keepOption = buildOption('keep', getModeLabelKeep());
+
+  return {
+    container,
+    radioDelete: deleteOption.input,
+    radioKeep: keepOption.input,
+    radioKeepOne: keepOneOption.input,
+    labelDelete: deleteOption.label,
+    labelKeep: keepOption.label,
+    labelKeepOne: keepOneOption.label,
+  };
+}
+
+interface ISelectionInfoRefs {
+  root: HTMLDivElement;
+  totalRow: HTMLDivElement;
+  protectedRow: HTMLDivElement;
+  ownRow: HTMLDivElement;
+  unknownRow: HTMLDivElement;
+  keepOneRow: HTMLDivElement;
+  toDeleteRow: HTMLDivElement;
+}
+
+/**
+ * Selection info: до 6 строк - total + protected (lock) + own + unknown +
+ * keepOne + toDelete (опциональные строки только при наличии бакета). Каждая
+ * строка кроме total опциональна - hide когда bucket пуст.
+ */
+function createSelectionInfo(): ISelectionInfoRefs {
+  const root = document.createElement('div');
+  root.className = 'svp-refs-on-map-selection-info';
+  root.style.display = 'none';
+  const totalRow = document.createElement('div');
+  totalRow.className = 'svp-refs-on-map-selection-info__total';
+  const protectedRow = document.createElement('div');
+  protectedRow.className = 'svp-refs-on-map-selection-info__protected';
+  protectedRow.style.display = 'none';
+  const ownRow = document.createElement('div');
+  ownRow.className = 'svp-refs-on-map-selection-info__own';
+  ownRow.style.display = 'none';
+  const unknownRow = document.createElement('div');
+  unknownRow.className = 'svp-refs-on-map-selection-info__unknown';
+  unknownRow.style.display = 'none';
+  const keepOneRow = document.createElement('div');
+  keepOneRow.className = 'svp-refs-on-map-selection-info__keepone';
+  keepOneRow.style.display = 'none';
+  const toDeleteRow = document.createElement('div');
+  toDeleteRow.className = 'svp-refs-on-map-selection-info__todelete';
+  root.appendChild(totalRow);
+  root.appendChild(protectedRow);
+  root.appendChild(ownRow);
+  root.appendChild(unknownRow);
+  root.appendChild(keepOneRow);
+  root.appendChild(toDeleteRow);
+  return { root, totalRow, protectedRow, ownRow, unknownRow, keepOneRow, toDeleteRow };
+}
+
 // ── layer construction ───────────────────────────────────────────────────────
 
 /**
@@ -2078,167 +2267,46 @@ export const refsOnMap: IFeatureModule = {
           closeButton.addEventListener('click', hideViewer);
           document.body.appendChild(closeButton);
 
-          // Trash/delete button. Структура - icon-default span (эмодзи) +
-          // icon-loading span (SVG-спиннер) + label span. Один из icon
-          // span'ов видим в зависимости от data-loading атрибута. SVG
-          // создаётся один раз, поэтому CSS animation крутится непрерывно
-          // (innerHTML на каждом updateSelectionUi пересоздавал бы node и
-          // перезапускал бы keyframe).
-          // bottomStack создаётся до trash/cancel/mode/selectionInfo и
-          // принимает их через appendChild в конце enable - один контейнер
-          // в правом нижнем углу с flex-column. Порядок детей фиксируется
-          // явным порядком appendChild ниже, а не порядком создания.
+          // bottomStack - общий fixed-контейнер для всех viewer-блоков
+          // (selectionInfo / mode / trash / cancel) в правом нижнем углу.
+          // Порядок детей фиксируется явным порядком appendChild внизу,
+          // не порядком создания.
           bottomStack = document.createElement('div');
           bottomStack.className = 'svp-refs-on-map-bottom-stack';
           document.body.appendChild(bottomStack);
 
-          trashButton = document.createElement('button');
-          trashButton.className = 'svp-refs-on-map-trash';
-          trashButton.dataset.loading = 'false';
-          trashButton.style.display = 'none';
-          trashButton.addEventListener('click', () => {
+          trashButton = createTrashButton(() => {
             void handleDeleteClick();
           });
-          const trashIconDefault = document.createElement('span');
-          trashIconDefault.className = 'svp-refs-on-map-trash-icon-default';
-          trashIconDefault.textContent = '🗑️';
-          // Loader span пустой - крутилка рисуется через ::before
-          // (border-trick), повторяет нативный лоадер стартового экрана
-          // игры: .loading-screen__task.loading::before.
-          const trashIconLoading = document.createElement('span');
-          trashIconLoading.className = 'svp-refs-on-map-trash-icon-loading';
-          const trashLabel = document.createElement('span');
-          trashLabel.className = 'svp-refs-on-map-trash-label';
-          trashButton.appendChild(trashIconDefault);
-          trashButton.appendChild(trashIconLoading);
-          trashButton.appendChild(trashLabel);
+          cancelButton = createCancelButton(clearSelection);
 
-          // Cancel button - снимает выделение всех выбранных точек. Видна
-          // только при наличии выбора (updateSelectionUi).
-          cancelButton = document.createElement('button');
-          cancelButton.className = 'svp-refs-on-map-cancel';
-          cancelButton.textContent = t({ en: 'Cancel', ru: 'Отменить' });
-          cancelButton.style.visibility = 'hidden';
-          cancelButton.addEventListener('click', clearSelection);
-
-          // Прогресс-бар fallback /api/point: виден пока teamsLoading=true,
-          // после полной загрузки скрывается (applyTeamsLoadedState). Пока
-          // виден, выбор по клику и trashButton заблокированы - keepOwnTeam
-          // фильтру нужны финальные значения `team` у фич.
-          progressContainer = document.createElement('div');
-          progressContainer.className = 'svp-refs-on-map-progress';
-          progressContainer.style.display = 'none';
-          const progressLabel = document.createElement('div');
-          progressLabel.className = 'svp-refs-on-map-progress-label';
-          progressLabel.textContent = t({
-            en: 'Loading team data...',
-            ru: 'Загрузка данных о командах...',
-          });
-          progressContainer.appendChild(progressLabel);
-          const progressTrack = document.createElement('div');
-          progressTrack.className = 'svp-refs-on-map-progress-track';
-          progressBar = document.createElement('div');
-          progressBar.className = 'svp-refs-on-map-progress-bar';
-          progressBar.style.width = '0%';
-          progressTrack.appendChild(progressBar);
-          progressContainer.appendChild(progressTrack);
-          progressCounter = document.createElement('div');
-          progressCounter.className = 'svp-refs-on-map-progress-counter';
-          progressCounter.textContent = '0 / 0';
-          progressContainer.appendChild(progressCounter);
+          const progressUi = createProgressBar();
+          progressContainer = progressUi.container;
+          progressBar = progressUi.bar;
+          progressCounter = progressUi.counter;
           document.body.appendChild(progressContainer);
 
-          // Radio-блок "Режим защиты своих": 3 варианта (delete / keepOne /
-          // keep) в порядке возрастания защиты. State персистентный через
-          // localStorage (refsOnMapSettings): showViewer загружает значение,
-          // onChange сохраняет. Цвет команды (зелёные/красные/синие) в метках
-          // обновляется в showViewer через getModeLabelXxx().
-          modeContainer = document.createElement('div');
-          modeContainer.className = 'svp-refs-on-map-mode';
-          modeContainer.style.display = 'none';
-          const modeBuilders: Array<{
-            mode: OwnTeamMode;
-            ref: (input: HTMLInputElement, label: HTMLSpanElement) => void;
-            text: { en: string; ru: string };
-          }> = [
-            {
-              mode: 'delete',
-              ref: (input, label) => {
-                modeRadioDelete = input;
-                modeLabelDelete = label;
-              },
-              text: getModeLabelDelete(),
-            },
-            {
-              mode: 'keepOne',
-              ref: (input, label) => {
-                modeRadioKeepOne = input;
-                modeLabelKeepOne = label;
-              },
-              text: getModeLabelKeepOne(),
-            },
-            {
-              mode: 'keep',
-              ref: (input, label) => {
-                modeRadioKeep = input;
-                modeLabelKeep = label;
-              },
-              text: getModeLabelKeep(),
-            },
-          ];
-          for (const builder of modeBuilders) {
-            const optionLabel = document.createElement('label');
-            optionLabel.className = `svp-refs-on-map-mode__option svp-refs-on-map-mode__option--${builder.mode}`;
-            const input = document.createElement('input');
-            input.type = 'radio';
-            input.name = 'svp-refs-on-map-mode';
-            input.value = builder.mode;
-            input.checked = ownTeamMode === builder.mode;
-            input.addEventListener('change', () => {
-              if (!input.checked) return;
-              ownTeamMode = builder.mode;
-              saveRefsOnMapSettings({ ownTeamMode });
-              updateSelectionUi();
-            });
-            const textSpan = document.createElement('span');
-            textSpan.textContent = t(builder.text);
-            optionLabel.appendChild(input);
-            optionLabel.appendChild(textSpan);
-            modeContainer.appendChild(optionLabel);
-            builder.ref(input, textSpan);
-          }
-          // appendChild к bottomStack делается ниже в нужном порядке.
+          const modeUi = createModeRadios(ownTeamMode, (mode) => {
+            ownTeamMode = mode;
+            saveRefsOnMapSettings({ ownTeamMode });
+            updateSelectionUi();
+          });
+          modeContainer = modeUi.container;
+          modeRadioDelete = modeUi.radioDelete;
+          modeRadioKeep = modeUi.radioKeep;
+          modeRadioKeepOne = modeUi.radioKeepOne;
+          modeLabelDelete = modeUi.labelDelete;
+          modeLabelKeep = modeUi.labelKeep;
+          modeLabelKeepOne = modeUi.labelKeepOne;
 
-          // Selection info: до 4 строк - total + protected (lock) + own +
-          // unknown (последние две только при keepOwnTeam=true). Каждая
-          // строка кроме total опциональна - hide когда bucket пуст.
-          // Кнопка "Корзина" имеет свой счётчик удаляемых ключей; правило
-          // keepOneKey работает под капотом без отдельной строки в сводке.
-          selectionInfoEl = document.createElement('div');
-          selectionInfoEl.className = 'svp-refs-on-map-selection-info';
-          selectionInfoEl.style.display = 'none';
-          selectionInfoTotalRow = document.createElement('div');
-          selectionInfoTotalRow.className = 'svp-refs-on-map-selection-info__total';
-          selectionInfoProtectedRow = document.createElement('div');
-          selectionInfoProtectedRow.className = 'svp-refs-on-map-selection-info__protected';
-          selectionInfoProtectedRow.style.display = 'none';
-          selectionInfoOwnRow = document.createElement('div');
-          selectionInfoOwnRow.className = 'svp-refs-on-map-selection-info__own';
-          selectionInfoOwnRow.style.display = 'none';
-          selectionInfoUnknownRow = document.createElement('div');
-          selectionInfoUnknownRow.className = 'svp-refs-on-map-selection-info__unknown';
-          selectionInfoUnknownRow.style.display = 'none';
-          selectionInfoKeepOneRow = document.createElement('div');
-          selectionInfoKeepOneRow.className = 'svp-refs-on-map-selection-info__keepone';
-          selectionInfoKeepOneRow.style.display = 'none';
-          selectionInfoToDeleteRow = document.createElement('div');
-          selectionInfoToDeleteRow.className = 'svp-refs-on-map-selection-info__todelete';
-          selectionInfoEl.appendChild(selectionInfoTotalRow);
-          selectionInfoEl.appendChild(selectionInfoProtectedRow);
-          selectionInfoEl.appendChild(selectionInfoOwnRow);
-          selectionInfoEl.appendChild(selectionInfoUnknownRow);
-          selectionInfoEl.appendChild(selectionInfoKeepOneRow);
-          selectionInfoEl.appendChild(selectionInfoToDeleteRow);
+          const infoUi = createSelectionInfo();
+          selectionInfoEl = infoUi.root;
+          selectionInfoTotalRow = infoUi.totalRow;
+          selectionInfoProtectedRow = infoUi.protectedRow;
+          selectionInfoOwnRow = infoUi.ownRow;
+          selectionInfoUnknownRow = infoUi.unknownRow;
+          selectionInfoKeepOneRow = infoUi.keepOneRow;
+          selectionInfoToDeleteRow = infoUi.toDeleteRow;
 
           // Окончательный порядок детей bottomStack (flex column сверху
           // вниз): selectionInfo, mode, trash, cancel.
