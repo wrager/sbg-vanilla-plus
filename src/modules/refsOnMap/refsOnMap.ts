@@ -212,6 +212,11 @@ let viewerOpen = false;
 let beforeOpenZoom: number | undefined;
 let beforeOpenRotation: number | undefined;
 let beforeOpenFollow: string | null = null;
+// Был ли .inventory скрыт через .hidden ДО showViewer. Игра может оставлять
+// инвентарь в hidden между сессиями (например, после autoclose); hideGameUi
+// безусловно добавляет .hidden, и без сохранения prior state restoreGameUi
+// не знает, надо ли отнимать класс.
+let beforeOpenInventoryHidden = false;
 // Персистентный режим защиты своих ключей при массовом удалении. Сохраняется
 // в localStorage (svp_refsOnMap.ownTeamMode), переживает закрытие viewer'а и
 // перезагрузку страницы. До первого showViewer хранит дефолт keepOne. Реальное
@@ -1613,7 +1618,10 @@ function restoreFollowMode(): void {
 
 function hideGameUi(): void {
   const inventory = $('.inventory');
-  if (inventory instanceof HTMLElement) inventory.classList.add('hidden');
+  if (inventory instanceof HTMLElement) {
+    beforeOpenInventoryHidden = inventory.classList.contains('hidden');
+    inventory.classList.add('hidden');
+  }
 
   const bottomContainer = $('.bottom-container');
   if (bottomContainer instanceof HTMLElement) bottomContainer.style.display = 'none';
@@ -1632,6 +1640,11 @@ function hideGameUi(): void {
 }
 
 function restoreGameUi(): void {
+  const inventory = $('.inventory');
+  if (inventory instanceof HTMLElement && !beforeOpenInventoryHidden) {
+    inventory.classList.remove('hidden');
+  }
+
   const bottomContainer = $('.bottom-container');
   if (bottomContainer instanceof HTMLElement) bottomContainer.style.display = '';
 

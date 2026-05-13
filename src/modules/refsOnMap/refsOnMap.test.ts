@@ -571,6 +571,34 @@ describe('refsOnMap viewer', () => {
     expect(localStorage.getItem('follow')).toBeNull();
   });
 
+  test('restores inventory open state when it was open before opening viewer', () => {
+    // Пользователь нажал "На карте" из открытого инвентаря - hideGameUi
+    // добавляет .hidden. После hideViewer ожидается возврат к открытому
+    // инвентарю (restoreGameUi снимает .hidden).
+    const inventory = document.querySelector('.inventory') as HTMLElement;
+    inventory.classList.remove('hidden');
+
+    setInventoryCache();
+    clickShowButton();
+    expect(inventory.classList.contains('hidden')).toBe(true);
+
+    clickCloseButton();
+    expect(inventory.classList.contains('hidden')).toBe(false);
+  });
+
+  test('keeps inventory hidden when it was hidden before opening viewer', () => {
+    // Если до showViewer инвентарь уже был .hidden (странный сценарий, но
+    // допустимый), restoreGameUi должен сохранить это состояние.
+    const inventory = document.querySelector('.inventory') as HTMLElement;
+    inventory.classList.add('hidden');
+
+    setInventoryCache();
+    clickShowButton();
+    clickCloseButton();
+
+    expect(inventory.classList.contains('hidden')).toBe(true);
+  });
+
   test('resets rotation to 0 when opening viewer', () => {
     setInventoryCache();
     clickShowButton();
