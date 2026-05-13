@@ -436,8 +436,8 @@ async function handleDeleteClick(): Promise<void> {
     if (protectedRefs.length > 0) {
       showToast(
         t({
-          en: `Protected points (lock/favorite): ${protectedRefs.length} key(s) kept`,
-          ru: `Защищённые точки (замочек/звёздочка): ${protectedRefs.length} ключ(ей) оставлено`,
+          en: `Protected (locked or favorited) points: ${protectedRefs.length} key(s) kept`,
+          ru: `Защищённые точки (замочек или звёздочка): ${protectedRefs.length} ключ(ей) оставлено`,
         }),
       );
     }
