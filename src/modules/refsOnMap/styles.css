@@ -71,7 +71,7 @@
   height: 16px;
   box-sizing: border-box;
   border: 3px currentColor solid;
-  border-right-color: #0000;
+  border-right-color: transparent;
   border-radius: 1em;
   animation: loading 1s linear infinite;
 }
