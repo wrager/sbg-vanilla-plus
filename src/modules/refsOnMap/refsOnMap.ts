@@ -495,6 +495,39 @@ function expandHexColor(color: string): string {
 // рендере каждой фичи (force reflow).
 const COLOR_RGB_CACHE = new Map<string, { r: number; g: number; b: number } | null>();
 
+// Кэш цветов темы --text / --background. getTextColor / getBackgroundColor
+// дёргают getComputedStyle на documentElement (force reflow). Стилевая
+// функция вызывается OL для каждой фичи при каждом рендере; на 1000 фич -
+// 2000 read getComputedStyle. Тема меняется крайне редко (через
+// localStorage settings), но возможна смена в рантайме без F5 - кэш
+// инвалидируется по frame ttl: один read на frame, не на фичу.
+let cachedThemeColors: { textColor: string; backgroundColor: string; readAt: number } | null = null;
+const THEME_COLORS_TTL_MS = 16;
+
+function getCachedTextColor(): string {
+  const now = performance.now();
+  if (!cachedThemeColors || now - cachedThemeColors.readAt > THEME_COLORS_TTL_MS) {
+    cachedThemeColors = {
+      textColor: getTextColor(),
+      backgroundColor: getBackgroundColor(),
+      readAt: now,
+    };
+  }
+  return cachedThemeColors.textColor;
+}
+
+function getCachedBackgroundColor(): string {
+  const now = performance.now();
+  if (!cachedThemeColors || now - cachedThemeColors.readAt > THEME_COLORS_TTL_MS) {
+    cachedThemeColors = {
+      textColor: getTextColor(),
+      backgroundColor: getBackgroundColor(),
+      readAt: now,
+    };
+  }
+  return cachedThemeColors.backgroundColor;
+}
+
 /**
  * Парсит любой CSS color (short/full hex, rgb/rgba(), named, hsl) в rgb через
  * computed style временного DOM-node. Возвращает null, если браузер не смог
@@ -681,8 +714,8 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
     const strokeColor = isSelected ? SELECTED_COLOR : teamColor;
     const strokeWidth = isSelected ? 4 : 3;
 
-    const textColor = getTextColor();
-    const backgroundColor = getBackgroundColor();
+    const textColor = getCachedTextColor();
+    const backgroundColor = getCachedBackgroundColor();
 
     const styles: unknown[] = [
       new OlStyle({
