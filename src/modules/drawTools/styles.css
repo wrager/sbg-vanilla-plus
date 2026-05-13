@@ -6,6 +6,12 @@
    Наш control продолжает колонку через `translateY(200%)` — на одну
    собственную высоту ниже region-picker'а. */
 .svp-draw-tools-control {
+  /* Защитный override: top/transform полагаются на абсолютное позиционирование
+     control'а, которое ol.css даёт через `.ol-control { position: absolute }`.
+     Если игра когда-нибудь уберёт ol.css или перебьёт это правило - control
+     упадёт в normal flow и top: 50% потеряет referent. Source-order гарантирует,
+     что наш специфичный класс победит дефолт .ol-control. */
+  position: absolute;
   top: 50%;
   left: 0.5em;
   transform: translateY(200%);
