@@ -519,6 +519,22 @@ function getOwnRowText(points: number, keys: number): { en: string; ru: string }
   };
 }
 
+// SVG path'ы из Lucide (https://lucide.dev): lock + star. ViewBox 0..24.
+// Цвета фиксированы: белая заливка + чёрный outline 1.5px - такая иконка
+// читается на любом фоне точки (зелёный team-цвет, серый neutral,
+// оранжевый selected). Симметрично с текстом amount, у которого тот же
+// приём (fill white + stroke black width 3).
+const LOCK_ICON_SVG_PATH =
+  '<rect x="3" y="11" width="18" height="11" rx="2" fill="white" stroke="black" stroke-width="1.5"/>' +
+  '<path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="black" stroke-width="1.5"/>';
+const STAR_ICON_SVG_PATH =
+  '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="white" stroke="black" stroke-width="1.5"/>';
+
+function buildIconDataUrl(path: string): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">${path}</svg>`;
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+
 function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
   return (feature: IOlFeature) => {
     const olStyle = window.ol?.style;
@@ -531,6 +547,7 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
       Fill: OlFill,
       Stroke: OlStroke,
       Circle: OlCircle,
+      Icon: OlIcon,
     } = olStyle;
 
     const properties = feature.getProperties?.() ?? {};
@@ -543,14 +560,30 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
           ? null
           : undefined;
     const isSelected = properties.isSelected === true;
+    const isLocked = properties.isLocked === true;
+    const isFavorited = properties.isFavorited === true;
+    const deletionState =
+      typeof properties.deletionState === 'string' ? properties.deletionState : '';
+    const toSurvive = typeof properties.toSurvive === 'number' ? properties.toSurvive : 0;
+    const playerTeam = getPlayerTeam();
+    const isOwnTeam = typeof team === 'number' && playerTeam !== null && team === playerTeam;
+    // Item 6f: для выделенных locked/favorited/own ослабляем оранжевый fill
+    // до 50% alpha (литерал '80') - визуально видно, что точка выделена,
+    // но "защищённого" / "своего" типа. Не-защищённые выделенные остаются
+    // solid SELECTED_COLOR.
+    const isProtectedHighlight = isSelected && (isLocked || isFavorited || isOwnTeam);
+    // Item 6b: текст "=1" для выделенных, у которых правило keepOne после
+    // удаления оставит ровно 1 ключ (deletion=keepOneTrimmed и toSurvive=1).
+    const showOneSurvived = isSelected && deletionState === 'keepOneTrimmed' && toSurvive === 1;
 
     const zoom = olMap?.getView().getZoom?.() ?? 0;
     const teamColor = getTeamColor(team);
     const baseRadius = zoom >= 16 ? 10 : 8;
     const radius = isSelected ? baseRadius * 1.4 : baseRadius;
 
-    // CUI style: transparent fill + colored stroke; selected = orange
-    const fillColor = isSelected ? SELECTED_COLOR : teamColor + '40';
+    // CUI style: transparent fill + colored stroke; selected = orange.
+    const selectedFillAlpha = isProtectedHighlight ? '80' : '';
+    const fillColor = isSelected ? SELECTED_COLOR + selectedFillAlpha : teamColor + '40';
     const strokeColor = isSelected ? SELECTED_COLOR : teamColor;
     const strokeWidth = isSelected ? 4 : 3;
 
@@ -568,7 +601,64 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
       }),
     ];
 
-    if (zoom >= AMOUNT_ZOOM) {
+    // Item 6b: один слот в центре точки. Приоритет:
+    // 1. lock + favorited - обе иконки, каждая alpha 50% (наложены).
+    // 2. lock - только замок (alpha 100%).
+    // 3. favorited - только звезда (alpha 100%).
+    // 4. =1 (для выделенных с keepOneTrimmed+toSurvive=1) - текст =1.
+    // 5. amount (zoom >= AMOUNT_ZOOM) - текущее поведение.
+    if (isLocked && isFavorited && OlIcon) {
+      styles.push(
+        new OlStyle({
+          image: new OlIcon({
+            src: buildIconDataUrl(LOCK_ICON_SVG_PATH),
+            scale: 0.7,
+            opacity: 0.5,
+          }),
+          zIndex: 4,
+        }),
+        new OlStyle({
+          image: new OlIcon({
+            src: buildIconDataUrl(STAR_ICON_SVG_PATH),
+            scale: 0.7,
+            opacity: 0.5,
+          }),
+          zIndex: 4,
+        }),
+      );
+    } else if (isLocked && OlIcon) {
+      styles.push(
+        new OlStyle({
+          image: new OlIcon({
+            src: buildIconDataUrl(LOCK_ICON_SVG_PATH),
+            scale: 0.7,
+          }),
+          zIndex: 4,
+        }),
+      );
+    } else if (isFavorited && OlIcon) {
+      styles.push(
+        new OlStyle({
+          image: new OlIcon({
+            src: buildIconDataUrl(STAR_ICON_SVG_PATH),
+            scale: 0.7,
+          }),
+          zIndex: 4,
+        }),
+      );
+    } else if (showOneSurvived) {
+      styles.push(
+        new OlStyle({
+          text: new OlText({
+            font: `${zoom >= 15 ? 14 : 12}px Manrope`,
+            text: '=1',
+            fill: new OlFill({ color: textColor }),
+            stroke: new OlStroke({ color: backgroundColor, width: 3 }),
+          }),
+          zIndex: 2,
+        }),
+      );
+    } else if (zoom >= AMOUNT_ZOOM) {
       styles.push(
         new OlStyle({
           text: new OlText({
@@ -586,7 +676,7 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
       const displayTitle =
         title.length <= TITLE_MAX_LENGTH
           ? title
-          : title.slice(0, TITLE_MAX_LENGTH - 2).trim() + '…';
+          : title.slice(0, TITLE_MAX_LENGTH - 2).trim() + '...';
       styles.push(
         new OlStyle({
           text: new OlText({
@@ -744,6 +834,11 @@ function computeSelectionBreakdown(): ISelectionBreakdown {
  * успешного delete (когда часть features удалена).
  */
 function updateSelectionUi(): void {
+  // Перед чтением UI-сводки прокидываем актуальную классификацию на сами
+  // фичи - стилевая функция читает isLocked/isFavorited/deletionState
+  // через feature.get() и рисует иконки/=1/alpha. Один путь обновления
+  // правды для UI-сводки и для карты.
+  refreshFeatureClassifications();
   const breakdown = computeSelectionBreakdown();
   const hasSelection = breakdown.selectedPoints > 0;
   const protectiveMode = ownTeamMode === 'keep' || ownTeamMode === 'keepOne';
@@ -1011,6 +1106,36 @@ function buildClassificationContext(): {
     favoritedPointGuids,
     inventoryTotals,
   };
+}
+
+/**
+ * Применяет classifyFeatures ко ВСЕМ фичам refsSource и пишет результат в
+ * properties каждой фичи: isLocked / isFavorited / deletionState /
+ * toSurvive. Стилевая функция OL читает эти свойства и рисует иконку
+ * замка / звезды / цифру "=1" / alpha-варианты выделения.
+ *
+ * Перерисовка фич триггерится через refsSource.changed() - OL обходит все
+ * features и зовёт style function с новыми properties.
+ *
+ * Вызывается при: смене selection (handleMapClick / clearSelection), смене
+ * mode (radio onChange), обновлении inventory-cache (после успешного DELETE
+ * через removeRefsFromCacheAndUpdate). Один путь обновления = один источник
+ * правды, см. секцию "Единая классификация фичи" в плане.
+ */
+function refreshFeatureClassifications(): void {
+  if (!refsSource) return;
+  const allFeatures = refsSource.getFeatures();
+  const context = buildClassificationContext();
+  const classifications = classifyFeatures(allFeatures, context);
+  for (const feature of allFeatures) {
+    const cls = classifications.get(feature);
+    if (!cls) continue;
+    feature.set?.('isLocked', cls.isLocked);
+    feature.set?.('isFavorited', cls.isFavorited);
+    feature.set?.('deletionState', cls.deletion);
+    feature.set?.('toSurvive', cls.toSurvive);
+  }
+  refsSource.changed?.();
 }
 
 /**

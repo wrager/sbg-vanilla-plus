@@ -225,6 +225,10 @@ function mockOl(): void {
         .mockImplementation((options: Record<string, unknown>) => options) as unknown as new (
         options: Record<string, unknown>,
       ) => unknown,
+      Icon: jest.fn().mockImplementation((options: Record<string, unknown>) => ({
+        __kind: 'icon',
+        ...options,
+      })) as unknown as new (options: Record<string, unknown>) => unknown,
     },
   };
 }
@@ -3974,4 +3978,162 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
       expect(payloadSum).toBe(inventoryTotal - 1);
     }
   }, 30000);
+});
+
+// ── Item 6: иконки lock/star, текст =1, alpha-варианты выделения ────────────
+
+describe('refsOnMap Item 6 style function', () => {
+  let view: ReturnType<typeof makeView>;
+  let map: ReturnType<typeof makeMap>;
+  let originalFetch: typeof window.fetch;
+
+  function clickShowButton(): void {
+    const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
+    button.click();
+  }
+
+  function selectFeatureByIndex(index: number): void {
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[index]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+  }
+
+  function applyTeams(teamsByPoint: Record<string, number>): void {
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    for (const feature of allFeatures) {
+      const pointGuid = feature.getProperties?.().pointGuid;
+      if (typeof pointGuid !== 'string') continue;
+      const team = teamsByPoint[pointGuid];
+      if (typeof team === 'number') feature.set?.('team', team);
+    }
+  }
+
+  function getFeatureByIndex(index: number): IOlFeature {
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    return allFeatures[index];
+  }
+
+  beforeEach(async () => {
+    setupInventoryDom();
+    view = makeView(16, 0.5);
+    const pointsLayer = makeLayer('points', makeSource());
+    const linesLayer = makeLayer('lines', makeSource());
+    const regionsLayer = makeLayer('regions', makeSource());
+    map = makeMap([pointsLayer, linesLayer, regionsLayer], view);
+    mockGetOlMap.mockResolvedValue(map);
+    mockOl();
+    originalFetch = window.fetch;
+    view.calculateExtent = (): number[] => [100, 100, 200, 200];
+    window.fetch = jest.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as unknown as Response),
+    ) as unknown as typeof window.fetch;
+    localStorage.setItem('auth', 'test-token');
+    mockGetPlayerTeam.mockReturnValue(2);
+    await refsOnMap.enable();
+  });
+
+  afterEach(async () => {
+    await refsOnMap.disable();
+    uninstallInviewFetchHookForTest();
+    delete window.ol;
+    localStorage.removeItem('inventory-cache');
+    localStorage.removeItem('follow');
+    localStorage.removeItem('auth');
+    localStorage.removeItem('svp_refsOnMap');
+    document.body.innerHTML = '';
+    window.fetch = originalFetch;
+  });
+
+  test('isLocked записывается на фичу при locked-стопке в инвентаре', async () => {
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ t: 3, a: 5, c: [100.5, 13.7], g: 'r1', l: 'point-1', ti: 'P', f: 0b10 }]),
+    );
+    clickShowButton();
+    await flushAsync();
+    selectFeatureByIndex(0);
+
+    const feature = getFeatureByIndex(0);
+    expect(feature.getProperties?.().isLocked).toBe(true);
+    expect(feature.getProperties?.().isFavorited).toBe(false);
+  });
+
+  test('isFavorited записывается при favorited-стопке (бит 0)', async () => {
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ t: 3, a: 5, c: [100.5, 13.7], g: 'r1', l: 'point-1', ti: 'P', f: 0b01 }]),
+    );
+    clickShowButton();
+    await flushAsync();
+    selectFeatureByIndex(0);
+
+    const feature = getFeatureByIndex(0);
+    expect(feature.getProperties?.().isLocked).toBe(false);
+    expect(feature.getProperties?.().isFavorited).toBe(true);
+  });
+
+  test('обе иконки на фиче с f=0b11 (locked+favorited)', async () => {
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ t: 3, a: 5, c: [100.5, 13.7], g: 'r1', l: 'point-1', ti: 'P', f: 0b11 }]),
+    );
+    clickShowButton();
+    await flushAsync();
+    selectFeatureByIndex(0);
+
+    const feature = getFeatureByIndex(0);
+    expect(feature.getProperties?.().isLocked).toBe(true);
+    expect(feature.getProperties?.().isFavorited).toBe(true);
+  });
+
+  test('deletionState=keepOneTrimmed, toSurvive=1 при mode=keepOne и своей точке с 5 ключами', async () => {
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keepOne' }));
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ t: 3, a: 5, c: [100.5, 13.7], g: 'r1', l: 'point-1', ti: 'P', f: 0 }]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-1': 2 });
+    selectFeatureByIndex(0);
+
+    const feature = getFeatureByIndex(0);
+    expect(feature.getProperties?.().deletionState).toBe('keepOneTrimmed');
+    expect(feature.getProperties?.().toSurvive).toBe(1);
+  });
+
+  test('после Cancel deletionState возвращается в nothingToDelete для всех фич', async () => {
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { t: 3, a: 5, c: [100.5, 13.7], g: 'r1', l: 'point-1', ti: 'P', f: 0 },
+        { t: 3, a: 3, c: [101.0, 14.0], g: 'r2', l: 'point-2', ti: 'P2', f: 0 },
+      ]),
+    );
+    clickShowButton();
+    await flushAsync();
+    applyTeams({ 'point-1': 1, 'point-2': 1 });
+    selectFeatureByIndex(0);
+    selectFeatureByIndex(1);
+
+    expect(getFeatureByIndex(0).getProperties?.().deletionState).toBe('fullyDeletable');
+    expect(getFeatureByIndex(1).getProperties?.().deletionState).toBe('fullyDeletable');
+
+    const cancel = document.querySelector('.svp-refs-on-map-cancel') as HTMLElement;
+    cancel.click();
+
+    expect(getFeatureByIndex(0).getProperties?.().deletionState).toBe('nothingToDelete');
+    expect(getFeatureByIndex(1).getProperties?.().deletionState).toBe('nothingToDelete');
+  });
 });
