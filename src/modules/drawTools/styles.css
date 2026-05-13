@@ -1,6 +1,10 @@
-/* Стек OL-controls слева от карты позиционируется через top: 50% + transform
-   собственной высоты: rotate (-200%), zoom (0%), region-picker (100%).
-   Наш control продолжает колонку на 200% — на одну высоту ниже region-picker. */
+/* Слева от карты выстраиваются OL-controls из двух разных контейнеров:
+   `.ol-rotate` и `.ol-zoom` живут внутри `.ol-overlaycontainer-stopevent`,
+   `.region-picker` — прямой ребёнок `body`. Колонка визуально совпадает
+   потому, что оба контейнера занимают 100% viewport и `body` имеет
+   `position: relative` — `top: 50%` отсчитывается от одной и той же высоты.
+   Наш control продолжает колонку через `translateY(200%)` — на одну
+   собственную высоту ниже region-picker'а. */
 .svp-draw-tools-control {
   top: 50%;
   left: 0.5em;
