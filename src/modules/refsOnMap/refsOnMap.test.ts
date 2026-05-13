@@ -917,6 +917,46 @@ describe('refsOnMap lock protection', () => {
     errorSpy.mockRestore();
   });
 
+  test('двойной клик по trash шлёт только один DELETE', async () => {
+    // Между confirm() и завершением fetch trash остаётся видим. Без guard'а
+    // повторный тап шлёт второй идентичный DELETE на сервер.
+    setInventoryCacheWithLocks();
+    clickShowButton();
+    await flushAsync();
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    window.confirm = jest.fn(() => true);
+    // Медленный DELETE: resolve через setTimeout. Двойной клик происходит
+    // ДО завершения первого fetch.
+    const fetchSpy = jest.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          setTimeout(() => {
+            resolve({
+              json: () => Promise.resolve({ count: { total: 90 } }),
+            } as unknown as Response);
+          }, 50);
+        }),
+    );
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    trash.click();
+    trash.click();
+    await flushAsync();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
   test('all-locked selection: trash disabled, click игнорируется (fetch не идёт)', async () => {
     // При выборе только locked-точки deletable=0 -> trash.disabled=true.
     // Click на disabled-кнопке не запускает обработчик в jsdom (как и в

@@ -1362,6 +1362,12 @@ async function handleDeleteClick(): Promise<void> {
     }
   }
 
+  // Между confirm() и завершением fetch trash остаётся видим и без guard'а
+  // повторный тап шлёт второй идентичный DELETE на сервер. Блокируем кнопку
+  // до завершения try/finally - сервер получает один DELETE.
+  const trashWasDisabled = trashButton?.disabled ?? false;
+  if (trashButton) trashButton.disabled = true;
+
   try {
     const response = await deleteRefsFromServer(items);
     if (response.error) {
@@ -1413,6 +1419,11 @@ async function handleDeleteClick(): Promise<void> {
   } catch (error) {
     console.error(`[SVP] ${MODULE_ID}: deletion failed:`, error);
     showToast(buildPostDeleteToast(0, 0, overallToDelete, pointsInPayload.size));
+  } finally {
+    if (trashButton) trashButton.disabled = trashWasDisabled;
+    // updateSelectionUi пересчитает disabled на основе нового selection
+    // и breakdown (после успешного DELETE - выбор очищен, trash скрыт).
+    updateSelectionUi();
   }
 }
 
