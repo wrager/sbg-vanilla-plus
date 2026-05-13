@@ -30,7 +30,12 @@ const AMOUNT_ZOOM = 15;
 const TITLE_ZOOM = 17;
 const TITLE_MAX_LENGTH = 12;
 const SELECTED_COLOR = '#BB7100';
-const NEUTRAL_COLOR = '#666666';
+// UNLOADED_COLOR используется когда команда точки ещё не загружена
+// (feature.team === undefined). Для team === null (нейтральная) читаем
+// --team-0 из палитры игры - так наш слой согласуется с тем, что нативный
+// слой points рисует под нашим. Без разделения оба состояния были одного
+// серого, пользователь не мог отличить "пока неизвестно" от "нейтральная".
+const UNLOADED_COLOR = '#666666';
 const INVENTORY_API = '/api/inventory';
 const REFS_TAB_TYPE = 3;
 const INVIEW_URL_PATTERN = /\/api\/inview(\?|$)/;
@@ -448,11 +453,13 @@ function expandHexColor(color: string): string {
   return color;
 }
 
-function getTeamColor(team: number | undefined): string {
-  if (team === undefined) return NEUTRAL_COLOR;
-  const property = `--team-${team}`;
+export function getTeamColor(team: number | null | undefined): string {
+  if (team === undefined) return UNLOADED_COLOR;
+  // null -> --team-0 (нейтральная команда в палитре игры). number -> --team-N.
+  const teamIndex = team === null ? 0 : team;
+  const property = `--team-${teamIndex}`;
   const raw = getComputedStyle(document.documentElement).getPropertyValue(property).trim();
-  return raw ? expandHexColor(raw) : NEUTRAL_COLOR;
+  return raw ? expandHexColor(raw) : UNLOADED_COLOR;
 }
 
 /**
@@ -529,7 +536,12 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
     const properties = feature.getProperties?.() ?? {};
     const amount = typeof properties.amount === 'number' ? properties.amount : 0;
     const title = typeof properties.title === 'string' ? properties.title : '';
-    const team = typeof properties.team === 'number' ? properties.team : undefined;
+    const team: number | null | undefined =
+      typeof properties.team === 'number'
+        ? properties.team
+        : properties.team === null
+          ? null
+          : undefined;
     const isSelected = properties.isSelected === true;
 
     const zoom = olMap?.getView().getZoom?.() ?? 0;

@@ -1,4 +1,4 @@
-import { refsOnMap, uninstallInviewFetchHookForTest } from './refsOnMap';
+import { getTeamColor, refsOnMap, uninstallInviewFetchHookForTest } from './refsOnMap';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -274,6 +274,39 @@ describe('refsOnMap metadata', () => {
     expect(refsOnMap.name.en).toBeTruthy();
     expect(refsOnMap.description.ru).toBeTruthy();
     expect(refsOnMap.description.en).toBeTruthy();
+  });
+});
+
+describe('refsOnMap getTeamColor', () => {
+  afterEach(() => {
+    document.documentElement.style.cssText = '';
+  });
+
+  test('undefined (непрогруженная команда) -> UNLOADED_COLOR #666666', () => {
+    expect(getTeamColor(undefined)).toBe('#666666');
+  });
+
+  test('null (нейтральная) c --team-0=#444 (светлая тема) -> #444444', () => {
+    document.documentElement.style.setProperty('--team-0', '#444');
+    expect(getTeamColor(null)).toBe('#444444');
+  });
+
+  test('null (нейтральная) c --team-0=#CCC (тёмная тема) -> #CCCCCC', () => {
+    document.documentElement.style.setProperty('--team-0', '#CCC');
+    expect(getTeamColor(null)).toBe('#CCCCCC');
+  });
+
+  test('null без определённой --team-0 -> fallback UNLOADED_COLOR #666666', () => {
+    expect(getTeamColor(null)).toBe('#666666');
+  });
+
+  test('number c заданной --team-N -> цвет из палитры', () => {
+    document.documentElement.style.setProperty('--team-2', '#0B0');
+    expect(getTeamColor(2)).toBe('#00BB00');
+  });
+
+  test('number без --team-N -> fallback UNLOADED_COLOR #666666', () => {
+    expect(getTeamColor(5)).toBe('#666666');
   });
 });
 
