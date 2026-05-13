@@ -518,13 +518,13 @@ function getOwnRowText(points: number, keys: number): { en: string; ru: string }
   const color = getPlayerTeamColorName();
   if (color === null) {
     return {
-      en: `${points} (${keys} keys) own team and not protected`,
-      ru: `${points} (${keys} ключей) своего цвета и не защищённые`,
+      en: `${points} (${keys} keys) own team and unprotected, won't be deleted`,
+      ru: `${points} (${keys} ключей) своего цвета и незащищённые, но не удалятся`,
     };
   }
   return {
-    en: `${points} (${keys} keys) ${color.en} and not protected`,
-    ru: `${points} (${keys} ключей) ${color.ru} и не защищённые`,
+    en: `${points} (${keys} keys) ${color.en} and unprotected, won't be deleted`,
+    ru: `${points} (${keys} ключей) ${color.ru} и незащищённые, но не удалятся`,
   };
 }
 
