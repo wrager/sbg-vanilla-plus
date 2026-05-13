@@ -7,10 +7,10 @@ import { t } from '../../core/l10n';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import {
   buildProtectedPointGuids,
+  isProtectionFlagSupportAvailable,
   readInventoryCache,
   readInventoryReferences,
 } from '../../core/inventoryCache';
-import { isInventoryReference } from '../../core/inventoryTypes';
 import { isModuleEnabledByUser } from '../../core/moduleRegistry';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { showToast as showCoreToast } from '../../core/toast';
@@ -268,16 +268,11 @@ async function runSlowDelete(): Promise<void> {
   // legacy список и миграция не сделана - кнопка slow cleanup скрыта (см.
   // shouldShowButton).
   //
-  // lockSupportAvailable проверяется через every: ВСЕ реф-стопки должны иметь
-  // поле `f`. При mix-кэше (часть с `f`, часть без) стопки без `f` не попадают
-  // в protectedPointGuids и могли бы быть удалены даже у фактически защищённой
-  // точки. Симметрично с финальным guard в inventoryApi.deleteInventoryItems.
+  // `isProtectionFlagSupportAvailable` симметрично с финальным guard в
+  // inventoryApi.deleteInventoryItems и проверкой в cleanupCalculator.
   const cache = readInventoryCache();
   const protectedPointGuids = buildProtectedPointGuids(cache);
-  const refStacks = cache.filter(isInventoryReference);
-  const lockSupportAvailable =
-    refStacks.length > 0 && refStacks.every((item) => item.f !== undefined);
-  if (!lockSupportAvailable) {
+  if (!isProtectionFlagSupportAvailable(cache)) {
     showSlowToast(
       t({
         en: 'Native lock support unavailable: server returned no f-flags. Cleanup blocked.',

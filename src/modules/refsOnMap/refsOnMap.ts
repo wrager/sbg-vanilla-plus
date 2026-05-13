@@ -5,12 +5,12 @@ import { getOlMap } from '../../core/olMap';
 import type { IOlFeature, IOlMap, IOlLayer, IOlMapEvent, IOlVectorSource } from '../../core/olMap';
 import {
   buildProtectedPointGuids,
+  isProtectionFlagSupportAvailable,
   readFullInventoryReferences,
   readInventoryCache,
   INVENTORY_CACHE_KEY,
 } from '../../core/inventoryCache';
 import type { IInventoryReferenceFull } from '../../core/inventoryTypes';
-import { isInventoryReference } from '../../core/inventoryTypes';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 import { showToast } from '../../core/toast';
@@ -274,22 +274,6 @@ function handleMapClick(event: IOlMapEvent): void {
 // ── deletion UI ──────────────────────────────────────────────────────────────
 
 /**
- * Удаление ключей разрешено, только если ВСЕ реф-стопки в кэше имеют поле
- * `f`. На 0.6.0 поле отсутствует целиком - `buildProtectedPointGuids`
- * возвращает пустой Set и lock/favorite-семантики нет. На mix-кэше (часть
- * стопок с `f`, часть без) `buildProtectedPointGuids` пропускает стопки без
- * `f` (`if (item.f === undefined) continue`), и точка по факту защищённая не
- * попала бы в защищённые - её ключи могли быть удалены вслепую. `every`
- * исключает этот класс ошибок целиком, симметрично с `cleanupCalculator`,
- * `slowRefsDelete` и финальным guard'ом в `inventoryApi.deleteInventoryItems`.
- */
-export function isLockSupportAvailable(cache: readonly unknown[]): boolean {
-  const refStacks = cache.filter(isInventoryReference);
-  if (refStacks.length === 0) return false;
-  return refStacks.every((item) => item.f !== undefined);
-}
-
-/**
  * Делит выбранные ref-фичи на разрешённые к удалению и защищённые
  * lock/favorite-флагом точки. Источник правды о защите - inventory-cache:
  * для каждой стопки бит 0b10 поля `f` означает «эта стопка locked», бит
@@ -338,13 +322,13 @@ async function handleDeleteClick(): Promise<void> {
     return properties !== undefined && properties.isSelected === true;
   });
 
-  // Защита mix-кэша: если хоть одна реф-стопка без поля `f`, нельзя
-  // полагаться на нативный lock - стопки без `f` не попадут в
-  // protectedPointGuids и точки по факту защищённые могут быть удалены вслепую.
-  // Симметрично с slowRefsDelete и cleanupCalculator. На 0.6.0 (нет `f`
-  // целиком) удаление через viewer тоже блокируется - пользователь не
-  // должен лишиться ключей из-за того что версия игры не поддерживает lock.
-  if (!isLockSupportAvailable(readInventoryCache())) {
+  // Защита mix-кэша через `isProtectionFlagSupportAvailable`: симметрично с
+  // slowRefsDelete, cleanupCalculator и финальным guard'ом в
+  // inventoryApi.deleteInventoryItems. На 0.6.0 (поле `f` отсутствует
+  // целиком) удаление через viewer блокируется тем же путём - пользователь
+  // не должен лишиться ключей из-за того, что версия игры не поддерживает
+  // нативную защиту.
+  if (!isProtectionFlagSupportAvailable(readInventoryCache())) {
     showToast(
       t({
         en: 'Native lock support unavailable: server returned no f-flags. Deletion blocked.',

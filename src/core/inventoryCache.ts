@@ -83,3 +83,23 @@ export function buildProtectedPointGuids(items: readonly unknown[]): Set<string>
     MARK_FLAG_BITS.favorite | MARK_FLAG_BITS.locked,
   );
 }
+
+/**
+ * Можно ли полагаться на поле `f` стопок для определения защиты ключей. Поле
+ * появилось в SBG 0.6.1; на 0.6.0 его нет ни у одной стопки, и любая защита
+ * через `buildProtectedPointGuids` молча даст пустой Set - удаление пройдёт
+ * вслепую. Проверка through `every`: ВСЕ реф-стопки в кэше должны иметь поле
+ * `f`. При mix-кэше (часть с `f`, часть без) стопки без `f` отсеиваются в
+ * `buildPointGuidsByFlagMask` (`if (item.f === undefined) continue`), и
+ * фактически защищённая точка по своей mix-стопке могла быть удалена.
+ * `every` исключает этот класс ошибки целиком, не полагаясь на неявные
+ * предположения о поведении сервера.
+ *
+ * Возвращает `false` для пустого набора рефов: нет стопок - нет evidence,
+ * безопаснее не запускать удаление.
+ */
+export function isProtectionFlagSupportAvailable(items: readonly unknown[]): boolean {
+  const refStacks = items.filter(isInventoryReference);
+  if (refStacks.length === 0) return false;
+  return refStacks.every((item) => item.f !== undefined);
+}

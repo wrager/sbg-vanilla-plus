@@ -1,6 +1,10 @@
 import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import type { IInventoryItem } from '../../core/inventoryTypes';
-import { buildLockedPointGuids, buildProtectedPointGuids } from '../../core/inventoryCache';
+import {
+  buildLockedPointGuids,
+  buildProtectedPointGuids,
+  isProtectionFlagSupportAvailable,
+} from '../../core/inventoryCache';
 import { calculateDeletions } from './cleanupCalculator';
 import type { ICleanupLimits } from './cleanupSettings';
 
@@ -114,6 +118,32 @@ describe('buildProtectedPointGuids', () => {
   test('игнорирует не-рефы (cores/cats), даже если у них есть похожее поле', () => {
     const core = { g: 'c1', t: ITEM_TYPE_CORE, l: 5, a: 10, f: 0b11 };
     expect(buildProtectedPointGuids([core]).size).toBe(0);
+  });
+});
+
+describe('isProtectionFlagSupportAvailable', () => {
+  test('пустой набор рефов: false (нет evidence)', () => {
+    expect(isProtectionFlagSupportAvailable([])).toBe(false);
+  });
+
+  test('все стопки без поля f (0.6.0): false', () => {
+    const items = [ref('s1', 'p1', 5), ref('s2', 'p2', 3)];
+    expect(isProtectionFlagSupportAvailable(items)).toBe(false);
+  });
+
+  test('все стопки с полем f (0.6.1+): true', () => {
+    const items = [ref('s1', 'p1', 5, 0), ref('s2', 'p2', 3, 0b10)];
+    expect(isProtectionFlagSupportAvailable(items)).toBe(true);
+  });
+
+  test('mix-кэш (часть с f, часть без): false - блокировка целиком', () => {
+    const items = [ref('s1', 'p1', 5, 0), ref('s2', 'p2', 3)];
+    expect(isProtectionFlagSupportAvailable(items)).toBe(false);
+  });
+
+  test('игнорирует не-рефы при подсчёте: набор без реф-стопок -> false', () => {
+    const core = { g: 'c1', t: ITEM_TYPE_CORE, l: 1, a: 10, f: 0b11 };
+    expect(isProtectionFlagSupportAvailable([core])).toBe(false);
   });
 });
 
