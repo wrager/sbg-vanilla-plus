@@ -1279,6 +1279,41 @@ describe('refsOnMap own-team protection', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  test('mode=keep + playerTeam=null: trash disabled при наличии deletable чужих', async () => {
+    // У всех выбранных точек team=number (НЕ undefined), classifyFeatures
+    // даёт fullyDeletable для чужих (playerTeam !== team). deletableKeys > 0,
+    // но handleDeleteClick guard блокирует DELETE тостом при playerTeam=null.
+    // Без disabled trash был бы enabled - пользователь видит положительное
+    // число к удалению, тапает, получает тост, не понимает рассинхрон.
+    setMixedInventoryCache();
+    clickShowButton();
+    await flushAsync();
+    applyTeamsToFeatures({ 'point-own': 1, 'point-enemy': 2 });
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[1]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    setPlayerTeam(null);
+    enableKeepOwnTeamCheckbox();
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
+    expect(trash.disabled).toBe(true);
+  });
+
   test('keepOwnTeam=true: точка с team=undefined fail-safe защищена', async () => {
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-unknown', ti: 'Unk', f: 0 },

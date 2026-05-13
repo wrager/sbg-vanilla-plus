@@ -930,7 +930,14 @@ function updateSelectionUi(): void {
     setStylePropIfChanged(trashButton, 'visibility', hasSelection ? 'visible' : 'hidden');
     const isLoading = protectiveMode && hasSelectedPointsLoadingTeam();
     const nothingToDelete = breakdown.deletableKeys === 0;
-    setBoolPropIfChanged(trashButton, isLoading || nothingToDelete);
+    // protective-mode требует знать команду игрока. Если getPlayerTeam()
+    // не извлёкся (#self-info__name пустой / выход из аккаунта),
+    // handleDeleteClick блокирует DELETE тостом. Без визуального
+    // disabled пользователь видит положительное deletableKeys, тапает,
+    // получает тост, не понимает где рассинхрон. Явный disabled
+    // показывает, что DELETE заблокирован.
+    const protectiveWithoutTeam = protectiveMode && getPlayerTeam() === null;
+    setBoolPropIfChanged(trashButton, isLoading || nothingToDelete || protectiveWithoutTeam);
     setDataLoadingIfChanged(trashButton, isLoading ? 'true' : 'false');
   }
 
