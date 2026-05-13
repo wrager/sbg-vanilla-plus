@@ -584,14 +584,19 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
     const isFavorited = properties.isFavorited === true;
     const deletionState =
       typeof properties.deletionState === 'string' ? properties.deletionState : '';
+    const toDelete = typeof properties.toDelete === 'number' ? properties.toDelete : 0;
     const toSurvive = typeof properties.toSurvive === 'number' ? properties.toSurvive : 0;
-    const playerTeam = getPlayerTeam();
-    const isOwnTeam = typeof team === 'number' && playerTeam !== null && team === playerTeam;
-    // Item 6f: для выделенных locked/favorited/own ослабляем оранжевый fill
-    // до 50% alpha (литерал '80') - визуально видно, что точка выделена,
-    // но "защищённого" / "своего" типа. Не-защищённые выделенные остаются
-    // solid SELECTED_COLOR.
-    const isProtectedHighlight = isSelected && (isLocked || isFavorited || isOwnTeam);
+    // Выделенная точка, у которой по итогу удаления НЕ уйдёт ни одного
+    // ключа: locked/own/unknown-защищена либо keepOne-полностью защищена
+    // (правило не позволило обрезать). Для них fill полностью прозрачный -
+    // только обводка выделения держит индикацию "selected", оранжевый под
+    // заливкой не намекает на "к удалению".
+    const willNotBeDeleted =
+      isSelected &&
+      (deletionState === 'lockedProtected' ||
+        deletionState === 'ownProtected' ||
+        deletionState === 'unknownProtected' ||
+        (deletionState === 'keepOneTrimmed' && toDelete === 0));
     // Item 6b: текст "=1" для выделенных, у которых правило keepOne после
     // удаления оставит ровно 1 ключ (deletion=keepOneTrimmed и toSurvive=1).
     const showOneSurvived = isSelected && deletionState === 'keepOneTrimmed' && toSurvive === 1;
@@ -601,12 +606,12 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
     const baseRadius = zoom >= 16 ? 10 : 8;
     const radius = isSelected ? baseRadius * 1.4 : baseRadius;
 
-    // CUI style: transparent fill + colored stroke. Выделенный кружок ВСЕГДА
-    // двухцветный (fill полупрозрачный SELECTED_COLOR, stroke - solid
-    // SELECTED_COLOR), чтобы граница и заливка различались. Защищённые
-    // выделенные дополнительно ослаблены до 25% - визуально видно, что
-    // точка выделена, но "не пойдёт в удаление".
-    const selectedFillAlpha = isProtectedHighlight ? '40' : '80';
+    // CUI style: transparent fill + colored stroke. Выделенный кружок,
+    // который реально пойдёт в удаление - fill полупрозрачный SELECTED_COLOR
+    // (alpha 50%, видно "к удалению"). Выделенный защищённый (не пойдёт
+    // в payload) - fill полностью прозрачный: только обводка держит
+    // индикацию selected-state, оранжевый не намекает на удаление.
+    const selectedFillAlpha = willNotBeDeleted ? '00' : '80';
     const fillColor = isSelected ? SELECTED_COLOR + selectedFillAlpha : teamColor + '40';
     const strokeColor = isSelected ? SELECTED_COLOR : teamColor;
     const strokeWidth = isSelected ? 4 : 3;
@@ -1192,6 +1197,7 @@ function refreshFeatureClassifications(): void {
     feature.set?.('isLocked', cls.isLocked);
     feature.set?.('isFavorited', cls.isFavorited);
     feature.set?.('deletionState', cls.deletion);
+    feature.set?.('toDelete', cls.toDelete);
     feature.set?.('toSurvive', cls.toSurvive);
   }
   refsSource.changed?.();
