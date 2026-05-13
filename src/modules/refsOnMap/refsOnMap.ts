@@ -1671,7 +1671,8 @@ function showViewer(): void {
   hideGameUi();
   setGameLayersVisible(false);
 
-  // Create one feature per ref (not per point)
+  // Одна фича на каждую стопку ключей (не на точку): несколько стопок
+  // одной точки рисуются отдельными кружками.
   for (const ref of refs) {
     const mapCoords = olProj.fromLonLat(ref.c);
     const feature = new OlFeature({ geometry: new OlPoint(mapCoords) });
@@ -1862,7 +1863,8 @@ export const refsOnMap: IFeatureModule = {
             inventorySort.parentElement.insertBefore(showButton, inventorySort.nextSibling);
           }
 
-          // Track active tab
+          // Отслеживаем смену активной вкладки инвентаря (показываем кнопку
+          // "На карте" только на вкладке ключей).
           tabClickHandler = () => {
             updateButtonVisibility();
           };
