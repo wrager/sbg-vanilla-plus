@@ -873,25 +873,12 @@ function applyTeamsLoadedState(): void {
   teamLoadDone = 0;
 }
 
-function toggleFeatureSelection(feature: IOlFeature): void {
+function requestTeamLoadForFeatureIfNeeded(feature: IOlFeature): void {
   const properties = feature.getProperties?.() ?? {};
-  const isSelected = properties.isSelected === true;
-  feature.set?.('isSelected', !isSelected);
-  // Если фича только что попала в выбор и её team ещё не известна -
-  // ставим pointGuid в очередь worker'а. Без этого выделенные точки
-  // вне visible-extent остаются protectedByUnknownTeam (fail-safe),
-  // и UI breakdown показывает их в "protected" хотя по смыслу это
-  // просто "не догружено".
-  if (!isSelected) {
-    const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
-    // team может быть number (известна), null (neutral - тоже известная,
-    // загрузки не требует) или undefined (не загружено). requestTeamLoad
-    // нужен только для undefined; сам он дополнительно skip'ит, если
-    // teamCache.has(guid) уже что-то записал.
-    const teamIsLoaded = typeof properties.team === 'number' || properties.team === null;
-    if (pointGuid !== null && !teamIsLoaded) requestTeamLoad(pointGuid);
-  }
-  updateSelectionUi();
+  const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+  if (pointGuid === null) return;
+  const teamIsLoaded = typeof properties.team === 'number' || properties.team === null;
+  if (!teamIsLoaded) requestTeamLoad(pointGuid);
 }
 
 /**
@@ -927,21 +914,35 @@ function clearSelection(): void {
 
 function handleMapClick(event: IOlMapEvent): void {
   if (!olMap?.forEachFeatureAtPixel) return;
-  // Пока команды точек догружаются, выбор по клику отключён - фильтр
-  // Клик-выбор всегда работает: при keepOwnTeam=true выбранная точка с
-  // team=undefined попадёт в protectedByUnknownTeam (fail-safe), удаление
-  // её защитит. При keepOwnTeam=false фильтра нет - team не нужен для
-  // payload. Блокировка по teamsLoading ушла из selection в trashButton
-  // (см. updateSelectionUi).
+  // Item 1: при перекрытии точек под пикселем клик ВЫБИРАЕТ все, никогда
+  // не снимает. Раньше каждая фича toggle'илась независимо, и две
+  // перекрывающихся точки переключались "в разные стороны". Снять
+  // выделение можно только Cancel-кнопкой (clearSelection).
+  //
+  // Клик-выбор работает при любом mode: при keep/keepOne выбранная точка
+  // с team=undefined попадёт в unknownProtected (fail-safe), удаление её
+  // защитит. При delete фильтра нет - team не нужен для payload.
+  // Блокировка по teamsLoading ушла из selection в trashButton.
+  const underPixel: IOlFeature[] = [];
   olMap.forEachFeatureAtPixel(
     event.pixel,
     (feature: IOlFeature) => {
-      toggleFeatureSelection(feature);
+      underPixel.push(feature);
     },
     {
       layerFilter: (layer: IOlLayer) => layer.get('name') === 'svp-refs-on-map',
     },
   );
+  if (underPixel.length === 0) return;
+  let changed = false;
+  for (const feature of underPixel) {
+    const properties = feature.getProperties?.() ?? {};
+    if (properties.isSelected === true) continue;
+    feature.set?.('isSelected', true);
+    requestTeamLoadForFeatureIfNeeded(feature);
+    changed = true;
+  }
+  if (changed) updateSelectionUi();
 }
 
 // ── deletion UI ──────────────────────────────────────────────────────────────

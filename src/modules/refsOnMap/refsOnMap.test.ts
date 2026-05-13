@@ -574,6 +574,50 @@ describe('refsOnMap viewer', () => {
     clickShowButton();
     expect(document.querySelector('.svp-refs-on-map-locked-note')).toBeNull();
   });
+
+  test('Item 1: клик в multi-feature кластер выбирает ВСЕ невыбранные, выбранные не трогает', () => {
+    setInventoryCache();
+    clickShowButton();
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    // Принудительно выбираем первую, остальные не выбраны.
+    allFeatures[0].set?.('isSelected', true);
+
+    // Эмуляция forEachFeatureAtPixel с обеими фичами под одним пикселем.
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        for (const f of allFeatures) callback(f);
+      },
+    );
+    const clickHandler = map._clickListeners[0];
+    clickHandler({ pixel: [0, 0] });
+
+    for (const f of allFeatures) {
+      expect((f.getProperties?.() ?? {}).isSelected).toBe(true);
+    }
+  });
+
+  test('Item 1: повторный клик НЕ снимает выделение (только Cancel-кнопка)', () => {
+    setInventoryCache();
+    clickShowButton();
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    const clickHandler = map._clickListeners[0];
+
+    clickHandler({ pixel: [0, 0] });
+    expect((allFeatures[0].getProperties?.() ?? {}).isSelected).toBe(true);
+
+    // Повторный клик на ту же фичу остаётся isSelected=true.
+    clickHandler({ pixel: [0, 0] });
+    expect((allFeatures[0].getProperties?.() ?? {}).isSelected).toBe(true);
+  });
 });
 
 // ── lock protection at delete ────────────────────────────────────────────────
@@ -2940,7 +2984,7 @@ describe('refsOnMap selection breakdown UI', () => {
     );
   });
 
-  test('deselect всех: trashButton и selectionInfo скрываются обратно', async () => {
+  test('Cancel-кнопка: trashButton и selectionInfo скрываются обратно', async () => {
     setInventoryTwoPointsThreeStacks();
     clickShowButton();
     await flushAsync();
@@ -2950,7 +2994,10 @@ describe('refsOnMap selection breakdown UI', () => {
     const info = document.querySelector('.svp-refs-on-map-selection-info') as HTMLElement;
     expect(info.style.display).not.toBe('none');
 
-    selectFeatureByIndex(0); // повторный клик = deselect
+    // В новой модели клик НИКОГДА не снимает выделение (Item 1).
+    // Cancel-кнопка - единственный способ очистить выбор.
+    const cancel = document.querySelector('.svp-refs-on-map-cancel') as HTMLElement;
+    cancel.click();
 
     expect(info.style.display).toBe('none');
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
