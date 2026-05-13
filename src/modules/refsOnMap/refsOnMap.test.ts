@@ -870,6 +870,53 @@ describe('refsOnMap lock protection', () => {
     errorSpy.mockRestore();
   });
 
+  test('unrecognized DELETE response: features not removed locally', async () => {
+    // Сервер возвращает {} (нет count, нет error - timeout/proxy/новый
+    // формат). Старый код видел response.error === undefined и шёл в
+    // success path: удалял фичи из source и стопки из inventory-cache,
+    // хотя сервер мог не выполнить DELETE. Новый код считает такой ответ
+    // ошибкой и оставляет локальное состояние нетронутым.
+    setInventoryCacheWithLocks();
+    clickShowButton();
+    await flushAsync();
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    window.confirm = jest.fn(() => true);
+    const fetchSpy = jest.fn(() =>
+      Promise.resolve({
+        json: () => Promise.resolve({}),
+      } as unknown as Response),
+    );
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation();
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await flushAsync();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('refsOnMap'),
+      expect.stringContaining('Unrecognized'),
+    );
+    // inventory-cache не тронут: ref-1 остался с amount=4.
+    const cache = JSON.parse(localStorage.getItem('inventory-cache') ?? '[]') as Array<{
+      g: string;
+      a: number;
+    }>;
+    expect(cache.find((item) => item.g === 'ref-1')?.a).toBe(4);
+    errorSpy.mockRestore();
+  });
+
   test('all-locked selection: trash disabled, click игнорируется (fetch не идёт)', async () => {
     // При выборе только locked-точки deletable=0 -> trash.disabled=true.
     // Click на disabled-кнопке не запускает обработчик в jsdom (как и в

@@ -130,8 +130,13 @@ async function deleteRefsFromServer(items: Record<string, number>): Promise<IDel
     body: JSON.stringify({ selection: items, tab: REFS_TAB_TYPE }),
   });
   const json: unknown = await response.json();
-  if (isDeleteApiResponse(json)) return json;
-  return {};
+  if (isDeleteApiResponse(json) && (json.count !== undefined || json.error !== undefined)) {
+    return json;
+  }
+  // Ответ не распознан (timeout, proxy, новый формат). Возвращаем явную
+  // ошибку, чтобы handleDeleteClick не выполнил success path над пустым {}
+  // и не удалил локальные стопки, которые сервер мог не тронуть.
+  return { error: 'Unrecognized server response' };
 }
 
 /**
