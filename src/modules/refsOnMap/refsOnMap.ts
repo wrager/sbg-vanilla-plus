@@ -84,7 +84,7 @@ function isInviewResponse(value: unknown): value is IInviewResponse {
  */
 async function fetchPointTeam(pointGuid: string): Promise<number | null | 'failed'> {
   try {
-    const response = await fetch(`/api/point?guid=${pointGuid}&status=1`);
+    const response = await fetch(`/api/point?guid=${encodeURIComponent(pointGuid)}&status=1`);
     const json: unknown = await response.json();
     if (isPointApiResponse(json)) {
       if (typeof json.data?.te === 'number') return json.data.te;
