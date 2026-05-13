@@ -282,14 +282,11 @@ async function runSlowDelete(): Promise<void> {
     return;
   }
   const invRefs = readInventoryReferences();
-  // Имя переменной унаследовано: `protectedRefs` здесь означает «прошедшие
-  // защитный фильтр» (т.е. НЕзащищённые точки, готовые к расчёту удаления).
-  // Не путать с `protectedPointGuids` выше - там Set guids ЗАЩИЩЁННЫХ точек.
-  const protectedRefs: IRefByGuid[] = invRefs
+  const deletableRefs: IRefByGuid[] = invRefs
     .filter((ref) => ref.a > 0 && !protectedPointGuids.has(ref.l))
     .map((ref) => ({ itemGuid: ref.g, pointGuid: ref.l, amount: ref.a }));
 
-  if (protectedRefs.length === 0) {
+  if (deletableRefs.length === 0) {
     showSlowToast(
       t({
         en: 'No unprotected keys to process',
@@ -299,7 +296,7 @@ async function runSlowDelete(): Promise<void> {
     return;
   }
 
-  const uniquePointGuids = Array.from(new Set(protectedRefs.map((ref) => ref.pointGuid)));
+  const uniquePointGuids = Array.from(new Set(deletableRefs.map((ref) => ref.pointGuid)));
 
   const confirmed = confirm(
     t({
@@ -328,7 +325,7 @@ async function runSlowDelete(): Promise<void> {
   progress.setStatus(t({ en: 'Calculating deletions…', ru: 'Расчёт удаления…' }));
 
   const deletions = calculateSlowDeletions(
-    protectedRefs,
+    deletableRefs,
     teams,
     playerTeam,
     referencesAlliedLimit,
