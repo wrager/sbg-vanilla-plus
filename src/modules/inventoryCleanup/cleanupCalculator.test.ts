@@ -103,7 +103,7 @@ describe('buildProtectedPointGuids', () => {
       ref('s2', 'p-fav', 2, 0b01),
       ref('s3', 'p-open', 4, 0),
     ];
-    expect([...buildProtectedPointGuids(items)].sort()).toEqual(['p-fav', 'p-lock']);
+    expect(buildProtectedPointGuids(items)).toEqual(new Set(['p-lock', 'p-fav']));
   });
 
   test('f=0 не защищает', () => {
