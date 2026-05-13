@@ -1979,6 +1979,28 @@ function hideViewer(): void {
   restoreFollowMode();
 }
 
+// ── layer construction ───────────────────────────────────────────────────────
+
+/**
+ * Конструирует OL Vector Layer для слоя svp-refs-on-map с фиксированным
+ * именем, zIndex и style-функцией. Cast'ы IOlVectorSource и style-функции
+ * до Record<string, unknown> локализованы здесь: OL Vector constructor
+ * принимает generic options bag, IOlVectorSource не сужается без guard.
+ */
+function createRefsOnMapLayer(
+  OlVectorLayer: new (opts: Record<string, unknown>) => IOlLayer,
+  source: IOlVectorSource,
+  style: (feature: IOlFeature) => unknown[],
+): IOlLayer {
+  return new OlVectorLayer({
+    source: source as unknown as Record<string, unknown>,
+    name: 'svp-refs-on-map',
+    zIndex: 8,
+    minZoom: 0,
+    style: style as unknown as Record<string, unknown>,
+  });
+}
+
 // ── tab visibility ───────────────────────────────────────────────────────────
 
 function updateButtonVisibility(): void {
@@ -2019,15 +2041,7 @@ export const refsOnMap: IFeatureModule = {
 
           olMap = map;
           refsSource = new OlVectorSource();
-          refsLayer = new OlVectorLayer({
-            // as unknown as: OL Vector constructor accepts a generic options bag;
-            // IOlVectorSource cannot be narrowed to Record<string, unknown> without a guard
-            source: refsSource as unknown as Record<string, unknown>,
-            name: 'svp-refs-on-map',
-            zIndex: 8,
-            minZoom: 0,
-            style: createLayerStyleFunction() as unknown as Record<string, unknown>,
-          });
+          refsLayer = createRefsOnMapLayer(OlVectorLayer, refsSource, createLayerStyleFunction());
           map.addLayer(refsLayer);
 
           // "On map" button - вставляется после нативной кнопки #inventory-sort
