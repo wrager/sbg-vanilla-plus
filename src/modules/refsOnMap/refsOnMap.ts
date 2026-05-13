@@ -15,6 +15,12 @@ import { getPlayerTeam } from '../../core/playerTeam';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 import { showToast } from '../../core/toast';
+import {
+  getAmount,
+  getPointGuid,
+  getRefFeatureProps,
+  isFeatureSelected,
+} from '../../core/olFeatureProps';
 import type { IFeatureClassification } from './classifyFeatures';
 import { classifyFeatures } from './classifyFeatures';
 import type { OwnTeamMode } from './refsOnMapSettings';
@@ -406,8 +412,7 @@ function handleInviewResponse(points: IInviewPoint[]): void {
   // каждый moveend) ощутимо.
   const featuresByPointGuid = new Map<string, IOlFeature[]>();
   for (const feature of refsSource.getFeatures()) {
-    const properties = feature.getProperties?.() ?? {};
-    const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+    const pointGuid = getPointGuid(feature);
     if (pointGuid === null) continue;
     const list = featuresByPointGuid.get(pointGuid);
     if (list) list.push(feature);
@@ -471,8 +476,7 @@ function getVisiblePointGuids(): Set<string> {
   if (!extent || !refsSource) return new Set();
   const visible = new Set<string>();
   for (const feature of refsSource.getFeatures()) {
-    const properties = feature.getProperties?.() ?? {};
-    const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+    const pointGuid = getPointGuid(feature);
     if (!pointGuid) continue;
     if (visible.has(pointGuid)) continue;
     const geom = feature.getGeometry();
@@ -896,11 +900,6 @@ const EMPTY_BREAKDOWN: ISelectionBreakdown = {
   keepOneKeyKeys: 0,
 };
 
-function getPointGuid(feature: IOlFeature): string | null {
-  const properties = feature.getProperties?.() ?? {};
-  return typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
-}
-
 function uniquePointCount(features: IOlFeature[]): number {
   const set = new Set<string>();
   for (const feature of features) {
@@ -922,9 +921,8 @@ function uniquePointCount(features: IOlFeature[]): number {
 function hasSelectedPointsLoadingTeam(): boolean {
   if (!refsSource) return false;
   for (const feature of refsSource.getFeatures()) {
-    const properties = feature.getProperties?.() ?? {};
-    if (properties.isSelected !== true) continue;
-    const guid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+    if (!isFeatureSelected(feature)) continue;
+    const guid = getPointGuid(feature);
     if (guid === null) continue;
     if (teamLoadQueue.has(guid) || teamLoadInFlight.has(guid)) return true;
   }
@@ -946,10 +944,7 @@ function hasSelectedPointsLoadingTeam(): boolean {
  */
 function computeSelectionBreakdown(): ISelectionBreakdown {
   if (!refsSource) return EMPTY_BREAKDOWN;
-  const selected = refsSource.getFeatures().filter((feature) => {
-    const properties = feature.getProperties?.();
-    return properties !== undefined && properties.isSelected === true;
-  });
+  const selected = refsSource.getFeatures().filter(isFeatureSelected);
   if (selected.length === 0) return EMPTY_BREAKDOWN;
 
   const { classifications, lockBucket, ownBucket, unknownBucket, keepOneBucket, payload } =
@@ -1183,9 +1178,9 @@ function applyTeamsLoadedState(): void {
 }
 
 function requestTeamLoadForFeatureIfNeeded(feature: IOlFeature): void {
-  const properties = feature.getProperties?.() ?? {};
-  const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+  const pointGuid = getPointGuid(feature);
   if (pointGuid === null) return;
+  const properties = getRefFeatureProps(feature);
   const teamIsLoaded = typeof properties.team === 'number' || properties.team === null;
   if (!teamIsLoaded) requestTeamLoad(pointGuid);
 }
@@ -1213,8 +1208,7 @@ function requestTeamLoad(pointGuid: string): void {
 function clearSelection(): void {
   if (!refsSource) return;
   for (const feature of refsSource.getFeatures()) {
-    const properties = feature.getProperties?.() ?? {};
-    if (properties.isSelected === true) {
+    if (isFeatureSelected(feature)) {
       feature.set?.('isSelected', false);
     }
   }
@@ -1245,8 +1239,7 @@ function handleMapClick(event: IOlMapEvent): void {
   if (underPixel.length === 0) return;
   let changed = false;
   for (const feature of underPixel) {
-    const properties = feature.getProperties?.() ?? {};
-    if (properties.isSelected === true) continue;
+    if (isFeatureSelected(feature)) continue;
     feature.set?.('isSelected', true);
     requestTeamLoadForFeatureIfNeeded(feature);
     changed = true;
@@ -1275,8 +1268,7 @@ export function isLockSupportAvailable(cache: readonly unknown[]): boolean {
 function sumAmount(features: IOlFeature[]): number {
   let total = 0;
   for (const feature of features) {
-    const properties = feature.getProperties?.() ?? {};
-    if (typeof properties.amount === 'number') total += properties.amount;
+    total += getAmount(feature);
   }
   return total;
 }
@@ -1392,10 +1384,7 @@ function classifySelection(selected: IOlFeature[]): {
 
 async function handleDeleteClick(): Promise<void> {
   if (!refsSource) return;
-  const selected = refsSource.getFeatures().filter((feature) => {
-    const properties = feature.getProperties?.();
-    return properties !== undefined && properties.isSelected === true;
-  });
+  const selected = refsSource.getFeatures().filter(isFeatureSelected);
   if (selected.length === 0) return;
 
   const protectiveMode = ownTeamMode === 'keep' || ownTeamMode === 'keepOne';

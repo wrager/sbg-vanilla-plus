@@ -1,4 +1,5 @@
 import type { IOlFeature } from '../../core/olMap';
+import { getAmount, getPointGuid, getTeam, isFeatureSelected } from '../../core/olFeatureProps';
 import type { OwnTeamMode } from './refsOnMapSettings';
 
 /**
@@ -54,29 +55,6 @@ export interface IClassificationContext {
   inventoryTotals: ReadonlyMap<string, number>;
 }
 
-function getAmount(feature: IOlFeature): number {
-  const properties = feature.getProperties?.() ?? {};
-  return typeof properties.amount === 'number' ? properties.amount : 0;
-}
-
-function getPointGuid(feature: IOlFeature): string | null {
-  const properties = feature.getProperties?.() ?? {};
-  return typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
-}
-
-function getTeam(feature: IOlFeature): number | null | undefined {
-  const properties = feature.getProperties?.() ?? {};
-  const team: unknown = properties.team;
-  if (typeof team === 'number') return team;
-  if (team === null) return null;
-  return undefined;
-}
-
-function isSelected(feature: IOlFeature): boolean {
-  const properties = feature.getProperties?.() ?? {};
-  return properties.isSelected === true;
-}
-
 export function classifyFeatures(
   features: readonly IOlFeature[],
   context: IClassificationContext,
@@ -92,7 +70,7 @@ export function classifyFeatures(
     const isFavorited = guid !== null && context.favoritedPointGuids.has(guid);
     const amount = getAmount(feature);
 
-    if (!isSelected(feature)) {
+    if (!isFeatureSelected(feature)) {
       result.set(feature, {
         isLocked,
         isFavorited,
