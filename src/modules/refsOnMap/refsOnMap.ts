@@ -472,14 +472,14 @@ export function getTeamColor(team: number | null | undefined): string {
  * не извлёкся (#self-info__name пустой / другой формат / выход из аккаунта) -
  * вызывающий обязан использовать fallback-формулировку без цвета.
  */
-function getPlayerTeamColorName(): { en: string; ru: string } | null {
+function getPlayerTeamColorName(): { en: string; ru: string; ruGen: string } | null {
   switch (getPlayerTeam()) {
     case 1:
-      return { en: 'red', ru: 'красные' };
+      return { en: 'red', ru: 'красные', ruGen: 'красных' };
     case 2:
-      return { en: 'green', ru: 'зелёные' };
+      return { en: 'green', ru: 'зелёные', ruGen: 'зелёных' };
     case 3:
-      return { en: 'blue', ru: 'синие' };
+      return { en: 'blue', ru: 'синие', ruGen: 'синих' };
     default:
       return null;
   }
@@ -500,11 +500,11 @@ function getModeLabelKeep(): { en: string; ru: string } {
 function getModeLabelKeepOne(): { en: string; ru: string } {
   const color = getPlayerTeamColorName();
   if (color === null) {
-    return { en: 'Keep 1 key of own team', ru: 'Оставлять 1 ключ из своих' };
+    return { en: 'Keep 1 key of own team', ru: 'Оставлять 1 ключ для своих' };
   }
   return {
     en: `Keep 1 key of ${color.en}`,
-    ru: `Оставлять 1 ключ из ${color.ru}`,
+    ru: `Оставлять 1 ключ для ${color.ruGen}`,
   };
 }
 
