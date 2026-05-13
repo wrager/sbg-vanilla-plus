@@ -30,6 +30,43 @@ const AMOUNT_ZOOM = 15;
 const TITLE_ZOOM = 17;
 const TITLE_MAX_LENGTH = 12;
 const SELECTED_COLOR = '#BB7100';
+
+// ── style constants ──────────────────────────────────────────────────────────
+// Магнитуды (радиусы, толщины, font-sizes) и пороги zoom для стилевой функции
+// слоя. Вынесено сюда из createLayerStyleFunction, чтобы все геометрические
+// решения о виде точки видны в одном месте.
+const STYLE_RADIUS_NORMAL_PX = 8;
+const STYLE_RADIUS_LARGE_PX = 10;
+const STYLE_RADIUS_LARGE_ZOOM_THRESHOLD = 16;
+const STYLE_SELECTED_RADIUS_MULTIPLIER = 1.4;
+
+const STYLE_STROKE_WIDTH_NORMAL_PX = 3;
+const STYLE_STROKE_WIDTH_SELECTED_PX = 4;
+const STYLE_TEXT_STROKE_WIDTH_PX = 3;
+
+const STYLE_AMOUNT_FONT_SIZE_LARGE_PX = 14;
+const STYLE_AMOUNT_FONT_SIZE_NORMAL_PX = 12;
+const STYLE_AMOUNT_FONT_SIZE_LARGE_ZOOM_THRESHOLD = 15;
+const STYLE_TITLE_FONT_SIZE_PX = 12;
+const STYLE_TITLE_OFFSET_Y_PX = 18;
+
+// Alpha-каналы заливки: невыделенная точка - 0.25 от team-цвета; выделенная,
+// которая реально удалится, - 0.5 SELECTED_COLOR; выделенная, которая
+// защищена (lock / own / unknown / keepOne полностью защищена), - 0 fill,
+// только обводка держит индикацию выделения.
+const STYLE_FILL_ALPHA_TEAM = 0.25;
+const STYLE_FILL_ALPHA_SELECTED_DELETABLE = 0.5;
+const STYLE_FILL_ALPHA_SELECTED_PROTECTED = 0;
+// opacity иконок lock/star/=1 (одиночные и парные).
+const STYLE_ICON_OPACITY = 0.7;
+
+// Слои zIndex в стилевой функции. Z_INDEX_OVERLAY (иконки/"=1") выше
+// Z_INDEX_SELECTED (круг выделения), чтобы значки оставались читаемыми
+// поверх оранжевого fill.
+const STYLE_Z_INDEX_BASE = 1;
+const STYLE_Z_INDEX_TEXT = 2;
+const STYLE_Z_INDEX_SELECTED = 3;
+const STYLE_Z_INDEX_OVERLAY = 4;
 // NEUTRAL_COLOR - явный серый для team === null (нейтральная точка, сервер
 // вернул te:null). Не зависит от темы - так нейтральные точки в нашем слое
 // визуально отличаются от непрогруженных. Для team === undefined читаем
@@ -699,20 +736,23 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
 
     const zoom = olMap?.getView().getZoom?.() ?? 0;
     const teamColor = getTeamColor(team);
-    const baseRadius = zoom >= 16 ? 10 : 8;
-    const radius = isSelected ? baseRadius * 1.4 : baseRadius;
+    const baseRadius =
+      zoom >= STYLE_RADIUS_LARGE_ZOOM_THRESHOLD ? STYLE_RADIUS_LARGE_PX : STYLE_RADIUS_NORMAL_PX;
+    const radius = isSelected ? baseRadius * STYLE_SELECTED_RADIUS_MULTIPLIER : baseRadius;
 
     // CUI style: transparent fill + colored stroke. Выделенный кружок,
     // который реально пойдёт в удаление - fill полупрозрачный SELECTED_COLOR
-    // (alpha 50%, видно "к удалению"). Выделенный защищённый (не пойдёт
-    // в payload) - fill полностью прозрачный: только обводка держит
-    // индикацию selected-state, оранжевый не намекает на удаление.
-    const selectedFillAlpha = willNotBeDeleted ? 0 : 0.5;
+    // (видно "к удалению"). Выделенный защищённый (не пойдёт в payload) -
+    // fill полностью прозрачный: только обводка держит индикацию
+    // selected-state, оранжевый не намекает на удаление.
+    const selectedFillAlpha = willNotBeDeleted
+      ? STYLE_FILL_ALPHA_SELECTED_PROTECTED
+      : STYLE_FILL_ALPHA_SELECTED_DELETABLE;
     const fillColor = isSelected
       ? colorWithAlpha(SELECTED_COLOR, selectedFillAlpha)
-      : colorWithAlpha(teamColor, 0.25);
+      : colorWithAlpha(teamColor, STYLE_FILL_ALPHA_TEAM);
     const strokeColor = isSelected ? SELECTED_COLOR : teamColor;
-    const strokeWidth = isSelected ? 4 : 3;
+    const strokeWidth = isSelected ? STYLE_STROKE_WIDTH_SELECTED_PX : STYLE_STROKE_WIDTH_NORMAL_PX;
 
     const textColor = getCachedTextColor();
     const backgroundColor = getCachedBackgroundColor();
@@ -724,14 +764,20 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
           fill: new OlFill({ color: fillColor }),
           stroke: new OlStroke({ color: strokeColor, width: strokeWidth }),
         }),
-        zIndex: isSelected ? 3 : 1,
+        zIndex: isSelected ? STYLE_Z_INDEX_SELECTED : STYLE_Z_INDEX_BASE,
       }),
     ];
 
+    const amountFont = `${
+      zoom >= STYLE_AMOUNT_FONT_SIZE_LARGE_ZOOM_THRESHOLD
+        ? STYLE_AMOUNT_FONT_SIZE_LARGE_PX
+        : STYLE_AMOUNT_FONT_SIZE_NORMAL_PX
+    }px Manrope`;
+
     // Один слот в центре точки. Приоритет сверху вниз:
-    // 1. lock + favorited - обе иконки наложены, каждая opacity 0.7.
-    // 2. lock - только замок (opacity 0.7).
-    // 3. favorited - только звезда (opacity 0.7).
+    // 1. lock + favorited - обе иконки наложены.
+    // 2. lock - только замок.
+    // 3. favorited - только звезда.
     // 4. =1 (для выделенных с keepOneTrimmed+toSurvive=1) - текст =1.
     // 5. amount (zoom >= AMOUNT_ZOOM) - число ключей в стопке.
     if (isLocked && isFavorited && OlIcon) {
@@ -741,18 +787,18 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
             src: buildIconDataUrl(LOCK_ICON_SVG_PATH),
             imgSize: [ICON_NATURAL_SIZE, ICON_NATURAL_SIZE],
             scale: ICON_DISPLAY_SIZE / ICON_NATURAL_SIZE,
-            opacity: 0.7,
+            opacity: STYLE_ICON_OPACITY,
           }),
-          zIndex: 4,
+          zIndex: STYLE_Z_INDEX_OVERLAY,
         }),
         new OlStyle({
           image: new OlIcon({
             src: buildIconDataUrl(STAR_ICON_SVG_PATH),
             imgSize: [ICON_NATURAL_SIZE, ICON_NATURAL_SIZE],
             scale: ICON_DISPLAY_SIZE / ICON_NATURAL_SIZE,
-            opacity: 0.7,
+            opacity: STYLE_ICON_OPACITY,
           }),
-          zIndex: 4,
+          zIndex: STYLE_Z_INDEX_OVERLAY,
         }),
       );
     } else if (isLocked && OlIcon) {
@@ -762,9 +808,9 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
             src: buildIconDataUrl(LOCK_ICON_SVG_PATH),
             imgSize: [ICON_NATURAL_SIZE, ICON_NATURAL_SIZE],
             scale: ICON_DISPLAY_SIZE / ICON_NATURAL_SIZE,
-            opacity: 0.7,
+            opacity: STYLE_ICON_OPACITY,
           }),
-          zIndex: 4,
+          zIndex: STYLE_Z_INDEX_OVERLAY,
         }),
       );
     } else if (isFavorited && OlIcon) {
@@ -774,23 +820,23 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
             src: buildIconDataUrl(STAR_ICON_SVG_PATH),
             imgSize: [ICON_NATURAL_SIZE, ICON_NATURAL_SIZE],
             scale: ICON_DISPLAY_SIZE / ICON_NATURAL_SIZE,
-            opacity: 0.7,
+            opacity: STYLE_ICON_OPACITY,
           }),
-          zIndex: 4,
+          zIndex: STYLE_Z_INDEX_OVERLAY,
         }),
       );
     } else if (showOneSurvived) {
       styles.push(
         new OlStyle({
           text: new OlText({
-            font: `${zoom >= 15 ? 14 : 12}px Manrope`,
+            font: amountFont,
             text: '=1',
             fill: new OlFill({ color: textColor }),
-            stroke: new OlStroke({ color: backgroundColor, width: 3 }),
+            stroke: new OlStroke({ color: backgroundColor, width: STYLE_TEXT_STROKE_WIDTH_PX }),
           }),
-          // Выше круга выделения (zIndex=3) - "=1" остаётся читаемым поверх
-          // оранжевого fill, не теряется под ним.
-          zIndex: 4,
+          // Выше круга выделения - "=1" остаётся читаемым поверх оранжевого
+          // fill, не теряется под ним.
+          zIndex: STYLE_Z_INDEX_OVERLAY,
         }),
       );
     } else if (zoom >= AMOUNT_ZOOM) {
@@ -801,12 +847,12 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
       styles.push(
         new OlStyle({
           text: new OlText({
-            font: `${zoom >= 15 ? 14 : 12}px Manrope`,
+            font: amountFont,
             text: String(amount),
             fill: new OlFill({ color: textColor }),
-            stroke: new OlStroke({ color: backgroundColor, width: 3 }),
+            stroke: new OlStroke({ color: backgroundColor, width: STYLE_TEXT_STROKE_WIDTH_PX }),
           }),
-          zIndex: 2,
+          zIndex: STYLE_Z_INDEX_TEXT,
         }),
       );
     }
@@ -819,14 +865,14 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
       styles.push(
         new OlStyle({
           text: new OlText({
-            font: '12px Manrope',
+            font: `${STYLE_TITLE_FONT_SIZE_PX}px Manrope`,
             text: displayTitle,
             fill: new OlFill({ color: textColor }),
-            stroke: new OlStroke({ color: backgroundColor, width: 3 }),
-            offsetY: 18,
+            stroke: new OlStroke({ color: backgroundColor, width: STYLE_TEXT_STROKE_WIDTH_PX }),
+            offsetY: STYLE_TITLE_OFFSET_Y_PX,
             textBaseline: 'top',
           }),
-          zIndex: 2,
+          zIndex: STYLE_Z_INDEX_TEXT,
         }),
       );
     }
