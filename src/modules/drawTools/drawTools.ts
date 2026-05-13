@@ -34,7 +34,13 @@ const DRAW_LAYER_NAME = 'svp-draw-tools';
 const DRAW_LAYER_Z_INDEX = 9;
 const SNAP_THRESHOLD_PX = 100;
 const DEFAULT_COLOR = '#a24ac3';
-const REGION_PICKER_SELECTOR = '.region-picker.ol-unselectable.ol-control';
+// По refs/game/dom/body.html класс .region-picker уникален в DOM игры; остальные
+// два класса (ol-unselectable, ol-control) - visual hints на природу элемента,
+// которые ничего не добавляют к идентификации. Сужение до '.region-picker'
+// уменьшает coupling: если игра когда-нибудь уберёт ol-unselectable/ol-control
+// (например, переедет на не-OL-кнопку для picker'а), mount не упадёт по
+// waitForElement timeout, а MutationObserver-re-find продолжит работать.
+const REGION_PICKER_SELECTOR = '.region-picker';
 const CONTROL_BUTTON_ID = 'svp-draw-tools-menu-button';
 
 type ToolMode = 'none' | 'line' | 'polygon' | 'edit' | 'delete';
