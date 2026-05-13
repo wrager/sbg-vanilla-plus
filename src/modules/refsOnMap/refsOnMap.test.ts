@@ -557,6 +557,20 @@ describe('refsOnMap viewer', () => {
     expect(checkbox.checked).toBe(true);
   });
 
+  test('removes follow key on close when it was absent before opening viewer', () => {
+    // Ключ 'follow' отсутствует до showViewer - disableFollowMode пишет
+    // 'false', restoreFollowMode обязан вернуть исходное состояние через
+    // removeItem, а не оставить явный 'false'.
+    localStorage.removeItem('follow');
+
+    setInventoryCache();
+    clickShowButton();
+    expect(localStorage.getItem('follow')).toBe('false');
+
+    clickCloseButton();
+    expect(localStorage.getItem('follow')).toBeNull();
+  });
+
   test('resets rotation to 0 when opening viewer', () => {
     setInventoryCache();
     clickShowButton();

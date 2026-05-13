@@ -1598,10 +1598,16 @@ function disableFollowMode(): void {
 }
 
 function restoreFollowMode(): void {
-  if (beforeOpenFollow === null || beforeOpenFollow === 'false') return;
-  localStorage.setItem('follow', beforeOpenFollow);
-  const checkbox = document.querySelector('#toggle-follow');
-  if (checkbox instanceof HTMLInputElement) checkbox.checked = true;
+  if (beforeOpenFollow === null) {
+    // До showViewer ключ 'follow' отсутствовал. disableFollowMode записал
+    // 'false', что для будущих сессий выглядит как явный выбор игрока.
+    // Восстанавливаем исходное состояние через removeItem.
+    localStorage.removeItem('follow');
+  } else if (beforeOpenFollow !== 'false') {
+    localStorage.setItem('follow', beforeOpenFollow);
+    const checkbox = document.querySelector('#toggle-follow');
+    if (checkbox instanceof HTMLInputElement) checkbox.checked = true;
+  }
   beforeOpenFollow = null;
 }
 
