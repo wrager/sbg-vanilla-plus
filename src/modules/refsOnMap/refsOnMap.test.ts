@@ -864,4 +864,116 @@ describe('refsOnMap lock protection', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(document.querySelector('.svp-toast')?.textContent).toMatch(/lock|нативный|f-flag/i);
   });
+
+  test('race-protection: точка, ставшая защищённой между confirm и DELETE, выпадает из payload', async () => {
+    // Сценарий: ref-1 (point-1, f=0) и ref-2 (point-2, f=0) изначально оба
+    // открыты. Пользователь выбирает обе, нажимает trash, видит confirm и
+    // подтверждает. Между confirm и DELETE сервер прислал обновлённый кэш с
+    // f=0b10 у ref-2 (point-2 стала locked). refsOnMap должен перечитать
+    // кэш и выбросить ref-2 из payload, отправив DELETE только для ref-1.
+    const initialItems = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open A', f: 0 },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Open B', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(initialItems));
+    clickShowButton();
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    expect(allFeatures.length).toBe(2);
+
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[1]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    // confirm-обёртка: ВО ВРЕМЯ confirm пользователь нажал нативный замочек
+    // на point-2; обновляем кэш под защищённое состояние. Возвращаем true,
+    // как обычное подтверждение в диалоге.
+    window.confirm = jest.fn(() => {
+      const updated = [
+        { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open A', f: 0 },
+        { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Now Locked', f: 0b10 },
+      ];
+      localStorage.setItem('inventory-cache', JSON.stringify(updated));
+      return true;
+    });
+    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
+      void _args;
+      return Promise.resolve({
+        json: () => Promise.resolve({ count: { total: 90 } }),
+      } as unknown as Response);
+    });
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    const body = JSON.parse(init.body as string) as { selection: Record<string, number> };
+    expect(body.selection).toHaveProperty('ref-1');
+    expect(body.selection).not.toHaveProperty('ref-2');
+  });
+
+  test('race-protection: все точки защищены до DELETE - fetch не уходит, показан toast', async () => {
+    // Edge-сценарий: пользователь выбрал обе точки, подтвердил confirm, а
+    // между confirm и DELETE сервер обновил кэш так, что обе стали locked.
+    // Удаления не должно произойти, должен быть toast.
+    const initialItems = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open A', f: 0 },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Open B', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(initialItems));
+    clickShowButton();
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[1]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    window.confirm = jest.fn(() => {
+      const updated = [
+        { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Now Locked A', f: 0b10 },
+        { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Now Locked B', f: 0b01 },
+      ];
+      localStorage.setItem('inventory-cache', JSON.stringify(updated));
+      return true;
+    });
+    const fetchSpy = jest.fn();
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/protect|защищ/i);
+  });
 });

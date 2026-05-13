@@ -375,10 +375,42 @@ async function handleDeleteClick(): Promise<void> {
 
   if (!confirm(message)) return;
 
+  // Race-protection: между partitionByProtection и DELETE кэш мог
+  // обновиться - пользователь параллельно нажал нативный замочек или
+  // звёздочку, или сервер прислал обновлённый кэш с новым `f` в ответе на
+  // другой запрос (discover, marks). Перечитываем свежий cache и
+  // пересчитываем set защищённых точек, выбрасывая из payload всё, что
+  // стало protected. inventoryApi.deleteInventoryItems делает то же самое
+  // в своём финальном guard, но refsOnMap бьёт по /api/inventory напрямую
+  // (свой deleteRefsFromServer), поэтому защита должна выполниться здесь.
+  const freshCache = readInventoryCache();
+  const freshProtectedPointGuids = buildProtectedPointGuids(freshCache);
+  const finalDeletable: IOlFeature[] = [];
+  const newlyProtected: IOlFeature[] = [];
+  for (const feature of deletable) {
+    const properties = feature.getProperties?.() ?? {};
+    const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+    if (pointGuid && freshProtectedPointGuids.has(pointGuid)) {
+      newlyProtected.push(feature);
+    } else {
+      finalDeletable.push(feature);
+    }
+  }
+
+  if (finalDeletable.length === 0) {
+    showToast(
+      t({
+        en: 'All selected keys became protected (locked or favorited) before deletion - aborted',
+        ru: 'Все выбранные ключи стали защищёнными (замочек или звёздочка) до удаления - отменено',
+      }),
+    );
+    return;
+  }
+
   const items: Record<string, number> = {};
   const deletedGuids = new Set<string>();
 
-  for (const feature of deletable) {
+  for (const feature of finalDeletable) {
     const id = feature.getId();
     const properties = feature.getProperties?.();
     const amount = properties?.amount;
@@ -396,7 +428,7 @@ async function handleDeleteClick(): Promise<void> {
     }
 
     // Remove features from map
-    for (const feature of deletable) {
+    for (const feature of finalDeletable) {
       refsSource.removeFeature?.(feature);
     }
 
@@ -409,7 +441,7 @@ async function handleDeleteClick(): Promise<void> {
     // highlight['7'] на feature должен отражать актуальное число ключей.
     const affectedPointGuids = Array.from(
       new Set(
-        deletable
+        finalDeletable
           .map((feature) => {
             const properties = feature.getProperties?.();
             return typeof properties?.pointGuid === 'string' ? properties.pointGuid : null;
@@ -428,18 +460,20 @@ async function handleDeleteClick(): Promise<void> {
 
     // Уведомление об оставленных защищённых: показываем после успешного
     // удаления, чтобы пользователь увидел итог в одном тосте, а не два
-    // диалога подряд.
-    if (protectedRefs.length > 0) {
+    // диалога подряд. Суммарно: точки, защищённые на момент клика по trash,
+    // и точки, ставшие защищёнными по race-protection между confirm и DELETE.
+    const keptFeatures = [...protectedRefs, ...newlyProtected];
+    if (keptFeatures.length > 0) {
       showToast(
         t({
-          en: `Protected (locked or favorited) points: ${protectedRefs.length} key(s) kept`,
-          ru: `Защищённые точки (замочек или звёздочка): ${protectedRefs.length} ключ(ей) оставлено`,
+          en: `Protected (locked or favorited) points: ${keptFeatures.length} key(s) kept`,
+          ru: `Защищённые точки (замочек или звёздочка): ${keptFeatures.length} ключ(ей) оставлено`,
         }),
       );
     }
 
-    overallRefsToDelete = sumAmount(protectedRefs);
-    uniqueRefsToDelete = protectedRefs.length;
+    overallRefsToDelete = sumAmount(keptFeatures);
+    uniqueRefsToDelete = keptFeatures.length;
     updateTrashCounter();
   } catch (error) {
     console.error(`[SVP] ${MODULE_ID}: deletion failed:`, error);
