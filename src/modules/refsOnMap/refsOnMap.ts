@@ -774,57 +774,35 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
         : STYLE_AMOUNT_FONT_SIZE_NORMAL_PX
     }px Manrope`;
 
+    // OlIcon доступен не во всех версиях OL (legacy SBG-script). При его
+    // отсутствии lock/star не рисуются - защита по lock работает на уровне
+    // payload (handleDeleteClick + classifyFeatures), визуальная индикация
+    // лишь подсказка.
+    const buildIconStyle = OlIcon
+      ? (path: string): unknown =>
+          new OlStyle({
+            image: new OlIcon({
+              src: buildIconDataUrl(path),
+              imgSize: [ICON_NATURAL_SIZE, ICON_NATURAL_SIZE],
+              scale: ICON_DISPLAY_SIZE / ICON_NATURAL_SIZE,
+              opacity: STYLE_ICON_OPACITY,
+            }),
+            zIndex: STYLE_Z_INDEX_OVERLAY,
+          })
+      : null;
+
     // Один слот в центре точки. Приоритет сверху вниз:
     // 1. lock + favorited - обе иконки наложены.
     // 2. lock - только замок.
     // 3. favorited - только звезда.
     // 4. =1 (для выделенных с keepOneTrimmed+toSurvive=1) - текст =1.
     // 5. amount (zoom >= AMOUNT_ZOOM) - число ключей в стопке.
-    if (isLocked && isFavorited && OlIcon) {
-      styles.push(
-        new OlStyle({
-          image: new OlIcon({
-            src: buildIconDataUrl(LOCK_ICON_SVG_PATH),
-            imgSize: [ICON_NATURAL_SIZE, ICON_NATURAL_SIZE],
-            scale: ICON_DISPLAY_SIZE / ICON_NATURAL_SIZE,
-            opacity: STYLE_ICON_OPACITY,
-          }),
-          zIndex: STYLE_Z_INDEX_OVERLAY,
-        }),
-        new OlStyle({
-          image: new OlIcon({
-            src: buildIconDataUrl(STAR_ICON_SVG_PATH),
-            imgSize: [ICON_NATURAL_SIZE, ICON_NATURAL_SIZE],
-            scale: ICON_DISPLAY_SIZE / ICON_NATURAL_SIZE,
-            opacity: STYLE_ICON_OPACITY,
-          }),
-          zIndex: STYLE_Z_INDEX_OVERLAY,
-        }),
-      );
-    } else if (isLocked && OlIcon) {
-      styles.push(
-        new OlStyle({
-          image: new OlIcon({
-            src: buildIconDataUrl(LOCK_ICON_SVG_PATH),
-            imgSize: [ICON_NATURAL_SIZE, ICON_NATURAL_SIZE],
-            scale: ICON_DISPLAY_SIZE / ICON_NATURAL_SIZE,
-            opacity: STYLE_ICON_OPACITY,
-          }),
-          zIndex: STYLE_Z_INDEX_OVERLAY,
-        }),
-      );
-    } else if (isFavorited && OlIcon) {
-      styles.push(
-        new OlStyle({
-          image: new OlIcon({
-            src: buildIconDataUrl(STAR_ICON_SVG_PATH),
-            imgSize: [ICON_NATURAL_SIZE, ICON_NATURAL_SIZE],
-            scale: ICON_DISPLAY_SIZE / ICON_NATURAL_SIZE,
-            opacity: STYLE_ICON_OPACITY,
-          }),
-          zIndex: STYLE_Z_INDEX_OVERLAY,
-        }),
-      );
+    if (isLocked && isFavorited && buildIconStyle) {
+      styles.push(buildIconStyle(LOCK_ICON_SVG_PATH), buildIconStyle(STAR_ICON_SVG_PATH));
+    } else if (isLocked && buildIconStyle) {
+      styles.push(buildIconStyle(LOCK_ICON_SVG_PATH));
+    } else if (isFavorited && buildIconStyle) {
+      styles.push(buildIconStyle(STAR_ICON_SVG_PATH));
     } else if (showOneSurvived) {
       styles.push(
         new OlStyle({
