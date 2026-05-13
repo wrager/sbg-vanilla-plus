@@ -867,6 +867,29 @@ function computeSelectionBreakdown(): ISelectionBreakdown {
  * Вызывается при каждом изменении selection, при смене ownTeamMode и после
  * успешного delete (когда часть features удалена).
  */
+// updateSelectionUi вызывается из team-load worker после каждого batch'а
+// /api/point. Содержимое UI при этом часто НЕ меняется (selection-info
+// зависит от selectedPoints/Keys, кнопка trash - тоже). Запись одних и тех
+// же значений в DOM на каждом batch'е - лишний reflow и сброс текстового
+// выделения пользователя. Эти хелперы пишут только при фактическом
+// отличии текущего значения от нового.
+function setTextIfChanged(el: HTMLElement | null, text: string): void {
+  if (el && el.textContent !== text) el.textContent = text;
+}
+function setStylePropIfChanged(
+  el: HTMLElement | null,
+  prop: 'display' | 'visibility',
+  value: string,
+): void {
+  if (el && el.style[prop] !== value) el.style[prop] = value;
+}
+function setBoolPropIfChanged(el: HTMLButtonElement | null, value: boolean): void {
+  if (el && el.disabled !== value) el.disabled = value;
+}
+function setDataLoadingIfChanged(el: HTMLElement | null, value: string): void {
+  if (el && el.dataset.loading !== value) el.dataset.loading = value;
+}
+
 function updateSelectionUi(): void {
   // Перед чтением UI-сводки прокидываем актуальную классификацию на сами
   // фичи - стилевая функция читает isLocked/isFavorited/deletionState
@@ -879,48 +902,31 @@ function updateSelectionUi(): void {
 
   if (trashButton) {
     const trashLabel = trashButton.querySelector<HTMLSpanElement>('.svp-refs-on-map-trash-label');
-    if (trashLabel) {
-      trashLabel.textContent = hasSelection
+    setTextIfChanged(
+      trashLabel,
+      hasSelection
         ? t({
             en: `${breakdown.deletablePoints} (${breakdown.deletableKeys} keys)`,
             ru: `${breakdown.deletablePoints} (${breakdown.deletableKeys} ключей)`,
           })
-        : '';
-    }
-    trashButton.style.visibility = hasSelection ? 'visible' : 'hidden';
-    // Блокировка двух типов:
-    // 1. isLoading - при protective-mode (keep/keepOne) И когда хотя бы один
-    //    выбранный guid реально в очереди загрузки команды. Фоновая
-    //    загрузка для невыбранных точек не мешает - фильтр свои читает
-    //    team только у selected, lock защищается через inventory-cache.f.
-    // 2. nothingToDelete - payload пуст (deletableKeys=0). Кнопка "0 (0
-    //    ключей)" не должна быть кликабельна: клик и так показал бы
-    //    тост-разъяснение, но визуально disabled-состояние сразу даёт
-    //    пользователю понять, что удалять нечего без догадок.
+        : '',
+    );
+    setStylePropIfChanged(trashButton, 'visibility', hasSelection ? 'visible' : 'hidden');
     const isLoading = protectiveMode && hasSelectedPointsLoadingTeam();
     const nothingToDelete = breakdown.deletableKeys === 0;
-    trashButton.disabled = isLoading || nothingToDelete;
-    // data-loading переключает видимость default/loading icon span'ов через
-    // CSS селекторы [data-loading="true"]. SVG-спиннер остаётся mounted
-    // всё время viewer-сессии - animation крутится непрерывно.
-    trashButton.dataset.loading = isLoading ? 'true' : 'false';
+    setBoolPropIfChanged(trashButton, isLoading || nothingToDelete);
+    setDataLoadingIfChanged(trashButton, isLoading ? 'true' : 'false');
   }
 
   // Radio-блок mode показывается только при наличии выбора - до выбора
   // пользовательские фильтры не имеют смысла, лишний UI-шум.
-  if (modeContainer) {
-    modeContainer.style.display = viewerOpen && hasSelection ? '' : 'none';
-  }
+  setStylePropIfChanged(modeContainer, 'display', viewerOpen && hasSelection ? '' : 'none');
 
   // Кнопка "Отменить" снимает выделение всех точек. Видна только при
   // наличии выбора - симметрично с trashButton.
-  if (cancelButton) {
-    cancelButton.style.visibility = hasSelection ? 'visible' : 'hidden';
-  }
+  setStylePropIfChanged(cancelButton, 'visibility', hasSelection ? 'visible' : 'hidden');
 
-  if (selectionInfoEl) {
-    selectionInfoEl.style.display = hasSelection ? '' : 'none';
-  }
+  setStylePropIfChanged(selectionInfoEl, 'display', hasSelection ? '' : 'none');
   if (hasSelection) {
     // "Из них:" - только когда после total идёт хотя бы одна под-строка
     // (lock / own / unknown / keepOne). Иначе total оканчивается точкой
@@ -930,8 +936,9 @@ function updateSelectionUi(): void {
       (protectiveMode && breakdown.ownPoints > 0) ||
       (protectiveMode && breakdown.unknownPoints > 0) ||
       (ownTeamMode === 'keepOne' && breakdown.keepOneKeyPoints > 0);
-    if (selectionInfoTotalRow) {
-      selectionInfoTotalRow.textContent = hasAnySubrow
+    setTextIfChanged(
+      selectionInfoTotalRow,
+      hasAnySubrow
         ? t({
             en: `Selected: ${breakdown.selectedPoints} (${breakdown.selectedKeys} keys). Of them:`,
             ru: `Выделено: ${breakdown.selectedPoints} (${breakdown.selectedKeys} ключей). Из них:`,
@@ -939,55 +946,64 @@ function updateSelectionUi(): void {
         : t({
             en: `Selected: ${breakdown.selectedPoints} (${breakdown.selectedKeys} keys)`,
             ru: `Выделено: ${breakdown.selectedPoints} (${breakdown.selectedKeys} ключей)`,
-          });
-    }
+          }),
+    );
     if (selectionInfoProtectedRow) {
       const showLock = breakdown.lockPoints > 0;
-      selectionInfoProtectedRow.style.display = showLock ? '' : 'none';
+      setStylePropIfChanged(selectionInfoProtectedRow, 'display', showLock ? '' : 'none');
       if (showLock) {
-        selectionInfoProtectedRow.textContent = t({
-          en: `${breakdown.lockPoints} (${breakdown.lockKeys} keys) protected`,
-          ru: `${breakdown.lockPoints} (${breakdown.lockKeys} ключей) защищено`,
-        });
+        setTextIfChanged(
+          selectionInfoProtectedRow,
+          t({
+            en: `${breakdown.lockPoints} (${breakdown.lockKeys} keys) protected`,
+            ru: `${breakdown.lockPoints} (${breakdown.lockKeys} ключей) защищено`,
+          }),
+        );
       }
     }
     if (selectionInfoOwnRow) {
       const showOwn = protectiveMode && breakdown.ownPoints > 0;
-      selectionInfoOwnRow.style.display = showOwn ? '' : 'none';
+      setStylePropIfChanged(selectionInfoOwnRow, 'display', showOwn ? '' : 'none');
       if (showOwn) {
-        selectionInfoOwnRow.textContent = t(getOwnRowText(breakdown.ownPoints, breakdown.ownKeys));
+        setTextIfChanged(
+          selectionInfoOwnRow,
+          t(getOwnRowText(breakdown.ownPoints, breakdown.ownKeys)),
+        );
       }
     }
     if (selectionInfoUnknownRow) {
       const showUnknown = protectiveMode && breakdown.unknownPoints > 0;
-      selectionInfoUnknownRow.style.display = showUnknown ? '' : 'none';
+      setStylePropIfChanged(selectionInfoUnknownRow, 'display', showUnknown ? '' : 'none');
       if (showUnknown) {
-        selectionInfoUnknownRow.textContent = t({
-          en: `${breakdown.unknownPoints} (${breakdown.unknownKeys} keys) unknown team`,
-          ru: `${breakdown.unknownPoints} (${breakdown.unknownKeys} ключей) неизвестного цвета`,
-        });
+        setTextIfChanged(
+          selectionInfoUnknownRow,
+          t({
+            en: `${breakdown.unknownPoints} (${breakdown.unknownKeys} keys) unknown team`,
+            ru: `${breakdown.unknownPoints} (${breakdown.unknownKeys} ключей) неизвестного цвета`,
+          }),
+        );
       }
     }
     if (selectionInfoKeepOneRow) {
-      // Показываем сохранённые правилом ключи только при ownTeamMode='keepOne'.
       const showKeepOne = ownTeamMode === 'keepOne' && breakdown.keepOneKeyPoints > 0;
-      selectionInfoKeepOneRow.style.display = showKeepOne ? '' : 'none';
+      setStylePropIfChanged(selectionInfoKeepOneRow, 'display', showKeepOne ? '' : 'none');
       if (showKeepOne) {
-        selectionInfoKeepOneRow.textContent = t({
-          en: `${breakdown.keepOneKeyKeys} last key(s) will stay`,
-          ru: `${breakdown.keepOneKeyKeys} последних ключей останутся`,
-        });
+        setTextIfChanged(
+          selectionInfoKeepOneRow,
+          t({
+            en: `${breakdown.keepOneKeyKeys} last key(s) will stay`,
+            ru: `${breakdown.keepOneKeyKeys} последних ключей останутся`,
+          }),
+        );
       }
     }
-    if (selectionInfoToDeleteRow) {
-      // Итоговое число ключей в payload DELETE. Видна всегда при наличии
-      // selection - даже если 0, пользователь должен видеть факт "ничего не
-      // уйдёт в удаление" (например, всё защищено).
-      selectionInfoToDeleteRow.textContent = t({
+    setTextIfChanged(
+      selectionInfoToDeleteRow,
+      t({
         en: `To delete: ${breakdown.deletableKeys} key(s)`,
         ru: `К удалению: ${breakdown.deletableKeys} ключ(ей)`,
-      });
-    }
+      }),
+    );
   }
 }
 
