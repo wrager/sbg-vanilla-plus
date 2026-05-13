@@ -70,6 +70,10 @@ export interface IOlVectorSource {
   // подписью без cast'а на стороне вызывающего.
   on(type: string, listener: (...args: unknown[]) => void): void;
   un(type: string, listener: (...args: unknown[]) => void): void;
+  // Принудительная перерисовка слоя без изменения состава фич - используется
+  // когда мы поменяли свойства уже добавленных фич (через feature.set()) и
+  // хотим, чтобы стилевая функция была вызвана повторно с новыми props.
+  changed?(): void;
 }
 
 export interface IOlTileSource {
@@ -139,6 +143,7 @@ interface IOlGlobal {
     Fill?: new (opts: Record<string, unknown>) => unknown;
     Stroke?: new (opts: Record<string, unknown>) => unknown;
     Circle?: new (opts: Record<string, unknown>) => unknown;
+    Icon?: new (opts: Record<string, unknown>) => unknown;
   };
   Feature?: new (opts?: Record<string, unknown>) => IOlFeature;
   geom?: {

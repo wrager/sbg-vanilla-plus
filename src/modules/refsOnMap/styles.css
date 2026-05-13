@@ -18,37 +18,164 @@
   align-self: center;
 }
 
-.svp-refs-on-map-trash {
+.svp-refs-on-map-bottom-stack {
   position: fixed;
-  bottom: 100px;
-  right: 20px;
+  bottom: 8px;
+  right: 8px;
   z-index: 10;
-  background: var(--background-transp);
-  border: 1px solid var(--border-transp);
-  backdrop-filter: blur(8px);
-  color: var(--text);
-  font-size: 14px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-  min-width: 48px;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+  max-width: calc(100vw - 16px);
 }
 
-.svp-refs-on-map-locked-note {
+.svp-refs-on-map-trash {
+  height: 38px;
+  border: none;
+  border-radius: 3px;
+  font-weight: bold;
+}
+
+.svp-refs-on-map-trash:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.svp-refs-on-map-trash-icon-default,
+.svp-refs-on-map-trash-icon-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.svp-refs-on-map-trash-icon-loading {
+  display: none;
+}
+
+.svp-refs-on-map-trash[data-loading='true'] .svp-refs-on-map-trash-icon-default {
+  display: none;
+}
+
+.svp-refs-on-map-trash[data-loading='true'] .svp-refs-on-map-trash-icon-loading {
+  display: inline-flex;
+}
+
+/* Border-spinner в стиле нативного .loading-screen__task.loading::before:
+ * круг с прозрачной правой границей, который крутится. keyframe `loading`
+ * определён в style@0.6.1.css игры (rotate(1turn)); полагаемся на него. */
+.svp-refs-on-map-trash-icon-loading::before {
+  content: '';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 3px currentColor solid;
+  border-right-color: transparent;
+  border-radius: 1em;
+  animation: loading 1s linear infinite;
+}
+
+.svp-refs-on-map-trash-label {
+  margin-left: 6px;
+}
+
+.svp-refs-on-map-trash-label:empty {
+  margin-left: 0;
+}
+
+.svp-refs-on-map-cancel {
+  height: 38px;
+  border: none;
+  border-radius: 3px;
+  font-weight: bold;
+}
+
+.svp-refs-on-map-mode {
+  background: var(--background-transp);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  user-select: none;
+}
+
+.svp-refs-on-map-mode__option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.svp-refs-on-map-mode__option input[type='radio'] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.svp-refs-on-map-selection-info {
+  background: var(--background-transp);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  line-height: 1.4;
+  pointer-events: none;
+  box-sizing: border-box;
+  /* min-width: 0 - корневая правка переноса: по дефолту flex-item имеет
+   * min-width: auto (= min-content), что НЕ ПОЗВОЛЯЕТ блоку быть уже
+   * самой длинной строки текста, и max-width/overflow-wrap не помогают.
+   * После min-width:0 блок может сжаться до ширины stack-контейнера,
+   * а white-space:normal + word-break:break-word переносят содержимое. */
+  min-width: 0;
+  max-width: calc(100vw - 32px);
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.svp-refs-on-map-progress {
   position: fixed;
-  top: 8px;
+  top: max(8px, env(safe-area-inset-top, 8px));
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1;
+  z-index: 2;
   background: var(--background-transp);
   border: 1px solid var(--border-transp);
   backdrop-filter: blur(8px);
   color: var(--text);
   font-size: 12px;
-  padding: 4px 10px;
+  padding: 6px 12px;
   border-radius: 6px;
   pointer-events: none;
+  min-width: 200px;
   max-width: calc(100vw - 40px);
   text-align: center;
+}
+
+.svp-refs-on-map-progress-label {
+  margin-bottom: 4px;
+}
+
+.svp-refs-on-map-progress-track {
+  width: 100%;
+  height: 4px;
+  background: var(--border-transp);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.svp-refs-on-map-progress-bar {
+  height: 100%;
+  background: var(--text);
+  transition: width 0.2s ease-out;
+}
+
+.svp-refs-on-map-progress-counter {
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
 }

@@ -48,3 +48,20 @@ export function buildLockedPointGuids(items: readonly unknown[]): Set<string> {
   }
   return locked;
 }
+
+/**
+ * Аналог buildLockedPointGuids для бита 0 поля `f` - favorite. На точке как
+ * правило одна стопка ключей, но если их несколько, fav-флаг любой из них
+ * означает «точка в избранном» для UI. См. inventoryTypes:30 и
+ * refs/game/script.js:3404 - `is_fav = !!(item?.f & 0b1)`.
+ */
+export function buildFavoritedPointGuids(items: readonly unknown[]): Set<string> {
+  const favorited = new Set<string>();
+  for (const item of items) {
+    if (!isInventoryReference(item)) continue;
+    if (item.f === undefined) continue;
+    if ((item.f & 0b1) === 0) continue;
+    favorited.add(item.l);
+  }
+  return favorited;
+}
