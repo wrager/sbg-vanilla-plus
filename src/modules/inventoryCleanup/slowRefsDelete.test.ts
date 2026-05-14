@@ -830,6 +830,73 @@ describe('runSlowDelete: isProtectionFlagSupportAvailable=false блокируе
     fetchSpy.mockRestore();
   });
 
+  test('in-flight: второй клик не стартует второй пайплайн пока первый ждёт /api/point', async () => {
+    setSlowSettings();
+    setPlayerTeam(1);
+    setLockMigrationDone();
+    localStorage.setItem('auth', 'test-token');
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 3, f: 0 }]),
+    );
+    makeBar();
+    await loadFavoritesForTest();
+
+    let releasePoint!: (value: Response) => void;
+    const hang = new Promise<Response>((resolve) => {
+      releasePoint = resolve;
+    });
+
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const fetchSpy = jest.spyOn(window, 'fetch').mockImplementation((input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/api/point')) {
+        return hang;
+      }
+      if (url.includes('/api/inventory')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ count: { total: 100 } }),
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response);
+    });
+
+    installSlowRefsDelete();
+    const button = getButton();
+    if (!button) throw new Error('button missing');
+    button.click();
+    await Promise.resolve();
+
+    const countPointFetches = (): number =>
+      fetchSpy.mock.calls.filter((args) => {
+        const url =
+          typeof args[0] === 'string' ? args[0] : args[0] instanceof URL ? args[0].href : args[0].url;
+        return url.includes('/api/point');
+      }).length;
+
+    expect(countPointFetches()).toBe(1);
+
+    button.click();
+    await Promise.resolve();
+    expect(countPointFetches()).toBe(1);
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+
+    releasePoint({
+      ok: true,
+      json: () => Promise.resolve({ data: { te: 1 } }),
+    } as unknown as Response);
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 200);
+    });
+
+    confirmSpy.mockRestore();
+    fetchSpy.mockRestore();
+  });
+
   test('пустой кэш ключей: isProtectionFlagSupportAvailable=false (refStacks.length=0), runSlowDelete отбивается до confirm', async () => {
     // length=0 ветка проверки `refStacks.length > 0 && every(...)` - тоже
     // считается isProtectionFlagSupportAvailable=false. Без теста замена condition'а на

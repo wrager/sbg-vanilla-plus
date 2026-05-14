@@ -32,6 +32,8 @@ const TARGET_SELECTOR = '#inventory-delete';
 export const FETCH_CONCURRENCY = 3;
 const BROOM_ICON = '\u{1F9F9}';
 
+let slowDeleteInFlight = false;
+
 let bodyObserver: MutationObserver | null = null;
 
 function getPlayerTeam(): number | null {
@@ -224,203 +226,213 @@ function showSlowToast(message: string): void {
 }
 
 async function runSlowDelete(): Promise<void> {
-  const settings = loadCleanupSettings();
-  if (settings.limits.referencesMode !== 'slow') {
-    showSlowToast(
-      t({ en: 'Key cleanup mode is not "Slow"', ru: 'Режим очистки ключей не «Медленно»' }),
-    );
-    return;
-  }
-  // Fail-safe на случай если кнопка показана во время гонки snapshot-неготов.
-  // shouldShowButton уже прячет её, но прямой вызов функции (тест, будущая
-  // подмена обработчика) не должен обойти блокировку. См. комментарий в
-  // shouldShowButton и в inventoryCleanup.runCleanupImpl.
-  if (getLegacyMigrationRefsDeletionBlockReason() === 'snapshot') {
-    showSlowToast(
-      t({
-        en: 'Favorites snapshot not loaded yet — wait a moment and try again',
-        ru: 'Снимок избранного ещё не загружен — подожди немного и попробуй снова',
-      }),
-    );
-    return;
-  }
-  const { referencesAlliedLimit, referencesNotAlliedLimit } = settings.limits;
-  if (referencesAlliedLimit === -1 && referencesNotAlliedLimit === -1) {
-    showSlowToast(t({ en: 'Limits not set', ru: 'Лимиты не заданы' }));
-    return;
-  }
-
-  const playerTeam = getPlayerTeam();
-  if (playerTeam === null) {
-    showSlowToast(
-      t({ en: 'Could not determine player team', ru: 'Не удалось определить команду игрока' }),
-    );
-    return;
-  }
-
-  // Защитный слой: нативные lock/favorite-флаги в `inventory-cache` (0.6.1+).
-  // Lock (бит 1) - явный замочек, favorite (бит 0) - звёздочка; оба означают
-  // «не трогать ключи этой точки». Legacy SVP/CUI-список в логике защиты не
-  // участвует - он только источник миграции. Если у пользователя есть непустой
-  // legacy список и миграция не сделана - кнопка slow cleanup скрыта (см.
-  // shouldShowButton).
-  //
-  // `isProtectionFlagSupportAvailable` симметрично с финальным guard в
-  // inventoryApi.deleteInventoryItems и проверкой в cleanupCalculator.
-  const cache = readInventoryCache();
-  const protectedPointGuids = buildProtectedPointGuids(cache);
-  if (!isProtectionFlagSupportAvailable(cache)) {
-    showSlowToast(
-      t({
-        en: 'Native lock/favorite protection unavailable: server returned no f-flags. Cleanup blocked.',
-        ru: 'Нативная защита (замочек или звёздочка) недоступна: сервер не отдал поле f. Очистка заблокирована.',
-      }),
-    );
-    return;
-  }
-  const invRefs = readInventoryReferences();
-  const deletableRefs: IRefByGuid[] = invRefs
-    .filter((ref) => ref.a > 0 && !protectedPointGuids.has(ref.l))
-    .map((ref) => ({ itemGuid: ref.g, pointGuid: ref.l, amount: ref.a }));
-
-  if (deletableRefs.length === 0) {
-    showSlowToast(
-      t({
-        en: 'No unprotected keys to process',
-        ru: 'Нет незащищённых ключей для обработки',
-      }),
-    );
-    return;
-  }
-
-  const uniquePointGuids = Array.from(new Set(deletableRefs.map((ref) => ref.pointGuid)));
-
-  const confirmed = confirm(
-    t({
-      en: `Fetch data for ${uniquePointGuids.length} points to determine faction? This may take a while.`,
-      ru: `Запросить данные по ${uniquePointGuids.length} точкам для определения фракции? Это может занять время.`,
-    }),
-  );
-  if (!confirmed) return;
-
-  const progress = openProgressModal();
-  progress.setStatus(t({ en: 'Fetching point data…', ru: 'Запрос данных точек…' }));
-  progress.update(0, uniquePointGuids.length);
-
-  let teams: Map<string, number | null>;
+  if (slowDeleteInFlight) return;
+  slowDeleteInFlight = true;
+  setSlowDeleteRunBusy(true);
   try {
-    teams = await fetchTeamsForGuids(uniquePointGuids, (done, total) => {
-      progress.update(done, total);
-    });
-  } catch (error) {
-    progress.close();
-    const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
-    showSlowToast(t({ en: 'Request error: ', ru: 'Ошибка запроса: ' }) + message);
-    return;
-  }
+    const settings = loadCleanupSettings();
+    if (settings.limits.referencesMode !== 'slow') {
+      showSlowToast(
+        t({ en: 'Key cleanup mode is not "Slow"', ru: 'Режим очистки ключей не «Медленно»' }),
+      );
+      return;
+    }
+    // Fail-safe на случай если кнопка показана во время гонки snapshot-неготов.
+    // shouldShowButton уже прячет её, но прямой вызов функции (тест, будущая
+    // подмена обработчика) не должен обойти блокировку. См. комментарий в
+    // shouldShowButton и в inventoryCleanup.runCleanupImpl.
+    if (getLegacyMigrationRefsDeletionBlockReason() === 'snapshot') {
+      showSlowToast(
+        t({
+          en: 'Favorites snapshot not loaded yet — wait a moment and try again',
+          ru: 'Снимок избранного ещё не загружен — подожди немного и попробуй снова',
+        }),
+      );
+      return;
+    }
+    const { referencesAlliedLimit, referencesNotAlliedLimit } = settings.limits;
+    if (referencesAlliedLimit === -1 && referencesNotAlliedLimit === -1) {
+      showSlowToast(t({ en: 'Limits not set', ru: 'Лимиты не заданы' }));
+      return;
+    }
 
-  progress.setStatus(t({ en: 'Calculating deletions…', ru: 'Расчёт удаления…' }));
+    const playerTeam = getPlayerTeam();
+    if (playerTeam === null) {
+      showSlowToast(
+        t({ en: 'Could not determine player team', ru: 'Не удалось определить команду игрока' }),
+      );
+      return;
+    }
 
-  const deletions = calculateSlowDeletions(
-    deletableRefs,
-    teams,
-    playerTeam,
-    referencesAlliedLimit,
-    referencesNotAlliedLimit,
-  );
+    // Защитный слой: нативные lock/favorite-флаги в `inventory-cache` (0.6.1+).
+    // Lock (бит 1) - явный замочек, favorite (бит 0) - звёздочка; оба означают
+    // «не трогать ключи этой точки». Legacy SVP/CUI-список в логике защиты не
+    // участвует - он только источник миграции. Если у пользователя есть непустой
+    // legacy список и миграция не сделана - кнопка slow cleanup скрыта (см.
+    // shouldShowButton).
+    //
+    // `isProtectionFlagSupportAvailable` симметрично с финальным guard в
+    // inventoryApi.deleteInventoryItems и проверкой в cleanupCalculator.
+    const cache = readInventoryCache();
+    const protectedPointGuids = buildProtectedPointGuids(cache);
+    if (!isProtectionFlagSupportAvailable(cache)) {
+      showSlowToast(
+        t({
+          en: 'Native lock/favorite protection unavailable: server returned no f-flags. Cleanup blocked.',
+          ru: 'Нативная защита (замочек или звёздочка) недоступна: сервер не отдал поле f. Очистка заблокирована.',
+        }),
+      );
+      return;
+    }
+    const invRefs = readInventoryReferences();
+    const deletableRefs: IRefByGuid[] = invRefs
+      .filter((ref) => ref.a > 0 && !protectedPointGuids.has(ref.l))
+      .map((ref) => ({ itemGuid: ref.g, pointGuid: ref.l, amount: ref.a }));
 
-  if (deletions.length === 0) {
-    progress.close();
-    showSlowToast(
+    if (deletableRefs.length === 0) {
+      showSlowToast(
+        t({
+          en: 'No unprotected keys to process',
+          ru: 'Нет незащищённых ключей для обработки',
+        }),
+      );
+      return;
+    }
+
+    const uniquePointGuids = Array.from(new Set(deletableRefs.map((ref) => ref.pointGuid)));
+
+    const confirmed = confirm(
       t({
-        en: 'No keys to delete with current limits',
-        ru: 'Нет ключей для удаления по заданным лимитам',
+        en: `Fetch data for ${uniquePointGuids.length} points to determine faction? This may take a while.`,
+        ru: `Запросить данные по ${uniquePointGuids.length} точкам для определения фракции? Это может занять время.`,
       }),
     );
-    return;
-  }
+    if (!confirmed) return;
 
-  // Race-protection: между первым чтением кэша (строка 273) и этим моментом
-  // прошёл async fetchTeamsForGuids - иногда минуты при больших списках. За
-  // это время пользователь мог пометить какие-то точки нативным замочком
-  // или звёздочкой. Финальный guard в deleteInventoryItems re-fetch'ит и
-  // выбрасывает throw на ВСЁМ батче при любой ставшей-protected точке -
-  // пользователь теряет возможность удалить и не-защищённые ключи. Делаем
-  // partial filter здесь, симметрично с refsOnMap.handleDeleteClick: в
-  // deletions оставляем только точки, всё ещё незащищённые на момент DELETE.
-  const freshCache = readInventoryCache();
-  const freshProtectedPointGuids = buildProtectedPointGuids(freshCache);
-  const finalDeletions = deletions.filter((entry) => {
-    if (entry.pointGuid === undefined) return true;
-    return !freshProtectedPointGuids.has(entry.pointGuid);
-  });
-  const newlyProtectedCount = deletions.length - finalDeletions.length;
+    const progress = openProgressModal();
+    progress.setStatus(t({ en: 'Fetching point data…', ru: 'Запрос данных точек…' }));
+    progress.update(0, uniquePointGuids.length);
 
-  if (finalDeletions.length === 0) {
-    progress.close();
-    showSlowToast(
-      t({
-        en: 'All keys became protected (locked or favorited) before deletion - aborted',
-        ru: 'Все ключи стали защищёнными (с замочком или звёздочкой) до удаления - отменено',
-      }),
-    );
-    return;
-  }
-
-  const totalAmount = finalDeletions.reduce((sum, entry) => sum + entry.amount, 0);
-  const alliedDeletions = finalDeletions.filter((entry) => {
-    const team = teams.get(entry.pointGuid ?? '');
-    return team === playerTeam;
-  });
-  const notAlliedDeletions = finalDeletions.filter((entry) => {
-    const team = teams.get(entry.pointGuid ?? '');
-    return team !== playerTeam;
-  });
-  const alliedAmount = alliedDeletions.reduce((sum, entry) => sum + entry.amount, 0);
-  const notAlliedAmount = notAlliedDeletions.reduce((sum, entry) => sum + entry.amount, 0);
-
-  const alliedLabel = t({ en: 'allied', ru: 'союзные' });
-  const notAlliedLabel = t({ en: 'not allied', ru: 'несоюзные' });
-  const keysLabel = t({ en: 'keys', ru: 'ключей' });
-  const summaryText = `${totalAmount} ${keysLabel} (${alliedLabel} ${alliedAmount} + ${notAlliedLabel} ${notAlliedAmount})`;
-
-  progress.setStatus(t({ en: 'Deleting: ', ru: 'Удаление: ' }) + summaryText);
-
-  try {
-    const result = await deleteInventoryItems(finalDeletions);
-    updateInventoryCache(finalDeletions);
-    updatePointRefCount();
-    // Sync счётчика ключей на подписи затронутых точек на карте. Slow удаляет
-    // только ключи (по protection-проверке выше), все pointGuid у удалений заданы.
-    const refPointGuids = Array.from(
-      new Set(
-        finalDeletions
-          .map((d) => d.pointGuid)
-          .filter((guid): guid is string => typeof guid === 'string'),
-      ),
-    );
-    if (refPointGuids.length > 0) {
-      void syncRefsCountForPoints(refPointGuids);
-    }
-    if (result.total > 0) {
-      updateDomInventoryCount(result.total);
-    }
-    progress.close();
-    const deletedText = t({ en: 'Deleted: ', ru: 'Удалено: ' }) + summaryText;
-    if (newlyProtectedCount > 0) {
-      const keptText = t({
-        en: ` (${String(newlyProtectedCount)} key(s) kept: became protected during request)`,
-        ru: ` (${String(newlyProtectedCount)} ключ(ей) оставлено: стали защищёнными во время запроса)`,
+    let teams: Map<string, number | null>;
+    try {
+      teams = await fetchTeamsForGuids(uniquePointGuids, (done, total) => {
+        progress.update(done, total);
       });
-      showSlowToast(deletedText + keptText);
-    } else {
-      showSlowToast(deletedText);
+    } catch (error) {
+      progress.close();
+      const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+      showSlowToast(t({ en: 'Request error: ', ru: 'Ошибка запроса: ' }) + message);
+      return;
     }
-  } catch (error) {
-    progress.close();
-    const message =
-      error instanceof Error ? error.message : t({ en: 'Unknown error', ru: 'Неизвестная ошибка' });
-    showSlowToast(t({ en: 'Deletion error: ', ru: 'Ошибка удаления: ' }) + message);
+
+    progress.setStatus(t({ en: 'Calculating deletions…', ru: 'Расчёт удаления…' }));
+
+    const deletions = calculateSlowDeletions(
+      deletableRefs,
+      teams,
+      playerTeam,
+      referencesAlliedLimit,
+      referencesNotAlliedLimit,
+    );
+
+    if (deletions.length === 0) {
+      progress.close();
+      showSlowToast(
+        t({
+          en: 'No keys to delete with current limits',
+          ru: 'Нет ключей для удаления по заданным лимитам',
+        }),
+      );
+      return;
+    }
+
+    // Race-protection: между первым чтением кэша (строка 273) и этим моментом
+    // прошёл async fetchTeamsForGuids - иногда минуты при больших списках. За
+    // это время пользователь мог пометить какие-то точки нативным замочком
+    // или звёздочкой. Финальный guard в deleteInventoryItems re-fetch'ит и
+    // выбрасывает throw на ВСЁМ батче при любой ставшей-protected точке -
+    // пользователь теряет возможность удалить и не-защищённые ключи. Делаем
+    // partial filter здесь, симметрично с refsOnMap.handleDeleteClick: в
+    // deletions оставляем только точки, всё ещё незащищённые на момент DELETE.
+    const freshCache = readInventoryCache();
+    const freshProtectedPointGuids = buildProtectedPointGuids(freshCache);
+    const finalDeletions = deletions.filter((entry) => {
+      if (entry.pointGuid === undefined) return true;
+      return !freshProtectedPointGuids.has(entry.pointGuid);
+    });
+    const newlyProtectedCount = deletions.length - finalDeletions.length;
+
+    if (finalDeletions.length === 0) {
+      progress.close();
+      showSlowToast(
+        t({
+          en: 'All keys became protected (locked or favorited) before deletion - aborted',
+          ru: 'Все ключи стали защищёнными (с замочком или звёздочкой) до удаления - отменено',
+        }),
+      );
+      return;
+    }
+
+    const totalAmount = finalDeletions.reduce((sum, entry) => sum + entry.amount, 0);
+    const alliedDeletions = finalDeletions.filter((entry) => {
+      const team = teams.get(entry.pointGuid ?? '');
+      return team === playerTeam;
+    });
+    const notAlliedDeletions = finalDeletions.filter((entry) => {
+      const team = teams.get(entry.pointGuid ?? '');
+      return team !== playerTeam;
+    });
+    const alliedAmount = alliedDeletions.reduce((sum, entry) => sum + entry.amount, 0);
+    const notAlliedAmount = notAlliedDeletions.reduce((sum, entry) => sum + entry.amount, 0);
+
+    const alliedLabel = t({ en: 'allied', ru: 'союзные' });
+    const notAlliedLabel = t({ en: 'not allied', ru: 'несоюзные' });
+    const keysLabel = t({ en: 'keys', ru: 'ключей' });
+    const summaryText = `${totalAmount} ${keysLabel} (${alliedLabel} ${alliedAmount} + ${notAlliedLabel} ${notAlliedAmount})`;
+
+    progress.setStatus(t({ en: 'Deleting: ', ru: 'Удаление: ' }) + summaryText);
+
+    try {
+      const result = await deleteInventoryItems(finalDeletions);
+      updateInventoryCache(finalDeletions);
+      updatePointRefCount();
+      // Sync счётчика ключей на подписи затронутых точек на карте. Slow удаляет
+      // только ключи (по protection-проверке выше), все pointGuid у удалений заданы.
+      const refPointGuids = Array.from(
+        new Set(
+          finalDeletions
+            .map((d) => d.pointGuid)
+            .filter((guid): guid is string => typeof guid === 'string'),
+        ),
+      );
+      if (refPointGuids.length > 0) {
+        void syncRefsCountForPoints(refPointGuids);
+      }
+      if (result.total > 0) {
+        updateDomInventoryCount(result.total);
+      }
+      progress.close();
+      const deletedText = t({ en: 'Deleted: ', ru: 'Удалено: ' }) + summaryText;
+      if (newlyProtectedCount > 0) {
+        const keptText = t({
+          en: ` (${String(newlyProtectedCount)} key(s) kept: became protected during request)`,
+          ru: ` (${String(newlyProtectedCount)} ключ(ей) оставлено: стали защищёнными во время запроса)`,
+        });
+        showSlowToast(deletedText + keptText);
+      } else {
+        showSlowToast(deletedText);
+      }
+    } catch (error) {
+      progress.close();
+      const message =
+        error instanceof Error
+          ? error.message
+          : t({ en: 'Unknown error', ru: 'Неизвестная ошибка' });
+      showSlowToast(t({ en: 'Deletion error: ', ru: 'Ошибка удаления: ' }) + message);
+    }
+  } finally {
+    slowDeleteInFlight = false;
+    setSlowDeleteRunBusy(false);
   }
 }
 
@@ -473,6 +485,17 @@ function syncDisabledState(button: HTMLButtonElement): void {
       })
     : '';
   if (button.title !== title) button.title = title;
+}
+
+/** Блокирует кнопку на время runSlowDelete; после снятия — снова shouldDisableButton. */
+function setSlowDeleteRunBusy(busy: boolean): void {
+  const button = document.querySelector<HTMLButtonElement>(`.${BUTTON_CLASS}`);
+  if (!button) return;
+  if (busy) {
+    button.disabled = true;
+  } else {
+    syncDisabledState(button);
+  }
 }
 
 function ensureButton(deleteSibling: Element): void {
@@ -537,5 +560,6 @@ export function uninstallSlowRefsDelete(): void {
   }
   bodyObserver?.disconnect();
   bodyObserver = null;
+  slowDeleteInFlight = false;
   removeButton();
 }
