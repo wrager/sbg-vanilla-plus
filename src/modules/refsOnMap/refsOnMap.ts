@@ -296,20 +296,20 @@ function partitionByProtection(
   protectedPointGuids: Set<string>,
 ): {
   deletable: IOlFeature[];
-  protectedRefs: IOlFeature[];
+  kept: IOlFeature[];
 } {
   const deletable: IOlFeature[] = [];
-  const protectedRefs: IOlFeature[] = [];
+  const kept: IOlFeature[] = [];
   for (const feature of features) {
     const properties = feature.getProperties?.() ?? {};
     const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
     if (pointGuid && protectedPointGuids.has(pointGuid)) {
-      protectedRefs.push(feature);
+      kept.push(feature);
     } else {
       deletable.push(feature);
     }
   }
-  return { deletable, protectedRefs };
+  return { deletable, kept };
 }
 
 function sumAmount(features: IOlFeature[]): number {
@@ -355,7 +355,10 @@ async function handleDeleteClick(): Promise<void> {
   // ключей: refsOnMap, slowRefsDelete, cleanupCalculator (см. README
   // inventoryCleanup).
   const protectedPointGuids = buildProtectedPointGuids(cache);
-  const { deletable, protectedRefs } = partitionByProtection(selectedFeatures, protectedPointGuids);
+  const { deletable, kept: protectedRefs } = partitionByProtection(
+    selectedFeatures,
+    protectedPointGuids,
+  );
 
   if (deletable.length === 0) {
     showToast(
@@ -385,7 +388,7 @@ async function handleDeleteClick(): Promise<void> {
   // (свой deleteRefsFromServer), поэтому защита должна выполниться здесь.
   const freshCache = readInventoryCache();
   const freshProtectedPointGuids = buildProtectedPointGuids(freshCache);
-  const { deletable: finalDeletable, protectedRefs: newlyProtected } = partitionByProtection(
+  const { deletable: finalDeletable, kept: newlyProtected } = partitionByProtection(
     deletable,
     freshProtectedPointGuids,
   );
