@@ -21,8 +21,6 @@ import { MARK_FLAG_BITS, postMark, type MarkFlag } from '../../core/marksApi';
 /** Алиас для совместимости с migrationUi: семантически идентичен MarkFlag из core. */
 export type MigrationFlag = MarkFlag;
 
-export { postMark };
-
 /**
  * Запросы к `/api/marks` идут строго последовательно (по одному за раз) с
  * задержкой между каждым. Параллельность сервер выдерживает, но имеет

@@ -49,8 +49,8 @@ Source данных миграции — IndexedDB `CUI/favorites` (тот же 
 | Файл                    | Назначение                                                                                               |
 | ----------------------- | -------------------------------------------------------------------------------------------------------- |
 | `favoritesMigration.ts` | Определение модуля: init (loadFavorites + inferAndPersistLockMigrationDone), enable/disable (install UI) |
-| `migrationApi.ts`       | `buildCandidates`, `postMark`, `runMigration`, `inferAndPersistLockMigrationDone`                        |
-| `migrationApi.test.ts`  | Тесты buildCandidates / postMark / runMigration retry-механизма / lock-migration-done инфера             |
+| `migrationApi.ts`       | `buildCandidates`, `runMigration`, `inferAndPersistLockMigrationDone`                                    |
+| `migrationApi.test.ts`  | Тесты buildCandidates / runMigration retry-механизма / lock-migration-done инфера                        |
 | `migrationUi.ts`        | Кнопка «Настроить» в строке модуля + модалка с IO-кнопками, миграцией и прогресс-баром                   |
 | `migrationUi.test.ts`   | Тесты IO-секции: рендеринг кнопок, экспорт пустого списка, импорт обновляет счётчик                      |
 | `styles.css`            | Стили модалки, кнопок, прогресс-бара, IO-секции                                                          |
