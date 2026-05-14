@@ -166,6 +166,7 @@ const teamCache = new Map<string, number>();
 let teamLoadAborted = false;
 let overallRefsToDelete = 0;
 let uniqueRefsToDelete = 0;
+let deleteInFlight = false;
 
 // ── style function ───────────────────────────────────────────────────────────
 
@@ -352,185 +353,193 @@ function sumAmount(features: IOlFeature[]): number {
 
 async function handleDeleteClick(): Promise<void> {
   if (uniqueRefsToDelete === 0 || !refsSource) return;
-  if (maybeToastLegacyMigrationBlock()) return;
-
-  const selectedFeatures = refsSource.getFeatures().filter((feature) => {
-    const properties = feature.getProperties?.();
-    return properties !== undefined && properties.isSelected === true;
-  });
-
-  // Защита mix-кэша через `isProtectionFlagSupportAvailable`: симметрично с
-  // slowRefsDelete, cleanupCalculator и финальным guard'ом в
-  // inventoryApi.deleteInventoryItems. На 0.6.0 (поле `f` отсутствует
-  // целиком) удаление через viewer блокируется тем же путём - пользователь
-  // не должен лишиться ключей из-за того, что версия игры не поддерживает
-  // нативную защиту.
-  // Кэш читается один раз и переиспользуется для проверки support'а и для
-  // расчёта protected-set'а: двойной JSON.parse при больших инвентарях
-  // избыточен.
-  const cache = readInventoryCache();
-  if (!isProtectionFlagSupportAvailable(cache)) {
-    showToast(
-      t({
-        en: 'Native lock/favorite protection unavailable: server returned no f-flags. Deletion blocked.',
-        ru: 'Нативная защита замочком или звёздочкой недоступна: сервер не отдал поле f. Удаление заблокировано.',
-      }),
-    );
-    return;
-  }
-
-  // Защита lock/favorite: точки с замочком (бит 0b10) или звёздочкой
-  // (бит 0b01) поля `f` любой стопки в inventory-cache не удаляются.
-  // Семантика общая для всех модулей, работающих с массовым удалением
-  // ключей: refsOnMap, slowRefsDelete, cleanupCalculator (см. README
-  // inventoryCleanup).
-  const protectedPointGuids = buildProtectedPointGuids(cache);
-  const { deletable, kept: protectedRefs } = partitionByProtection(
-    selectedFeatures,
-    protectedPointGuids,
-  );
-
-  if (deletable.length === 0) {
-    showToast(
-      t({
-        en: 'All selected keys belong to protected (locked or favorited) points and cannot be deleted',
-        ru: 'Все выбранные ключи относятся к защищённым точкам (с замочком или звёздочкой) и не могут быть удалены',
-      }),
-    );
-    return;
-  }
-
-  const overallToDelete = sumAmount(deletable);
-  const message = t({
-    en: `Delete ${overallToDelete} ref(s) from ${deletable.length} point(s)?`,
-    ru: `Удалить ${overallToDelete} ключ(ей) от ${deletable.length} точ(ек)?`,
-  });
-
-  if (!confirm(message)) return;
-
-  // Race-protection: между partitionByProtection и DELETE кэш мог
-  // обновиться - пользователь параллельно нажал нативный замочек или
-  // звёздочку, или сервер прислал обновлённый кэш с новым `f` в ответе на
-  // другой запрос (discover, marks). Перечитываем свежий cache и
-  // пересчитываем set защищённых точек, выбрасывая из payload всё, что
-  // стало protected. inventoryApi.deleteInventoryItems делает то же самое
-  // в своём финальном guard, но refsOnMap бьёт по /api/inventory напрямую
-  // (свой deleteRefsFromServer), поэтому защита должна выполниться здесь.
-  const freshCache = readInventoryCache();
-  if (!isProtectionFlagSupportAvailable(freshCache)) {
-    showToast(
-      t({
-        en: 'Native lock/favorite protection unavailable: server returned no f-flags. Deletion blocked.',
-        ru: 'Нативная защита замочком или звёздочкой недоступна: сервер не отдал поле f. Удаление заблокировано.',
-      }),
-    );
-    return;
-  }
-  const freshProtectedPointGuids = buildProtectedPointGuids(freshCache);
-  const { deletable: finalDeletable, kept: newlyProtected } = partitionByProtection(
-    deletable,
-    freshProtectedPointGuids,
-  );
-
-  if (finalDeletable.length === 0) {
-    showToast(
-      t({
-        en: 'All selected keys became protected (locked or favorited) before deletion - aborted',
-        ru: 'Все выбранные ключи стали защищёнными (с замочком или звёздочкой) до удаления - отменено',
-      }),
-    );
-    return;
-  }
-
-  const items: Record<string, number> = {};
-  const deletedGuids = new Set<string>();
-
-  for (const feature of finalDeletable) {
-    const id = feature.getId();
-    const properties = feature.getProperties?.();
-    const amount = properties?.amount;
-    if (typeof id === 'string' && typeof amount === 'number') {
-      items[id] = amount;
-      deletedGuids.add(id);
-    }
-  }
-
+  if (deleteInFlight) return;
+  deleteInFlight = true;
+  if (trashButton) trashButton.disabled = true;
   try {
-    const response = await deleteRefsFromServer(items);
-    if (response.error) {
-      console.error(`[SVP] ${MODULE_ID}: deletion error:`, response.error);
+    if (maybeToastLegacyMigrationBlock()) return;
+
+    const selectedFeatures = refsSource.getFeatures().filter((feature) => {
+      const properties = feature.getProperties?.();
+      return properties !== undefined && properties.isSelected === true;
+    });
+
+    // Защита mix-кэша через `isProtectionFlagSupportAvailable`: симметрично с
+    // slowRefsDelete, cleanupCalculator и финальным guard'ом в
+    // inventoryApi.deleteInventoryItems. На 0.6.0 (поле `f` отсутствует
+    // целиком) удаление через viewer блокируется тем же путём - пользователь
+    // не должен лишиться ключей из-за того, что версия игры не поддерживает
+    // нативную защиту.
+    // Кэш читается один раз и переиспользуется для проверки support'а и для
+    // расчёта protected-set'а: двойной JSON.parse при больших инвентарях
+    // избыточен.
+    const cache = readInventoryCache();
+    if (!isProtectionFlagSupportAvailable(cache)) {
+      showToast(
+        t({
+          en: 'Native lock/favorite protection unavailable: server returned no f-flags. Deletion blocked.',
+          ru: 'Нативная защита замочком или звёздочкой недоступна: сервер не отдал поле f. Удаление заблокировано.',
+        }),
+      );
       return;
     }
 
-    // Remove features from map
-    for (const feature of finalDeletable) {
-      refsSource.removeFeature?.(feature);
-    }
-
-    // Update local cache
-    removeRefsFromCache(deletedGuids);
-
-    // Sync счётчика ключей на подписи затронутых точек на основной карте.
-    // Хотя refsOnMap viewer прячет нативные слои на время viewer-режима,
-    // после hideViewer() основной points-layer становится видимым - и
-    // highlight['7'] на feature должен отражать актуальное число ключей.
-    const affectedPointGuids = Array.from(
-      new Set(
-        finalDeletable
-          .map((feature) => {
-            const properties = feature.getProperties?.();
-            return typeof properties?.pointGuid === 'string' ? properties.pointGuid : null;
-          })
-          .filter((guid): guid is string => guid !== null),
-      ),
+    // Защита lock/favorite: точки с замочком (бит 0b10) или звёздочкой
+    // (бит 0b01) поля `f` любой стопки в inventory-cache не удаляются.
+    // Семантика общая для всех модулей, работающих с массовым удалением
+    // ключей: refsOnMap, slowRefsDelete, cleanupCalculator (см. README
+    // inventoryCleanup).
+    const protectedPointGuids = buildProtectedPointGuids(cache);
+    const { deletable, kept: protectedRefs } = partitionByProtection(
+      selectedFeatures,
+      protectedPointGuids,
     );
-    if (affectedPointGuids.length > 0) {
-      void syncRefsCountForPoints(affectedPointGuids);
-    }
 
-    // Update inventory counter
-    if (typeof response.count?.total === 'number') {
-      updateInventoryCounter(response.count.total);
-    }
-
-    // Уведомление об оставленных защищённых: показываем после успешного
-    // удаления, чтобы пользователь увидел итог в одном тосте, а не два
-    // диалога подряд. Состав: точки из исходного partitionByProtection,
-    // которые ВСЁ ЕЩЁ защищены на момент DELETE (фильтр по
-    // freshProtectedPointGuids ловит обратный race protected -> open:
-    // пользователь снял замочек/звёздочку между partition и DELETE - feature
-    // больше не защищена, в счётчик "оставлено" не попадает); плюс точки,
-    // ставшие защищёнными по race-protection.
-    const stillProtected = protectedRefs.filter((feature) => {
-      const properties = feature.getProperties?.() ?? {};
-      const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
-      return pointGuid !== null && freshProtectedPointGuids.has(pointGuid);
-    });
-    const keptFeatures = [...stillProtected, ...newlyProtected];
-    if (keptFeatures.length > 0) {
+    if (deletable.length === 0) {
       showToast(
         t({
-          en: `Protected (locked or favorited) points: ${keptFeatures.length} key(s) kept`,
-          ru: `Защищённые точки (с замочком или звёздочкой): ${keptFeatures.length} ключ(ей) оставлено`,
+          en: 'All selected keys belong to protected (locked or favorited) points and cannot be deleted',
+          ru: 'Все выбранные ключи относятся к защищённым точкам (с замочком или звёздочкой) и не могут быть удалены',
         }),
       );
+      return;
     }
 
-    // Сброс isSelected на features, которые НЕ остались защищёнными:
-    // удалённые finalDeletable физически ушли из источника, а protectedRefs,
-    // ставшие open по обратному race, остаются на карте, но логически уже не
-    // выбраны - очищаем флаг, чтобы следующий клик по trash начинал с
-    // чистого выбора.
-    const keptSet = new Set(keptFeatures);
-    for (const feature of [...protectedRefs, ...newlyProtected]) {
-      if (!keptSet.has(feature)) feature.set?.('isSelected', false);
+    const overallToDelete = sumAmount(deletable);
+    const message = t({
+      en: `Delete ${overallToDelete} ref(s) from ${deletable.length} point(s)?`,
+      ru: `Удалить ${overallToDelete} ключ(ей) от ${deletable.length} точ(ек)?`,
+    });
+
+    if (!confirm(message)) return;
+
+    // Race-protection: между partitionByProtection и DELETE кэш мог
+    // обновиться - пользователь параллельно нажал нативный замочек или
+    // звёздочку, или сервер прислал обновлённый кэш с новым `f` в ответе на
+    // другой запрос (discover, marks). Перечитываем свежий cache и
+    // пересчитываем set защищённых точек, выбрасывая из payload всё, что
+    // стало protected. inventoryApi.deleteInventoryItems делает то же самое
+    // в своём финальном guard, но refsOnMap бьёт по /api/inventory напрямую
+    // (свой deleteRefsFromServer), поэтому защита должна выполниться здесь.
+    const freshCache = readInventoryCache();
+    if (!isProtectionFlagSupportAvailable(freshCache)) {
+      showToast(
+        t({
+          en: 'Native lock/favorite protection unavailable: server returned no f-flags. Deletion blocked.',
+          ru: 'Нативная защита замочком или звёздочкой недоступна: сервер не отдал поле f. Удаление заблокировано.',
+        }),
+      );
+      return;
+    }
+    const freshProtectedPointGuids = buildProtectedPointGuids(freshCache);
+    const { deletable: finalDeletable, kept: newlyProtected } = partitionByProtection(
+      deletable,
+      freshProtectedPointGuids,
+    );
+
+    if (finalDeletable.length === 0) {
+      showToast(
+        t({
+          en: 'All selected keys became protected (locked or favorited) before deletion - aborted',
+          ru: 'Все выбранные ключи стали защищёнными (с замочком или звёздочкой) до удаления - отменено',
+        }),
+      );
+      return;
     }
 
-    overallRefsToDelete = sumAmount(keptFeatures);
-    uniqueRefsToDelete = keptFeatures.length;
-    updateTrashCounter();
-  } catch (error) {
-    console.error(`[SVP] ${MODULE_ID}: deletion failed:`, error);
+    const items: Record<string, number> = {};
+    const deletedGuids = new Set<string>();
+
+    for (const feature of finalDeletable) {
+      const id = feature.getId();
+      const properties = feature.getProperties?.();
+      const amount = properties?.amount;
+      if (typeof id === 'string' && typeof amount === 'number') {
+        items[id] = amount;
+        deletedGuids.add(id);
+      }
+    }
+
+    try {
+      const response = await deleteRefsFromServer(items);
+      if (response.error) {
+        console.error(`[SVP] ${MODULE_ID}: deletion error:`, response.error);
+        return;
+      }
+
+      // Remove features from map
+      for (const feature of finalDeletable) {
+        refsSource.removeFeature?.(feature);
+      }
+
+      // Update local cache
+      removeRefsFromCache(deletedGuids);
+
+      // Sync счётчика ключей на подписи затронутых точек на основной карте.
+      // Хотя refsOnMap viewer прячет нативные слои на время viewer-режима,
+      // после hideViewer() основной points-layer становится видимым - и
+      // highlight['7'] на feature должен отражать актуальное число ключей.
+      const affectedPointGuids = Array.from(
+        new Set(
+          finalDeletable
+            .map((feature) => {
+              const properties = feature.getProperties?.();
+              return typeof properties?.pointGuid === 'string' ? properties.pointGuid : null;
+            })
+            .filter((guid): guid is string => guid !== null),
+        ),
+      );
+      if (affectedPointGuids.length > 0) {
+        void syncRefsCountForPoints(affectedPointGuids);
+      }
+
+      // Update inventory counter
+      if (typeof response.count?.total === 'number') {
+        updateInventoryCounter(response.count.total);
+      }
+
+      // Уведомление об оставленных защищённых: показываем после успешного
+      // удаления, чтобы пользователь увидел итог в одном тосте, а не два
+      // диалога подряд. Состав: точки из исходного partitionByProtection,
+      // которые ВСЁ ЕЩЁ защищены на момент DELETE (фильтр по
+      // freshProtectedPointGuids ловит обратный race protected -> open:
+      // пользователь снял замочек/звёздочку между partition и DELETE - feature
+      // больше не защищена, в счётчик "оставлено" не попадает); плюс точки,
+      // ставшие защищёнными по race-protection.
+      const stillProtected = protectedRefs.filter((feature) => {
+        const properties = feature.getProperties?.() ?? {};
+        const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+        return pointGuid !== null && freshProtectedPointGuids.has(pointGuid);
+      });
+      const keptFeatures = [...stillProtected, ...newlyProtected];
+      if (keptFeatures.length > 0) {
+        showToast(
+          t({
+            en: `Protected (locked or favorited) points: ${keptFeatures.length} key(s) kept`,
+            ru: `Защищённые точки (с замочком или звёздочкой): ${keptFeatures.length} ключ(ей) оставлено`,
+          }),
+        );
+      }
+
+      // Сброс isSelected на features, которые НЕ остались защищёнными:
+      // удалённые finalDeletable физически ушли из источника, а protectedRefs,
+      // ставшие open по обратному race, остаются на карте, но логически уже не
+      // выбраны - очищаем флаг, чтобы следующий клик по trash начинал с
+      // чистого выбора.
+      const keptSet = new Set(keptFeatures);
+      for (const feature of [...protectedRefs, ...newlyProtected]) {
+        if (!keptSet.has(feature)) feature.set?.('isSelected', false);
+      }
+
+      overallRefsToDelete = sumAmount(keptFeatures);
+      uniqueRefsToDelete = keptFeatures.length;
+      updateTrashCounter();
+    } catch (error) {
+      console.error(`[SVP] ${MODULE_ID}: deletion failed:`, error);
+    }
+  } finally {
+    deleteInFlight = false;
+    if (trashButton) trashButton.disabled = false;
   }
 }
 
@@ -877,6 +886,7 @@ export const refsOnMap: IFeatureModule = {
 function cleanupEnableSideEffects(): void {
   if (viewerOpen) hideViewer();
   teamLoadAborted = true;
+  deleteInFlight = false;
 
   if (olMap && refsLayer) {
     olMap.removeLayer(refsLayer);

@@ -1101,6 +1101,53 @@ describe('refsOnMap lock protection', () => {
     expect(document.querySelector('.svp-toast')?.textContent).toMatch(/lock|нативный|f-flag/i);
   });
 
+  test('in-flight: второй клик по корзине не запускает параллельный DELETE', async () => {
+    setInventoryCacheWithLocks();
+    clickShowButton();
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    window.confirm = jest.fn(() => true);
+    let releaseFirst: (value: Response) => void;
+    const firstResponse = new Promise<Response>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
+      void _args;
+      if (fetchSpy.mock.calls.length === 1) {
+        return firstResponse;
+      }
+      return Promise.resolve({
+        json: () => Promise.resolve({ count: { total: 90 } }),
+      } as unknown as Response);
+    });
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    trash.click();
+    await Promise.resolve();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+    releaseFirst!({
+      json: () => Promise.resolve({ count: { total: 90 } }),
+    } as unknown as Response);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
   test('обратный race protected -> open: kept-counter не считает разлоченную точку', async () => {
     // Сценарий: ref-1 (point-1) изначально open, ref-2 (point-2) изначально
     // locked. Пользователь выбирает обе, partition отправляет ref-1 в
