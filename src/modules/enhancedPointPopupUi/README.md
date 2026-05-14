@@ -31,11 +31,16 @@
 
 ### Reentrancy
 
-`installGeneration` инкрементируется на каждом install/uninstall. Если `waitForElement.then()` приходит после disable - generation не совпал, обработчик skip'ает работу. `batchInProgress` блокирует повторные клики и не даёт `MutationObserver` пересоздавать DOM во время отправки запросов.
+`installGeneration` инкрементируется на каждом install/uninstall. Если `waitForElement.then()` приходит после disable - generation не совпал, обработчик skip'ает работу. `installAbortController` через `AbortSignal` сразу освобождает pending `waitForElement` при uninstall, не оставляя MutationObserver на documentElement до timeout. `batchInProgress` (Set<pointGuid>) блокирует повторные клики на той же точке и не даёт `MutationObserver` пересоздавать DOM во время отправки запросов; uninstall очищает Set и завершает висящий цикл через сверку generation на каждой awaited step.
 
-### Без подписки на внешние события
+### Подписка на inventory-cache
 
-Состояние читается на изменении атрибутов попапа (открытие, смена точки). Нативный popover `inventory__ref-actions` живёт в инвентаре, не в попапе точки - параллельных изменений в открытом попапе не происходит. При закрытии и повторном открытии попапа state перечитывается из текущего `inventory-cache`.
+Состояние читается:
+
+- На изменении атрибутов попапа (`class` hidden/visible, `data-guid` смена точки) - `MutationObserver` на самом попапе.
+- На изменении `localStorage['inventory-cache']` - idempotent wrapper на `localStorage.setItem`, ставится один раз на жизнь страницы. Нативный `.inventory__ref-actions` popover в SBG 0.6.1 клонируется внутрь `.info.popup` (см. тест `enhancedPointPopupUi.test.ts`), и его toggle favorite/locked пишет в `inventory-cache` синхронно с открытым попапом - без подписки наш UI оставался бы stale до закрытия и повторного открытия. Та же подписка ловит discover (новая стопка - агрегат меняется) и срабатывание `inventoryCleanup`.
+
+Wrapper не снимается на disable: соседи в цепочке `setItem` (`inventoryCleanup` тоже оборачивает) не пережили бы восстановление прототипа. `observedPopup === null` после uninstall - wrapper по факту no-op.
 
 ## Файловая структура
 
