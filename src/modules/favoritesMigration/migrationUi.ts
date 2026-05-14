@@ -53,8 +53,8 @@ const LEGACY_TEXT_WARNING: ILocalizedString = {
 };
 
 const NATIVE_TEXT_INTRO: ILocalizedString = {
-  en: 'Both favorited and locked keys are protected from deletion by the Vanilla+ auto-cleanup module and by the "Refs on map" module. Locked keys are additionally excluded from drawing. Only the locked migration releases the auto-cleanup block on key deletion that holds while the legacy SVP/CUI list is not migrated.',
-  ru: 'И избранные, и заблокированные ключи защищены от удаления модулем автоочистки и модулем «Ключи на карте» Vanilla+. Заблокированные ключи дополнительно не участвуют в рисовании. Снять блок удаления ключей, который держится у автоочистки пока легаси-список SVP/CUI не мигрирован, может только locked-миграция.',
+  en: 'Both favorited and locked keys are protected from deletion by the Vanilla+ auto-cleanup module and by the "Refs on map" module, while those modules are enabled. Only the locked migration releases the auto-cleanup block on key deletion that holds while the legacy SVP/CUI list is not migrated.',
+  ru: 'И избранные, и заблокированные ключи защищены от удаления модулями автоочистки и просмотра ключей на карте Vanilla+, пока эти модули включены. Снять блок удаления ключей, который держится у автоочистки пока легаси-список SVP/CUI не мигрирован, может только locked-миграция.',
 };
 
 const NATIVE_TEXT_USE: ILocalizedString = {
