@@ -492,6 +492,61 @@ describe('pointMarkButtons — click toggle', () => {
     expect(getButton('favorite')?.disabled).toBe(false);
   });
 
+  test('uninstall во время batch прерывает оставшиеся POST и не мутирует кэш', async () => {
+    createPopup('p1');
+    setInventory([
+      { g: 's1', l: 'p1', a: 3, f: 0 },
+      { g: 's2', l: 'p1', a: 2, f: 0 },
+      { g: 's3', l: 'p1', a: 4, f: 0 },
+    ]);
+    installPointMarkButtons();
+    await flushMicrotasks();
+
+    // Первый POST в полёте, остальные ждут rate-limit sleep + следующий POST.
+    type FetchResolveValue = { ok: boolean; json: () => Promise<{ result: boolean }> };
+    const pending: { resolve: ((value: FetchResolveValue) => void) | null } = { resolve: null };
+    mockFetch.mockImplementationOnce(
+      () =>
+        new Promise<FetchResolveValue>((resolve) => {
+          pending.resolve = resolve;
+        }),
+    );
+    ok(true);
+    ok(true);
+
+    getButton('favorite')?.click();
+    await flushMicrotasks();
+
+    // Пользователь отключил модуль в середине batch.
+    uninstallPointMarkButtons();
+
+    // Завершаем первый POST, прокручиваем rate-limit для возможных
+    // последующих. Generation сменился - цикл должен выйти через return.
+    if (pending.resolve === null) throw new Error('mockFetch implementation not invoked');
+    pending.resolve({ ok: true, json: () => Promise.resolve({ result: true }) });
+    jest.useFakeTimers();
+    for (let i = 0; i < 30; i++) {
+      await Promise.resolve();
+      jest.advanceTimersByTime(500);
+    }
+    jest.useRealTimers();
+    await flushMicrotasks();
+
+    // Из 3 стопок успел уйти только первый POST (был в полёте на момент
+    // uninstall); второй и третий не должны были стартовать.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    // Кэш мутирован только первой стопкой (она была успешной до uninstall).
+    const cache = JSON.parse(localStorage.getItem('inventory-cache') ?? '[]') as {
+      g: string;
+      f: number;
+    }[];
+    const flags = Object.fromEntries(cache.map((s) => [s.g, s.f]));
+    expect(flags.s1).toBe(0b01);
+    expect(flags.s2).toBe(0);
+    expect(flags.s3).toBe(0);
+  });
+
   test('disable-enable во время batch не оставляет новые кнопки в disabled', async () => {
     createPopup('p1');
     setInventory([

@@ -183,10 +183,20 @@ async function onClick(popup: Element, flag: MarkFlag): Promise<void> {
 
   batchInProgress.add(guid);
   refreshAll(popup);
+  // Снимок generation на момент старта batch. После каждого awaited step
+  // (sleep между POST, сам POST) сверяем со свежим installGeneration: при
+  // uninstall он уже инкрементирован, дальнейшие POST не пускаются. Иначе
+  // цикл продолжал бы дёргать /api/marks и мутировать inventory-cache до 30
+  // секунд после disable.
+  const myGeneration = installGeneration;
   try {
     for (let i = 0; i < toToggle.length; i++) {
-      if (i > 0) await sleep(MARKS_RATE_LIMIT_MS);
+      if (i > 0) {
+        await sleep(MARKS_RATE_LIMIT_MS);
+        if (myGeneration !== installGeneration) return;
+      }
       await postMark(toToggle[i].g, flag);
+      if (myGeneration !== installGeneration) return;
     }
   } finally {
     batchInProgress.delete(guid);
