@@ -56,6 +56,10 @@ const FLAGS: readonly MarkFlag[] = ['favorite', 'locked'];
 
 let popupObserver: MutationObserver | null = null;
 let clickAbortController: AbortController | null = null;
+// AbortController для waitForElement, ожидающего появления .info.popup. На
+// uninstall abort() сразу освобождает MutationObserver и timeout, не оставляя
+// pending observer на documentElement на 10 секунд после disable.
+let installAbortController: AbortController | null = null;
 // Инкрементируется при каждом install/uninstall. Если waitForElement.then()
 // срабатывает после uninstall (async race), generation уже другой - skip.
 let installGeneration = 0;
@@ -241,7 +245,8 @@ export function installPointMarkButtons(): void {
     startObserving(existing);
     return;
   }
-  waitForElement(POPUP_SELECTOR)
+  installAbortController = new AbortController();
+  waitForElement(POPUP_SELECTOR, 10_000, installAbortController.signal)
     .then((popup) => {
       if (generation !== installGeneration) return;
       startObserving(popup);
@@ -257,5 +262,7 @@ export function uninstallPointMarkButtons(): void {
   popupObserver = null;
   clickAbortController?.abort();
   clickAbortController = null;
+  installAbortController?.abort();
+  installAbortController = null;
   document.querySelector(`.${CONTAINER_CLASS}`)?.remove();
 }
