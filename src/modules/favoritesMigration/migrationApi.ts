@@ -4,13 +4,13 @@ import {
   readInventoryReferences,
 } from '../../core/inventoryCache';
 import type { IInventoryReference } from '../../core/inventoryTypes';
-import { isInventoryReference } from '../../core/inventoryTypes';
+import { isInventoryReference, MARK_FLAG_BITS, type MarkFlag } from '../../core/inventoryTypes';
 import {
   getFavoritedGuids,
   isLockMigrationDone,
   setLockMigrationDone,
 } from '../../core/favoritesStore';
-import { MARK_FLAG_BITS, MARKS_RATE_LIMIT_MS, postMark, type MarkFlag } from '../../core/marksApi';
+import { MARKS_RATE_LIMIT_MS, postMark } from '../../core/marksApi';
 
 /**
  * Перевод SVP/CUI-избранных в нативные «звёздочки» / «замочки» SBG 0.6.1

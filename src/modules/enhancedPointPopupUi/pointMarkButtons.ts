@@ -2,7 +2,8 @@ import { waitForElement } from '../../core/dom';
 import { t } from '../../core/l10n';
 import { readInventoryReferences } from '../../core/inventoryCache';
 import type { IInventoryReference } from '../../core/inventoryTypes';
-import { MARK_FLAG_BITS, MARKS_RATE_LIMIT_MS, postMark, type MarkFlag } from '../../core/marksApi';
+import { MARK_FLAG_BITS, type MarkFlag } from '../../core/inventoryTypes';
+import { MARKS_RATE_LIMIT_MS, postMark } from '../../core/marksApi';
 
 /**
  * Кнопки fav/lock в попапе точки. Состояние кнопки = агрегация по всем

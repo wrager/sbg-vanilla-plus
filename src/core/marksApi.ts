@@ -1,5 +1,5 @@
 import { INVENTORY_CACHE_KEY } from './inventoryCache';
-import { isInventoryReference } from './inventoryTypes';
+import { isInventoryReference, MARK_FLAG_BITS, type MarkFlag } from './inventoryTypes';
 
 /**
  * Нативный API SBG 0.6.1 для пометки стопки ключей флагом favorite/locked
@@ -7,18 +7,6 @@ import { isInventoryReference } from './inventoryTypes';
  * уровне СТОПКИ ключей (`item.g`), не на уровне точки: lock-флаг живёт в
  * битовом поле `f` стопки.
  */
-
-export type MarkFlag = 'favorite' | 'locked';
-
-/**
- * Биты в `inventory-cache`-стопке (`item.f`):
- * бит 0 — favorite, бит 1 — locked.
- * Соответствует логике `is_fav = !!(item?.f & 0b1)` в refs/game/script.js:3404.
- */
-export const MARK_FLAG_BITS: Record<MarkFlag, number> = {
-  favorite: 0b01,
-  locked: 0b10,
-};
 
 /**
  * Серверный rate-limit на `POST /api/marks`: между запросами от одного
