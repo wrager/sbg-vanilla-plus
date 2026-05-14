@@ -49,6 +49,11 @@
    44 + gap 4 вплотную провоцировали ошибочные нажатия по замку вместо
    звезды. */
 .svp-point-mark-button {
+  /* Контейнер background фиксированно тёмный (rgba(0,0,0,0.35)) поверх
+     изображения точки независимо от темы. Цвета иконок выбраны под этот
+     тёмный backdrop: var(--text-disabled) на светлой теме = #CCC, на тёмной
+     = #999 - оба читаются на тёмном фоне. --level-1 = золото, --ol-brand-color
+     = синий - оба константы (не зависят от темы), контраст хороший. */
   width: 44px;
   height: 44px;
   padding: 0;
@@ -56,7 +61,7 @@
   border: none;
   background: rgba(0, 0, 0, 0.35);
   border-radius: 50%;
-  color: #ccc;
+  color: var(--text-disabled, #ccc);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -78,11 +83,11 @@
 }
 
 .svp-point-mark-button[data-flag='favorite'].is-filled {
-  color: #ffcc33;
+  color: var(--level-1, #ffcc33);
 }
 
 .svp-point-mark-button[data-flag='locked'].is-filled {
-  color: #88ccff;
+  color: var(--ol-brand-color, #88ccff);
 }
 
 .svp-point-mark-button[disabled] {
