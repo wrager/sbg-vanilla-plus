@@ -587,6 +587,81 @@ describe('pointMarkButtons — click toggle', () => {
     await flushMicrotasks();
   });
 
+  test('partial fail в multi-stack batch - state mix, не filled', async () => {
+    createPopup('p1');
+    setInventory([
+      { g: 's1', l: 'p1', a: 3, f: 0 },
+      { g: 's2', l: 'p1', a: 2, f: 0 },
+    ]);
+    installPointMarkButtons();
+    await flushMicrotasks();
+
+    ok(true); // s1: сервер поставил бит -> applyFlagToCache(s1, true)
+    ok(false); // s2: сервер вернул result=false -> applyFlagToCache(s2, false) no-op
+
+    jest.useFakeTimers();
+    getButton('favorite')?.click();
+    for (let i = 0; i < 30; i++) {
+      await Promise.resolve();
+      jest.advanceTimersByTime(500);
+      if (mockFetch.mock.calls.length === 2) break;
+    }
+    jest.useRealTimers();
+    await flushMicrotasks();
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    // s1 в кэше получил favorite, s2 - нет (result=false). Агрегат every -> false.
+    // Кнопка должна быть НЕ filled, отражая реальный mix state.
+    const star = getButton('favorite');
+    expect(star?.classList.contains('is-filled')).toBe(false);
+    expect(star?.getAttribute('aria-pressed')).toBe('false');
+    expect(star?.disabled).toBe(false);
+  });
+
+  test('внешний источник toggle между POST - пропускаем стопку с уже корректным битом', async () => {
+    createPopup('p1');
+    setInventory([
+      { g: 's1', l: 'p1', a: 3, f: 0 },
+      { g: 's2', l: 'p1', a: 2, f: 0 },
+    ]);
+    installPointMarkButtons();
+    await flushMicrotasks();
+
+    // s1: запустим, между POST симулируем cross-tab toggle на s2 (бит уже
+    // выставлен внешним источником в inventory-cache).
+    mockFetch.mockImplementationOnce(() => {
+      // Внешний источник сразу после первого POST помечает s2.
+      const cache = JSON.parse(localStorage.getItem('inventory-cache') ?? '[]') as {
+        g: string;
+        f: number;
+      }[];
+      const s2 = cache.find((s) => s.g === 's2');
+      if (s2) s2.f = 0b01;
+      localStorage.setItem('inventory-cache', JSON.stringify(cache));
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ result: true }) });
+    });
+    // Если бы наш цикл не перечитывал, второй POST полетел бы и снял бы бит
+    // с s2. С re-read мы видим s2.f === 0b01 === targetOn -> skip.
+
+    jest.useFakeTimers();
+    getButton('favorite')?.click();
+    for (let i = 0; i < 30; i++) {
+      await Promise.resolve();
+      jest.advanceTimersByTime(500);
+      if (mockFetch.mock.calls.length >= 1) break;
+    }
+    jest.useRealTimers();
+    await flushMicrotasks();
+
+    // Прошёл только один POST - для s1; s2 пропущена, потому что бит уже
+    // выставлен внешним источником.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse((mockFetch.mock.calls[0] as [string, { body: string }])[1].body)).toEqual({
+      guid: 's1',
+      flag: 'favorite',
+    });
+  });
+
   test('сетевая ошибка — кнопка re-enabled, состояние читается из inventory-cache', async () => {
     createPopup('p1');
     setInventory([{ g: 's1', l: 'p1', a: 5, f: 0 }]);

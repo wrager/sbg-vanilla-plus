@@ -195,7 +195,18 @@ async function onClick(popup: Element, flag: MarkFlag): Promise<void> {
         await sleep(MARKS_RATE_LIMIT_MS);
         if (myGeneration !== installGeneration) return;
       }
-      await postMark(toToggle[i].g, flag);
+      // POST /api/marks - toggle, не set: инвертирует текущий бит на сервере.
+      // Между нашими POST 1500мс sleep; за это время другой источник
+      // (нативный inventory ref_actions, CUI, другая вкладка) мог toggle'нуть
+      // бит у этой же стопки. Если f уже совпадает с targetOn - наш POST
+      // вернул бы бит к противоположному, ломая "все favorite" в
+      // "все кроме одной". Перечитываем актуальный f перед POST и пропускаем
+      // стопку, у которой бит уже там, где нам надо.
+      const stackGuid = toToggle[i].g;
+      const fresh = readInventoryReferences().find((s) => s.g === stackGuid);
+      if (fresh === undefined) continue;
+      if (hasBit(fresh, bit) === targetOn) continue;
+      await postMark(stackGuid, flag);
       if (myGeneration !== installGeneration) return;
     }
   } finally {
