@@ -80,7 +80,11 @@ function getCurrentGuid(popup: Element): string | null {
 }
 
 function getPointStacks(pointGuid: string): IInventoryReference[] {
-  return readInventoryReferences().filter((stack) => stack.l === pointGuid);
+  // Стопка с a=0 - уже удалённая, ждёт вычистки кэша. Серверный POST по ней
+  // вернёт result=false (фантомная стопка), applyFlagToCache не найдёт её -
+  // зря дёргать сервер и засчитывать в batch. Фильтр совпадает с поведением
+  // migrationApi.inferAndPersistLockMigrationDone и cleanupCalculator.
+  return readInventoryReferences().filter((stack) => stack.l === pointGuid && stack.a > 0);
 }
 
 function isFlagSetOnAllStacks(stacks: IInventoryReference[], flag: MarkFlag): boolean {

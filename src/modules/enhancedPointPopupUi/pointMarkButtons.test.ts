@@ -137,6 +137,35 @@ describe('pointMarkButtons — состояние кнопок', () => {
     expect(getButton('locked')?.disabled).toBe(true);
   });
 
+  test('все стопки с a=0 (уже удалённые, ждут вычистки) — кнопки disabled', async () => {
+    createPopup('p1');
+    setInventory([
+      { g: 's1', l: 'p1', a: 0, f: 0b01 },
+      { g: 's2', l: 'p1', a: 0 },
+    ]);
+    installPointMarkButtons();
+    await flushMicrotasks();
+
+    expect(getButton('favorite')?.disabled).toBe(true);
+    expect(getButton('locked')?.disabled).toBe(true);
+  });
+
+  test('mix a=0 и a>0 — state определяется только живыми стопками', async () => {
+    createPopup('p1');
+    setInventory([
+      { g: 's-dead', l: 'p1', a: 0, f: 0 },
+      { g: 's-alive', l: 'p1', a: 5, f: 0b01 },
+    ]);
+    installPointMarkButtons();
+    await flushMicrotasks();
+
+    // Если бы a=0 учитывалась, every-агрегат был бы false (s-dead без favorite).
+    // Фильтр стопок по a>0 оставляет только s-alive с favorite -> filled.
+    const star = getButton('favorite');
+    expect(star?.disabled).toBe(false);
+    expect(star?.classList.contains('is-filled')).toBe(true);
+  });
+
   test('disabled-кнопка без tooltip', async () => {
     createPopup('point-no-keys');
     installPointMarkButtons();
