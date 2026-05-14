@@ -453,9 +453,18 @@ async function handleDeleteClick(): Promise<void> {
 
     // Уведомление об оставленных защищённых: показываем после успешного
     // удаления, чтобы пользователь увидел итог в одном тосте, а не два
-    // диалога подряд. Суммарно: точки, защищённые на момент клика по trash,
-    // и точки, ставшие защищёнными по race-protection между confirm и DELETE.
-    const keptFeatures = [...protectedRefs, ...newlyProtected];
+    // диалога подряд. Состав: точки из исходного partitionByProtection,
+    // которые ВСЁ ЕЩЁ защищены на момент DELETE (фильтр по
+    // freshProtectedPointGuids ловит обратный race protected -> open:
+    // пользователь снял замочек/звёздочку между partition и DELETE - feature
+    // больше не защищена, в счётчик "оставлено" не попадает); плюс точки,
+    // ставшие защищёнными по race-protection.
+    const stillProtected = protectedRefs.filter((feature) => {
+      const properties = feature.getProperties?.() ?? {};
+      const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
+      return pointGuid !== null && freshProtectedPointGuids.has(pointGuid);
+    });
+    const keptFeatures = [...stillProtected, ...newlyProtected];
     if (keptFeatures.length > 0) {
       showToast(
         t({
@@ -463,6 +472,16 @@ async function handleDeleteClick(): Promise<void> {
           ru: `Защищённые точки (замочек или звёздочка): ${keptFeatures.length} ключ(ей) оставлено`,
         }),
       );
+    }
+
+    // Сброс isSelected на features, которые НЕ остались защищёнными:
+    // удалённые finalDeletable физически ушли из источника, а protectedRefs,
+    // ставшие open по обратному race, остаются на карте, но логически уже не
+    // выбраны - очищаем флаг, чтобы следующий клик по trash начинал с
+    // чистого выбора.
+    const keptSet = new Set(keptFeatures);
+    for (const feature of [...protectedRefs, ...newlyProtected]) {
+      if (!keptSet.has(feature)) feature.set?.('isSelected', false);
     }
 
     overallRefsToDelete = sumAmount(keptFeatures);

@@ -976,4 +976,74 @@ describe('refsOnMap lock protection', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(document.querySelector('.svp-toast')?.textContent).toMatch(/protect|защищ/i);
   });
+
+  test('обратный race protected -> open: kept-counter не считает разлоченную точку', async () => {
+    // Сценарий: ref-1 (point-1) изначально open, ref-2 (point-2) изначально
+    // locked. Пользователь выбирает обе, partition отправляет ref-1 в
+    // deletable, ref-2 в protectedRefs. Между confirm и DELETE пользователь
+    // снял замочек с point-2: ref-2 больше не защищён, но в payload не
+    // пошёл (его не было в deletable). Тост "оставлено" не должен учитывать
+    // ref-2 - на момент DELETE он уже не защищён.
+    const initialItems = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open A', f: 0 },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Locked B', f: 0b10 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(initialItems));
+    clickShowButton();
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[1]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    // Между confirm и DELETE пользователь снял замочек с point-2.
+    window.confirm = jest.fn(() => {
+      const updated = [
+        { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open A', f: 0 },
+        { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Now Open B', f: 0 },
+      ];
+      localStorage.setItem('inventory-cache', JSON.stringify(updated));
+      return true;
+    });
+    const fetchSpy = jest.fn(() =>
+      Promise.resolve({
+        json: () => Promise.resolve({ count: { total: 90 } }),
+      } as unknown as Response),
+    );
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    // Несколько await'ов чтобы дождаться: fetch + json + post-DELETE bookkeeping
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // ref-1 ушёл в DELETE как и прежде; ref-2 НЕ в payload, но также НЕ в
+    // тосте "оставлено" - на момент DELETE уже не защищён.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    const body = JSON.parse(init.body as string) as { selection: Record<string, number> };
+    expect(body.selection).toHaveProperty('ref-1');
+    expect(body.selection).not.toHaveProperty('ref-2');
+    // ref-2 разлочен между confirm и DELETE - kept-toast не появляется.
+    const toast = document.querySelector('.svp-toast');
+    expect(toast?.textContent ?? '').not.toMatch(/protect|защищ/i);
+    // isSelected на ref-2 сброшен: больше не считается выбранным.
+    expect(allFeatures[1].getProperties?.().isSelected).toBe(false);
+  });
 });
