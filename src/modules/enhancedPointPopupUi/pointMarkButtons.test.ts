@@ -492,6 +492,46 @@ describe('pointMarkButtons — click toggle', () => {
     expect(getButton('favorite')?.disabled).toBe(false);
   });
 
+  test('disable-enable во время batch не оставляет новые кнопки в disabled', async () => {
+    createPopup('p1');
+    setInventory([
+      { g: 's1', l: 'p1', a: 3, f: 0 },
+      { g: 's2', l: 'p1', a: 2, f: 0 },
+    ]);
+    installPointMarkButtons();
+    await flushMicrotasks();
+
+    // Запускаем batch, держим первый POST в полёте.
+    type FetchResolveValue = { ok: boolean; json: () => Promise<{ result: boolean }> };
+    const pending: { resolve: ((value: FetchResolveValue) => void) | null } = { resolve: null };
+    mockFetch.mockImplementationOnce(
+      () =>
+        new Promise<FetchResolveValue>((resolve) => {
+          pending.resolve = resolve;
+        }),
+    );
+
+    getButton('favorite')?.click();
+    await flushMicrotasks();
+    expect(getButton('favorite')?.disabled).toBe(true);
+
+    // disable + enable во время batch.
+    uninstallPointMarkButtons();
+    installPointMarkButtons();
+    await flushMicrotasks();
+
+    // Кнопки должны быть рабочими: старый цикл ещё не дошёл до finally, но
+    // uninstall очистил batchInProgress, чтобы свежая инкарнация не унаследовала
+    // состояние.
+    expect(getButton('favorite')?.disabled).toBe(false);
+
+    // Завершаем висящий POST - старый цикл просто завершится, не должен ломать
+    // новые кнопки.
+    if (pending.resolve === null) throw new Error('mockFetch implementation not invoked');
+    pending.resolve({ ok: true, json: () => Promise.resolve({ result: true }) });
+    await flushMicrotasks();
+  });
+
   test('сетевая ошибка — кнопка re-enabled, состояние читается из inventory-cache', async () => {
     createPopup('p1');
     setInventory([{ g: 's1', l: 'p1', a: 5, f: 0 }]);

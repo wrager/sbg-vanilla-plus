@@ -278,5 +278,9 @@ export function uninstallPointMarkButtons(): void {
   clickAbortController = null;
   installAbortController?.abort();
   installAbortController = null;
+  // Висящий старый цикл postMark из onClick всё ещё в полёте и доберётся до
+  // finally сам, но между uninstall и enable обратно пользователь не должен
+  // видеть свежие кнопки disabled из-за batch отключённой инкарнации.
+  batchInProgress.clear();
   document.querySelector(`.${CONTAINER_CLASS}`)?.remove();
 }
