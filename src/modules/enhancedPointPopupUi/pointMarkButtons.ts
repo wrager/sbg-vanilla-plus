@@ -25,6 +25,8 @@ const REF_COUNT_SELECTOR = '#i-ref';
 const CONTAINER_CLASS = 'svp-point-mark-buttons';
 const BUTTON_CLASS = 'svp-point-mark-button';
 const FILLED_CLASS = 'is-filled';
+const BATCHING_CLASS = 'is-batching';
+const PROGRESS_CLASS = 'svp-point-mark-progress';
 
 interface IIconState {
   /** Имя SVG-symbol при выключенном (outline) состоянии. */
@@ -76,6 +78,10 @@ let installGeneration = 0;
 // per-pointGuid, не глобальное: пользователь может свайпнуть на другую точку
 // во время batch первой, и кнопки второй точки должны оставаться рабочими.
 const batchInProgress = new Set<string>();
+// Прогресс batch по точке: {done, total}. Показывается внутри кнопки как
+// текст N/total. Без прогресса пользователь видит просто "потускневшие"
+// кнопки на 5-30 секунд и не понимает, что происходит.
+const batchProgress = new Map<string, { done: number; total: number }>();
 
 function sleep(ms: number): Promise<void> {
   if (ms <= 0) return Promise.resolve();
@@ -132,15 +138,27 @@ function buildButton(flag: MarkFlag): HTMLButtonElement {
   use.setAttribute('href', `#${ICON_STATES[flag].off}`);
   svg.appendChild(use);
   button.appendChild(svg);
+  // Прогресс-индикатор: скрыт по умолчанию через CSS, появляется только в
+  // batch-режиме (is-batching класс на кнопке) и пишет N/total.
+  const progress = document.createElement('span');
+  progress.className = PROGRESS_CLASS;
+  progress.setAttribute('aria-live', 'polite');
+  button.appendChild(progress);
   return button;
 }
 
 function updateButton(button: HTMLButtonElement, flag: MarkFlag, popup: Element): void {
   const guid = getCurrentGuid(popup);
+  const progress = button.querySelector<HTMLElement>(`.${PROGRESS_CLASS}`);
   if (guid !== null && batchInProgress.has(guid)) {
     button.disabled = true;
+    button.classList.add(BATCHING_CLASS);
+    const state = batchProgress.get(guid);
+    if (progress) progress.textContent = state ? `${state.done}/${state.total}` : '';
     return;
   }
+  button.classList.remove(BATCHING_CLASS);
+  if (progress) progress.textContent = '';
   if (guid === null) {
     button.disabled = true;
     button.title = '';
@@ -190,6 +208,7 @@ async function onClick(popup: Element, flag: MarkFlag): Promise<void> {
   if (toToggle.length === 0) return;
 
   batchInProgress.add(guid);
+  batchProgress.set(guid, { done: 0, total: toToggle.length });
   refreshAll(popup);
   // Снимок generation на момент старта batch. После каждого awaited step
   // (sleep между POST, сам POST) сверяем со свежим installGeneration: при
@@ -212,13 +231,16 @@ async function onClick(popup: Element, flag: MarkFlag): Promise<void> {
       // стопку, у которой бит уже там, где нам надо.
       const stackGuid = toToggle[i].g;
       const fresh = readInventoryReferences().find((s) => s.g === stackGuid);
-      if (fresh === undefined) continue;
-      if (hasBit(fresh, bit) === targetOn) continue;
-      await postMark(stackGuid, flag);
-      if (myGeneration !== installGeneration) return;
+      if (fresh !== undefined && hasBit(fresh, bit) !== targetOn) {
+        await postMark(stackGuid, flag);
+        if (myGeneration !== installGeneration) return;
+      }
+      batchProgress.set(guid, { done: i + 1, total: toToggle.length });
+      refreshAll(popup);
     }
   } finally {
     batchInProgress.delete(guid);
+    batchProgress.delete(guid);
     refreshAll(popup);
   }
 }
@@ -350,6 +372,7 @@ export function uninstallPointMarkButtons(): void {
   // finally сам, но между uninstall и enable обратно пользователь не должен
   // видеть свежие кнопки disabled из-за batch отключённой инкарнации.
   batchInProgress.clear();
+  batchProgress.clear();
   observedPopup = null;
   document.querySelector(`.${CONTAINER_CLASS}`)?.remove();
 }

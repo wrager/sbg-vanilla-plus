@@ -82,6 +82,25 @@
   transform: scale(1.1);
 }
 
+/* Прогресс N/total виден только в batch-режиме; SVG скрыт, чтобы тёмный
+   круг показывал текущую цифру вместо иконки - пользователь понимает, что
+   операция идёт, и видит, сколько стопок уже обработано. */
+.svp-point-mark-progress {
+  display: none;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-disabled, #ccc);
+}
+
+.svp-point-mark-button.is-batching .svp-point-mark-progress {
+  display: block;
+}
+
+.svp-point-mark-button.is-batching svg {
+  display: none;
+}
+
 .svp-point-mark-button[data-flag='favorite'].is-filled {
   color: var(--level-1, #ffcc33);
 }
