@@ -342,8 +342,8 @@ async function handleDeleteClick(): Promise<void> {
   if (!isProtectionFlagSupportAvailable(cache)) {
     showToast(
       t({
-        en: 'Native lock support unavailable: server returned no f-flags. Deletion blocked.',
-        ru: 'Нативный lock недоступен (сервер не отдал поле f). Удаление заблокировано.',
+        en: 'Native lock/favorite protection unavailable: server returned no f-flags. Deletion blocked.',
+        ru: 'Нативная защита (замочек или звёздочка) недоступна: сервер не отдал поле f. Удаление заблокировано.',
       }),
     );
     return;

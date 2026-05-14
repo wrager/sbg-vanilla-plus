@@ -275,8 +275,8 @@ async function runSlowDelete(): Promise<void> {
   if (!isProtectionFlagSupportAvailable(cache)) {
     showSlowToast(
       t({
-        en: 'Native lock support unavailable: server returned no f-flags. Cleanup blocked.',
-        ru: 'Нативный lock недоступен (сервер не отдал поле f). Очистка заблокирована.',
+        en: 'Native lock/favorite protection unavailable: server returned no f-flags. Cleanup blocked.',
+        ru: 'Нативная защита (замочек или звёздочка) недоступна: сервер не отдал поле f. Очистка заблокирована.',
       }),
     );
     return;
