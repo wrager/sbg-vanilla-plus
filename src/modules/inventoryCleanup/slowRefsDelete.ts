@@ -237,19 +237,27 @@ async function runSlowDelete(): Promise<void> {
       );
       return;
     }
-    // Fail-safe на случай если кнопка показана во время гонки snapshot-неготов.
-    // shouldShowButton уже прячет её, но прямой вызов функции (тест, будущая
-    // подмена обработчика) не должен обойти блокировку. См. комментарий в
-    // shouldShowButton и в inventoryCleanup.runCleanupImpl.
-    if (getLegacyMigrationRefsDeletionBlockReason() === 'snapshot') {
-      showSlowToast(
-        t({
-          en: 'Favorites snapshot not loaded yet — wait a moment and try again',
-          ru: 'Снимок избранного ещё не загружен — подожди немного и попробуй снова',
-        }),
-      );
-      return;
-    }
+  // Fail-safe на случай если кнопка показана во время гонки (snapshot или
+  // legacy migration). shouldShowButton уже прячет её, но прямой вызов
+  // функции (тест, будущая подмена обработчика) не должен обойти блокировку.
+  // См. комментарий в shouldShowButton и в inventoryCleanup.runCleanupImpl.
+  const migrationBlockReason = getLegacyMigrationRefsDeletionBlockReason();
+  if (migrationBlockReason !== null) {
+    showSlowToast(
+      t(
+        migrationBlockReason === 'snapshot'
+          ? {
+              en: 'Favorites snapshot not loaded yet — wait a moment and try again',
+              ru: 'Снимок избранного ещё не загружен — подожди немного и попробуй снова',
+            }
+          : {
+              en: 'Run favorites migration first (favoritesMigration module) to manage key deletion',
+              ru: 'Сначала проведите миграцию избранного через модуль favoritesMigration, чтобы настроить удаление ключей',
+            },
+      ),
+    );
+    return;
+  }
     const { referencesAlliedLimit, referencesNotAlliedLimit } = settings.limits;
     if (referencesAlliedLimit === -1 && referencesNotAlliedLimit === -1) {
       showSlowToast(t({ en: 'Limits not set', ru: 'Лимиты не заданы' }));

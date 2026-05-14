@@ -394,6 +394,7 @@ describe('fetchTeamsForGuids', () => {
 // --- кнопка «Очистить ключи»: disabled при лимитах -1/-1 ---
 
 import { installSlowRefsDelete, uninstallSlowRefsDelete } from './slowRefsDelete';
+import * as refsDeletionMigrationGate from '../../core/refsDeletionMigrationGate';
 
 describe('кнопка «Очистить ключи»: disabled при -1/-1', () => {
   function fullLevelLimits(): Record<number, number> {
@@ -893,6 +894,44 @@ describe('runSlowDelete: isProtectionFlagSupportAvailable=false блокируе
       setTimeout(resolve, 200);
     });
 
+    confirmSpy.mockRestore();
+    fetchSpy.mockRestore();
+  });
+
+  test('fail-safe: legacy block toasts до confirm (симметрия snapshot gate)', async () => {
+    setSlowSettings();
+    setPlayerTeam(1);
+    setLockMigrationDone();
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 3, f: 0 }]),
+    );
+    makeBar();
+    await loadFavoritesForTest();
+
+    const reasonSpy = jest
+      .spyOn(refsDeletionMigrationGate, 'getLegacyMigrationRefsDeletionBlockReason')
+      .mockReturnValue('legacy');
+
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const fetchSpy = jest.spyOn(window, 'fetch');
+
+    installSlowRefsDelete();
+    const button = getButton();
+    if (!button) throw new Error('button missing');
+    button.click();
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(
+      /миграц|migration|favorites/i,
+    );
+
+    reasonSpy.mockRestore();
     confirmSpy.mockRestore();
     fetchSpy.mockRestore();
   });
