@@ -15,7 +15,7 @@ export type MarkFlag = 'favorite' | 'locked';
  * бит 0 — favorite, бит 1 — locked.
  * Соответствует логике `is_fav = !!(item?.f & 0b1)` в refs/game/script.js:3404.
  */
-export const MARK_FLAG_BIT: Record<MarkFlag, number> = {
+export const MARK_FLAG_BITS: Record<MarkFlag, number> = {
   favorite: 0b01,
   locked: 0b10,
 };
@@ -62,7 +62,7 @@ function applyFlagToCache(stackGuid: string, flag: MarkFlag, on: boolean): void 
   }
   if (!Array.isArray(parsed)) return;
 
-  const bit = MARK_FLAG_BIT[flag];
+  const bit = MARK_FLAG_BITS[flag];
   let mutated = false;
   for (const item of parsed) {
     if (!isInventoryReference(item)) continue;

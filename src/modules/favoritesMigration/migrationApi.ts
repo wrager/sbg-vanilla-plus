@@ -10,7 +10,7 @@ import {
   isLockMigrationDone,
   setLockMigrationDone,
 } from '../../core/favoritesStore';
-import { MARK_FLAG_BIT, postMark, type MarkFlag } from '../../core/marksApi';
+import { MARK_FLAG_BITS, postMark, type MarkFlag } from '../../core/marksApi';
 
 /**
  * Перевод SVP/CUI-избранных в нативные «звёздочки» / «замочки» SBG 0.6.1
@@ -151,7 +151,7 @@ export function buildCandidates(flag: MigrationFlag): IMigrationCandidates {
     refsByPoint.set(ref.l, stacks);
   }
 
-  const bit = MARK_FLAG_BIT[flag];
+  const bit = MARK_FLAG_BITS[flag];
   const toSend: IMigrationItem[] = [];
   let alreadyApplied = 0;
   for (const [pointGuid, stacks] of refsByPoint) {

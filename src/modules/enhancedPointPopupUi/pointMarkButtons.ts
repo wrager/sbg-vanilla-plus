@@ -2,7 +2,7 @@ import { waitForElement } from '../../core/dom';
 import { t } from '../../core/l10n';
 import { readInventoryReferences } from '../../core/inventoryCache';
 import type { IInventoryReference } from '../../core/inventoryTypes';
-import { MARK_FLAG_BIT, postMark, type MarkFlag } from '../../core/marksApi';
+import { MARK_FLAG_BITS, postMark, type MarkFlag } from '../../core/marksApi';
 
 /**
  * Кнопки fav/lock в попапе точки. Состояние кнопки = агрегация по всем
@@ -88,7 +88,7 @@ function getPointStacks(pointGuid: string): IInventoryReference[] {
 
 function isFlagSetOnAllStacks(stacks: IInventoryReference[], flag: MarkFlag): boolean {
   if (stacks.length === 0) return false;
-  const bit = MARK_FLAG_BIT[flag];
+  const bit = MARK_FLAG_BITS[flag];
   return stacks.every((stack) => ((stack.f ?? 0) & bit) !== 0);
 }
 
@@ -167,7 +167,7 @@ async function onClick(popup: Element, flag: MarkFlag): Promise<void> {
   const stacks = getPointStacks(guid);
   if (stacks.length === 0) return;
 
-  const bit = MARK_FLAG_BIT[flag];
+  const bit = MARK_FLAG_BITS[flag];
   // Целевое состояние - инверсия агрегата. Когда все стопки помечены - снимаем;
   // когда хотя бы одна не помечена - ставим всем.
   const targetOn = !stacks.every((stack) => ((stack.f ?? 0) & bit) !== 0);
