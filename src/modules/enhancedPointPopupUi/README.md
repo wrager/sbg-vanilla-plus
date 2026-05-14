@@ -30,6 +30,10 @@
 
 `disable()` снимает observer, аборт-сигналит click-listener'ы и удаляет контейнер.
 
+### Почему MutationObserver, а не text-patch через installGameScriptPatcher
+
+Правило проекта (CLAUDE.md) предпочитает text-patch и runtime-обёртку нативного API над параллельной инфраструктурой. Здесь оба варианта были бы дороже: `showInfo` (refs/game/script.js:2084) - длинная функция с 300+ DOM-mutation на каждый вызов, и text-patch должен вставиться так, чтобы наш контейнер не сносился последующими `splide.refresh` и обновлениями текстов попапа; runtime-обёртка `showInfo` потребовала бы реплицировать всю initialization-логику попапа в нашем декораторе. MutationObserver на атрибутах попапа (плюс подписка на `inventory-cache`, см. ниже) дешевле и устойчивее к минорным правкам игры: мы реагируем на финальное состояние DOM, не воспроизводим путь к нему. Tradeoff - наш контейнер вставляется чуть позже первого paint попапа (после первого тика observer), но визуально это не заметно.
+
 ### Reentrancy
 
 `installGeneration` инкрементируется на каждом install/uninstall. Если `waitForElement.then()` приходит после disable - generation не совпал, обработчик skip'ает работу. `installAbortController` через `AbortSignal` сразу освобождает pending `waitForElement` при uninstall, не оставляя MutationObserver на documentElement до timeout. `batchInProgress` (Set<pointGuid>) блокирует повторные клики на той же точке и не даёт `MutationObserver` пересоздавать DOM во время отправки запросов; uninstall очищает Set и завершает висящий цикл через сверку generation на каждой awaited step.
