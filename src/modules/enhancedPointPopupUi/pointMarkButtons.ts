@@ -55,6 +55,17 @@ const TITLES: Record<
   },
 };
 
+const NO_KEYS_TITLE: Record<MarkFlag, { en: string; ru: string }> = {
+  favorite: {
+    en: 'Collect a key to add this point to favorites',
+    ru: 'Соберите ключ, чтобы добавить точку в избранное',
+  },
+  locked: {
+    en: 'Collect a key to lock this point',
+    ru: 'Соберите ключ, чтобы заблокировать точку',
+  },
+};
+
 const TOAST_MESSAGES = {
   rateLimited: {
     en: 'Server rate-limited. Slowing down...',
@@ -182,7 +193,11 @@ function updateButton(button: HTMLButtonElement, flag: MarkFlag, popup: Element)
   const stacks = getPointStacks(guid);
   if (stacks.length === 0) {
     button.disabled = true;
-    button.title = '';
+    // Инструкция вместо пустого title: пользователь видит, ПОЧЕМУ кнопка
+    // disabled. POST /api/marks работает на уровне стопки ключей, не точки -
+    // помечать нечего, пока ключей нет. CUI-аналог остаётся кликабельным
+    // всегда (favorite по guid точки), что задало ожидание пользователя.
+    button.title = t(NO_KEYS_TITLE[flag]);
     button.classList.remove(FILLED_CLASS);
     button.setAttribute('aria-pressed', 'false');
     button.querySelector('use')?.setAttribute('href', `#${ICON_STATES[flag].off}`);

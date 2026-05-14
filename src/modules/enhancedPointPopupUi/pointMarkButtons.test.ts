@@ -171,13 +171,14 @@ describe('pointMarkButtons — состояние кнопок', () => {
     expect(star?.classList.contains('is-filled')).toBe(true);
   });
 
-  test('disabled-кнопка без tooltip', async () => {
+  test('disabled-кнопка показывает инструкцию "соберите ключ"', async () => {
+    localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
     createPopup('point-no-keys');
     installPointMarkButtons();
     await flushMicrotasks();
 
-    expect(getButton('favorite')?.title).toBe('');
-    expect(getButton('locked')?.title).toBe('');
+    expect(getButton('favorite')?.title).toBe('Соберите ключ, чтобы добавить точку в избранное');
+    expect(getButton('locked')?.title).toBe('Соберите ключ, чтобы заблокировать точку');
   });
 
   test('все стопки с favorite-битом — звезда filled', async () => {
