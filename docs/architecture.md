@@ -41,7 +41,9 @@ interface IFeatureModule {
 
 **Типы инвентаря** — `src/core/inventoryTypes.ts`: интерфейсы и type guard'ы для всех типов предметов.
 
-**Кэш инвентаря** — `src/core/inventoryCache.ts`: чтение и парсинг `inventory-cache` из localStorage.
+**Кэш инвентаря** — `src/core/inventoryCache.ts`: чтение и парсинг `inventory-cache` из localStorage. `MARK_FLAG_BITS` и `MarkFlag` (биты `f`-поля стопки) живут в `inventoryTypes.ts` рядом с `IInventoryReference`, чтобы избежать циклической зависимости с `marksApi`.
+
+**Marks API** — `src/core/marksApi.ts`: `postMark(itemGuid, flag)` отправляет один `POST /api/marks` с auth-токеном из `localStorage['auth']` (игровая `apiSend` IIFE-внутренняя, недоступна юзерскрипту) и синхронизирует `inventory-cache` через `applyFlagToCache` под итоговый сервером state. Возвращает `{ networkOk, result, httpStatus? }` — клиенты используют `httpStatus` для отличения 429 (rate-limit) от прочих failures и применения backoff. `MARKS_RATE_LIMIT_MS = 1500` мс — общая задержка между POST'ами для обоих клиентов (`favoritesMigration.runMigration`, `enhancedPointPopupUi.pointMarkButtons`), вынесена в core, чтобы характеристика серверного rate-limit жила рядом с самим эндпоинтом.
 
 **Синхронизация счётчика ключей** — `src/core/refsHighlightSync.ts`: единая утилита `syncRefsCountForPoints(pointGuids)`, читает свежий `inventory-cache` и для каждой точки приводит `feature.get('highlight')['7']` в `points`-layer к актуальному amount через `Reflect.set` + `feature.changed()`. SBG 0.6.1+ хранит highlight как sparse object `{"4":false,"7":N}` (раньше был массив `[v0..v9]`); доступ через числовой ключ работает одинаково для обоих контейнеров. Lazy init `pointsSource` через `getOlMap()` при первом вызове, кеш на жизнь страницы. Используется из `refsLayerSync` (после discover), `inventoryCleanup.runCleanupImpl` (после fast-cleanup DELETE), `slowRefsDelete.runSlowDelete` (после slow-cleanup DELETE), `refsOnMap.handleDeleteClick` (после viewer-DELETE) - один источник истины для всех путей изменения количества ключей точки в инвентаре. `refsLayerSync` — owner всех путей синхронизации: при отключении модуля sync silent-no-op для каждого источника.
 
@@ -159,6 +161,7 @@ src/
 │   ├── gameConstants.ts     # Константы игры (типы предметов)
 │   ├── inventoryTypes.ts    # Типы предметов инвентаря + type guards
 │   ├── inventoryCache.ts    # Чтение inventory-cache из localStorage
+│   ├── marksApi.ts          # POST /api/marks (favorite/locked флаги стопки)
 │   ├── refsHighlightSync.ts # Синхронизация highlight['7'] на feature-точке
 │   ├── favoritesStore.ts    # IDB CUI/favorites (read-only) + lock-migration-done flag
 │   ├── popupSwipe.ts        # Общая инфраструктура свайп-жестов на .info

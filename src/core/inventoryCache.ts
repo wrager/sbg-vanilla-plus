@@ -1,5 +1,5 @@
 import type { IInventoryReference, IInventoryReferenceFull } from './inventoryTypes';
-import { isInventoryReference, isInventoryReferenceFull } from './inventoryTypes';
+import { isInventoryReference, isInventoryReferenceFull, MARK_FLAG_BITS } from './inventoryTypes';
 
 export const INVENTORY_CACHE_KEY = 'inventory-cache';
 
@@ -43,7 +43,7 @@ export function buildLockedPointGuids(items: readonly unknown[]): Set<string> {
   for (const item of items) {
     if (!isInventoryReference(item)) continue;
     if (item.f === undefined) continue;
-    if ((item.f & 0b10) === 0) continue;
+    if ((item.f & MARK_FLAG_BITS.locked) === 0) continue;
     locked.add(item.l);
   }
   return locked;

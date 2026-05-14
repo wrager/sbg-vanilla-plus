@@ -23,7 +23,7 @@
 
 ### Sequential + rate-limit
 
-Запросы идут строго последовательно (одна стопка за раз) с задержкой `DEFAULT_REQUEST_DELAY_MS = 1500` мс между ними. Эмпирически проверено: при `concurrency = 4` без задержки большая часть запросов возвращала `result: false` (отказ замаскированный под toggle-off); 30 sequential-запросов с интервалом 1500 мс прошли с 100% успехом. Миграция 100 точек занимает около 2,5 минут, но все стопки получат флаг.
+Запросы идут строго последовательно (одна стопка за раз) с задержкой `MARKS_RATE_LIMIT_MS = 1500` мс между ними. Эмпирически проверено: при `concurrency = 4` без задержки большая часть запросов возвращала `result: false` (отказ замаскированный под toggle-off); 30 sequential-запросов с интервалом 1500 мс прошли с 100% успехом. Миграция 100 точек занимает около 2,5 минут, но все стопки получат флаг.
 
 ### Retry-механизм
 
@@ -49,8 +49,8 @@ Source данных миграции — IndexedDB `CUI/favorites` (тот же 
 | Файл                    | Назначение                                                                                               |
 | ----------------------- | -------------------------------------------------------------------------------------------------------- |
 | `favoritesMigration.ts` | Определение модуля: init (loadFavorites + inferAndPersistLockMigrationDone), enable/disable (install UI) |
-| `migrationApi.ts`       | `buildCandidates`, `postMark`, `runMigration`, `inferAndPersistLockMigrationDone`                        |
-| `migrationApi.test.ts`  | Тесты buildCandidates / postMark / runMigration retry-механизма / lock-migration-done инфера             |
+| `migrationApi.ts`       | `buildCandidates`, `runMigration`, `inferAndPersistLockMigrationDone`                                    |
+| `migrationApi.test.ts`  | Тесты buildCandidates / runMigration retry-механизма / lock-migration-done инфера                        |
 | `migrationUi.ts`        | Кнопка «Настроить» в строке модуля + модалка с IO-кнопками, миграцией и прогресс-баром                   |
 | `migrationUi.test.ts`   | Тесты IO-секции: рендеринг кнопок, экспорт пустого списка, импорт обновляет счётчик                      |
 | `styles.css`            | Стили модалки, кнопок, прогресс-бара, IO-секции                                                          |

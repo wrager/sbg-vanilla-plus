@@ -6,19 +6,42 @@ export function $$(selector: string, root: ParentNode = document): Element[] {
   return [...root.querySelectorAll(selector)];
 }
 
-export function waitForElement(selector: string, timeout = 10_000): Promise<Element> {
+export function waitForElement(
+  selector: string,
+  timeout = 10_000,
+  signal?: AbortSignal,
+): Promise<Element> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('waitForElement aborted', 'AbortError'));
+      return;
+    }
+
     const existing = $(selector);
     if (existing) {
       resolve(existing);
       return;
     }
 
+    // Освобождает observer и таймер при любом завершении (resolve, timeout,
+    // abort). Без этого abort оставлял бы pending MutationObserver, который
+    // потребляет CPU на каждой DOM-мутации до timeout (10 сек по умолчанию)
+    // и продолжает резолвить промис, который уже никому не нужен.
+    const cleanup = (): void => {
+      observer.disconnect();
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+
+    const onAbort = (): void => {
+      cleanup();
+      reject(new DOMException('waitForElement aborted', 'AbortError'));
+    };
+
     const observer = new MutationObserver(() => {
       const el = $(selector);
       if (el) {
-        observer.disconnect();
-        clearTimeout(timer);
+        cleanup();
         resolve(el);
       }
     });
@@ -29,9 +52,11 @@ export function waitForElement(selector: string, timeout = 10_000): Promise<Elem
     });
 
     const timer = setTimeout(() => {
-      observer.disconnect();
+      cleanup();
       reject(new Error(`[SVP] Элемент "${selector}" не найден за ${timeout}мс`));
     }, timeout);
+
+    signal?.addEventListener('abort', onAbort);
   });
 }
 

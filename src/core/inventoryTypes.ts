@@ -31,6 +31,21 @@ export interface IInventoryReference {
   f?: number;
 }
 
+/** Нативные флаги SBG 0.6.1, применяемые через POST /api/marks. */
+export type MarkFlag = 'favorite' | 'locked';
+
+/**
+ * Биты в `IInventoryReference.f` (поле стопки в `inventory-cache`):
+ * бит 0 — favorite, бит 1 — locked.
+ *
+ * Размещены здесь, а не в core/marksApi, чтобы core/inventoryCache мог читать
+ * их без циклической зависимости (marksApi импортирует inventoryCache).
+ */
+export const MARK_FLAG_BITS: Record<MarkFlag, number> = {
+  favorite: 0b01,
+  locked: 0b10,
+};
+
 /** Полные данные ключа из inventory-cache (включая координаты и название точки). */
 export interface IInventoryReferenceFull extends IInventoryReference {
   c: [number, number];
