@@ -417,6 +417,15 @@ async function handleDeleteClick(): Promise<void> {
   // в своём финальном guard, но refsOnMap бьёт по /api/inventory напрямую
   // (свой deleteRefsFromServer), поэтому защита должна выполниться здесь.
   const freshCache = readInventoryCache();
+  if (!isProtectionFlagSupportAvailable(freshCache)) {
+    showToast(
+      t({
+        en: 'Native lock/favorite protection unavailable: server returned no f-flags. Deletion blocked.',
+        ru: 'Нативная защита замочком или звёздочкой недоступна: сервер не отдал поле f. Удаление заблокировано.',
+      }),
+    );
+    return;
+  }
   const freshProtectedPointGuids = buildProtectedPointGuids(freshCache);
   const { deletable: finalDeletable, kept: newlyProtected } = partitionByProtection(
     deletable,

@@ -1062,6 +1062,45 @@ describe('refsOnMap lock protection', () => {
     expect(document.querySelector('.svp-toast')?.textContent).toMatch(/protect|защищ/i);
   });
 
+  test('race-protection: кэш без f после confirm блокирует DELETE и показывает toast', async () => {
+    // До confirm кэш валиден (все ref-стопки с полем f). После confirm
+    // приходит деградировавший кэш без f — без повторной проверки
+    // isProtectionFlagSupportAvailable можно было бы отправить DELETE,
+    // пересчитав только protected-set (пустой).
+    const initialItems = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open A', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(initialItems));
+    clickShowButton();
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    window.confirm = jest.fn(() => {
+      const degraded = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'No f' }];
+      localStorage.setItem('inventory-cache', JSON.stringify(degraded));
+      return true;
+    });
+    const fetchSpy = jest.fn();
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/lock|нативный|f-flag/i);
+  });
+
   test('обратный race protected -> open: kept-counter не считает разлоченную точку', async () => {
     // Сценарий: ref-1 (point-1) изначально open, ref-2 (point-2) изначально
     // locked. Пользователь выбирает обе, partition отправляет ref-1 в
