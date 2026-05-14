@@ -110,6 +110,6 @@
 }
 
 .svp-point-mark-button[disabled] {
-  opacity: 0.4;
+  opacity: 0.7;
   cursor: default;
 }
