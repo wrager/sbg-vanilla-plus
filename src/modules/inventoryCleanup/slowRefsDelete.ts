@@ -343,12 +343,39 @@ async function runSlowDelete(): Promise<void> {
     return;
   }
 
-  const totalAmount = deletions.reduce((sum, entry) => sum + entry.amount, 0);
-  const alliedDeletions = deletions.filter((entry) => {
+  // Race-protection: между первым чтением кэша (строка 273) и этим моментом
+  // прошёл async fetchTeamsForGuids - иногда минуты при больших списках. За
+  // это время пользователь мог пометить какие-то точки нативным замочком
+  // или звёздочкой. Финальный guard в deleteInventoryItems re-fetch'ит и
+  // выбрасывает throw на ВСЁМ батче при любой ставшей-protected точке -
+  // пользователь теряет возможность удалить и не-защищённые ключи. Делаем
+  // partial filter здесь, симметрично с refsOnMap.handleDeleteClick: в
+  // deletions оставляем только точки, всё ещё незащищённые на момент DELETE.
+  const freshCache = readInventoryCache();
+  const freshProtectedPointGuids = buildProtectedPointGuids(freshCache);
+  const finalDeletions = deletions.filter((entry) => {
+    if (entry.pointGuid === undefined) return true;
+    return !freshProtectedPointGuids.has(entry.pointGuid);
+  });
+  const newlyProtectedCount = deletions.length - finalDeletions.length;
+
+  if (finalDeletions.length === 0) {
+    progress.close();
+    showSlowToast(
+      t({
+        en: 'All keys became protected (locked or favorited) before deletion - aborted',
+        ru: 'Все ключи стали защищёнными (с замочком или звёздочкой) до удаления - отменено',
+      }),
+    );
+    return;
+  }
+
+  const totalAmount = finalDeletions.reduce((sum, entry) => sum + entry.amount, 0);
+  const alliedDeletions = finalDeletions.filter((entry) => {
     const team = teams.get(entry.pointGuid ?? '');
     return team === playerTeam;
   });
-  const notAlliedDeletions = deletions.filter((entry) => {
+  const notAlliedDeletions = finalDeletions.filter((entry) => {
     const team = teams.get(entry.pointGuid ?? '');
     return team !== playerTeam;
   });
@@ -363,14 +390,14 @@ async function runSlowDelete(): Promise<void> {
   progress.setStatus(t({ en: 'Deleting: ', ru: 'Удаление: ' }) + summaryText);
 
   try {
-    const result = await deleteInventoryItems(deletions);
-    updateInventoryCache(deletions);
+    const result = await deleteInventoryItems(finalDeletions);
+    updateInventoryCache(finalDeletions);
     updatePointRefCount();
     // Sync счётчика ключей на подписи затронутых точек на карте. Slow удаляет
-    // только ключи (по lock-проверке выше), все pointGuid у удалений заданы.
+    // только ключи (по protection-проверке выше), все pointGuid у удалений заданы.
     const refPointGuids = Array.from(
       new Set(
-        deletions
+        finalDeletions
           .map((d) => d.pointGuid)
           .filter((guid): guid is string => typeof guid === 'string'),
       ),
@@ -382,7 +409,16 @@ async function runSlowDelete(): Promise<void> {
       updateDomInventoryCount(result.total);
     }
     progress.close();
-    showSlowToast(t({ en: 'Deleted: ', ru: 'Удалено: ' }) + summaryText);
+    const deletedText = t({ en: 'Deleted: ', ru: 'Удалено: ' }) + summaryText;
+    if (newlyProtectedCount > 0) {
+      const keptText = t({
+        en: ` (${String(newlyProtectedCount)} key(s) kept: became protected during request)`,
+        ru: ` (${String(newlyProtectedCount)} ключ(ей) оставлено: стали защищёнными во время запроса)`,
+      });
+      showSlowToast(deletedText + keptText);
+    } else {
+      showSlowToast(deletedText);
+    }
   } catch (error) {
     progress.close();
     const message =
