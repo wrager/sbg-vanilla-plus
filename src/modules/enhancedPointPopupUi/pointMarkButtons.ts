@@ -125,8 +125,8 @@ function buildButton(flag: MarkFlag): HTMLButtonElement {
   // Тот же визуальный язык, что у inventory ref_actions popover.
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 576 576');
-  svg.setAttribute('width', '20');
-  svg.setAttribute('height', '20');
+  svg.setAttribute('width', '24');
+  svg.setAttribute('height', '24');
   svg.setAttribute('aria-hidden', 'true');
   const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
   use.setAttribute('href', `#${ICON_STATES[flag].off}`);

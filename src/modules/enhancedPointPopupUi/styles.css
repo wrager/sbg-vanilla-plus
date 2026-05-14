@@ -39,13 +39,18 @@
   top: 0;
   right: 0;
   display: flex;
-  gap: 4px;
+  gap: 8px;
   z-index: 2;
 }
 
+/* Размер 44x44 = минимум для mobile tap target (Apple HIG 44pt, Material 48dp).
+   Замок необратим в один клик: случайный массовый toggle locked на N стопок
+   через серверный POST не откатывается без повторного клика. Tap target ниже
+   44 + gap 4 вплотную провоцировали ошибочные нажатия по замку вместо
+   звезды. */
 .svp-point-mark-button {
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   margin: 0;
   border: none;
