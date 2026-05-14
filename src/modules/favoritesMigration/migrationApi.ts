@@ -10,7 +10,7 @@ import {
   isLockMigrationDone,
   setLockMigrationDone,
 } from '../../core/favoritesStore';
-import { MARK_FLAG_BITS, postMark, type MarkFlag } from '../../core/marksApi';
+import { MARK_FLAG_BITS, MARKS_RATE_LIMIT_MS, postMark, type MarkFlag } from '../../core/marksApi';
 
 /**
  * Перевод SVP/CUI-избранных в нативные «звёздочки» / «замочки» SBG 0.6.1
@@ -23,20 +23,12 @@ export type MigrationFlag = MarkFlag;
 
 /**
  * Запросы к `/api/marks` идут строго последовательно (по одному за раз) с
- * задержкой между каждым. Параллельность сервер выдерживает, но имеет
- * rate-limit на частоту marks-операций: при concurrency=4 без задержки
- * большая часть запросов возвращала `result: false` (отказ замаскированный
- * под toggle-off). Sequential + delay — единственный способ гарантировать
- * что все стопки получат флаг.
+ * задержкой `MARKS_RATE_LIMIT_MS` между каждым. Параллельность сервер
+ * выдерживает, но имеет rate-limit на частоту marks-операций: при
+ * concurrency=4 без задержки большая часть запросов возвращала
+ * `result: false` (отказ замаскированный под toggle-off). Sequential +
+ * delay — единственный способ гарантировать что все стопки получат флаг.
  */
-
-/**
- * Задержка между запросами `/api/marks` (мс). Эмпирически проверено: 30
- * запросов с интервалом 1500мс прошли с 100% успехом (`result: true`).
- * Меньшие интервалы не тестировались — без подтверждения на твоём сервере
- * шансовать с rate-limit нельзя.
- */
-const DEFAULT_REQUEST_DELAY_MS = 1500;
 
 /**
  * Задержки перед автоматическими retry-попытками для сетевых ошибок (fetch
@@ -207,7 +199,7 @@ export interface IMigrationOptions {
   onPhaseChange?: (phase: IMigrationPhase) => void;
   /**
    * Задержка между запросами в `runBatch` (мс). По умолчанию
-   * `DEFAULT_REQUEST_DELAY_MS=1500` — обходит серверный rate-limit. В тестах
+   * `MARKS_RATE_LIMIT_MS=1500` — обходит серверный rate-limit. В тестах
    * передавать 0, чтобы прогон был мгновенным.
    */
   requestDelayMs?: number;
@@ -288,7 +280,7 @@ export async function runMigration(
   items: IMigrationItem[],
   options: IMigrationOptions,
 ): Promise<IMigrationResult> {
-  const requestDelayMs = options.requestDelayMs ?? DEFAULT_REQUEST_DELAY_MS;
+  const requestDelayMs = options.requestDelayMs ?? MARKS_RATE_LIMIT_MS;
   const networkRetryDelays = options.networkRetryDelaysMs ?? DEFAULT_NETWORK_RETRY_DELAYS_MS;
   const toggleRetryDelay = options.toggleRetryDelayMs ?? DEFAULT_TOGGLE_RETRY_DELAY_MS;
 

@@ -20,6 +20,15 @@ export const MARK_FLAG_BITS: Record<MarkFlag, number> = {
   locked: 0b10,
 };
 
+/**
+ * Серверный rate-limit на `POST /api/marks`: между запросами от одного
+ * клиента должно пройти не меньше 1500мс, иначе сервер возвращает
+ * `result: false` (отказ замаскированный под toggle-off). Эмпирически
+ * проверено: 30 sequential-запросов с интервалом 1500мс прошли с 100%
+ * успехом. Используется всеми клиентами marks-эндпоинта.
+ */
+export const MARKS_RATE_LIMIT_MS = 1500;
+
 interface IMarkOutcome {
   /** Сетевой запрос завершился без исключения и `response.ok === true`. */
   networkOk: boolean;

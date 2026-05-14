@@ -2,7 +2,7 @@ import { waitForElement } from '../../core/dom';
 import { t } from '../../core/l10n';
 import { readInventoryReferences } from '../../core/inventoryCache';
 import type { IInventoryReference } from '../../core/inventoryTypes';
-import { MARK_FLAG_BITS, postMark, type MarkFlag } from '../../core/marksApi';
+import { MARK_FLAG_BITS, MARKS_RATE_LIMIT_MS, postMark, type MarkFlag } from '../../core/marksApi';
 
 /**
  * Кнопки fav/lock в попапе точки. Состояние кнопки = агрегация по всем
@@ -24,14 +24,6 @@ const REF_COUNT_SELECTOR = '#i-ref';
 const CONTAINER_CLASS = 'svp-point-mark-buttons';
 const BUTTON_CLASS = 'svp-point-mark-button';
 const FILLED_CLASS = 'is-filled';
-
-/**
- * Задержка между запросами `POST /api/marks` в одном toggle-batch (мс).
- * Совпадает с `DEFAULT_REQUEST_DELAY_MS` из favoritesMigration: серверный
- * rate-limit на marks - 1500мс между запросами для гарантии result=true.
- * Первый запрос летит сразу; задержка ставится только перед последующими.
- */
-const REQUEST_DELAY_MS = 1500;
 
 interface IIconState {
   /** Имя SVG-symbol при выключенном (outline) состоянии. */
@@ -178,7 +170,7 @@ async function onClick(popup: Element, flag: MarkFlag): Promise<void> {
   refreshAll(popup);
   try {
     for (let i = 0; i < toToggle.length; i++) {
-      if (i > 0) await sleep(REQUEST_DELAY_MS);
+      if (i > 0) await sleep(MARKS_RATE_LIMIT_MS);
       await postMark(toToggle[i].g, flag);
     }
   } finally {
