@@ -87,10 +87,14 @@ function getPointStacks(pointGuid: string): IInventoryReference[] {
   return readInventoryReferences().filter((stack) => stack.l === pointGuid && stack.a > 0);
 }
 
+function hasBit(stack: IInventoryReference, bit: number): boolean {
+  return ((stack.f ?? 0) & bit) !== 0;
+}
+
 function isFlagSetOnAllStacks(stacks: IInventoryReference[], flag: MarkFlag): boolean {
   if (stacks.length === 0) return false;
   const bit = MARK_FLAG_BITS[flag];
-  return stacks.every((stack) => ((stack.f ?? 0) & bit) !== 0);
+  return stacks.every((stack) => hasBit(stack, bit));
 }
 
 function findContainer(popup: Element): HTMLElement | null {
@@ -171,8 +175,8 @@ async function onClick(popup: Element, flag: MarkFlag): Promise<void> {
   const bit = MARK_FLAG_BITS[flag];
   // Целевое состояние - инверсия агрегата. Когда все стопки помечены - снимаем;
   // когда хотя бы одна не помечена - ставим всем.
-  const targetOn = !stacks.every((stack) => ((stack.f ?? 0) & bit) !== 0);
-  const toToggle = stacks.filter((stack) => (((stack.f ?? 0) & bit) !== 0) !== targetOn);
+  const targetOn = !stacks.every((stack) => hasBit(stack, bit));
+  const toToggle = stacks.filter((stack) => hasBit(stack, bit) !== targetOn);
   if (toToggle.length === 0) return;
 
   batchInProgress = true;
