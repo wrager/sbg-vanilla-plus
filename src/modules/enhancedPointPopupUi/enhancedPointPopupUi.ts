@@ -9,8 +9,8 @@ export const enhancedPointPopupUi: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Enhanced Point Popup UI', ru: 'Улучшенный UI попапа точки' },
   description: {
-    en: 'Larger buttons, smaller text, hidden auto-deploy, favorite and lock toggles in point popup',
-    ru: 'Крупные кнопки, мелкий текст, скрытая авто-простановка, кнопки избранного и блокировки в попапе точки',
+    en: 'Larger buttons, smaller text, hidden auto-deploy, native favorite and lock buttons in point popup (lock keys against auto-cleanup)',
+    ru: 'Крупные кнопки, мелкий текст, скрытая авто-простановка, нативная звезда избранного и замок блокировки в попапе точки (защита ключей от автоочистки)',
   },
   defaultEnabled: true,
   category: 'ui',
