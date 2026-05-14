@@ -1,11 +1,6 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { isModuleEnabledByUser } from '../../core/moduleRegistry';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
-import {
-  getFavoritedGuids,
-  isFavoritesSnapshotReady,
-  isLockMigrationDone,
-} from '../../core/favoritesStore';
+import { isReferenceMassDeleteBlockedByLegacyMigration } from '../../core/refsDeletionMigrationGate';
 // favoritesStore импортируется только для определения migrationPending — сам
 // legacy список SVP/CUI участвует только в favoritesMigration. inventoryCleanup
 // здесь использует список только как сигнал «миграция ещё не сделана».
@@ -103,12 +98,7 @@ async function runCleanupImpl(): Promise<void> {
   //   мигрировать;
   // - модуль активен, snapshot готов, legacy пустой - блок снимаем, нечего
   //   защищать.
-  const migrationModuleEnabled = isModuleEnabledByUser('favoritesMigration');
-  const snapshotReady = isFavoritesSnapshotReady();
-  const blockReferences =
-    !isLockMigrationDone() &&
-    migrationModuleEnabled &&
-    (!snapshotReady || getFavoritedGuids().size > 0);
+  const blockReferences = isReferenceMassDeleteBlockedByLegacyMigration();
   const limitsForRun = blockReferences
     ? { ...settings.limits, referencesMode: 'off' as const }
     : settings.limits;

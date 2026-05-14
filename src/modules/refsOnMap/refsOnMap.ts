@@ -10,6 +10,10 @@ import {
   readInventoryCache,
   INVENTORY_CACHE_KEY,
 } from '../../core/inventoryCache';
+import {
+  getLegacyMigrationRefsDeletionBlockReason,
+  isReferenceMassDeleteBlockedByLegacyMigration,
+} from '../../core/refsDeletionMigrationGate';
 import type { IInventoryReferenceFull } from '../../core/inventoryTypes';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
@@ -61,6 +65,31 @@ function delay(milliseconds: number): Promise<void> {
 }
 
 // ── deletion ─────────────────────────────────────────────────────────────────
+
+/**
+ * Блокировка как в inventoryCleanup / slowRefsDelete: пока незавершена
+ * миграция legacy SVP/CUI-избранных, массовое удаление ключей по кэшу
+ * небезопасно. Возвращает true, если показан toast и вызывающий код должен
+ * прервать сценарий.
+ */
+function maybeToastLegacyMigrationBlock(): boolean {
+  const reason = getLegacyMigrationRefsDeletionBlockReason();
+  if (reason === null) return false;
+  showToast(
+    t(
+      reason === 'snapshot'
+        ? {
+            en: 'Favorites snapshot not loaded yet — wait a moment and try again',
+            ru: 'Снимок избранного ещё не загружен — подожди немного и попробуй снова',
+          }
+        : {
+            en: 'Run favorites migration first (favoritesMigration module) to manage key deletion',
+            ru: 'Сначала проведите миграцию избранного через модуль favoritesMigration, чтобы настроить удаление ключей',
+          },
+    ),
+  );
+  return true;
+}
 
 interface IDeleteApiResponse {
   count?: { total?: number };
@@ -323,6 +352,7 @@ function sumAmount(features: IOlFeature[]): number {
 
 async function handleDeleteClick(): Promise<void> {
   if (uniqueRefsToDelete === 0 || !refsSource) return;
+  if (maybeToastLegacyMigrationBlock()) return;
 
   const selectedFeatures = refsSource.getFeatures().filter((feature) => {
     const properties = feature.getProperties?.();
@@ -607,6 +637,7 @@ function restoreGameUi(): void {
 
 function showViewer(): void {
   if (viewerOpen || !olMap || !refsSource) return;
+  if (maybeToastLegacyMigrationBlock()) return;
 
   const refs = readFullInventoryReferences();
   if (refs.length === 0) return;
@@ -705,7 +736,9 @@ function updateButtonVisibility(): void {
   if (!showButton) return;
   const activeTab = $('.inventory__tab.active');
   const tabIndex = activeTab instanceof HTMLElement ? activeTab.dataset.tab : null;
-  showButton.style.display = tabIndex === REFS_TAB_INDEX ? '' : 'none';
+  const onRefsTab = tabIndex === REFS_TAB_INDEX;
+  const migrationBlocks = isReferenceMassDeleteBlockedByLegacyMigration();
+  showButton.style.display = onRefsTab && !migrationBlocks ? '' : 'none';
 }
 
 // ── module ───────────────────────────────────────────────────────────────────

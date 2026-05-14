@@ -1,8 +1,7 @@
 import {
-  getFavoritedGuids,
-  isFavoritesSnapshotReady,
-  isLockMigrationDone,
-} from '../../core/favoritesStore';
+  getLegacyMigrationRefsDeletionBlockReason,
+  isReferenceMassDeleteBlockedByLegacyMigration,
+} from '../../core/refsDeletionMigrationGate';
 import { t } from '../../core/l10n';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import {
@@ -11,7 +10,6 @@ import {
   readInventoryCache,
   readInventoryReferences,
 } from '../../core/inventoryCache';
-import { isModuleEnabledByUser } from '../../core/moduleRegistry';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { showToast as showCoreToast } from '../../core/toast';
 import type { IDeletionEntry } from './cleanupCalculator';
@@ -237,11 +235,7 @@ async function runSlowDelete(): Promise<void> {
   // shouldShowButton уже прячет её, но прямой вызов функции (тест, будущая
   // подмена обработчика) не должен обойти блокировку. См. комментарий в
   // shouldShowButton и в inventoryCleanup.runCleanupImpl.
-  if (
-    !isLockMigrationDone() &&
-    isModuleEnabledByUser('favoritesMigration') &&
-    !isFavoritesSnapshotReady()
-  ) {
+  if (getLegacyMigrationRefsDeletionBlockReason() === 'snapshot') {
     showSlowToast(
       t({
         en: 'Favorites snapshot not loaded yet — wait a moment and try again',
@@ -454,14 +448,9 @@ function shouldShowButton(): boolean {
   const settings = loadCleanupSettings();
   if (settings.limits.referencesMode !== 'slow') return false;
   // Кнопка скрыта, пока пользователь не подтвердил миграцию SVP/CUI-избранных
-  // в native lock и в IDB остаются legacy-точки. Подтверждение - флаг
-  // isLockMigrationDone, выставляемый при success миграции в locked. Когда
-  // флаг есть, legacy становится архивом, защиту берёт нативный lock - кнопка
-  // показывается. Подробный разбор в inventoryCleanup.runCleanupImpl.
-  if (isLockMigrationDone()) return true;
-  if (!isModuleEnabledByUser('favoritesMigration')) return true;
-  if (!isFavoritesSnapshotReady()) return false;
-  return getFavoritedGuids().size === 0;
+  // в native lock и в IDB остаются legacy-точки. Подробный разбор в
+  // inventoryCleanup.runCleanupImpl и core/refsDeletionMigrationGate.ts.
+  return !isReferenceMassDeleteBlockedByLegacyMigration();
 }
 
 /**

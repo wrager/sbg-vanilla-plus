@@ -256,6 +256,7 @@ jest.mock('../../core/refsHighlightSync', () => ({
 }));
 
 import { getOlMap } from '../../core/olMap';
+import * as refsDeletionMigrationGate from '../../core/refsDeletionMigrationGate';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 
@@ -264,6 +265,7 @@ describe('refsOnMap enable/disable', () => {
   let map: ReturnType<typeof makeMap>;
 
   beforeEach(() => {
+    localStorage.setItem('svp_lock_migration_done', '1');
     localStorage.removeItem('inventory-cache');
     setupInventoryDom();
     view = makeView(16, 0.5);
@@ -279,6 +281,7 @@ describe('refsOnMap enable/disable', () => {
     await refsOnMap.disable();
     delete window.ol;
     document.body.innerHTML = '';
+    localStorage.removeItem('svp_lock_migration_done');
   });
 
   test('adds layer to map on enable', async () => {
@@ -420,6 +423,7 @@ describe('refsOnMap viewer', () => {
   }
 
   beforeEach(async () => {
+    localStorage.setItem('svp_lock_migration_done', '1');
     setupInventoryDom();
     view = makeView(16, 0.5);
     const pointsLayer = makeLayer('points', makeSource());
@@ -436,6 +440,7 @@ describe('refsOnMap viewer', () => {
     delete window.ol;
     localStorage.removeItem('inventory-cache');
     localStorage.removeItem('follow');
+    localStorage.removeItem('svp_lock_migration_done');
     document.body.innerHTML = '';
   });
 
@@ -532,13 +537,37 @@ describe('refsOnMap lock protection', () => {
   let map: ReturnType<typeof makeMap>;
   let originalConfirm: typeof window.confirm;
   let originalFetch: typeof window.fetch;
+  let getLegacyMigrationBlockReasonSpy: jest.SpiedFunction<
+    typeof refsDeletionMigrationGate.getLegacyMigrationRefsDeletionBlockReason
+  >;
+  let isReferenceMassDeleteBlockedSpy: jest.SpiedFunction<
+    typeof refsDeletionMigrationGate.isReferenceMassDeleteBlockedByLegacyMigration
+  >;
 
   function clickShowButton(): void {
     const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
     button.click();
   }
 
+  beforeAll(() => {
+    getLegacyMigrationBlockReasonSpy = jest.spyOn(
+      refsDeletionMigrationGate,
+      'getLegacyMigrationRefsDeletionBlockReason',
+    );
+    isReferenceMassDeleteBlockedSpy = jest.spyOn(
+      refsDeletionMigrationGate,
+      'isReferenceMassDeleteBlockedByLegacyMigration',
+    );
+  });
+
+  afterAll(() => {
+    getLegacyMigrationBlockReasonSpy.mockRestore();
+    isReferenceMassDeleteBlockedSpy.mockRestore();
+  });
+
   beforeEach(async () => {
+    getLegacyMigrationBlockReasonSpy.mockReturnValue(null);
+    isReferenceMassDeleteBlockedSpy.mockReturnValue(false);
     setupInventoryDom();
     view = makeView(16, 0.5);
     const pointsLayer = makeLayer('points', makeSource());
@@ -611,6 +640,56 @@ describe('refsOnMap lock protection', () => {
     trash.click();
     await Promise.resolve();
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  test('legacy-миграция: showViewer не подписывает click на карту, показывает toast', () => {
+    getLegacyMigrationBlockReasonSpy.mockReturnValueOnce('legacy');
+    setInventoryCache();
+    expect(map._clickListeners.length).toBe(0);
+    clickShowButton();
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/миграц|migration|favorites/i);
+    expect(map._clickListeners.length).toBe(0);
+  });
+
+  test('legacy-миграция: handleDeleteClick тостит и не вызывает fetch', async () => {
+    setInventoryCacheWithLocks();
+    clickShowButton();
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    getLegacyMigrationBlockReasonSpy.mockReturnValueOnce('legacy');
+    window.confirm = jest.fn(() => true);
+    const fetchSpy = jest.fn();
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/миграц|migration|favorites/i);
+    expect(window.confirm).not.toHaveBeenCalled();
+  });
+
+  test('legacy-миграция: кнопка «На карте» скрыта на вкладке ключей', async () => {
+    isReferenceMassDeleteBlockedSpy.mockReturnValue(true);
+    setInventoryCache();
+    const tabs = document.querySelectorAll('.inventory__tab');
+    tabs.forEach((tab) => {
+      tab.classList.remove('active');
+    });
+    tabs[1].classList.add('active');
+    document.querySelector('.inventory__tabs')?.dispatchEvent(new Event('click', { bubbles: true }));
+    const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
+    expect(button.style.display).toBe('none');
   });
 
   test('partitionByProtection через handleDeleteClick: locked не уходит в payload', async () => {
