@@ -79,7 +79,7 @@
 2. Перехватчик `localStorage.setItem` ждёт записи в `inventory-cache`
 3. Проверка: `inventoryLimit - currentCount < minFreeSlots`
 4. `calculateDeletions`: группировка по уровню/точке, определение излишка, FIFO
-5. Ключи проходят guard: mode=fast, limit≠-1, lockSupportAvailable (у ВСЕХ реф-стопок есть поле `f`; mix-кэш блокирует); защищённые точки (бит 0b10 lock или 0b01 favorite) исключены из расчёта; если активен `favoritesMigration` и legacy IDB непуст — режим ключей принудительно `off`
+5. Ключи проходят guard: mode=fast, limit≠-1, `isProtectionFlagSupportAvailable` (у ВСЕХ реф-стопок есть поле `f`; mix-кэш блокирует); защищённые точки (бит 0b10 lock или 0b01 favorite) исключены из расчёта; если активен `favoritesMigration` и legacy IDB непуст — режим ключей принудительно `off`
 6. `deleteInventoryItems`: финальный guard с перечитыванием свежего `inventory-cache` и проверкой каждой точки на актуальные lock/favorite-биты
 7. Тост с итогом
 
