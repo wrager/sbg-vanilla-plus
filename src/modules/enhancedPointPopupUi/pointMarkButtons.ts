@@ -1,6 +1,6 @@
 import { waitForElement } from '../../core/dom';
 import { t } from '../../core/l10n';
-import { readInventoryReferences } from '../../core/inventoryCache';
+import { INVENTORY_CACHE_KEY, readInventoryReferences } from '../../core/inventoryCache';
 import type { IInventoryReference } from '../../core/inventoryTypes';
 import { MARK_FLAG_BITS, type MarkFlag } from '../../core/inventoryTypes';
 import { MARKS_RATE_LIMIT_MS, postMark } from '../../core/marksApi';
@@ -56,6 +56,14 @@ const FLAGS: readonly MarkFlag[] = ['favorite', 'locked'];
 
 let popupObserver: MutationObserver | null = null;
 let clickAbortController: AbortController | null = null;
+// Активный popup, на котором нужно перерисовать кнопки при изменении
+// inventory-cache. null при uninstall: setItem-wrapper остаётся в цепочке
+// (см. docs/architecture.md про runtime-override), но игнорирует событие.
+let observedPopup: Element | null = null;
+// Wrapper для localStorage.setItem устанавливается один раз на жизнь страницы:
+// снимать его в uninstall опасно (между нашим enable и inventoryCleanup могут
+// быть другие wrappers, восстановление прототипа порвало бы цепочку).
+let inventoryCacheListenerInstalled = false;
 // AbortController для waitForElement, ожидающего появления .info.popup. На
 // uninstall abort() сразу освобождает MutationObserver и timeout, не оставляя
 // pending observer на documentElement на 10 секунд после disable.
@@ -254,6 +262,7 @@ function injectButtons(popup: Element): void {
 
 function startObserving(popup: Element): void {
   injectButtons(popup);
+  observedPopup = popup;
 
   popupObserver = new MutationObserver(() => {
     injectButtons(popup);
@@ -267,10 +276,48 @@ function startObserving(popup: Element): void {
   });
 }
 
+/**
+ * Перехват `localStorage.setItem` на ключ `inventory-cache`. Нужен, потому что
+ * у нас в открытом попапе могут происходить параллельные изменения стопок:
+ * нативный inventory ref_actions popover клонируется внутрь .info.popup в
+ * SBG 0.6.1 и пишет item.f напрямую; favoritesMigration во время прогона
+ * мутирует через applyFlagToCache; discover добавляет/инкрементит стопку;
+ * inventoryCleanup удаляет ключи. MutationObserver на атрибуты попапа этого
+ * не видит. Подписка на setItem - единственный способ узнать о mutation
+ * inventory-cache в нашей же вкладке (storage event срабатывает только в
+ * других вкладках).
+ *
+ * Wrapper идемпотентен (ставится один раз на страницу) и не снимается в
+ * uninstall: его соседи в цепочке (inventoryCleanup) могут не пережить
+ * восстановление прототипа. observedPopup === null после uninstall - wrapper
+ * по факту no-op.
+ */
+function installInventoryCacheListener(): void {
+  if (inventoryCacheListenerInstalled) return;
+  inventoryCacheListenerInstalled = true;
+  // eslint-disable-next-line @typescript-eslint/unbound-method
+  const nativeSetItem = localStorage.setItem;
+  const wrapper: typeof localStorage.setItem = function (this: Storage, key, value) {
+    nativeSetItem.apply(this, [key, value]);
+    if (key === INVENTORY_CACHE_KEY && observedPopup !== null) {
+      refreshAll(observedPopup);
+    }
+  };
+  // Сначала пробуем instance-уровень (как inventoryCleanup): в браузерах
+  // assignment в localStorage.setItem работает. В jsdom (тесты) instance
+  // setItem - non-writable accessor, assignment молча игнорируется -
+  // fallback на прототип.
+  localStorage.setItem = wrapper;
+  if (localStorage.setItem !== wrapper) {
+    Storage.prototype.setItem = wrapper;
+  }
+}
+
 export function installPointMarkButtons(): void {
   if (popupObserver) return;
   installGeneration++;
   const generation = installGeneration;
+  installInventoryCacheListener();
   const existing = document.querySelector(POPUP_SELECTOR);
   if (existing) {
     startObserving(existing);
@@ -303,5 +350,6 @@ export function uninstallPointMarkButtons(): void {
   // finally сам, но между uninstall и enable обратно пользователь не должен
   // видеть свежие кнопки disabled из-за batch отключённой инкарнации.
   batchInProgress.clear();
+  observedPopup = null;
   document.querySelector(`.${CONTAINER_CLASS}`)?.remove();
 }

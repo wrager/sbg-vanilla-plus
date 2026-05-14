@@ -252,6 +252,39 @@ describe('pointMarkButtons — состояние кнопок', () => {
   });
 });
 
+describe('pointMarkButtons — реакция на изменение inventory-cache', () => {
+  test('внешний setItem на inventory-cache перерисовывает кнопки открытого попапа', async () => {
+    createPopup('p1');
+    setInventory([{ g: 's1', l: 'p1', a: 3, f: 0 }]);
+    installPointMarkButtons();
+    await flushMicrotasks();
+    expect(getButton('favorite')?.classList.contains('is-filled')).toBe(false);
+
+    // Симулируем нативный inventory ref_actions popover, который пометил
+    // стопку (записал f=0b01 в localStorage напрямую).
+    setInventory([{ g: 's1', l: 'p1', a: 3, f: 0b01 }]);
+    await flushMicrotasks();
+
+    expect(getButton('favorite')?.classList.contains('is-filled')).toBe(true);
+    expect(getButton('favorite')?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('после uninstall изменения inventory-cache не вызывают ошибок и не трогают DOM', async () => {
+    createPopup('p1');
+    setInventory([{ g: 's1', l: 'p1', a: 3, f: 0 }]);
+    installPointMarkButtons();
+    await flushMicrotasks();
+    uninstallPointMarkButtons();
+
+    // Старого контейнера нет; wrapper в цепочке setItem не должен пытаться
+    // refreshAll на null popup.
+    expect(() => {
+      setInventory([{ g: 's1', l: 'p1', a: 3, f: 0b01 }]);
+    }).not.toThrow();
+    expect(document.querySelector('.svp-point-mark-buttons')).toBeNull();
+  });
+});
+
 describe('pointMarkButtons — реакция на смену атрибутов попапа', () => {
   test('смена data-guid перечитывает state', async () => {
     const popup = createPopup('p-empty');
