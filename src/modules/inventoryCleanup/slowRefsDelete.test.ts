@@ -683,9 +683,10 @@ describe('runSlowDelete: lockSupportAvailable=false блокирует удал�
 
   function setPlayerTeam(team: number): void {
     // getPlayerTeam парсит var(--team-N) из inline-стиля #self-info__name.
+    // jsdom не сохраняет CSS variables через style.color = ..., нужен setAttribute.
     const nameElement = document.createElement('div');
     nameElement.id = 'self-info__name';
-    nameElement.style.color = `var(--team-${team})`;
+    nameElement.setAttribute('style', `color: var(--team-${team})`);
     document.body.appendChild(nameElement);
   }
 
@@ -774,7 +775,7 @@ describe('runSlowDelete: lockSupportAvailable=false блокирует удал�
     // обновляем кэш, делая point-2 защищённой.
     let pointCallCount = 0;
     const fetchSpy = jest.spyOn(window, 'fetch').mockImplementation((input) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (url.includes('/api/point')) {
         pointCallCount++;
         if (pointCallCount === 1) {
@@ -815,10 +816,8 @@ describe('runSlowDelete: lockSupportAvailable=false блокирует удал�
     });
 
     // Один DELETE-запрос с payload только на point-1 (point-2 отфильтрована).
-    // eslint-disable-next-line no-console -- debug
-    console.log('all fetch calls:', fetchSpy.mock.calls.map((c) => [c[0], (c[1] as RequestInit | undefined)?.method]));
     const deleteCalls = fetchSpy.mock.calls.filter((args) => {
-      const init = args[1] as RequestInit | undefined;
+      const init = args[1];
       return init?.method === 'DELETE';
     });
     expect(deleteCalls).toHaveLength(1);

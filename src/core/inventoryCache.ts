@@ -78,10 +78,7 @@ export function buildLockedPointGuids(items: readonly unknown[]): Set<string> {
  * защищённая стопка - вся точка под защитой. Игрок видит точку, не стопку.
  */
 export function buildProtectedPointGuids(items: readonly unknown[]): Set<string> {
-  return buildPointGuidsByFlagMask(
-    items,
-    MARK_FLAG_BITS.favorite | MARK_FLAG_BITS.locked,
-  );
+  return buildPointGuidsByFlagMask(items, MARK_FLAG_BITS.favorite | MARK_FLAG_BITS.locked);
 }
 
 /**

@@ -1036,7 +1036,10 @@ describe('refsOnMap lock protection', () => {
     // ref-1 ушёл в DELETE как и прежде; ref-2 НЕ в payload, но также НЕ в
     // тосте "оставлено" - на момент DELETE уже не защищён.
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    // jest.fn() без типизации аргументов даёт mock.calls как never[][]; используем
+    // unknown cast для доступа к реальным данным.
+    const calls = fetchSpy.mock.calls as unknown as [string, RequestInit][];
+    const init = calls[0][1];
     const body = JSON.parse(init.body as string) as { selection: Record<string, number> };
     expect(body.selection).toHaveProperty('ref-1');
     expect(body.selection).not.toHaveProperty('ref-2');

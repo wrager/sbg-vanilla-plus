@@ -39,7 +39,10 @@ let bodyObserver: MutationObserver | null = null;
 function getPlayerTeam(): number | null {
   const element = document.getElementById('self-info__name');
   if (!element) return null;
-  const match = /var\(--team-(\d+)\)/.exec(element.style.color);
+  // getAttribute('style') вместо element.style.color: jsdom не сохраняет
+  // CSS variables в CSSStyleDeclaration, но getAttribute возвращает исходную строку.
+  const styleAttr = element.getAttribute('style') ?? '';
+  const match = /var\(--team-(\d+)\)/.exec(styleAttr);
   if (!match) return null;
   const team = parseInt(match[1], 10);
   return Number.isFinite(team) ? team : null;
