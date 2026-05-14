@@ -467,47 +467,16 @@ describe('pointMarkButtons — click toggle', () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
-  test('во время batch внутри кнопки виден прогресс N/total', async () => {
+  test('во время batch на кнопке висит класс is-batching (CSS-анимация opacity)', async () => {
     createPopup('p1');
     setInventory([
       { g: 's1', l: 'p1', a: 3, f: 0 },
       { g: 's2', l: 'p1', a: 2, f: 0 },
-      { g: 's3', l: 'p1', a: 1, f: 0 },
     ]);
     installPointMarkButtons();
     await flushMicrotasks();
 
-    ok(true);
-    ok(true);
-    ok(true);
-
-    jest.useFakeTimers();
-    getButton('favorite')?.click();
-    // Прокручиваем sleep'ы между POST'ами и микротаски параллельно. 100
-    // итераций по 100мс = 10 секунд, заведомо больше 2*MARKS_RATE_LIMIT_MS=3с.
-    for (let i = 0; i < 100; i++) {
-      await Promise.resolve();
-      await Promise.resolve();
-      jest.advanceTimersByTime(100);
-    }
-    jest.useRealTimers();
-    for (let i = 0; i < 10; i++) await flushMicrotasks();
-
-    expect(mockFetch).toHaveBeenCalledTimes(3);
-    expect(getButton('favorite')?.classList.contains('is-batching')).toBe(false);
-  });
-
-  test('progress N/total виден на первой стопке (0/N сразу после click)', async () => {
-    createPopup('p1');
-    setInventory([
-      { g: 's1', l: 'p1', a: 3, f: 0 },
-      { g: 's2', l: 'p1', a: 2, f: 0 },
-      { g: 's3', l: 'p1', a: 1, f: 0 },
-    ]);
-    installPointMarkButtons();
-    await flushMicrotasks();
-
-    // Первый POST висит pending - batch застрял на 0/3.
+    // Первый POST висит pending - batch застрял.
     type FetchResolveValue = { ok: boolean; json: () => Promise<{ result: boolean }> };
     const pending: { resolve: ((value: FetchResolveValue) => void) | null } = { resolve: null };
     mockFetch.mockImplementationOnce(
@@ -516,18 +485,26 @@ describe('pointMarkButtons — click toggle', () => {
           pending.resolve = resolve;
         }),
     );
+    ok(true);
 
     getButton('favorite')?.click();
     await flushMicrotasks();
 
     expect(getButton('favorite')?.classList.contains('is-batching')).toBe(true);
-    const progress = getButton('favorite')?.querySelector('.svp-point-mark-progress');
-    expect(progress?.textContent).toBe('0/3');
+    expect(getButton('favorite')?.disabled).toBe(true);
 
-    // Заканчиваем pending чтобы тест не оставил висящий fetch.
+    // Завершаем batch, проверяем что класс снимается.
     if (pending.resolve === null) throw new Error('mockFetch implementation not invoked');
     pending.resolve({ ok: true, json: () => Promise.resolve({ result: true }) });
-    await flushMicrotasks();
+    jest.useFakeTimers();
+    for (let i = 0; i < 50; i++) {
+      await Promise.resolve();
+      jest.advanceTimersByTime(100);
+    }
+    jest.useRealTimers();
+    for (let i = 0; i < 10; i++) await flushMicrotasks();
+
+    expect(getButton('favorite')?.classList.contains('is-batching')).toBe(false);
   });
 
   test('lock-кнопка отправляет flag=locked в payload', async () => {
