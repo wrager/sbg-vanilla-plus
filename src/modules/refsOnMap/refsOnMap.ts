@@ -385,17 +385,10 @@ async function handleDeleteClick(): Promise<void> {
   // (свой deleteRefsFromServer), поэтому защита должна выполниться здесь.
   const freshCache = readInventoryCache();
   const freshProtectedPointGuids = buildProtectedPointGuids(freshCache);
-  const finalDeletable: IOlFeature[] = [];
-  const newlyProtected: IOlFeature[] = [];
-  for (const feature of deletable) {
-    const properties = feature.getProperties?.() ?? {};
-    const pointGuid = typeof properties.pointGuid === 'string' ? properties.pointGuid : null;
-    if (pointGuid && freshProtectedPointGuids.has(pointGuid)) {
-      newlyProtected.push(feature);
-    } else {
-      finalDeletable.push(feature);
-    }
-  }
+  const { deletable: finalDeletable, protectedRefs: newlyProtected } = partitionByProtection(
+    deletable,
+    freshProtectedPointGuids,
+  );
 
   if (finalDeletable.length === 0) {
     showToast(
