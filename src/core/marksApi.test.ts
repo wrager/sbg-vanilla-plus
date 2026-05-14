@@ -43,10 +43,14 @@ function httpError(status: number): void {
 }
 
 describe('postMark', () => {
-  test('успешный ответ result=true → networkOk + result=true', async () => {
-    ok(true);
+  test('успешный ответ result=true → networkOk + result=true + httpStatus 200', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({ result: true }),
+    });
     const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: true, result: true });
+    expect(outcome).toEqual({ networkOk: true, result: true, httpStatus: 200 });
     expect(mockFetch).toHaveBeenCalledWith('/api/marks', {
       method: 'POST',
       headers: {
@@ -60,19 +64,26 @@ describe('postMark', () => {
   test('успешный ответ result=false (toggle off) → networkOk + result=false', async () => {
     ok(false);
     const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: true, result: false });
+    expect(outcome).toMatchObject({ networkOk: true, result: false });
   });
 
-  test('сетевая ошибка → networkOk=false', async () => {
+  test('сетевая ошибка → networkOk=false без httpStatus', async () => {
     networkError();
     const outcome = await postMark('s1', 'favorite');
     expect(outcome).toEqual({ networkOk: false, result: false });
+    expect(outcome.httpStatus).toBeUndefined();
   });
 
-  test('HTTP 429/500 → networkOk=false', async () => {
+  test('HTTP 429 → networkOk=false с httpStatus=429 (для backoff клиентов)', async () => {
     httpError(429);
     const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: false, result: false });
+    expect(outcome).toEqual({ networkOk: false, result: false, httpStatus: 429 });
+  });
+
+  test('HTTP 500 → networkOk=false с httpStatus=500', async () => {
+    httpError(500);
+    const outcome = await postMark('s1', 'favorite');
+    expect(outcome).toEqual({ networkOk: false, result: false, httpStatus: 500 });
   });
 
   test('без auth-токена не делает запрос', async () => {
@@ -85,7 +96,7 @@ describe('postMark', () => {
   test('ответ без поля result → result=false (default-safe)', async () => {
     mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({}) });
     const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: true, result: false });
+    expect(outcome).toMatchObject({ networkOk: true, result: false });
   });
 
   test('ответ result не boolean (например, строка) → result=false', async () => {
@@ -94,19 +105,19 @@ describe('postMark', () => {
       json: () => Promise.resolve({ result: 'true' }),
     });
     const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: true, result: false });
+    expect(outcome).toMatchObject({ networkOk: true, result: false });
   });
 
   test('ответ null → result=false', async () => {
     mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(null) });
     const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: true, result: false });
+    expect(outcome).toMatchObject({ networkOk: true, result: false });
   });
 
   test('ответ массив вместо объекта → result=false', async () => {
     mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([true]) });
     const outcome = await postMark('s1', 'favorite');
-    expect(outcome).toEqual({ networkOk: true, result: false });
+    expect(outcome).toMatchObject({ networkOk: true, result: false });
   });
 });
 

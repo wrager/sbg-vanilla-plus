@@ -1,4 +1,9 @@
 import { installPointMarkButtons, uninstallPointMarkButtons } from './pointMarkButtons';
+import { showToast } from '../../core/toast';
+
+jest.mock('../../core/toast');
+
+const mockedShowToast = jest.mocked(showToast);
 
 const AUTH_TOKEN = 'auth-test';
 
@@ -756,6 +761,64 @@ describe('pointMarkButtons — click toggle', () => {
       guid: 's1',
       flag: 'favorite',
     });
+  });
+
+  test('HTTP 429 во время batch - toast показан один раз, следующий sleep удваивается', async () => {
+    mockedShowToast.mockClear();
+
+    createPopup('p1');
+    setInventory([
+      { g: 's1', l: 'p1', a: 3, f: 0 },
+      { g: 's2', l: 'p1', a: 2, f: 0 },
+    ]);
+    installPointMarkButtons();
+    await flushMicrotasks();
+
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve({}) });
+    ok(true);
+
+    jest.useFakeTimers();
+    getButton('favorite')?.click();
+    for (let i = 0; i < 100; i++) {
+      await Promise.resolve();
+      await Promise.resolve();
+      jest.advanceTimersByTime(100);
+    }
+    jest.useRealTimers();
+    for (let i = 0; i < 10; i++) await flushMicrotasks();
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockedShowToast).toHaveBeenCalledTimes(1);
+    expect(mockedShowToast.mock.calls[0][0]).toMatch(/rate-limited/i);
+  });
+
+  test('сетевая ошибка во время batch - toast показан один раз', async () => {
+    mockedShowToast.mockClear();
+
+    createPopup('p1');
+    setInventory([
+      { g: 's1', l: 'p1', a: 3, f: 0 },
+      { g: 's2', l: 'p1', a: 2, f: 0 },
+    ]);
+    installPointMarkButtons();
+    await flushMicrotasks();
+
+    networkError();
+    networkError();
+
+    jest.useFakeTimers();
+    getButton('favorite')?.click();
+    for (let i = 0; i < 100; i++) {
+      await Promise.resolve();
+      await Promise.resolve();
+      jest.advanceTimersByTime(100);
+    }
+    jest.useRealTimers();
+    for (let i = 0; i < 10; i++) await flushMicrotasks();
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockedShowToast).toHaveBeenCalledTimes(1);
+    expect(mockedShowToast.mock.calls[0][0]).toMatch(/failed to mark/i);
   });
 
   test('сетевая ошибка — кнопка re-enabled, состояние читается из inventory-cache', async () => {

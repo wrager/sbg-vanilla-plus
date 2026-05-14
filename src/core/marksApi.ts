@@ -22,6 +22,13 @@ interface IMarkOutcome {
   networkOk: boolean;
   /** `result === true` означает, что флаг УСТАНОВЛЕН (поставлен) после toggle. */
   result: boolean;
+  /**
+   * HTTP-статус ответа сервера. `undefined` при network exception (fetch
+   * reject) или отсутствующем auth-токене. Клиенты используют для отличения
+   * rate-limit (429) от прочих failures и применения exponential backoff
+   * перед следующим запросом.
+   */
+  httpStatus?: number;
 }
 
 /**
@@ -96,13 +103,13 @@ export async function postMark(itemGuid: string, flag: MarkFlag): Promise<IMarkO
       },
       body: JSON.stringify({ guid: itemGuid, flag }),
     });
-    if (!response.ok) return { networkOk: false, result: false };
+    if (!response.ok) return { networkOk: false, result: false, httpStatus: response.status };
     const json: unknown = await response.json();
     const result = parseMarksResult(json);
     // Сервер сообщил итоговое состояние флага после toggle: true = поставлен,
     // false = снят. В обоих случаях обновляем кэш под актуальный сервером state.
     applyFlagToCache(itemGuid, flag, result);
-    return { networkOk: true, result };
+    return { networkOk: true, result, httpStatus: response.status };
   } catch {
     return { networkOk: false, result: false };
   }

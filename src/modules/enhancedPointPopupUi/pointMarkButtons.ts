@@ -4,6 +4,7 @@ import { INVENTORY_CACHE_KEY, readInventoryReferences } from '../../core/invento
 import type { IInventoryReference } from '../../core/inventoryTypes';
 import { MARK_FLAG_BITS, type MarkFlag } from '../../core/inventoryTypes';
 import { MARKS_RATE_LIMIT_MS, postMark } from '../../core/marksApi';
+import { showToast } from '../../core/toast';
 
 /**
  * Кнопки fav/lock в попапе точки. Состояние кнопки = агрегация по всем
@@ -51,6 +52,17 @@ const TITLES: Record<
   locked: {
     off: { en: 'Lock keys', ru: 'Заблокировать ключи' },
     on: { en: 'Unlock keys', ru: 'Разблокировать ключи' },
+  },
+};
+
+const TOAST_MESSAGES = {
+  rateLimited: {
+    en: 'Server rate-limited. Slowing down...',
+    ru: 'Сервер ограничил частоту запросов. Замедляюсь...',
+  },
+  networkError: {
+    en: 'Failed to mark stacks. Check connection.',
+    ru: 'Не удалось пометить стопки. Проверьте соединение.',
   },
 };
 
@@ -216,11 +228,18 @@ async function onClick(popup: Element, flag: MarkFlag): Promise<void> {
   // цикл продолжал бы дёргать /api/marks и мутировать inventory-cache до 30
   // секунд после disable.
   const myGeneration = installGeneration;
+  // Накопленные failures для одного toast'a в конце batch (без спама по
+  // одному toast на каждый POST). Backoff на 429: каждый rate-limit удваивает
+  // следующий sleep, чтобы дать серверу остыть.
+  let networkFailures = 0;
+  let networkErrorToastShown = false;
+  let extraBackoffMs = 0;
   try {
     for (let i = 0; i < toToggle.length; i++) {
       if (i > 0) {
-        await sleep(MARKS_RATE_LIMIT_MS);
+        await sleep(MARKS_RATE_LIMIT_MS + extraBackoffMs);
         if (myGeneration !== installGeneration) return;
+        extraBackoffMs = 0;
       }
       // POST /api/marks - toggle, не set: инвертирует текущий бит на сервере.
       // Между нашими POST 1500мс sleep; за это время другой источник
@@ -232,8 +251,23 @@ async function onClick(popup: Element, flag: MarkFlag): Promise<void> {
       const stackGuid = toToggle[i].g;
       const fresh = readInventoryReferences().find((s) => s.g === stackGuid);
       if (fresh !== undefined && hasBit(fresh, bit) !== targetOn) {
-        await postMark(stackGuid, flag);
+        const outcome = await postMark(stackGuid, flag);
         if (myGeneration !== installGeneration) return;
+        if (!outcome.networkOk) {
+          networkFailures++;
+          if (outcome.httpStatus === 429) {
+            // Rate-limit: показываем толст только один раз и удваиваем
+            // следующий sleep. Сервер сам должен прийти в норму.
+            if (!networkErrorToastShown) {
+              showToast(t(TOAST_MESSAGES.rateLimited));
+              networkErrorToastShown = true;
+            }
+            extraBackoffMs = MARKS_RATE_LIMIT_MS * Math.min(networkFailures, 4);
+          } else if (!networkErrorToastShown) {
+            showToast(t(TOAST_MESSAGES.networkError));
+            networkErrorToastShown = true;
+          }
+        }
       }
       batchProgress.set(guid, { done: i + 1, total: toToggle.length });
       refreshAll(popup);
