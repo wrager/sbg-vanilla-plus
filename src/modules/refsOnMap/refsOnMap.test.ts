@@ -647,7 +647,9 @@ describe('refsOnMap lock protection', () => {
     setInventoryCache();
     expect(map._clickListeners.length).toBe(0);
     clickShowButton();
-    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/миграц|migration|favorites/i);
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(
+      /миграц|migration|favorites/i,
+    );
     expect(map._clickListeners.length).toBe(0);
   });
 
@@ -675,7 +677,9 @@ describe('refsOnMap lock protection', () => {
     await Promise.resolve();
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/миграц|migration|favorites/i);
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(
+      /миграц|migration|favorites/i,
+    );
     expect(window.confirm).not.toHaveBeenCalled();
   });
 
@@ -687,7 +691,9 @@ describe('refsOnMap lock protection', () => {
       tab.classList.remove('active');
     });
     tabs[1].classList.add('active');
-    document.querySelector('.inventory__tabs')?.dispatchEvent(new Event('click', { bubbles: true }));
+    document
+      .querySelector('.inventory__tabs')
+      ?.dispatchEvent(new Event('click', { bubbles: true }));
     const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
     expect(button.style.display).toBe('none');
   });

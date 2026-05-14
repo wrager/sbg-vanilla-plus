@@ -22,11 +22,13 @@ export type LegacyMigrationRefsDeletionBlockReason = 'snapshot' | 'legacy';
  * Если {@link isReferenceMassDeleteBlockedByLegacyMigration} true - дискретная
  * причина для пользовательского сообщения (см. slowRefsDelete.runSlowDelete).
  */
-export function getLegacyMigrationRefsDeletionBlockReason():
-  | LegacyMigrationRefsDeletionBlockReason
-  | null {
+export function getLegacyMigrationRefsDeletionBlockReason(): LegacyMigrationRefsDeletionBlockReason | null {
   if (!isReferenceMassDeleteBlockedByLegacyMigration()) return null;
-  if (!isLockMigrationDone() && isModuleEnabledByUser('favoritesMigration') && !isFavoritesSnapshotReady()) {
+  if (
+    !isLockMigrationDone() &&
+    isModuleEnabledByUser('favoritesMigration') &&
+    !isFavoritesSnapshotReady()
+  ) {
     return 'snapshot';
   }
   return 'legacy';
