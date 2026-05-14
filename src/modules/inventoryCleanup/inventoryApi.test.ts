@@ -176,7 +176,7 @@ describe('deleteInventoryItems', () => {
   });
 
   test('ключи (type 3) реально удаляются через fetch', async () => {
-    // Кэш с f=0 даёт lockSupportAvailable=true → guard разрешает удаление.
+    // Кэш с f=0 даёт isProtectionFlagSupportAvailable=true → guard разрешает удаление.
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 5, f: 0 }]),
@@ -206,7 +206,7 @@ describe('deleteInventoryItems', () => {
   });
 
   test('guard: бросает если ключ без pointGuid', async () => {
-    // Кэш с lockSupportAvailable=true, чтобы пройти первый guard.
+    // Кэш с isProtectionFlagSupportAvailable=true, чтобы пройти первый guard.
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ g: 'r-other', t: 3, l: 'p-other', a: 1, f: 0 }]),
@@ -231,7 +231,7 @@ describe('deleteInventoryItems', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  test('guard: кэш с f-полем разрешает удаление (lockSupportAvailable=true)', async () => {
+  test('guard: кэш с f-полем разрешает удаление (isProtectionFlagSupportAvailable=true)', async () => {
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ g: 'r1', t: 3, l: 'p-other', a: 1, f: 0 }]),
@@ -245,7 +245,7 @@ describe('deleteInventoryItems', () => {
   });
 
   test('guard: mix-кэш (часть стопок без f) блокирует удаление', async () => {
-    // Раньше lockSupportAvailable считался через some — хватало одной стопки
+    // Раньше isProtectionFlagSupportAvailable считался через some — хватало одной стопки
     // с f. Стопки без f не попадают в freshProtectedPointGuids, и удаление их
     // ключей могло пройти, даже если их точка фактически защищена. Теперь
     // every — mix блокируется целиком.
@@ -391,7 +391,7 @@ describe('deleteInventoryItems', () => {
       return Promise.resolve({ ok: false, status: 500 });
     });
 
-    // f=0 в кэше даёт lockSupportAvailable=true → guard пропускает удаление.
+    // f=0 в кэше даёт isProtectionFlagSupportAvailable=true → guard пропускает удаление.
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 5, f: 0 }]),

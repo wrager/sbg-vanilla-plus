@@ -1,6 +1,12 @@
 import type { IInventoryReference, IInventoryReferenceFull } from './inventoryTypes';
 import { isInventoryReference, isInventoryReferenceFull, MARK_FLAG_BITS } from './inventoryTypes';
 
+/**
+ * Допустимые значения битовой маски для фильтрации по полю `f`:
+ * 1 (favorite), 2 (locked), 3 (favorite | locked).
+ */
+type FlagMask = 1 | 2 | 3;
+
 export const INVENTORY_CACHE_KEY = 'inventory-cache';
 
 /** Читает и парсит inventory-cache из localStorage. Возвращает пустой массив при ошибке. */
@@ -39,7 +45,7 @@ export function readFullInventoryReferences(): IInventoryReferenceFull[] {
  * предварительной фильтрации; внутренний `isInventoryReference` отсеивает
  * не-рефы и стопки без поля `f`.
  */
-function buildPointGuidsByFlagMask(items: readonly unknown[], mask: number): Set<string> {
+function buildPointGuidsByFlagMask(items: readonly unknown[], mask: FlagMask): Set<string> {
   const result = new Set<string>();
   for (const item of items) {
     if (!isInventoryReference(item)) continue;
@@ -78,7 +84,10 @@ export function buildLockedPointGuids(items: readonly unknown[]): Set<string> {
  * защищённая стопка - вся точка под защитой. Игрок видит точку, не стопку.
  */
 export function buildProtectedPointGuids(items: readonly unknown[]): Set<string> {
-  return buildPointGuidsByFlagMask(items, MARK_FLAG_BITS.favorite | MARK_FLAG_BITS.locked);
+  // TypeScript не выводит literal-тип из побитового OR; приведение безопасно:
+  // 0b01 | 0b10 = 0b11 = 3, входит в FlagMask.
+  const protectionMask = (MARK_FLAG_BITS.favorite | MARK_FLAG_BITS.locked) as FlagMask;
+  return buildPointGuidsByFlagMask(items, protectionMask);
 }
 
 /**

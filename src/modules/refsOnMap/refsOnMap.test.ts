@@ -569,7 +569,7 @@ describe('refsOnMap lock protection', () => {
 
   function setInventoryCacheWithLocks(): void {
     // ref-2 в стопке locked (бит 0b10 поля f) - точка point-2 защищена.
-    // У ref-1 поле `f` явно 0 (без lock-бита) - lockSupportAvailable=true,
+    // У ref-1 поле `f` явно 0 (без lock-бита) - isProtectionFlagSupportAvailable=true,
     // удаление разрешено. Mix-кэш (часть стопок без `f`) проверяется
     // отдельным тестом ниже.
     const items = [
@@ -830,7 +830,7 @@ describe('refsOnMap lock protection', () => {
   });
 
   test('0.6.0 кэш без поля f целиком: удаление заблокировано', async () => {
-    // На 0.6.0 сервер не отдаёт `f`. lockSupportAvailable=false - удаление
+    // На 0.6.0 сервер не отдаёт `f`. isProtectionFlagSupportAvailable=false - удаление
     // через viewer заблокировано целиком, чтобы пользователь не лишился
     // ключей из-за отсутствия lock-семантики на старой версии игры.
     const items = [
