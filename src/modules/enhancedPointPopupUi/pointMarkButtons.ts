@@ -252,6 +252,10 @@ export function installPointMarkButtons(): void {
       startObserving(popup);
     })
     .catch((error: unknown) => {
+      // Generation сменился = модуль уже отключён или переинициализирован.
+      // Не логировать ни AbortError (мы сами аборт-нули в uninstall), ни
+      // timeout (если до timeout пользователь успел disable -> enable снова).
+      if (generation !== installGeneration) return;
       console.warn('[SVP enhancedPointPopupUi] попап точки не найден:', error);
     });
 }
