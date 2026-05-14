@@ -79,6 +79,8 @@
 
 ## Разработка
 
+Правила и контекст для ИИ-агентов (Cursor, Claude Code и др.) лежат в **[docs/agent/](docs/agent/)** (`rules.md`, `context.md`, сценарии `new-module` / `release` / `announce`). В корне файлы `CLAUDE.md` и `AGENTS.md` — короткие входные точки со ссылками туда.
+
 ```bash
 npm install
 npm run dev        # Dev server
