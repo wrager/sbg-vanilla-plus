@@ -20,7 +20,7 @@ export const MARK_FLAG_BITS: Record<MarkFlag, number> = {
   locked: 0b10,
 };
 
-export interface IMarkOutcome {
+interface IMarkOutcome {
   /** Сетевой запрос завершился без исключения и `response.ok === true`. */
   networkOk: boolean;
   /** `result === true` означает, что флаг УСТАНОВЛЕН (поставлен) после toggle. */
