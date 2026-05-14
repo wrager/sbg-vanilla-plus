@@ -343,7 +343,7 @@ async function handleDeleteClick(): Promise<void> {
     showToast(
       t({
         en: 'Native lock/favorite protection unavailable: server returned no f-flags. Deletion blocked.',
-        ru: 'Нативная защита (замочек или звёздочка) недоступна: сервер не отдал поле f. Удаление заблокировано.',
+        ru: 'Нативная защита замочком или звёздочкой недоступна: сервер не отдал поле f. Удаление заблокировано.',
       }),
     );
     return;
@@ -397,7 +397,7 @@ async function handleDeleteClick(): Promise<void> {
     showToast(
       t({
         en: 'All selected keys became protected (locked or favorited) before deletion - aborted',
-        ru: 'Все выбранные ключи стали защищёнными (замочек или звёздочка) до удаления - отменено',
+        ru: 'Все выбранные ключи стали защищёнными (с замочком или звёздочкой) до удаления - отменено',
       }),
     );
     return;
@@ -472,7 +472,7 @@ async function handleDeleteClick(): Promise<void> {
       showToast(
         t({
           en: `Protected (locked or favorited) points: ${keptFeatures.length} key(s) kept`,
-          ru: `Защищённые точки (замочек или звёздочка): ${keptFeatures.length} ключ(ей) оставлено`,
+          ru: `Защищённые точки (с замочком или звёздочкой): ${keptFeatures.length} ключ(ей) оставлено`,
         }),
       );
     }
