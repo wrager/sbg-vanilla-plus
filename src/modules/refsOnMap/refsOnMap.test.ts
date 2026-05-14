@@ -683,7 +683,7 @@ describe('refsOnMap lock protection', () => {
     expect(window.confirm).not.toHaveBeenCalled();
   });
 
-  test('legacy-миграция: кнопка «На карте» скрыта на вкладке ключей', async () => {
+  test('legacy-миграция: кнопка «На карте» скрыта на вкладке ключей', () => {
     isReferenceMassDeleteBlockedSpy.mockReturnValue(true);
     setInventoryCache();
     const tabs = document.querySelectorAll('.inventory__tab');
