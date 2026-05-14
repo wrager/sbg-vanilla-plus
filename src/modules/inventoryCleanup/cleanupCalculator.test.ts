@@ -233,16 +233,16 @@ describe('calculateDeletions — lock/favorite-aware фильтрация реф
   });
 });
 
-describe('calculateDeletions — условие запуска (только lock-поддержка)', () => {
-  test('кэш без поля f во всех стопках: ключи не трогаются (0.6.0 / lock недоступен)', () => {
-    // Поле f отсутствует во всех записях — lockSupportAvailable=false. Удаление
-    // ключей блокируется, чтобы не задеть locked-точки вслепую.
+describe('calculateDeletions — условие запуска (lock/favorite-поддержка)', () => {
+  test('кэш без поля f во всех стопках: ключи не трогаются (0.6.0 / защита недоступна)', () => {
+    // Поле f отсутствует во всех записях — isProtectionFlagSupportAvailable=false.
+    // Удаление ключей блокируется, чтобы не задеть защищённые точки вслепую.
     const items: IInventoryItem[] = [ref('s1', 'p1', 5)];
     const deletions = calculateDeletions(items, FAST_LIMIT_2);
     expect(deletions).toHaveLength(0);
   });
 
-  test('хотя бы одна стопка с f=0: lockSupportAvailable=true → cleanup идёт', () => {
+  test('хотя бы одна стопка с f=0: isProtectionFlagSupportAvailable=true → cleanup идёт', () => {
     const items: IInventoryItem[] = [ref('s-other', 'p-other', 5, 0)];
     const deletions = calculateDeletions(items, FAST_LIMIT_2);
     expect(deletions.map((d) => d.pointGuid)).toEqual(['p-other']);

@@ -1,6 +1,9 @@
 import type { IInventoryItem, IInventoryReference } from '../../core/inventoryTypes';
 import { isInventoryReference } from '../../core/inventoryTypes';
-import { buildProtectedPointGuids } from '../../core/inventoryCache';
+import {
+  buildProtectedPointGuids,
+  isProtectionFlagSupportAvailable,
+} from '../../core/inventoryCache';
 import type { ICleanupLimits } from './cleanupSettings';
 import type { ILocalizedString } from '../../core/l10n';
 import { t } from '../../core/l10n';
@@ -42,23 +45,24 @@ export function calculateDeletions(
   addLevelDeletions(catalysersByLevel, limits.catalysers, ITEM_TYPE_CATALYSER, deletions);
 
   // Ключи удаляются при выполнении базовых условий выбора режима И наличии
-  // нативной поддержки lock-флагов в кэше: ВСЕ реф-стопки имеют поле `f`.
-  // Это сигнал, что сервер уже отдаёт lock-семантику для всего инвентаря (0.6.1+);
-  // без него защита по locked невозможна — не трогаем ключи, чтобы не удалить
-  // их вслепую (например, на старом 0.6.0 или при mix-кэше, когда часть стопок
-  // ещё с прежним форматом без `f`). Раньше проверялось `some`, но при mix-кэше
-  // стопки без `f` не попадают в lockedPointGuids и могли быть удалены даже у
-  // фактически защищённой точки. Симметрично с финальным guard в inventoryApi.
+  // нативной поддержки lock/favorite-флагов в кэше: ВСЕ реф-стопки имеют
+  // поле `f`. Это сигнал, что сервер уже отдаёт lock/favorite-семантику для
+  // всего инвентаря (0.6.1+); без него защита невозможна — не трогаем ключи,
+  // чтобы не удалить их вслепую (например, на старом 0.6.0 или при mix-кэше,
+  // когда часть стопок ещё с прежним форматом без `f`). Раньше проверялось
+  // `some`, но при mix-кэше стопки без `f` не попадают в protectedPointGuids
+  // и могли быть удалены даже у фактически защищённой точки. Симметрично с
+  // финальным guard в inventoryApi и с виверовым guard в refsOnMap через
+  // одну и ту же core-функцию isProtectionFlagSupportAvailable.
   // Legacy SVP/CUI-избранные в логике удаления НЕ участвуют — они только
   // источник миграции в favoritesMigration. Сама автоочистка блокируется
   // на уровне runCleanup (см. inventoryCleanup.ts), пока миграция не сделана.
-  if (limits.referencesMode === 'fast' && limits.referencesFastLimit !== -1) {
-    const refStacks = items.filter(isInventoryReference);
-    const lockSupportAvailable =
-      refStacks.length > 0 && refStacks.every((item) => item.f !== undefined);
-    if (lockSupportAvailable) {
-      addReferenceDeletions(items, limits.referencesFastLimit, deletions);
-    }
+  if (
+    limits.referencesMode === 'fast' &&
+    limits.referencesFastLimit !== -1 &&
+    isProtectionFlagSupportAvailable(items)
+  ) {
+    addReferenceDeletions(items, limits.referencesFastLimit, deletions);
   }
 
   return deletions;
