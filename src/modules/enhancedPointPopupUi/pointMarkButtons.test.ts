@@ -380,6 +380,54 @@ describe('pointMarkButtons — click toggle', () => {
     expect(body.guid).toBe('s-no-bit');
   });
 
+  test('batch на точке A не блокирует кнопки точки B (смена data-guid во время batch)', async () => {
+    const popup = createPopup('A');
+    setInventory([
+      { g: 's-a1', l: 'A', a: 3, f: 0 },
+      { g: 's-a2', l: 'A', a: 2, f: 0 },
+      { g: 's-b1', l: 'B', a: 1, f: 0 },
+    ]);
+    installPointMarkButtons();
+    await flushMicrotasks();
+
+    // Первый POST в полёте, второй ждёт rate-limit.
+    type FetchResolveValue = { ok: boolean; json: () => Promise<{ result: boolean }> };
+    const pending: { resolve: ((value: FetchResolveValue) => void) | null } = { resolve: null };
+    mockFetch.mockImplementationOnce(
+      () =>
+        new Promise<FetchResolveValue>((resolve) => {
+          pending.resolve = resolve;
+        }),
+    );
+    ok(true);
+
+    getButton('favorite')?.click();
+    await flushMicrotasks();
+    expect(getButton('favorite')?.disabled).toBe(true);
+
+    // Пользователь свайпнул на точку B - data-guid обновился, observer пнул refreshAll.
+    popup.dataset.guid = 'B';
+    await flushMicrotasks();
+
+    // Кнопки точки B активны: batch висит на A, не на B.
+    expect(getButton('favorite')?.disabled).toBe(false);
+    expect(getButton('locked')?.disabled).toBe(false);
+
+    // Завершаем batch на A, прокручиваем rate-limit.
+    if (pending.resolve === null) throw new Error('mockFetch implementation not invoked');
+    pending.resolve({ ok: true, json: () => Promise.resolve({ result: true }) });
+    jest.useFakeTimers();
+    for (let i = 0; i < 30; i++) {
+      await Promise.resolve();
+      jest.advanceTimersByTime(500);
+      if (mockFetch.mock.calls.length === 2) break;
+    }
+    jest.useRealTimers();
+    await flushMicrotasks();
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
   test('lock-кнопка отправляет flag=locked в payload', async () => {
     createPopup('p1');
     setInventory([{ g: 's1', l: 'p1', a: 5, f: 0 }]);

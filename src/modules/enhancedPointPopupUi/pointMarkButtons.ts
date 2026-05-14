@@ -63,9 +63,11 @@ let installAbortController: AbortController | null = null;
 // Инкрементируется при каждом install/uninstall. Если waitForElement.then()
 // срабатывает после uninstall (async race), generation уже другой - skip.
 let installGeneration = 0;
-// true пока в полёте batch POST /api/marks. Игнорируем клики, держим кнопки
-// disabled, не пересоздаём DOM в MutationObserver.
-let batchInProgress = false;
+// GUIDы точек, для которых сейчас в полёте batch POST /api/marks. На время
+// batch кнопки этой точки disabled, повторные клики игнорируются. Состояние
+// per-pointGuid, не глобальное: пользователь может свайпнуть на другую точку
+// во время batch первой, и кнопки второй точки должны оставаться рабочими.
+const batchInProgress = new Set<string>();
 
 function sleep(ms: number): Promise<void> {
   if (ms <= 0) return Promise.resolve();
@@ -126,11 +128,11 @@ function buildButton(flag: MarkFlag): HTMLButtonElement {
 }
 
 function updateButton(button: HTMLButtonElement, flag: MarkFlag, popup: Element): void {
-  if (batchInProgress) {
+  const guid = getCurrentGuid(popup);
+  if (guid !== null && batchInProgress.has(guid)) {
     button.disabled = true;
     return;
   }
-  const guid = getCurrentGuid(popup);
   if (guid === null) {
     button.disabled = true;
     button.title = '';
@@ -166,9 +168,9 @@ function refreshAll(popup: Element): void {
 }
 
 async function onClick(popup: Element, flag: MarkFlag): Promise<void> {
-  if (batchInProgress) return;
   const guid = getCurrentGuid(popup);
   if (guid === null) return;
+  if (batchInProgress.has(guid)) return;
   const stacks = getPointStacks(guid);
   if (stacks.length === 0) return;
 
@@ -179,7 +181,7 @@ async function onClick(popup: Element, flag: MarkFlag): Promise<void> {
   const toToggle = stacks.filter((stack) => hasBit(stack, bit) !== targetOn);
   if (toToggle.length === 0) return;
 
-  batchInProgress = true;
+  batchInProgress.add(guid);
   refreshAll(popup);
   try {
     for (let i = 0; i < toToggle.length; i++) {
@@ -187,7 +189,7 @@ async function onClick(popup: Element, flag: MarkFlag): Promise<void> {
       await postMark(toToggle[i].g, flag);
     }
   } finally {
-    batchInProgress = false;
+    batchInProgress.delete(guid);
     refreshAll(popup);
   }
 }
