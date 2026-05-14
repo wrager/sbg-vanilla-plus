@@ -539,7 +539,7 @@ describe('calculateDeletions', () => {
     expect(result).toEqual([]);
   });
 
-  test('fast mode: удаляет лишние ключи от каждой точки отдельно (защита по locked)', () => {
+  test('fast mode: удаляет лишние ключи от каждой точки отдельно (защита lock или favorite: стопки с f=0)', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = 2;
@@ -556,7 +556,7 @@ describe('calculateDeletions', () => {
     ]);
   });
 
-  test('fast mode: лимит 0 удаляет все не-locked ключи', () => {
+  test('fast mode: лимит 0 удаляет все ключи от незащищённых точек', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = 0;
@@ -587,7 +587,7 @@ describe('calculateDeletions', () => {
     ]);
   });
 
-  test('fast mode: НИКОГДА не удаляет ключи locked-точек (бит 0b10 поля f)', () => {
+  test('fast mode: не удаляет ключи защищённых точек с lock (бит 0b10 поля f)', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = 0;
@@ -600,7 +600,7 @@ describe('calculateDeletions', () => {
     expect(result).toEqual([{ guid: 'r2', type: 3, level: null, amount: 3, pointGuid: 'p2' }]);
   });
 
-  test('fast mode: locked-агрегация per-point — одна locked-стопка защищает все стопки точки', () => {
+  test('fast mode: агрегация per-point — одна lock-стопка защищает все стопки точки', () => {
     const limits = unlimitedLimits();
     limits.referencesMode = 'fast';
     limits.referencesFastLimit = 0;
