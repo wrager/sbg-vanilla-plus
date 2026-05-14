@@ -16,7 +16,7 @@ export function isReferenceMassDeleteBlockedByLegacyMigration(): boolean {
   );
 }
 
-export type LegacyMigrationRefsDeletionBlockReason = 'snapshot' | 'legacy';
+type LegacyMigrationRefsDeletionBlockReason = 'snapshot' | 'legacy';
 
 /**
  * Если {@link isReferenceMassDeleteBlockedByLegacyMigration} true - дискретная
