@@ -875,7 +875,11 @@ describe('runSlowDelete: isProtectionFlagSupportAvailable=false блокируе
     const countPointFetches = (): number =>
       fetchSpy.mock.calls.filter((args) => {
         const url =
-          typeof args[0] === 'string' ? args[0] : args[0] instanceof URL ? args[0].href : args[0].url;
+          typeof args[0] === 'string'
+            ? args[0]
+            : args[0] instanceof URL
+              ? args[0].href
+              : args[0].url;
         return url.includes('/api/point');
       }).length;
 
