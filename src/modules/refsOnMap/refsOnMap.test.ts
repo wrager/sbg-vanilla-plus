@@ -1116,7 +1116,7 @@ describe('refsOnMap lock protection', () => {
     clickHandler({ pixel: [0, 0] });
 
     window.confirm = jest.fn(() => true);
-    let releaseFirst: (value: Response) => void;
+    let releaseFirst: ((value: Response) => void) | undefined;
     const firstResponse = new Promise<Response>((resolve) => {
       releaseFirst = resolve;
     });
@@ -1140,7 +1140,8 @@ describe('refsOnMap lock protection', () => {
     await Promise.resolve();
     expect(fetchSpy).toHaveBeenCalledTimes(1);
 
-    releaseFirst!({
+    if (releaseFirst === undefined) throw new Error('releaseFirst not wired');
+    releaseFirst({
       json: () => Promise.resolve({ count: { total: 90 } }),
     } as unknown as Response);
     await Promise.resolve();
