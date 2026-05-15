@@ -176,7 +176,7 @@ describe('deleteInventoryItems', () => {
   });
 
   test('ключи (type 3) реально удаляются через fetch', async () => {
-    // Кэш с f=0 даёт lockSupportAvailable=true → guard разрешает удаление.
+    // Кэш с f=0 даёт isProtectionFlagSupportAvailable=true → guard разрешает удаление.
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 5, f: 0 }]),
@@ -206,7 +206,7 @@ describe('deleteInventoryItems', () => {
   });
 
   test('guard: бросает если ключ без pointGuid', async () => {
-    // Кэш с lockSupportAvailable=true, чтобы пройти первый guard.
+    // Кэш с isProtectionFlagSupportAvailable=true, чтобы пройти первый guard.
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ g: 'r-other', t: 3, l: 'p-other', a: 1, f: 0 }]),
@@ -226,12 +226,12 @@ describe('deleteInventoryItems', () => {
       { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
     await expect(deleteInventoryItems(deletions)).rejects.toThrow(
-      'Удаление ключей запрещено: нативный lock недоступен',
+      'Удаление ключей запрещено: нативная защита (lock/favorite) недоступна',
     );
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  test('guard: кэш с f-полем разрешает удаление (lockSupportAvailable=true)', async () => {
+  test('guard: кэш с f-полем разрешает удаление (isProtectionFlagSupportAvailable=true)', async () => {
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ g: 'r1', t: 3, l: 'p-other', a: 1, f: 0 }]),
@@ -245,10 +245,10 @@ describe('deleteInventoryItems', () => {
   });
 
   test('guard: mix-кэш (часть стопок без f) блокирует удаление', async () => {
-    // Раньше lockSupportAvailable считался через some — хватало одной стопки
-    // с f. Стопки без f не попадают в lockedPointGuids, и удаление их ключей
-    // могло пройти, даже если их точка фактически защищена. Теперь every —
-    // mix блокируется целиком.
+    // Раньше isProtectionFlagSupportAvailable считался через some — хватало одной стопки
+    // с f. Стопки без f не попадают в freshProtectedPointGuids, и удаление их
+    // ключей могло пройти, даже если их точка фактически защищена. Теперь
+    // every — mix блокируется целиком.
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([
@@ -259,7 +259,9 @@ describe('deleteInventoryItems', () => {
     const deletions: IDeletionEntry[] = [
       { guid: 'r1', type: 3, level: null, amount: 1, pointGuid: 'p1' },
     ];
-    await expect(deleteInventoryItems(deletions)).rejects.toThrow('нативный lock недоступен');
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+      'нативная защита (lock/favorite) недоступна',
+    );
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -274,16 +276,33 @@ describe('deleteInventoryItems', () => {
       { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
     await expect(deleteInventoryItems(deletions)).rejects.toThrow(
-      'Ключ от заблокированной точки p1 не может быть удалён',
+      'Ключ от защищённой точки p1 не может быть удалён',
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('guard: favorite-точка из свежего кэша блокирует удаление', async () => {
+    // Симметричный кейс с lock: пользователь поставил звёздочку (бит 0)
+    // ПОСЛЕ расчёта deletions. Симуляция race ровно как у lock — guard
+    // должен блокировать удаление обоими битами.
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 5, f: 0b01 }]),
+    );
+    const deletions: IDeletionEntry[] = [
+      { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
+    ];
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+      'Ключ от защищённой точки p1 не может быть удалён',
     );
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
   test('guard: per-point агрегация - locked стопка той же точки защищает все её стопки', async () => {
     // Кэш одной точки p1 с двумя стопками: одна locked (f=0b10), вторая - нет
-    // (f=0). buildLockedPointGuids агрегирует per-point: одной locked стопки
-    // достаточно, чтобы вся точка попала в lockedPointGuids. Если refactor
-    // случайно превратит buildLockedPointGuids в per-stack-проверку, удаление
+    // (f=0). buildProtectedPointGuids агрегирует per-point: одной защищённой
+    // стопки достаточно, чтобы вся точка попала в protectedPointGuids. Если
+    // refactor случайно превратит функцию в per-stack-проверку, удаление
     // стопки r2 (f=0) пройдёт мимо guard'а - тест зафиксирует регрессию.
     localStorage.setItem(
       'inventory-cache',
@@ -296,7 +315,26 @@ describe('deleteInventoryItems', () => {
       { guid: 'r2', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
     await expect(deleteInventoryItems(deletions)).rejects.toThrow(
-      'Ключ от заблокированной точки p1 не может быть удалён',
+      'Ключ от защищённой точки p1 не может быть удалён',
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  test('guard: per-point агрегация - favorite стопка той же точки защищает все её стопки', async () => {
+    // Симметричный кейс с lock per-point: одна favorite-стопка защищает
+    // все стопки той же точки от удаления.
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { g: 'r1', t: 3, l: 'p1', a: 1, f: 0b01 },
+        { g: 'r2', t: 3, l: 'p1', a: 5, f: 0 },
+      ]),
+    );
+    const deletions: IDeletionEntry[] = [
+      { guid: 'r2', type: 3, level: null, amount: 5, pointGuid: 'p1' },
+    ];
+    await expect(deleteInventoryItems(deletions)).rejects.toThrow(
+      'Ключ от защищённой точки p1 не может быть удалён',
     );
     expect(mockFetch).not.toHaveBeenCalled();
   });
@@ -353,7 +391,7 @@ describe('deleteInventoryItems', () => {
       return Promise.resolve({ ok: false, status: 500 });
     });
 
-    // f=0 в кэше даёт lockSupportAvailable=true → guard пропускает удаление.
+    // f=0 в кэше даёт isProtectionFlagSupportAvailable=true → guard пропускает удаление.
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 5, f: 0 }]),

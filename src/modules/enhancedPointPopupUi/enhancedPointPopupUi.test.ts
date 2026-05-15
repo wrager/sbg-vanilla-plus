@@ -1,7 +1,8 @@
 import { enhancedPointPopupUi } from './enhancedPointPopupUi';
 
 describe('enhancedPointPopupUi', () => {
-  afterEach(() => {
+  afterEach(async () => {
+    await enhancedPointPopupUi.disable();
     document.head.innerHTML = '';
     document.body.innerHTML = '';
   });
@@ -25,13 +26,10 @@ describe('enhancedPointPopupUi', () => {
 });
 
 // В SBG 0.6.1 внутри `.info.popup` появились новые блоки — `.inventory__ref-actions`
-// (popover с кнопками fav/lock) и `.inventory__manage-amount` (выбор количества
-// для удаления N ключей от точки). Наш CSS-модуль стилизует узкий набор
-// селекторов (`.info.popup .i-buttons button`, `.i-stat__entry`,
-// `.cores-list__level`, `#magic-deploy-btn`), и задевать новые блоки он
-// не должен. Тесты проверяют, что наши селекторы не матчатся на
-// кнопки/элементы новых блоков — иначе игровой UX сломается стилями
-// нашего модуля.
+// (popover с кнопками fav/lock для стопки) и `.inventory__manage-amount` (выбор
+// количества для удаления N ключей от точки). Наш CSS-модуль стилизует узкий
+// набор селекторов, и задевать новые блоки он не должен. Также свои кнопки
+// (`.svp-point-mark-button`) не пересекаются с нативными.
 describe('enhancedPointPopupUi — изоляция от новых блоков SBG 0.6.1', () => {
   afterEach(() => {
     document.head.innerHTML = '';
@@ -44,6 +42,9 @@ describe('enhancedPointPopupUi — изоляция от новых блоков
     popup.innerHTML = `
       <div class="i-header">
         <span class="i-title">Test point</span>
+      </div>
+      <div class="i-image-box">
+        <span id="i-ref">REF 5/100</span>
       </div>
       <div class="i-stats">
         <div class="i-stat__entry"><span>Owner</span></div>
@@ -76,6 +77,11 @@ describe('enhancedPointPopupUi — изоляция от новых блоков
         <button class="inventory__ma-delete">Delete</button>
         <button class="inventory__ma-use">Use</button>
         <button class="inventory__ma-cancel">Cancel</button>
+      </div>
+      <!-- Наши кнопки fav/lock попапа точки -->
+      <div class="svp-point-mark-buttons">
+        <button class="svp-point-mark-button" data-flag="favorite"></button>
+        <button class="svp-point-mark-button" data-flag="locked"></button>
       </div>
     `;
     return popup;
@@ -112,5 +118,19 @@ describe('enhancedPointPopupUi — изоляция от новых блоков
 
     const matched = popup.querySelectorAll('.i-stat__entry:not(.i-stat__cores)');
     expect(matched.length).toBe(1);
+  });
+
+  test('наши .svp-point-mark-button не попадают под селектор для игровых кнопок i-buttons', () => {
+    const popup = createInfoPopupBeta();
+    document.body.appendChild(popup);
+
+    const ourButtons = Array.from(popup.querySelectorAll('.svp-point-mark-button'));
+    expect(ourButtons.length).toBe(2);
+    const gameButtons = new Set<Element>(
+      Array.from(popup.querySelectorAll('.info.popup .i-buttons button')),
+    );
+    for (const ourButton of ourButtons) {
+      expect(gameButtons.has(ourButton)).toBe(false);
+    }
   });
 });
