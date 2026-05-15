@@ -21,6 +21,7 @@ import { singleFingerRotation } from './modules/singleFingerRotation/singleFinge
 import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { drawTools } from './modules/drawTools/drawTools';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
+import { drawingRestrictions } from './modules/drawingRestrictions/drawingRestrictions';
 import { favoritesMigration } from './modules/favoritesMigration/favoritesMigration';
 import { improvedNextPointSwipe } from './modules/improvedNextPointSwipe/improvedNextPointSwipe';
 import { nextPointSwipeAnimation } from './modules/nextPointSwipeAnimation/nextPointSwipeAnimation';
@@ -61,8 +62,11 @@ if (!isDisabled()) {
       groupErrorToasts,
       removeAttackCloseButton,
       nextPointSwipeAnimation,
-      // feature
+      // feature (favoritesMigration ПЕРЕД inventoryCleanup — зависимость init:
+      // loadFavorites() в init модуля favoritesMigration грузит legacy IDB-снимок,
+      // от которого зависит блок-логика inventoryCleanup)
       favoritesMigration,
+      drawingRestrictions,
       inventoryCleanup,
       keepScreenOn,
       // map
