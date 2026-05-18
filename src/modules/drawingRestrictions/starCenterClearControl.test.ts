@@ -3,12 +3,14 @@ import {
   uninstallStarCenterClearControl,
 } from './starCenterClearControl';
 import { clearStarCenter, getStarCenter, setStarCenter } from './starCenter';
+import { resetOlControlStackForTest } from '../../core/olControlStack';
 
 jest.mock('../../core/toast', () => ({
   showToast: jest.fn(),
 }));
 
 const CONTROL_CLASS = 'svp-star-center-clear-control';
+const STACK_ITEM_CLASS = 'svp-ol-stack-item';
 
 function createMapWithRegionPicker(): HTMLDivElement {
   const container = document.createElement('div');
@@ -19,7 +21,8 @@ function createMapWithRegionPicker(): HTMLDivElement {
   pickerButton.type = 'button';
   pickerButton.textContent = 'Δ';
   picker.appendChild(pickerButton);
-  container.appendChild(picker);
+  document.body.appendChild(picker);
+  container.appendChild(document.createElement('div'));
   document.body.appendChild(container);
   return container;
 }
@@ -28,10 +31,7 @@ function getControl(): HTMLElement | null {
   return document.querySelector<HTMLElement>(`.${CONTROL_CLASS}`);
 }
 
-async function flushMutations(): Promise<void> {
-  // MutationObserver callback - microtask, затем внутри callback'а через rAF
-  // вызывается tryAttach (debounce). Сначала flush microtasks, потом ждём
-  // следующий rAF tick (jsdom rAF ~ setTimeout 0/16ms).
+async function flushRaf(): Promise<void> {
   for (let i = 0; i < 5; i++) {
     await Promise.resolve();
   }
@@ -46,18 +46,22 @@ beforeEach(() => {
 
 afterEach(() => {
   uninstallStarCenterClearControl();
+  resetOlControlStackForTest();
   document.body.innerHTML = '';
   localStorage.clear();
 });
 
 describe('starCenterClearControl', () => {
-  test('вставляется сразу после .region-picker', () => {
-    const container = createMapWithRegionPicker();
+  test('вставляется сразу после .region-picker через olControlStack', async () => {
+    createMapWithRegionPicker();
     installStarCenterClearControl();
+    await flushRaf();
     const control = getControl();
     expect(control).not.toBeNull();
-    const picker = container.querySelector('.region-picker');
+    const picker = document.querySelector('.region-picker');
     expect(picker?.nextElementSibling).toBe(control);
+    // Helper приклеил общий класс стека и custom property с index.
+    expect(control?.classList.contains(STACK_ITEM_CLASS)).toBe(true);
   });
 
   test('скрыт (hidden=true) когда центр не назначен', () => {
@@ -103,98 +107,47 @@ describe('starCenterClearControl', () => {
     expect(control?.classList.contains('ol-unselectable')).toBe(true);
   });
 
-  test('install до появления .region-picker — ждёт через observer', async () => {
+  test('install до появления .region-picker - встаёт когда picker появляется', async () => {
     installStarCenterClearControl();
+    // Picker нет - control не в DOM (registry helper'а удерживает ссылку).
     expect(getControl()).toBeNull();
 
     createMapWithRegionPicker();
-    await flushMutations();
-    expect(getControl()).not.toBeNull();
+    await flushRaf();
+
+    const picker = document.querySelector('.region-picker');
+    expect(picker?.nextElementSibling).toBe(getControl());
   });
 
-  test('uninstall удаляет control и отключает observer', async () => {
+  test('uninstall убирает control и отключает event listener', async () => {
     createMapWithRegionPicker();
     installStarCenterClearControl();
+    await flushRaf();
     expect(getControl()).not.toBeNull();
 
     uninstallStarCenterClearControl();
     expect(getControl()).toBeNull();
 
+    // Изменение центра больше не должно влиять (control удалён).
     setStarCenter('p1');
-    await flushMutations();
+    await flushRaf();
     expect(getControl()).toBeNull();
   });
-});
 
-describe('starCenterClearControl — syncPosition и rect.width/height', () => {
-  function mockRect(element: HTMLElement, rect: Partial<DOMRect>): void {
-    element.getBoundingClientRect = (): DOMRect => {
-      return {
-        x: rect.x ?? 0,
-        y: rect.y ?? 0,
-        top: rect.top ?? 0,
-        bottom: rect.bottom ?? 0,
-        left: rect.left ?? 0,
-        right: rect.right ?? 0,
-        width: rect.width ?? 0,
-        height: rect.height ?? 0,
-        toJSON() {
-          return this;
-        },
-      };
-    };
-  }
-
-  // 8.B TRUE (обе width=0 и height=0): skip — style не обновляется.
-  test('picker скрыт (width=0 && height=0) — style control не обновляется', () => {
-    const container = createMapWithRegionPicker();
-    const picker = container.querySelector<HTMLElement>('.region-picker');
-    if (!picker) throw new Error('picker not found');
-    mockRect(picker, { width: 0, height: 0 });
-
-    setStarCenter('p1');
-    installStarCenterClearControl();
-    const control = getControl();
-    expect(control).not.toBeNull();
-    // Поскольку picker "скрыт", applyVisibility вызывает syncPosition, но он
-    // выходит раньше, чем присвоит top/right.
-    expect(control?.style.top).toBe('');
-    expect(control?.style.right).toBe('');
-  });
-
-  // 8.B FALSE (width!=0 && height=0): обновляем.
-  test('picker видим (height=0 но width!=0) — style обновляется', () => {
-    const container = createMapWithRegionPicker();
-    const picker = container.querySelector<HTMLElement>('.region-picker');
-    if (!picker) throw new Error('picker not found');
-    mockRect(picker, { width: 40, height: 0, bottom: 100, right: 200 });
-
-    setStarCenter('p1');
-    installStarCenterClearControl();
-    expect(getControl()?.style.top).toBe('100px');
-  });
-
-  // 8.B all-pass: обычный рендер.
-  test('полный rect — top и right обновляются относительно viewport', () => {
-    const container = createMapWithRegionPicker();
-    const picker = container.querySelector<HTMLElement>('.region-picker');
-    if (!picker) throw new Error('picker not found');
-    mockRect(picker, { width: 40, height: 40, bottom: 150, right: 300 });
-    window.innerWidth = 1000;
-
-    setStarCenter('p1');
-    installStarCenterClearControl();
-    expect(getControl()?.style.top).toBe('150px');
-    // 1000 - 300 = 700.
-    expect(getControl()?.style.right).toBe('700px');
-  });
-});
-
-describe('starCenterClearControl — onClick без назначенного центра', () => {
-  test('клик без центра — просто clearStarCenter (idempotent), toast не показывается', () => {
+  test('повторный install без uninstall - no-op', () => {
     createMapWithRegionPicker();
     installStarCenterClearControl();
-    // Центра нет (hidden=true). Программный клик по скрытой кнопке работает.
+    const first = getControl();
+    installStarCenterClearControl();
+    expect(getControl()).toBe(first);
+    expect(document.querySelectorAll(`.${CONTROL_CLASS}`).length).toBe(1);
+  });
+});
+
+describe('starCenterClearControl - onClick без назначенного центра', () => {
+  test('клик без центра - просто clearStarCenter, toast не показывается', () => {
+    createMapWithRegionPicker();
+    installStarCenterClearControl();
     const button = getControl()?.querySelector<HTMLButtonElement>('button');
     expect(() => {
       button?.click();
@@ -203,7 +156,7 @@ describe('starCenterClearControl — onClick без назначенного ц�
   });
 });
 
-describe('starCenterClearControl — refresh попапа при сбросе центра', () => {
+describe('starCenterClearControl - refresh попапа при сбросе центра', () => {
   const showInfoMock = jest.fn();
 
   beforeEach(() => {
@@ -282,312 +235,21 @@ describe('starCenterClearControl — refresh попапа при сбросе ц
   });
 });
 
-describe('starCenterClearControl — window resize', () => {
-  test('window.resize переспозиционирует control', () => {
-    const container = createMapWithRegionPicker();
-    const picker = container.querySelector<HTMLElement>('.region-picker');
-    if (!picker) throw new Error('picker not found');
-    picker.getBoundingClientRect = (): DOMRect => {
-      return {
-        x: 0,
-        y: 0,
-        top: 10,
-        bottom: 50,
-        left: 0,
-        right: 40,
-        width: 40,
-        height: 40,
-        toJSON() {
-          return this;
-        },
-      };
-    };
-    window.innerWidth = 500;
-    setStarCenter('p1');
-    installStarCenterClearControl();
-    const control = getControl();
-    expect(control?.style.top).toBe('50px');
-    expect(control?.style.right).toBe('460px');
-
-    // Меняем bounding rect и триггерим resize.
-    picker.getBoundingClientRect = (): DOMRect => {
-      return {
-        x: 0,
-        y: 0,
-        top: 20,
-        bottom: 80,
-        left: 0,
-        right: 40,
-        width: 40,
-        height: 60,
-        toJSON() {
-          return this;
-        },
-      };
-    };
-    window.innerWidth = 600;
-    window.dispatchEvent(new Event('resize'));
-
-    expect(control?.style.top).toBe('80px');
-    expect(control?.style.right).toBe('560px');
-  });
-});
-
-describe('starCenterClearControl — ResizeObserver', () => {
-  interface IMockResizeObserver {
-    observe: jest.Mock;
-    disconnect: jest.Mock;
-    trigger: () => void;
-  }
-
-  let lastObserver: IMockResizeObserver | null = null;
-
-  beforeEach(() => {
-    lastObserver = null;
-    const ResizeObserverMock = jest.fn((callback: () => void) => {
-      const observer: IMockResizeObserver = {
-        observe: jest.fn(),
-        disconnect: jest.fn(),
-        trigger: () => {
-          callback();
-        },
-      };
-      lastObserver = observer;
-      return observer;
-    });
-    (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverMock;
-  });
-
-  afterEach(() => {
-    delete (globalThis as unknown as { ResizeObserver?: unknown }).ResizeObserver;
-  });
-
-  // 8.H all-pass: ResizeObserver доступен → создаётся, observ'ит picker.
-  test('когда ResizeObserver доступен — создаётся и .observe(picker) вызывается', () => {
-    const container = createMapWithRegionPicker();
-    installStarCenterClearControl();
-    expect(lastObserver).not.toBeNull();
-    const picker = container.querySelector('.region-picker');
-    expect(lastObserver?.observe).toHaveBeenCalledWith(picker);
-  });
-
-  // 8.M: trigger → syncPosition.
-  test('ResizeObserver callback вызывает syncPosition', () => {
-    const container = createMapWithRegionPicker();
-    const picker = container.querySelector<HTMLElement>('.region-picker');
-    if (!picker) throw new Error('picker not found');
-    picker.getBoundingClientRect = (): DOMRect => {
-      return {
-        x: 0,
-        y: 0,
-        top: 0,
-        bottom: 30,
-        left: 0,
-        right: 30,
-        width: 30,
-        height: 30,
-        toJSON() {
-          return this;
-        },
-      };
-    };
-    window.innerWidth = 1000;
-    setStarCenter('p1');
-    installStarCenterClearControl();
-    const control = getControl();
-    expect(control?.style.top).toBe('30px');
-
-    // Сменили размер picker'а.
-    picker.getBoundingClientRect = (): DOMRect => {
-      return {
-        x: 0,
-        y: 0,
-        top: 0,
-        bottom: 60,
-        left: 0,
-        right: 30,
-        width: 30,
-        height: 60,
-        toJSON() {
-          return this;
-        },
-      };
-    };
-    lastObserver?.trigger();
-    expect(control?.style.top).toBe('60px');
-  });
-
-  // 8.N.2: disconnect при uninstall.
-  test('uninstall вызывает disconnect у ResizeObserver', () => {
-    createMapWithRegionPicker();
-    installStarCenterClearControl();
-    const disconnectSpy = lastObserver?.disconnect;
-    uninstallStarCenterClearControl();
-    expect(disconnectSpy).toHaveBeenCalled();
-  });
-
-  // Игра пересоздаёт picker (смена режима, ререндер) - ResizeObserver должен
-  // переподписаться на новый узел, иначе наблюдает за zombie-нодой.
-  test('picker пересоздан после install — ResizeObserver наблюдает за новым', async () => {
-    const container = createMapWithRegionPicker();
-    installStarCenterClearControl();
-    const firstPicker = container.querySelector('.region-picker');
-    const firstObserver = lastObserver;
-    expect(firstObserver?.observe).toHaveBeenCalledWith(firstPicker);
-
-    // Эмулируем пересоздание picker'а игрой.
-    firstPicker?.remove();
-    const newPicker = document.createElement('div');
-    newPicker.className = 'region-picker ol-unselectable ol-control';
-    container.appendChild(newPicker);
-
-    // control тоже удалили (как часть пересоздания DOM вокруг карты),
-    // observer по мутации body вызовет tryAttach.
-    document.querySelector(`.${CONTROL_CLASS}`)?.remove();
-    document.body.appendChild(document.createElement('div'));
-    await flushMutations();
-
-    // Тот же ResizeObserver instance, но теперь наблюдает за новым picker.
-    expect(lastObserver).toBe(firstObserver);
-    expect(firstObserver?.disconnect).toHaveBeenCalled();
-    expect(firstObserver?.observe).toHaveBeenLastCalledWith(newPicker);
-  });
-
-  test('picker пересоздан, но control остался в DOM — переезжает к новому picker', async () => {
-    const container = createMapWithRegionPicker();
-    installStarCenterClearControl();
-    const firstPicker = container.querySelector('.region-picker');
-    const firstObserver = lastObserver;
-    const control = getControl();
-    expect(control).not.toBeNull();
-    expect(firstPicker?.nextElementSibling).toBe(control);
-
-    // Игра удалила старый picker, добавила свежий, но наш control НЕ удалён -
-    // он остался в DOM (sibling старого picker'а), но соседом теперь не
-    // является (picker, рядом с которым он стоял, ушёл из дерева).
-    firstPicker?.remove();
-    const newPicker = document.createElement('div');
-    newPicker.className = 'region-picker ol-unselectable ol-control';
-    container.appendChild(newPicker);
-    expect(control?.isConnected).toBe(true);
-    expect(newPicker.previousElementSibling).toBe(control);
-
-    document.body.appendChild(document.createElement('div'));
-    await flushMutations();
-
-    // Тот же control - переехал к новому picker.
-    expect(getControl()).toBe(control);
-    expect(newPicker.nextElementSibling).toBe(control);
-    // ResizeObserver переподписан на новый picker.
-    expect(firstObserver?.disconnect).toHaveBeenCalled();
-    expect(firstObserver?.observe).toHaveBeenLastCalledWith(newPicker);
-  });
-});
-
-describe('starCenterClearControl — ResizeObserver недоступен', () => {
-  // 8.H.1 FALSE: typeof ResizeObserver === 'undefined' → не создаётся.
-  test('ResizeObserver undefined — control всё равно работает, observer не создаётся', () => {
-    // В дефолте jsdom ResizeObserver отсутствует.
-    expect(typeof ResizeObserver).toBe('undefined');
-    createMapWithRegionPicker();
-    installStarCenterClearControl();
-    expect(getControl()).not.toBeNull();
-    // uninstall не падает (resizeObserver?.disconnect() = no-op).
-    expect(() => {
-      uninstallStarCenterClearControl();
-    }).not.toThrow();
-  });
-});
-
-describe('starCenterClearControl — реакция MutationObserver', () => {
-  // 8.J.2 TRUE: control удалён из DOM → reattach.
-  test('при удалении control из DOM MutationObserver reattach', async () => {
-    createMapWithRegionPicker();
-    installStarCenterClearControl();
-    const firstControl = getControl();
-    expect(firstControl).not.toBeNull();
-
-    firstControl?.remove();
-    expect(getControl()).toBeNull();
-
-    // Триггерим мутацию.
-    document.body.appendChild(document.createElement('div'));
-    await flushMutations();
-
-    expect(getControl()).not.toBeNull();
-  });
-
-  // rAF-debounce: множественные мутации за один тик дают один проход reattach.
-  test('массовые мутации за один тик — один rAF, один reattach', async () => {
-    createMapWithRegionPicker();
-    installStarCenterClearControl();
-    getControl()?.remove();
-
-    // Несколько синхронных мутаций - все должны сложиться в один rAF.
-    for (let i = 0; i < 10; i++) {
-      document.body.appendChild(document.createElement('div'));
-    }
-    await flushMutations();
-
-    // После единственного rAF-tick'a control реаттачен ровно один раз.
-    expect(document.querySelectorAll(`.${CONTROL_CLASS}`).length).toBe(1);
-  });
-
-  // uninstall во время запланированного rAF отменяет reattach (cancelAnimationFrame).
-  test('uninstall до резолва rAF — reattach не выполняется', async () => {
-    createMapWithRegionPicker();
-    installStarCenterClearControl();
-    getControl()?.remove();
-
-    // Планируем rAF через мутацию.
-    document.body.appendChild(document.createElement('div'));
-    // Сразу uninstall, не дожидаясь rAF.
-    uninstallStarCenterClearControl();
-
-    await flushMutations();
-    expect(getControl()).toBeNull();
-  });
-
-  // 8.J обе FALSE: control на месте → syncPosition (не reattach).
-  test('мутация без удаления control — не пересоздаёт', async () => {
-    createMapWithRegionPicker();
-    installStarCenterClearControl();
-    const firstControl = getControl();
-
-    document.body.appendChild(document.createElement('div'));
-    await flushMutations();
-
-    expect(getControl()).toBe(firstControl);
-  });
-
-  // 8.E TRUE: повторный tryAttach при уже подключённом control — return true без изменений.
-  test('повторный install без uninstall — no-op', () => {
-    createMapWithRegionPicker();
-    installStarCenterClearControl();
-    const firstControl = getControl();
-
-    installStarCenterClearControl();
-    expect(getControl()).toBe(firstControl);
-  });
-});
-
-describe('starCenterClearControl — устойчивость uninstall', () => {
-  // 8.N optional-chains: uninstall без install не падает.
+describe('starCenterClearControl - устойчивость uninstall', () => {
   test('uninstall без install не бросает', () => {
     expect(() => {
       uninstallStarCenterClearControl();
     }).not.toThrow();
   });
 
-  // uninstall после install без .region-picker в DOM — все ?. = noop.
-  test('uninstall после install без picker — не бросает', () => {
+  test('uninstall после install без picker - не бросает', () => {
     installStarCenterClearControl();
     expect(() => {
       uninstallStarCenterClearControl();
     }).not.toThrow();
   });
 
-  test('double uninstall — не бросает', () => {
+  test('double uninstall - не бросает', () => {
     createMapWithRegionPicker();
     installStarCenterClearControl();
     uninstallStarCenterClearControl();

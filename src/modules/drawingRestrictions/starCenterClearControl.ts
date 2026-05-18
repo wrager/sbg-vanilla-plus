@@ -1,3 +1,4 @@
+import { registerOlControl } from '../../core/olControlStack';
 import { STAR_CENTER_CHANGED_EVENT, clearStarCenter, getStarCenter } from './starCenter';
 import { STAR_ICON_SLASH_SVG } from './starCenterIcon';
 import { refreshPopupIfStarFilterWasActive } from './starCenterRefresh';
@@ -5,53 +6,29 @@ import { showCenterClearedToast } from './starCenterToasts';
 
 const CONTROL_CLASS = 'svp-star-center-clear-control';
 const ICON_BUTTON_CLASS = 'svp-star-icon-button';
-const REGION_PICKER_SELECTOR = '.region-picker.ol-unselectable.ol-control';
+// drawTools регистрируется с priority=0 (первый ниже picker'а), наш control - следующий.
+const OL_STACK_PRIORITY = 1;
 
 let controlElement: HTMLDivElement | null = null;
-let pickerElement: HTMLElement | null = null;
+let unregisterOlControl: (() => void) | null = null;
 let abortController: AbortController | null = null;
 let changeHandler: (() => void) | null = null;
-let domObserver: MutationObserver | null = null;
-let resizeObserver: ResizeObserver | null = null;
-let windowResizeHandler: (() => void) | null = null;
-let rafId: number | null = null;
-
-/**
- * Позиционирует control прямо под `.region-picker`. Координаты читаем через
- * getBoundingClientRect() и применяем как position: fixed относительно viewport —
- * это работает независимо от того, как именно игра позиционирует picker (inline
- * style, CSS класс, trasnform и т.д.). getComputedStyle().top не годится: для
- * ol-control с позицией через игровой CSS оно часто возвращает `auto`.
- */
-function syncPosition(): void {
-  if (!controlElement || !pickerElement) return;
-  const rect = pickerElement.getBoundingClientRect();
-  if (rect.width === 0 && rect.height === 0) return; // picker скрыт
-  // OL-controls в игре выстроены вертикально вплотную (zoom-in / zoom-out /
-  // region-picker / ...), без gap. Ставим control сразу под region-picker,
-  // чтобы визуально продолжить колонку.
-  controlElement.style.top = `${rect.bottom}px`;
-  controlElement.style.right = `${window.innerWidth - rect.right}px`;
-  controlElement.style.left = 'auto';
-  controlElement.style.bottom = 'auto';
-}
 
 function applyVisibility(): void {
   if (!controlElement) return;
   controlElement.hidden = getStarCenter() === null;
-  if (!controlElement.hidden) syncPosition();
 }
 
 function createControl(): HTMLDivElement {
   // Структура 1-в-1 как у `.region-picker` (div.ol-unselectable.ol-control >
   // button), чтобы наследовать игровые стили OL-кнопок. Класс `region-picker`
-  // сознательно НЕ добавляем: игра через jQuery навешивает на все `.region-picker`
-  // свой click-handler toggle регионов — наш control не должен попасть туда.
-  // Внутренняя button получает общий с toggle-кнопкой класс svp-star-icon-button,
-  // который задаёт единые размеры/padding для обеих кнопок режима звезды.
+  // сознательно НЕ добавляем: игра через jQuery навешивает на все
+  // `.region-picker` свой click-handler toggle регионов - наш control не
+  // должен попасть туда. Внутренняя button получает общий с toggle-кнопкой
+  // класс svp-star-icon-button, который задаёт единые размеры/padding для
+  // обеих кнопок режима звезды.
   const element = document.createElement('div');
   element.className = `${CONTROL_CLASS} ol-unselectable ol-control`;
-  element.style.position = 'fixed';
   const button = document.createElement('button');
   button.type = 'button';
   button.className = ICON_BUTTON_CLASS;
@@ -80,91 +57,28 @@ function createControl(): HTMLDivElement {
   return element;
 }
 
-function tryAttach(): boolean {
-  const picker = document.querySelector<HTMLElement>(REGION_PICKER_SELECTOR);
-  if (!picker) return controlElement?.isConnected ?? false;
-
-  // Reattach нужен и когда control вылетел из DOM, и когда игра пересоздала
-  // picker (наш control остался у старого, ResizeObserver наблюдает за
-  // zombie-нодой). Сценарий: смена игрового режима/ререндер DOM вокруг карты,
-  // при котором picker заменяется свежим узлом, но наш ol-control не удаляется.
-  const pickerChanged = pickerElement !== picker;
-  const controlDetached = !controlElement || !controlElement.isConnected;
-
-  if (pickerChanged || controlDetached) {
-    if (pickerChanged && resizeObserver) {
-      resizeObserver.disconnect();
-      resizeObserver.observe(picker);
-    }
-    pickerElement = picker;
-    if (!controlElement) controlElement = createControl();
-    // Переставляем сразу после свежего picker. Если control был в DOM у
-    // старого picker - это перемещение, а не дублирование.
-    picker.after(controlElement);
-    if (typeof ResizeObserver !== 'undefined' && !resizeObserver) {
-      resizeObserver = new ResizeObserver(() => {
-        syncPosition();
-      });
-      resizeObserver.observe(picker);
-    }
-  }
-  syncPosition();
-  applyVisibility();
-  return true;
-}
-
 export function installStarCenterClearControl(): void {
-  if (domObserver) return;
-  // Наблюдатель отслеживает появление/исчезновение .region-picker - control
-  // перевставляется автоматически, если игра пересоздаёт DOM вокруг карты.
-  // rAF-debounce: за один тик игра делает много мутаций (ререндер points-layer,
-  // обновление виджетов попапа, splide.refresh), без debounce syncPosition с
-  // getBoundingClientRect (force layout) вызывается на каждой мутации - дорого.
-  // Аналогичный паттерн в settingsUi.ts для reinject configure-button.
-  domObserver = new MutationObserver(() => {
-    if (rafId !== null) return;
-    rafId = requestAnimationFrame(() => {
-      rafId = null;
-      // tryAttach сам различает три случая: control вылетел из DOM (reattach),
-      // picker пересоздан (переподписаться на свежий и переместить control),
-      // ничего не изменилось (только syncPosition по родительскому layout).
-      tryAttach();
-    });
-  });
-  domObserver.observe(document.body, { childList: true, subtree: true });
-  tryAttach();
+  if (controlElement) return;
+  controlElement = createControl();
+  applyVisibility();
+  // Общий стек кнопок под .region-picker: helper расставит элемент по priority,
+  // позиционирует через CSS-переменную, реагирует на пересоздание picker'а.
+  unregisterOlControl = registerOlControl(OL_STACK_PRIORITY, controlElement);
 
   changeHandler = (): void => {
     applyVisibility();
   };
   document.addEventListener(STAR_CENTER_CHANGED_EVENT, changeHandler);
-
-  windowResizeHandler = (): void => {
-    syncPosition();
-  };
-  window.addEventListener('resize', windowResizeHandler);
 }
 
 export function uninstallStarCenterClearControl(): void {
-  if (rafId !== null) {
-    cancelAnimationFrame(rafId);
-    rafId = null;
-  }
-  domObserver?.disconnect();
-  domObserver = null;
-  resizeObserver?.disconnect();
-  resizeObserver = null;
+  unregisterOlControl?.();
+  unregisterOlControl = null;
   abortController?.abort();
   abortController = null;
   if (changeHandler) {
     document.removeEventListener(STAR_CENTER_CHANGED_EVENT, changeHandler);
     changeHandler = null;
   }
-  if (windowResizeHandler) {
-    window.removeEventListener('resize', windowResizeHandler);
-    windowResizeHandler = null;
-  }
-  controlElement?.remove();
   controlElement = null;
-  pickerElement = null;
 }
