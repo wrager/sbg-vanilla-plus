@@ -123,6 +123,32 @@ describe('olControlStack', () => {
     expect(b.style.getPropertyValue(STACK_INDEX_PROPERTY)).toBe('1');
   });
 
+  test('arrange после установки не делает повторных DOM-перемещений (нет infinite loop через MutationObserver)', async () => {
+    const picker = createPicker();
+    const control = createControl();
+    registerOlControl(0, control);
+    await flushRaf();
+
+    // Спай на insertBefore body. Первичная вставка уже произошла - её не
+    // считаем. Будем смотреть, появятся ли новые вызовы после посторонней
+    // мутации body.
+    const insertBeforeSpy = jest.spyOn(document.body, 'insertBefore');
+
+    // Чужая мутация body - дёргает наш MutationObserver, schedule rAF, arrange.
+    document.body.appendChild(document.createElement('div'));
+    await flushRaf();
+    await flushRaf();
+
+    // arrange не должен переставлять control - его позиция уже корректна
+    // (sibling после picker). Любой повторный insertBefore с нашим control'ом
+    // в роли node означает loop.
+    const controlMoves = insertBeforeSpy.mock.calls.filter((call) => call[0] === control).length;
+    expect(controlMoves).toBe(0);
+    // Picker не двигался - sanity check.
+    expect(picker.nextElementSibling).toBe(control);
+    insertBeforeSpy.mockRestore();
+  });
+
   test('CSS-инжект появляется в head при первой регистрации и убирается после последнего unregister', async () => {
     createPicker();
     const control = createControl();

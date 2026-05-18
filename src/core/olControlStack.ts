@@ -57,8 +57,14 @@ function arrange(): void {
     const item = sorted[i];
     item.element.classList.add(STACK_ITEM_CLASS);
     item.element.style.setProperty(STACK_INDEX_PROPERTY, String(i + 1));
-    // .after() перемещает элемент, если он уже в DOM (а не дублирует).
-    previous.after(item.element);
+    // Защита от infinite loop: previous.after(item.element) на "no-op"
+    // перемещении (element уже на месте) всё равно генерит childList-мутацию
+    // body, наш же MutationObserver её ловит и снова дёргает arrange. Браузер
+    // бесконечно перерасставляет элементы. Перемещаем только если позиция
+    // фактически изменилась.
+    if (previous.nextSibling !== item.element) {
+      previous.after(item.element);
+    }
     previous = item.element;
   }
 }
