@@ -12,22 +12,10 @@
   color: #ffcc33;
 }
 
-/* clear-control (OL-control на карте под region-picker): position и видимость
-   управляются runtime из starCenterClearControl.ts; размер внутренней button
-   повторяет .svp-popup-action-button, но живёт здесь отдельно — класс
-   popup-action-button по имени привязан к попапу, clear-control не в попапе. */
-.svp-star-center-clear-control button {
-  width: 32px;
-  height: 32px;
-  min-height: auto;
-  padding: 0;
-}
-
-.svp-star-center-clear-control button svg {
-  display: block;
-  margin: auto;
-}
-
+/* clear-control (OL-control на карте под region-picker): позиционирование,
+   размеры button и SVG приходят из общего .svp-ol-stack-item стиля
+   (см. src/core/olControlStack.ts). Здесь — только скрытие control'а, когда
+   центр звезды не назначен. */
 .svp-star-center-clear-control[hidden] {
   display: none;
 }

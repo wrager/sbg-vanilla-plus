@@ -10,16 +10,22 @@ const REGION_PICKER_SELECTOR = '.region-picker.ol-unselectable.ol-control';
  * абсолютно позиционируется тем же `top: 50%; left: 0.5em` что и picker,
  * вертикальное смещение задаётся через `var(--svp-ol-stack-index)` (1, 2,
  * 3...), который helper выставляет на инлайновый style элемента при
- * пересортировке. Media-queries дублируют игровой `.region-picker button`
- * (см. game style 0.6.1.css) - размер шрифта кнопки увеличивается на узких
- * viewport'ах. SVG масштабируется от font-size кнопки.
+ * пересортировке. Между picker'ом и каждой следующей кнопкой - зазор 1px:
+ * без него кнопки сливаются вплотную в одну сплошную колонку и их границы
+ * не различимы.
+ *
+ * Media-queries дублируют игровой `.region-picker button` (см. game style
+ * 0.6.1.css) - размер шрифта кнопки увеличивается на узких viewport'ах.
+ * SVG масштабируется от font-size кнопки. Стили button (background, border,
+ * размер) намеренно не задаём - наследуются от ol.css `.ol-control button`,
+ * чтобы все кнопки стека выглядели как нативный picker.
  */
 const STACK_CSS = `
 .${STACK_ITEM_CLASS} {
   position: absolute;
   top: 50%;
   left: 0.5em;
-  transform: translateY(calc(100% + 100% * var(${STACK_INDEX_PROPERTY}, 1)));
+  transform: translateY(calc(100% + (100% + 1px) * var(${STACK_INDEX_PROPERTY}, 1)));
 }
 @media (max-width: 425px) {
   .${STACK_ITEM_CLASS} button {

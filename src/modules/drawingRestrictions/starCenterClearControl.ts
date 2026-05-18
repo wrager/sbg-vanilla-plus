@@ -5,7 +5,6 @@ import { refreshPopupIfStarFilterWasActive } from './starCenterRefresh';
 import { showCenterClearedToast } from './starCenterToasts';
 
 const CONTROL_CLASS = 'svp-star-center-clear-control';
-const ICON_BUTTON_CLASS = 'svp-star-icon-button';
 // drawTools регистрируется с priority=0 (первый ниже picker'а), наш control - следующий.
 const OL_STACK_PRIORITY = 1;
 
@@ -21,17 +20,15 @@ function applyVisibility(): void {
 
 function createControl(): HTMLDivElement {
   // Структура 1-в-1 как у `.region-picker` (div.ol-unselectable.ol-control >
-  // button), чтобы наследовать игровые стили OL-кнопок. Класс `region-picker`
-  // сознательно НЕ добавляем: игра через jQuery навешивает на все
-  // `.region-picker` свой click-handler toggle регионов - наш control не
-  // должен попасть туда. Внутренняя button получает общий с toggle-кнопкой
-  // класс svp-star-icon-button, который задаёт единые размеры/padding для
-  // обеих кнопок режима звезды.
+  // button), чтобы наследовать игровые стили OL-кнопок (background, border,
+  // размер). Класс `region-picker` сознательно НЕ добавляем: игра через
+  // jQuery навешивает на все `.region-picker` свой click-handler toggle
+  // регионов, наш control не должен попасть туда. Размеры/SVG-sizing
+  // приходят из общего olControlStack (`.svp-ol-stack-item button`).
   const element = document.createElement('div');
   element.className = `${CONTROL_CLASS} ol-unselectable ol-control`;
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = ICON_BUTTON_CLASS;
   button.innerHTML = STAR_ICON_SLASH_SVG;
   abortController = new AbortController();
   button.addEventListener(
