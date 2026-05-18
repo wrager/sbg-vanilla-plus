@@ -1,16 +1,16 @@
 import {
-  INVENTORY_CACHE_KEY,
   buildLockedPointGuids,
   readInventoryCache,
   readInventoryReferences,
 } from '../../core/inventoryCache';
 import type { IInventoryReference } from '../../core/inventoryTypes';
-import { isInventoryReference } from '../../core/inventoryTypes';
+import { isInventoryReference, MARK_FLAG_BITS, type MarkFlag } from '../../core/inventoryTypes';
 import {
   getFavoritedGuids,
   isLockMigrationDone,
   setLockMigrationDone,
 } from '../../core/favoritesStore';
+import { MARKS_RATE_LIMIT_MS, postMark } from '../../core/marksApi';
 
 /**
  * Перевод SVP/CUI-избранных в нативные «звёздочки» / «замочки» SBG 0.6.1
@@ -18,29 +18,17 @@ import {
  * refs/game/script.js:3416).
  */
 
-export type MigrationFlag = 'favorite' | 'locked';
-
-const FLAG_BIT: Record<MigrationFlag, number> = {
-  favorite: 0b01,
-  locked: 0b10,
-};
+/** Алиас для совместимости с migrationUi: семантически идентичен MarkFlag из core. */
+export type MigrationFlag = MarkFlag;
 
 /**
  * Запросы к `/api/marks` идут строго последовательно (по одному за раз) с
- * задержкой между каждым. Параллельность сервер выдерживает, но имеет
- * rate-limit на частоту marks-операций: при concurrency=4 без задержки
- * большая часть запросов возвращала `result: false` (отказ замаскированный
- * под toggle-off). Sequential + delay — единственный способ гарантировать
- * что все стопки получат флаг.
+ * задержкой `MARKS_RATE_LIMIT_MS` между каждым. Параллельность сервер
+ * выдерживает, но имеет rate-limit на частоту marks-операций: при
+ * concurrency=4 без задержки большая часть запросов возвращала
+ * `result: false` (отказ замаскированный под toggle-off). Sequential +
+ * delay — единственный способ гарантировать что все стопки получат флаг.
  */
-
-/**
- * Задержка между запросами `/api/marks` (мс). Эмпирически проверено: 30
- * запросов с интервалом 1500мс прошли с 100% успехом (`result: true`).
- * Меньшие интервалы не тестировались — без подтверждения на твоём сервере
- * шансовать с rate-limit нельзя.
- */
-const DEFAULT_REQUEST_DELAY_MS = 1500;
 
 /**
  * Задержки перед автоматическими retry-попытками для сетевых ошибок (fetch
@@ -103,9 +91,9 @@ export interface IMigrationCandidates {
  * SVP, ключей этой точки в инвентаре сейчас нет. Старая логика ставила
  * флаг, потому что `hasStacks=false` для всех legacy-точек "не противоречит
  * миграции". Когда пользователь набирал ключи этой точки, автоочистка
- * удаляла их без защиты, потому что флаг снимал блок, а нативный lock у
- * точки не выставлен. Новая логика не ставит флаг без позитивного
- * подтверждения.
+ * удаляла их без защиты, потому что флаг снимал блок, а нативная защита
+ * (lock/favorite) у точки не выставлена. Новая логика не ставит флаг без
+ * позитивного подтверждения.
  *
  * Если хоть одна legacy-точка имеет стопки И НЕ помечена lock - миграция
  * заведомо не завершена, флаг не выставляем; пользователь увидит UI
@@ -153,7 +141,7 @@ export function buildCandidates(flag: MigrationFlag): IMigrationCandidates {
     refsByPoint.set(ref.l, stacks);
   }
 
-  const bit = FLAG_BIT[flag];
+  const bit = MARK_FLAG_BITS[flag];
   const toSend: IMigrationItem[] = [];
   let alreadyApplied = 0;
   for (const [pointGuid, stacks] of refsByPoint) {
@@ -172,99 +160,6 @@ export function buildCandidates(flag: MigrationFlag): IMigrationCandidates {
   }
 
   return { toSend, withoutKeysGuids, alreadyApplied };
-}
-
-/**
- * Сервер отдаёт ответ напрямую, без вложения в `response` (несмотря на запись
- * в release-notes 4.A - там приведён формат, который было предположен,
- * фактический подтверждён ручным fetch'ем в DevTools). `result === true`
- * означает, что флаг УСТАНОВЛЕН после toggle, `false` - снят.
- *
- * Любой другой формат ответа трактуется как `result: false` - безопасный
- * дефолт: серверный флаг не считается установленным, кэш не обновляется,
- * стопка пойдёт в retry-toggle. Лучше лишний retry, чем подмена смысла.
- */
-function parseMarksResult(value: unknown): boolean {
-  if (typeof value !== 'object' || value === null) return false;
-  if (!('result' in value)) return false;
-  return value.result === true;
-}
-
-export interface IMarkOutcome {
-  /** Сетевой запрос завершился без исключения и `response.ok === true`. */
-  networkOk: boolean;
-  /** `result === true` означает, что флаг УСТАНОВЛЕН (поставлен) после toggle. */
-  result: boolean;
-}
-
-/**
- * Обновляет бит флага у стопки в `localStorage['inventory-cache']`. Повторяет
- * логику игры (refs/game/script.js:1820-1827): после успешного marks-запроса
- * через нативную кнопку игра локально пересобирает поле `f` через Bitfield.put.
- * Без нашего собственного обновления при reload игра прочитает устаревший кэш
- * без бита 0b10 — замочек не появится в инвентаре.
- *
- * `on === true` устанавливает бит, `false` — снимает. Безопасно к запуску, если
- * стопка с таким `g` отсутствует в кэше: просто no-op.
- */
-function applyFlagToCache(stackGuid: string, flag: MigrationFlag, on: boolean): void {
-  const raw = localStorage.getItem(INVENTORY_CACHE_KEY);
-  if (raw === null) return;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return;
-  }
-  if (!Array.isArray(parsed)) return;
-
-  const bit = FLAG_BIT[flag];
-  let mutated = false;
-  for (const item of parsed) {
-    if (!isInventoryReference(item)) continue;
-    if (item.g !== stackGuid) continue;
-    const current = item.f ?? 0;
-    const next = on ? current | bit : current & ~bit;
-    if (next !== current) {
-      item.f = next;
-      mutated = true;
-    }
-    break;
-  }
-  if (mutated) localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(parsed));
-}
-
-/**
- * Отправляет один `POST /api/marks` с `{ guid, flag }`. Игровая `apiSend` —
- * IIFE-внутренняя функция, недоступна юзерскрипту: используем прямой fetch
- * с auth-токеном, как в `inventoryApi.deleteInventoryItems`.
- *
- * После успешного ответа синхронизирует `inventory-cache` локально, чтобы
- * замочек/звёздочка появились без перезагрузки и сохранились при reload.
- */
-export async function postMark(itemGuid: string, flag: MigrationFlag): Promise<IMarkOutcome> {
-  const token = localStorage.getItem('auth');
-  if (!token) return { networkOk: false, result: false };
-
-  try {
-    const response = await fetch('/api/marks', {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ guid: itemGuid, flag }),
-    });
-    if (!response.ok) return { networkOk: false, result: false };
-    const json: unknown = await response.json();
-    const result = parseMarksResult(json);
-    // Сервер сообщил итоговое состояние флага после toggle: true = поставлен,
-    // false = снят. В обоих случаях обновляем кэш под актуальный сервером state.
-    applyFlagToCache(itemGuid, flag, result);
-    return { networkOk: true, result };
-  } catch {
-    return { networkOk: false, result: false };
-  }
 }
 
 export interface IMigrationProgress {
@@ -304,7 +199,7 @@ export interface IMigrationOptions {
   onPhaseChange?: (phase: IMigrationPhase) => void;
   /**
    * Задержка между запросами в `runBatch` (мс). По умолчанию
-   * `DEFAULT_REQUEST_DELAY_MS=1500` — обходит серверный rate-limit. В тестах
+   * `MARKS_RATE_LIMIT_MS=1500` — обходит серверный rate-limit. В тестах
    * передавать 0, чтобы прогон был мгновенным.
    */
   requestDelayMs?: number;
@@ -385,7 +280,7 @@ export async function runMigration(
   items: IMigrationItem[],
   options: IMigrationOptions,
 ): Promise<IMigrationResult> {
-  const requestDelayMs = options.requestDelayMs ?? DEFAULT_REQUEST_DELAY_MS;
+  const requestDelayMs = options.requestDelayMs ?? MARKS_RATE_LIMIT_MS;
   const networkRetryDelays = options.networkRetryDelaysMs ?? DEFAULT_NETWORK_RETRY_DELAYS_MS;
   const toggleRetryDelay = options.toggleRetryDelayMs ?? DEFAULT_TOGGLE_RETRY_DELAY_MS;
 

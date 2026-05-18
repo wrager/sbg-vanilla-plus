@@ -5,8 +5,11 @@ import {
   readFullInventoryReferences,
   buildLockedPointGuids,
   buildFavoritedPointGuids,
+  buildProtectedPointGuids,
+  isProtectionFlagSupportAvailable,
 } from './inventoryCache';
 import { ITEM_TYPE_REFERENCE, ITEM_TYPE_CORE } from './gameConstants';
+import type { IInventoryItem } from './inventoryTypes';
 
 beforeEach(() => {
   localStorage.clear();
@@ -92,6 +95,17 @@ describe('readFullInventoryReferences', () => {
   });
 });
 
+function ref(g: string, point: string, amount: number, f?: number): IInventoryItem {
+  const item: { g: string; t: number; l: string; a: number; f?: number } = {
+    g,
+    t: ITEM_TYPE_REFERENCE,
+    l: point,
+    a: amount,
+  };
+  if (f !== undefined) item.f = f;
+  return item as IInventoryItem;
+}
+
 describe('buildLockedPointGuids', () => {
   it('returns empty set when no items', () => {
     expect(buildLockedPointGuids([])).toEqual(new Set());
@@ -120,6 +134,11 @@ describe('buildLockedPointGuids', () => {
   it('does not include points with only favorite bit', () => {
     const items = [{ g: 'r1', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 2, f: 0b01 }];
     expect(buildLockedPointGuids(items)).toEqual(new Set());
+  });
+
+  it('per-point aggregation: one locked stack => entire point locked', () => {
+    const items = [ref('stack-a', 'p1', 3, 0b10), ref('stack-b', 'p1', 2, 0)];
+    expect([...buildLockedPointGuids(items)]).toEqual(['p1']);
   });
 });
 
@@ -159,5 +178,91 @@ describe('buildFavoritedPointGuids', () => {
       { g: 'r2', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 3, f: 0b01 },
     ];
     expect(buildFavoritedPointGuids(items)).toEqual(new Set(['point-a']));
+  });
+});
+
+describe('buildProtectedPointGuids', () => {
+  test('empty inventory: empty Set', () => {
+    expect(buildProtectedPointGuids([]).size).toBe(0);
+  });
+
+  test('ignores entries without f field (0.6.0 compatibility)', () => {
+    const items = [ref('s1', 'p1', 5)];
+    expect(buildProtectedPointGuids(items).size).toBe(0);
+  });
+
+  test('lock-flag (bit 1) protects', () => {
+    const items = [ref('s1', 'p1', 5, 0b10)];
+    expect([...buildProtectedPointGuids(items)]).toEqual(['p1']);
+  });
+
+  test('favorite-flag (bit 0) protects', () => {
+    const items = [ref('s1', 'p1', 5, 0b01)];
+    expect([...buildProtectedPointGuids(items)]).toEqual(['p1']);
+  });
+
+  test('lock + favorite (bits 0 and 1) - point is protected', () => {
+    const items = [ref('s1', 'p1', 5, 0b11)];
+    expect([...buildProtectedPointGuids(items)]).toEqual(['p1']);
+  });
+
+  test('per-point aggregation: one locked stack => entire point protected', () => {
+    const items = [ref('stack-a', 'p1', 3, 0b10), ref('stack-b', 'p1', 2, 0)];
+    expect([...buildProtectedPointGuids(items)]).toEqual(['p1']);
+  });
+
+  test('per-point aggregation: one favorite stack => entire point protected', () => {
+    const items = [ref('stack-a', 'p1', 3, 0b01), ref('stack-b', 'p1', 2, 0)];
+    expect([...buildProtectedPointGuids(items)]).toEqual(['p1']);
+  });
+
+  test('per-point aggregation: mixed stacks (one favorite, one lock) - point protected once', () => {
+    const items = [ref('stack-a', 'p1', 3, 0b01), ref('stack-b', 'p1', 2, 0b10)];
+    expect([...buildProtectedPointGuids(items)]).toEqual(['p1']);
+  });
+
+  test('different points are protected independently', () => {
+    const items = [
+      ref('s1', 'p-lock', 3, 0b10),
+      ref('s2', 'p-fav', 2, 0b01),
+      ref('s3', 'p-open', 4, 0),
+    ];
+    expect(buildProtectedPointGuids(items)).toEqual(new Set(['p-lock', 'p-fav']));
+  });
+
+  test('f=0 does not protect', () => {
+    const items = [ref('s1', 'p1', 5, 0)];
+    expect(buildProtectedPointGuids(items).size).toBe(0);
+  });
+
+  test('ignores non-refs (cores/cats), even if they have a similar field', () => {
+    const core = { g: 'c1', t: ITEM_TYPE_CORE, l: 5, a: 10, f: 0b11 };
+    expect(buildProtectedPointGuids([core]).size).toBe(0);
+  });
+});
+
+describe('isProtectionFlagSupportAvailable', () => {
+  test('empty ref set: false (no evidence)', () => {
+    expect(isProtectionFlagSupportAvailable([])).toBe(false);
+  });
+
+  test('all stacks without f field (0.6.0): false', () => {
+    const items = [ref('s1', 'p1', 5), ref('s2', 'p2', 3)];
+    expect(isProtectionFlagSupportAvailable(items)).toBe(false);
+  });
+
+  test('all stacks with f field (0.6.1+): true', () => {
+    const items = [ref('s1', 'p1', 5, 0), ref('s2', 'p2', 3, 0b10)];
+    expect(isProtectionFlagSupportAvailable(items)).toBe(true);
+  });
+
+  test('mix-cache (some with f, some without): false - blocks entirely', () => {
+    const items = [ref('s1', 'p1', 5, 0), ref('s2', 'p2', 3)];
+    expect(isProtectionFlagSupportAvailable(items)).toBe(false);
+  });
+
+  test('ignores non-refs when counting: set without ref stacks -> false', () => {
+    const core = { g: 'c1', t: ITEM_TYPE_CORE, l: 1, a: 10, f: 0b11 };
+    expect(isProtectionFlagSupportAvailable([core])).toBe(false);
   });
 });

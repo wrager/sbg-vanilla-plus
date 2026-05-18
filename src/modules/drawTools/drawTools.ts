@@ -1,6 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { injectStyles, removeStyles, waitForElement } from '../../core/dom';
+import { injectStyles, removeStyles } from '../../core/dom';
 import { t } from '../../core/l10n';
+import { registerOlControl } from '../../core/olControlStack';
 import { showToast } from '../../core/toast';
 import { findLayerByName, getOlMap } from '../../core/olMap';
 import type {
@@ -34,8 +35,10 @@ const DRAW_LAYER_NAME = 'svp-draw-tools';
 const DRAW_LAYER_Z_INDEX = 9;
 const SNAP_THRESHOLD_PX = 100;
 const DEFAULT_COLOR = '#a24ac3';
-const REGION_PICKER_SELECTOR = '.region-picker.ol-unselectable.ol-control';
 const CONTROL_BUTTON_ID = 'svp-draw-tools-menu-button';
+// Priority в стеке под .region-picker: drawTools первый ниже picker'а,
+// starCenter clear-control - следующий. См. src/core/olControlStack.ts.
+const OL_STACK_PRIORITY = 0;
 
 type ToolMode = 'none' | 'line' | 'polygon' | 'edit' | 'delete';
 
@@ -81,10 +84,7 @@ let drawSource: IVectorSourceWithRemove | null = null;
 let drawLayer: IOlLayer | null = null;
 
 let controlElement: HTMLDivElement | null = null;
-let pickerElement: HTMLElement | null = null;
-let controlMutationObserver: MutationObserver | null = null;
-let controlResizeObserver: ResizeObserver | null = null;
-let windowResizeHandler: (() => void) | null = null;
+let unregisterOlControl: (() => void) | null = null;
 let toolbar: HTMLDivElement | null = null;
 let copyModalOverlay: HTMLDivElement | null = null;
 let copyModalKeydownHandler: ((event: KeyboardEvent) => void) | null = null;
@@ -962,35 +962,19 @@ function createToolbar(): HTMLDivElement {
   return panel;
 }
 
-function syncControlPosition(): void {
-  if (!controlElement || !pickerElement) return;
-  const rect = pickerElement.getBoundingClientRect();
-  // Если picker скрыт (rect нулевой) — не двигаем control, оставляем последнюю
-  // валидную позицию. Иначе при кратком re-render игрой control мигнул бы в
-  // верхний левый угол.
-  if (rect.width === 0 && rect.height === 0) return;
-  // OL-controls в игре выстроены вертикально вплотную (zoom-in / zoom-out /
-  // region-picker / ...) — ставим наш control сразу под region-picker, чтобы
-  // визуально продолжить колонку.
-  controlElement.style.top = `${rect.bottom}px`;
-  controlElement.style.right = `${window.innerWidth - rect.right}px`;
-  controlElement.style.left = 'auto';
-  controlElement.style.bottom = 'auto';
-}
-
 function createControlElement(): HTMLDivElement {
   // Структура повторяет .region-picker (div.ol-unselectable.ol-control > button),
   // чтобы наследовать игровые стили OL-кнопок. Класс region-picker НЕ
   // навешиваем: игра через jQuery делегирует на все .region-picker свой
-  // toggle регионов, наш control не должен туда попасть.
+  // toggle регионов, наш control не должен туда попасть. Позиционирование
+  // делает CSS через top/left/transform (см. styles.css), как у нативных
+  // OL-controls — без JS-вычислений.
   const element = document.createElement('div');
   element.className = 'svp-draw-tools-control ol-unselectable ol-control';
-  element.style.position = 'fixed';
 
   const button = document.createElement('button');
   button.type = 'button';
   button.id = CONTROL_BUTTON_ID;
-  button.className = 'svp-draw-tools-control-button';
   button.title = t({ en: 'Draw tools', ru: 'Инструменты рисования' });
   button.addEventListener('click', toggleToolbar);
   applySvgIcon(button, ICON_DRAW_TOOLS);
@@ -999,68 +983,22 @@ function createControlElement(): HTMLDivElement {
   return element;
 }
 
-async function mountOlControl(myToken: number): Promise<boolean> {
-  let picker = document.querySelector<HTMLElement>(REGION_PICKER_SELECTOR);
-  if (!picker) {
-    const found = await waitForElement(REGION_PICKER_SELECTOR);
-    // После await токен мог инвалидироваться (disable во время ожидания).
-    // Бросаем работу до любых записей в DOM/глобалы — иначе текущий enable
-    // перезапишет ресурсы более позднего enable, который уже отработал.
-    if (myToken !== enableToken) return false;
-    if (!(found instanceof HTMLElement)) {
-      throw new Error('Region picker not found');
-    }
-    picker = found;
-  }
-
-  pickerElement = picker;
+function mountOlControl(): void {
   controlElement = createControlElement();
-  picker.after(controlElement);
-  syncControlPosition();
-
-  // Игра может пересоздавать DOM вокруг карты (например, при смене размера
-  // viewport). Если control оторвался от документа — снова приклеиваем после
-  // picker'а. Если остался — синхронизируем позицию (picker мог переехать).
-  controlMutationObserver = new MutationObserver(() => {
-    if (!controlElement || !pickerElement) return;
-    if (!controlElement.isConnected) {
-      pickerElement.after(controlElement);
-    }
-    syncControlPosition();
-  });
-  controlMutationObserver.observe(document.body, { childList: true, subtree: true });
-
-  if (typeof ResizeObserver !== 'undefined') {
-    controlResizeObserver = new ResizeObserver(() => {
-      syncControlPosition();
-    });
-    controlResizeObserver.observe(picker);
-  }
-
-  windowResizeHandler = (): void => {
-    syncControlPosition();
-  };
-  window.addEventListener('resize', windowResizeHandler);
-
-  return true;
+  // Общий стек кнопок под .region-picker: helper расставит элемент по priority,
+  // позиционирует через CSS-переменную, реагирует на пересоздание picker'а
+  // вместо локального MutationObserver.
+  unregisterOlControl = registerOlControl(OL_STACK_PRIORITY, controlElement);
 }
 
 function unmountOlControl(): void {
-  controlMutationObserver?.disconnect();
-  controlMutationObserver = null;
-  controlResizeObserver?.disconnect();
-  controlResizeObserver = null;
-  if (windowResizeHandler) {
-    window.removeEventListener('resize', windowResizeHandler);
-    windowResizeHandler = null;
-  }
+  unregisterOlControl?.();
+  unregisterOlControl = null;
   if (controlElement) {
     const button = controlElement.querySelector('button');
     button?.removeEventListener('click', toggleToolbar);
-    controlElement.remove();
     controlElement = null;
   }
-  pickerElement = null;
 }
 
 function applyToolbarPositionClass(): void {
@@ -1144,12 +1082,7 @@ export const drawTools: IFeatureModule = {
 
     try {
       mountToolbar();
-      const mounted = await mountOlControl(myToken);
-      // Если токен устарел во время mountOlControl — текущий enable «осиротел»:
-      // disable, который инвалидировал нас, уже отработал cleanup() для
-      // ресурсов, смонтированных до await. Никаких дополнительных teardown
-      // здесь вызывать нельзя — иначе уроним ресурсы более позднего enable.
-      if (!mounted) return;
+      mountOlControl();
 
       const olMap = await getOlMap();
       if (myToken !== enableToken) return;

@@ -312,6 +312,39 @@ describe('drawTools module', () => {
     expect(toolbar?.classList.contains('svp-draw-tools-toolbar-open')).toBe(true);
   });
 
+  test('detached control re-attaches to a freshly inserted region-picker via querySelector', async () => {
+    await drawTools.enable();
+
+    const oldPicker = document.querySelector('.region-picker');
+    const control = document.querySelector<HTMLElement>('.svp-draw-tools-control');
+    expect(oldPicker).not.toBeNull();
+    expect(control).not.toBeNull();
+    expect(oldPicker?.nextElementSibling).toBe(control);
+
+    // Имитируем сценарий пересоздания DOM игрой: старый picker удалён и
+    // вместе с ним из документа выпал control (в реальности это
+    // происходит, если игра дропает кусок DOM, содержащий оба узла).
+    oldPicker?.remove();
+    control?.remove();
+    expect(control?.isConnected).toBe(false);
+
+    // Игра вставляет НОВЫЙ picker. olControlStack должен заметить childList-мутацию
+    // body, увидеть, что control оторван от документа, найти fresh picker через
+    // querySelector и приклеить control обратно как next sibling.
+    const freshPicker = document.createElement('div');
+    freshPicker.className = 'region-picker ol-unselectable ol-control';
+    const freshButton = document.createElement('button');
+    freshPicker.appendChild(freshButton);
+    document.body.appendChild(freshPicker);
+
+    // MutationObserver callback - microtask, затем внутри callback'а rAF-debounce.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 16));
+
+    expect(control?.isConnected).toBe(true);
+    expect(freshPicker.nextElementSibling).toBe(control);
+  });
+
   describe('toolbar position with enhancedMainScreen', () => {
     test('without .topleft-container.svp-compact: toolbar has no compact-position class', async () => {
       await drawTools.enable();
@@ -563,6 +596,9 @@ describe('drawTools module', () => {
 
     await enable1;
     await enable2;
+    // olControlStack триггерится MutationObserver'ом на childList body + rAF-debounce.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 16));
 
     // Только UI второго enable должен остаться: один control, один toolbar
     expect(document.querySelectorAll('.svp-draw-tools-control')).toHaveLength(1);

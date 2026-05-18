@@ -394,6 +394,7 @@ describe('fetchTeamsForGuids', () => {
 // --- кнопка «Очистить ключи»: disabled при лимитах -1/-1 ---
 
 import { installSlowRefsDelete, uninstallSlowRefsDelete } from './slowRefsDelete';
+import * as refsDeletionMigrationGate from '../../core/refsDeletionMigrationGate';
 
 describe('кнопка «Очистить ключи»: disabled при -1/-1', () => {
   function fullLevelLimits(): Record<number, number> {
@@ -636,7 +637,7 @@ describe('кнопка «Очистить ключи»: snapshot guard', () => {
   });
 });
 
-// --- Регрессия: runSlowDelete блокирует удаление при lockSupportAvailable=false ---
+// --- Регрессия: runSlowDelete блокирует удаление при isProtectionFlagSupportAvailable=false ---
 //
 // Логика every(item.f !== undefined) в runSlowDelete дублирует ту же проверку
 // в cleanupCalculator. Если в каком-то рефакторинге slowRefsDelete её ослабят
@@ -644,7 +645,7 @@ describe('кнопка «Очистить ключи»: snapshot guard', () => {
 // зелёными - там покрытие fast-режима. e2e-тест на сам runSlowDelete нужен,
 // чтобы рассинхронизация лок-чек-логики между fast и slow была поймана сразу.
 
-describe('runSlowDelete: lockSupportAvailable=false блокирует удаление', () => {
+describe('runSlowDelete: isProtectionFlagSupportAvailable=false блокирует удаление', () => {
   function fullLevelLimits(): Record<number, number> {
     const limits: Record<number, number> = {};
     for (let level = 1; level <= 10; level++) limits[level] = -1;
@@ -683,9 +684,10 @@ describe('runSlowDelete: lockSupportAvailable=false блокирует удал�
 
   function setPlayerTeam(team: number): void {
     // getPlayerTeam парсит var(--team-N) из inline-стиля #self-info__name.
+    // jsdom не сохраняет CSS variables через style.color = ..., нужен setAttribute.
     const nameElement = document.createElement('div');
     nameElement.id = 'self-info__name';
-    nameElement.style.color = `var(--team-${team})`;
+    nameElement.setAttribute('style', `color: var(--team-${team})`);
     document.body.appendChild(nameElement);
   }
 
@@ -746,9 +748,201 @@ describe('runSlowDelete: lockSupportAvailable=false блокирует удал�
     fetchSpy.mockRestore();
   });
 
-  test('пустой кэш ключей: lockSupportAvailable=false (refStacks.length=0), runSlowDelete отбивается до confirm', async () => {
+  test('race-protection: точка, ставшая защищённой между confirm и DELETE, выпадает из payload', async () => {
+    // Slow-flow async: между confirm (пользователь подтвердил запрос /api/point)
+    // и финальным DELETE крутится fetchTeamsForGuids - иногда минуты при больших
+    // списках. За это время пользователь мог пометить точку нативным замочком
+    // или звёздочкой через игровой UI. Раньше final guard в deleteInventoryItems
+    // re-fetch'ил и бросал throw на ВСЁМ батче. Теперь slowRefsDelete делает
+    // partial filter перед deleteInventoryItems - симметрично с refsOnMap.
+    setSlowSettings();
+    setPlayerTeam(1);
+    setLockMigrationDone();
+    localStorage.setItem('auth', 'test-token');
+    // 6 ключей у point-1 + 6 у point-2; allied-лимит 5 - оба должны попасть в
+    // deletions (по 1 ключу на точку при условии team=1 для обеих).
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([
+        { g: 'r1', t: 3, l: 'point-1', a: 6, f: 0 },
+        { g: 'r2', t: 3, l: 'point-2', a: 6, f: 0 },
+      ]),
+    );
+    makeBar();
+    await loadFavoritesForTest();
+
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    // /api/point возвращает team игрока для обеих точек; после первого вызова
+    // обновляем кэш, делая point-2 защищённой.
+    let pointCallCount = 0;
+    const fetchSpy = jest.spyOn(window, 'fetch').mockImplementation((input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/api/point')) {
+        pointCallCount++;
+        if (pointCallCount === 1) {
+          // Эмулируем нажатие нативного замочка на point-2 в момент team-fetch.
+          localStorage.setItem(
+            'inventory-cache',
+            JSON.stringify([
+              { g: 'r1', t: 3, l: 'point-1', a: 6, f: 0 },
+              { g: 'r2', t: 3, l: 'point-2', a: 6, f: 0b10 },
+            ]),
+          );
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: { te: 1 } }),
+        } as unknown as Response);
+      }
+      if (url.includes('/api/inventory')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ count: { total: 100 } }),
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response);
+    });
+
+    installSlowRefsDelete();
+    const button = getButton();
+    if (!button) throw new Error('button missing');
+    button.click();
+
+    // Дать всем await-микротаскам отработать (fetchTeamsForGuids + DELETE).
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 200);
+    });
+
+    // Один DELETE-запрос с payload только на point-1 (point-2 отфильтрована).
+    const deleteCalls = fetchSpy.mock.calls.filter((args) => {
+      const init = args[1];
+      return init?.method === 'DELETE';
+    });
+    expect(deleteCalls).toHaveLength(1);
+    const init = deleteCalls[0][1] as RequestInit;
+    const body = JSON.parse(init.body as string) as { selection: Record<string, number> };
+    expect(body.selection).toHaveProperty('r1');
+    expect(body.selection).not.toHaveProperty('r2');
+
+    confirmSpy.mockRestore();
+    fetchSpy.mockRestore();
+  });
+
+  test('in-flight: второй клик не стартует второй пайплайн пока первый ждёт /api/point', async () => {
+    setSlowSettings();
+    setPlayerTeam(1);
+    setLockMigrationDone();
+    localStorage.setItem('auth', 'test-token');
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 3, f: 0 }]),
+    );
+    makeBar();
+    await loadFavoritesForTest();
+
+    let releasePoint!: (value: Response) => void;
+    const hang = new Promise<Response>((resolve) => {
+      releasePoint = resolve;
+    });
+
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const fetchSpy = jest.spyOn(window, 'fetch').mockImplementation((input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('/api/point')) {
+        return hang;
+      }
+      if (url.includes('/api/inventory')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ count: { total: 100 } }),
+        } as unknown as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as unknown as Response);
+    });
+
+    installSlowRefsDelete();
+    const button = getButton();
+    if (!button) throw new Error('button missing');
+    button.click();
+    await Promise.resolve();
+
+    const countPointFetches = (): number =>
+      fetchSpy.mock.calls.filter((args) => {
+        const url =
+          typeof args[0] === 'string'
+            ? args[0]
+            : args[0] instanceof URL
+              ? args[0].href
+              : args[0].url;
+        return url.includes('/api/point');
+      }).length;
+
+    expect(countPointFetches()).toBe(1);
+
+    button.click();
+    await Promise.resolve();
+    expect(countPointFetches()).toBe(1);
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+
+    releasePoint({
+      ok: true,
+      json: () => Promise.resolve({ data: { te: 1 } }),
+    } as unknown as Response);
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 200);
+    });
+
+    confirmSpy.mockRestore();
+    fetchSpy.mockRestore();
+  });
+
+  test('fail-safe: legacy block toasts до confirm (симметрия snapshot gate)', async () => {
+    setSlowSettings();
+    setPlayerTeam(1);
+    setLockMigrationDone();
+    localStorage.setItem(
+      'inventory-cache',
+      JSON.stringify([{ g: 'r1', t: 3, l: 'p1', a: 3, f: 0 }]),
+    );
+    makeBar();
+    await loadFavoritesForTest();
+
+    const reasonSpy = jest
+      .spyOn(refsDeletionMigrationGate, 'getLegacyMigrationRefsDeletionBlockReason')
+      .mockReturnValue('legacy');
+
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const fetchSpy = jest.spyOn(window, 'fetch');
+
+    installSlowRefsDelete();
+    const button = getButton();
+    if (!button) throw new Error('button missing');
+    button.click();
+
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(
+      /миграц|migration|favorites/i,
+    );
+
+    reasonSpy.mockRestore();
+    confirmSpy.mockRestore();
+    fetchSpy.mockRestore();
+  });
+
+  test('пустой кэш ключей: isProtectionFlagSupportAvailable=false (refStacks.length=0), runSlowDelete отбивается до confirm', async () => {
     // length=0 ветка проверки `refStacks.length > 0 && every(...)` - тоже
-    // считается lockSupportAvailable=false. Без теста замена condition'а на
+    // считается isProtectionFlagSupportAvailable=false. Без теста замена condition'а на
     // голый every прошла бы мимо, потому что every на пустом массиве вернёт true.
     setSlowSettings();
     setPlayerTeam(1);

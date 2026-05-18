@@ -53,8 +53,8 @@ const LEGACY_TEXT_WARNING: ILocalizedString = {
 };
 
 const NATIVE_TEXT_INTRO: ILocalizedString = {
-  en: 'Favorited keys: visual marker only, not protected from cleanup. Locked keys: not used for drawing. Locked keys will also not be deleted by the Vanilla+ auto-cleanup module or by the "Refs on map" module.',
-  ru: 'Избранные ключи: визуальное маркирование, не защищаются от удаления. Заблокированные ключи: не участвуют в рисовании. Также заблокированные ключи не будут удаляться модулем автоочистки и модулем «Ключи на карте» Vanilla+.',
+  en: 'Both favorited and locked keys are protected from deletion by the Vanilla+ auto-cleanup module and by the "Refs on map" module, while those modules are enabled. Only the locked migration releases the auto-cleanup block on key deletion that holds while the legacy SVP/CUI list is not migrated.',
+  ru: 'И избранные, и заблокированные ключи защищены от удаления модулями автоочистки и просмотра ключей на карте Vanilla+, пока эти модули включены. Снять блок удаления ключей, который держится у автоочистки пока легаси-список SVP/CUI не мигрирован, может только locked-миграция.',
 };
 
 const NATIVE_TEXT_USE: ILocalizedString = {
@@ -124,13 +124,14 @@ const ALREADY_APPLIED_TOAST: ILocalizedString = {
   ru: 'У всех стопок уже стоит этот флаг — делать нечего',
 };
 
-// Modal alert: точки из легаси-списка, которые невозможно пометить замочком,
-// потому что у них нет стопок ключей в инвентаре. Title таких точек
-// недоступен (legacy IDB хранит только {guid, cooldown}; inventory-cache
-// без стопки тоже не содержит title) - показываем сокращённый GUID.
+// Modal alert: точки из легаси-списка, которые невозможно пометить нативным
+// флагом (звёздочкой или замочком), потому что у них нет стопок ключей в
+// инвентаре. Title таких точек недоступен (legacy IDB хранит только
+// {guid, cooldown}; inventory-cache без стопки тоже не содержит title) -
+// показываем сокращённый GUID.
 const WITHOUT_KEYS_ALERT_TEMPLATE: ILocalizedString = {
-  en: '{n} favorited points were not marked with a lock: they have no keys in your inventory. When you collect their keys, mark the new stacks with the native lock button manually.\n\nGUIDs: {list}',
-  ru: '{n} избранных точек не помечены замочком, потому что у них нет ключей в инвентаре. Когда наберёшь ключи, пометь новые стопки нативной кнопкой замочка вручную.\n\nGUIDы: {list}',
+  en: '{n} favorited points were not marked: they have no keys in your inventory. When you collect their keys, mark the new stacks with the native favorite or lock button manually.\n\nGUIDs: {list}',
+  ru: '{n} избранных точек не помечены, потому что у них нет ключей в инвентаре. Когда наберёшь ключи, пометь новые стопки нативной кнопкой звёздочки или замочка вручную.\n\nGUIDы: {list}',
 };
 
 // Modal alert: миграция завершилась частично, часть стопок не помечена.
@@ -243,8 +244,8 @@ async function doImport(file: File, counterElement: HTMLElement): Promise<void> 
     // discover ключи будут удаляться без защиты.
     const importedLabel = t({ en: 'Records imported: ', ru: 'Импортировано записей: ' });
     const reminder = t({
-      en: 'Run "Migrate the old list to locked" again so that the freshly imported keys are protected from auto-cleanup.',
-      ru: 'Снова нажми "Перенести старый список в заблокированное", иначе ключи импортированных точек могут быть удалены автоочисткой.',
+      en: 'Run the migration again (favorite or locked) so the freshly imported keys are protected from auto-cleanup. Only the locked migration additionally releases the auto-cleanup block on key deletion.',
+      ru: 'Снова запусти миграцию (в избранное или в заблокированное), иначе ключи импортированных точек могут быть удалены автоочисткой. Только locked-миграция дополнительно снимает блок удаления ключей у автоочистки.',
     });
     alert(`${importedLabel}${String(added)}\n\n${reminder}`);
   } catch (error) {
@@ -555,7 +556,11 @@ async function runFlow(flag: MigrationFlag, panelElement: HTMLElement): Promise<
       // бы "Перенести в заблокированное", получил toast "нечего мигрировать", и
       // блок остался бы до перезагрузки страницы (когда inferAndPersist в init
       // выставит флаг автоматически).
-      // Для favorite ничего не ставим: favorite не защищает от удаления.
+      // Для favorite флаг lock-migration-done не ставим: блок blockReferences
+      // в inventoryCleanup намеренно завязан на lock-evidence как явный signal
+      // «миграция в нативное состояние завершена». Защита favorite-ключей от
+      // удаления работает через guard'ы независимо (бит 0b01 поля f), но сам
+      // блок снимается только locked-миграцией.
       const lockComplete =
         flag === 'locked' &&
         (candidates.alreadyApplied > 0 || candidates.withoutKeysGuids.length > 0);
@@ -610,8 +615,11 @@ async function runFlow(flag: MigrationFlag, panelElement: HTMLElement): Promise<
       // Полный success миграции в locked - выставляем флаг lock-migration-done.
       // С этого момента inventoryCleanup доверяет нативному lock-флагу и не
       // блокирует удаление ключей по факту непустого legacy-списка.
-      // Для favorite флаг НЕ ставим: favorite не защищает от удаления, и блок
-      // должен оставаться, пока пользователь явно не нажмёт locked-миграцию.
+      // Для favorite флаг НЕ ставим: защита favorite-ключей от удаления
+      // работает через guard'ы (бит 0b01 поля f), но блок blockReferences
+      // намеренно завязан на lock-evidence как явный signal завершения
+      // миграции в нативное состояние и должен оставаться, пока пользователь
+      // явно не нажмёт locked-миграцию.
       if (flag === 'locked') {
         setLockMigrationDone();
       }

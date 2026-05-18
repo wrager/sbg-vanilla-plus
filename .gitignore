@@ -11,3 +11,8 @@ refs/
 !.claude/skills/
 !.claude/subagents/
 !.claude/settings.json
+
+# Cursor
+.cursor/*
+!.cursor/rules/
+!.cursor/commands/

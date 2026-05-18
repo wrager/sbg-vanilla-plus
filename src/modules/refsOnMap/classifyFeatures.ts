@@ -11,7 +11,9 @@ import type { OwnTeamMode } from './refsOnMapSettings';
  * isLocked/isFavorited - всегда из inventory-cache, независимо от выделения и
  * mode. deletion - судьба фичи при текущем mode/playerTeam:
  *
- * - lockedProtected: locked в инвентаре, не удаляется ни при каком mode.
+ * - lockedProtected: locked в инвентаре (бит 0b10), не удаляется ни при каком mode.
+ * - favoriteProtected: favorite в инвентаре (бит 0b01), не удаляется ни при каком mode.
+ *   Приоритет lock > favorite: точка с обоими битами получает lockedProtected.
  * - ownProtected: своя команда, mode='keep' - полная защита.
  * - unknownProtected: команда не загружена (team=undefined) при mode='keep'/'keepOne' -
  *   fail-safe, цвет неизвестен.
@@ -22,12 +24,12 @@ import type { OwnTeamMode } from './refsOnMapSettings';
  *   либо без pointGuid (нарушение инварианта данных - safe default).
  *
  * Поведение для team=null (нейтральная точка): при mode='keep'/'keepOne' не
- * считается своей -> deletable как любая чужая. Это совпадает с текущим
- * partitionByLockProtection. Fail-safe только для team=undefined.
+ * считается своей -> deletable как любая чужая. Fail-safe только для team=undefined.
  */
 
 export type DeletionOutcome =
   | 'lockedProtected'
+  | 'favoriteProtected'
   | 'ownProtected'
   | 'unknownProtected'
   | 'keepOneTrimmed'
@@ -86,6 +88,17 @@ export function classifyFeatures(
         isLocked,
         isFavorited,
         deletion: 'lockedProtected',
+        toDelete: 0,
+        toSurvive: amount,
+      });
+      continue;
+    }
+
+    if (isFavorited) {
+      result.set(feature, {
+        isLocked,
+        isFavorited,
+        deletion: 'favoriteProtected',
         toDelete: 0,
         toSurvive: amount,
       });

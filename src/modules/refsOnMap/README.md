@@ -75,6 +75,10 @@
 ### Защита от удаления
 
 - **Замочек (нативный SBG 0.6.1)** — ключи locked-точек игнорируются при удалении даже если выбраны. lock-семантика per-point: одна locked-стопка защищает ВСЕ стопки точки. Действует независимо от режима radio.
+- **Звёздочка (нативный SBG 0.6.1)** — точки с favorite-флагом (бит 0b01 поля `f`) защищены аналогично lock. Семантика общая через `core/inventoryCache.buildProtectedPointGuids` (lock OR favorite); классификатор `classifyFeatures` разделяет их на bucket'ы `lockedProtected` и `favoriteProtected`, чтобы строки сводки и тосты различали причину защиты для пользователя.
+- **Гvanil-кэш 0.6.0 / mix-кэш** — если хотя бы одна ref-стопка пришла без поля `f` (старая версия сервера или частичная отдача), `isProtectionFlagSupportAvailable` возвращает `false` и удаление через viewer блокируется целиком с тостом. Симметрично с `cleanupCalculator`, `slowRefsDelete` и `inventoryApi.deleteInventoryItems`.
+- **Migration gate** — пока не завершена миграция legacy SVP/CUI-избранных в нативный lock (`refsDeletionMigrationGate.isReferenceMassDeleteBlockedByLegacyMigration`), кнопка «На карте» скрыта, открытие viewer'а блокируется тостом, удаление через trash блокируется первым `validateDeleteAllowed`-guard'ом. Симметрия с `inventoryCleanup` и `slowRefsDelete`: до миграции в `inventory-cache` нет f-флагов на legacy-точках, и удаление по кэшу могло бы пройти мимо защиты.
+- **Race-protection** — между `confirm()` и DELETE кэш может обновиться (игрок параллельно нажал нативный замочек или звёздочку, сервер прислал обновлённый `f` в ответе на `discover`/`marks`). После confirm повторно вызывается `classifySelection(selected)` на свежем кэше; если payload стал пустым — DELETE отменяется с тостом «Все выбранные ключи стали защищёнными до удаления».
 - **Режим radio** — определяет, что делать с точками своей команды (см. выше).
 - **Тост по итогу удаления.** Полный успех — «Y ключей от X точек успешно удалены». Ошибка запроса — «⚠️ Ошибка удаления Y ключей от X точек». Сервер возвращает либо 200 OK на весь запрос, либо ошибку — частичного успеха не бывает, поэтому смешанный двухстрочный текст не нужен. Перечисление защит (Locked / Зелёные / Не загружен цвет / Оставлять 1 ключ) в тост не выводится — эта информация уже видна в selection-info на момент клика по trash.
 
@@ -140,8 +144,8 @@ Active pull через `/api/point` worker батчами по 5 (sleep 100 мс
 
 ## Связанные модули
 
-- `inventoryCleanup` — общая семантика lock-защиты. Та же функция `buildLockedPointGuids` из `core/inventoryCache.ts` используется для определения защищённых точек.
-- `core/inventoryCache.buildFavoritedPointGuids` — аналогично для иконки звезды на карте.
+- `inventoryCleanup` — общая семантика защиты (lock + favorite). Функции `buildLockedPointGuids`, `buildFavoritedPointGuids`, `buildProtectedPointGuids` и `isProtectionFlagSupportAvailable` из `core/inventoryCache.ts` — единый источник правды для всех каналов массового удаления (refsOnMap, slowRefsDelete, cleanupCalculator, inventoryApi.deleteInventoryItems).
+- `core/refsDeletionMigrationGate` — `isReferenceMassDeleteBlockedByLegacyMigration` и `getLegacyMigrationRefsDeletionBlockReason` блокируют кнопку «На карте», открытие viewer'а и удаление до завершения миграции legacy SVP/CUI-избранных в нативный lock. Симметрично с `inventoryCleanup` и `slowRefsDelete`.
 - `core/playerTeam` — `getPlayerTeam()` для определения своей команды.
 - `core/refsHighlightSync` — после успешного удаления ключей вызывается `syncRefsCountForPoints` для актуализации подписи на основной карте.
 - `refsLayerSync` — использует тот же паттерн monkey-patch `window.fetch` (для `/api/discover`); refsOnMap перехватывает `/api/inview`, цепочка hook'ов не конфликтует.

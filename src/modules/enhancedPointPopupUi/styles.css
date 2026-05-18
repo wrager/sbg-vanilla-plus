@@ -21,3 +21,96 @@
   height: 32px;
   min-height: auto;
 }
+
+/* Кнопки fav/lock в попапе точки. Контейнер в правом нижнем углу
+   .i-image-box, поверх изображения точки рядом со счётчиком ключей #i-ref. */
+.i-image-box {
+  position: relative;
+}
+
+/* Контейнер в правом верхнем углу .i-image-box, поверх изображения точки.
+   Раньше был в правом нижнем углу рядом с #i-ref, но перекрывал тапаемую
+   зону счётчика ключей (нативный #i-ref кликабельный - открывает popup
+   .inventory__manage-amount для удаления N ключей). Пользователи с мускульной
+   памятью на старый интерфейс случайно попадали по звезде или замку вместо
+   amount-управления. Верхний угол ничем не занят и не мешает нативному UX. */
+.svp-point-mark-buttons {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  gap: 8px;
+  z-index: 2;
+}
+
+/* Размер 44x44 = минимум для mobile tap target (Apple HIG 44pt, Material 48dp).
+   Замок необратим в один клик: случайный массовый toggle locked на N стопок
+   через серверный POST не откатывается без повторного клика. Tap target ниже
+   44 + gap 4 вплотную провоцировали ошибочные нажатия по замку вместо
+   звезды. */
+.svp-point-mark-button {
+  /* Контейнер background фиксированно тёмный (rgba(0,0,0,0.35)) поверх
+     изображения точки независимо от темы. Цвета иконок выбраны под этот
+     тёмный backdrop: var(--text-disabled) на светлой теме = #CCC, на тёмной
+     = #999 - оба читаются на тёмном фоне. --level-1 = золото, --ol-brand-color
+     = синий - оба константы (не зависят от темы), контраст хороший. */
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 50%;
+  color: var(--text-disabled, #ccc);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.svp-point-mark-button svg {
+  fill: currentColor;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 24;
+  paint-order: stroke fill;
+}
+
+.svp-point-mark-button:hover:not([disabled]) {
+  transform: scale(1.1);
+}
+
+/* Циклическая анимация opacity иконки во время batch: пользователь видит,
+   что операция идёт (без статической полупрозрачности, которая выглядит как
+   "залипший disabled"). Текст N/total убран: на N стопках batch занимает
+   1500*(N-1) мс, точный счётчик помогает мало, а пульсация - универсальный
+   busy-indicator. Применяется поверх opacity 0.7 родительской disabled-
+   кнопки через animation на самом svg. */
+@keyframes svp-point-mark-busy {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.svp-point-mark-button.is-batching svg {
+  animation: svp-point-mark-busy 1s ease-in-out infinite;
+}
+
+.svp-point-mark-button[data-flag='favorite'].is-filled {
+  color: var(--level-1, #ffcc33);
+}
+
+.svp-point-mark-button[data-flag='locked'].is-filled {
+  color: var(--ol-brand-color, #88ccff);
+}
+
+.svp-point-mark-button[disabled] {
+  opacity: 0.7;
+  cursor: default;
+}

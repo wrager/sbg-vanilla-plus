@@ -6,12 +6,17 @@ import type { IOlFeature, IOlMap, IOlLayer, IOlMapEvent, IOlVectorSource } from 
 import {
   buildLockedPointGuids,
   buildFavoritedPointGuids,
+  isProtectionFlagSupportAvailable,
   readFullInventoryReferences,
   readInventoryCache,
   INVENTORY_CACHE_KEY,
 } from '../../core/inventoryCache';
 import { isInventoryReference } from '../../core/inventoryTypes';
 import { getPlayerTeam } from '../../core/playerTeam';
+import {
+  getLegacyMigrationRefsDeletionBlockReason,
+  isReferenceMassDeleteBlockedByLegacyMigration,
+} from '../../core/refsDeletionMigrationGate';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { getTextColor, getBackgroundColor } from '../../core/themeColors';
 import { showToast } from '../../core/toast';
@@ -145,6 +150,31 @@ function sleep(milliseconds: number): Promise<void> {
 
 // ── deletion ─────────────────────────────────────────────────────────────────
 
+/**
+ * Блокировка как в inventoryCleanup / slowRefsDelete: пока незавершена
+ * миграция legacy SVP/CUI-избранных, массовое удаление ключей по кэшу
+ * небезопасно. Возвращает true, если показан toast и вызывающий код должен
+ * прервать сценарий.
+ */
+function maybeToastLegacyMigrationBlock(): boolean {
+  const reason = getLegacyMigrationRefsDeletionBlockReason();
+  if (reason === null) return false;
+  showToast(
+    t(
+      reason === 'snapshot'
+        ? {
+            en: 'Favorites snapshot not loaded yet — wait a moment and try again',
+            ru: 'Снимок избранного ещё не загружен — подожди немного и попробуй снова',
+          }
+        : {
+            en: 'Run favorites migration first (favoritesMigration module) to manage key deletion',
+            ru: 'Сначала проведите миграцию избранного через модуль favoritesMigration, чтобы настроить удаление ключей',
+          },
+    ),
+  );
+  return true;
+}
+
 interface IDeleteApiResponse {
   count?: { total?: number };
   error?: string;
@@ -252,6 +282,7 @@ let modeLabelKeepOne: HTMLSpanElement | null = null;
 let selectionInfoEl: HTMLDivElement | null = null;
 let selectionInfoTotalRow: HTMLDivElement | null = null;
 let selectionInfoProtectedRow: HTMLDivElement | null = null;
+let selectionInfoFavoriteRow: HTMLDivElement | null = null;
 let selectionInfoOwnRow: HTMLDivElement | null = null;
 let selectionInfoUnknownRow: HTMLDivElement | null = null;
 let selectionInfoKeepOneRow: HTMLDivElement | null = null;
@@ -874,6 +905,11 @@ interface ISelectionBreakdown {
   deletableKeys: number;
   lockPoints: number;
   lockKeys: number;
+  // favorite: точки с нативной звёздочкой (бит 0b01 поля `f`). Защищены
+  // отдельным bucket'ом от lock — пользователь видит «X замочком, Y
+  // звёздочкой» как раздельные строки сводки.
+  favoritePoints: number;
+  favoriteKeys: number;
   ownPoints: number;
   ownKeys: number;
   unknownPoints: number;
@@ -892,6 +928,8 @@ const EMPTY_BREAKDOWN: ISelectionBreakdown = {
   deletableKeys: 0,
   lockPoints: 0,
   lockKeys: 0,
+  favoritePoints: 0,
+  favoriteKeys: 0,
   ownPoints: 0,
   ownKeys: 0,
   unknownPoints: 0,
@@ -947,8 +985,15 @@ function computeSelectionBreakdown(): ISelectionBreakdown {
   const selected = refsSource.getFeatures().filter(isFeatureSelected);
   if (selected.length === 0) return EMPTY_BREAKDOWN;
 
-  const { classifications, lockBucket, ownBucket, unknownBucket, keepOneBucket, payload } =
-    classifySelection(selected);
+  const {
+    classifications,
+    lockBucket,
+    favoriteBucket,
+    ownBucket,
+    unknownBucket,
+    keepOneBucket,
+    payload,
+  } = classifySelection(selected);
 
   let deletableKeysFinal = 0;
   const pointsInPayload = new Set<string>();
@@ -976,6 +1021,8 @@ function computeSelectionBreakdown(): ISelectionBreakdown {
     deletableKeys: deletableKeysFinal,
     lockPoints: uniquePointCount(lockBucket),
     lockKeys: sumAmount(lockBucket),
+    favoritePoints: uniquePointCount(favoriteBucket),
+    favoriteKeys: sumAmount(favoriteBucket),
     ownPoints: uniquePointCount(ownBucket),
     ownKeys: sumAmount(ownBucket),
     unknownPoints: uniquePointCount(unknownBucket),
@@ -1071,6 +1118,7 @@ function updateSelectionUi(): void {
     // без продолжения, чтобы не висел сирота-двоеточие в UI.
     const hasAnySubrow =
       breakdown.lockPoints > 0 ||
+      breakdown.favoritePoints > 0 ||
       (protectiveMode && breakdown.ownPoints > 0) ||
       (protectiveMode && breakdown.unknownPoints > 0) ||
       (ownTeamMode === 'keepOne' && breakdown.keepOneKeyPoints > 0);
@@ -1093,8 +1141,21 @@ function updateSelectionUi(): void {
         setTextIfChanged(
           selectionInfoProtectedRow,
           t({
-            en: `${breakdown.lockPoints} (${breakdown.lockKeys} keys) protected`,
-            ru: `${breakdown.lockPoints} (${breakdown.lockKeys} ключей) защищено`,
+            en: `${breakdown.lockPoints} (${breakdown.lockKeys} keys) protected by lock`,
+            ru: `${breakdown.lockPoints} (${breakdown.lockKeys} ключей) защищено замочком`,
+          }),
+        );
+      }
+    }
+    if (selectionInfoFavoriteRow) {
+      const showFavorite = breakdown.favoritePoints > 0;
+      setStylePropIfChanged(selectionInfoFavoriteRow, 'display', showFavorite ? '' : 'none');
+      if (showFavorite) {
+        setTextIfChanged(
+          selectionInfoFavoriteRow,
+          t({
+            en: `${breakdown.favoritePoints} (${breakdown.favoriteKeys} keys) protected by favorite`,
+            ru: `${breakdown.favoritePoints} (${breakdown.favoriteKeys} ключей) защищено звёздочкой`,
           }),
         );
       }
@@ -1249,22 +1310,6 @@ function handleMapClick(event: IOlMapEvent): void {
 
 // ── deletion UI ──────────────────────────────────────────────────────────────
 
-/**
- * Удаление ключей разрешено, только если ВСЕ реф-стопки в кэше имеют поле
- * `f`. На 0.6.0 поле отсутствует целиком - `buildLockedPointGuids` возвращает
- * пустой Set и locked-семантики нет. На mix-кэше (часть стопок с `f`, часть
- * без) `buildLockedPointGuids` пропускает стопки без `f` (`if (item.f ===
- * undefined) continue`), и точка по факту locked не попала бы в защищённые -
- * её ключи могли быть удалены вслепую. `every` исключает этот класс ошибок
- * целиком, симметрично с `cleanupCalculator`, `slowRefsDelete` и финальным
- * guard'ом в `inventoryApi.deleteInventoryItems`.
- */
-export function isLockSupportAvailable(cache: readonly unknown[]): boolean {
-  const refStacks = cache.filter(isInventoryReference);
-  if (refStacks.length === 0) return false;
-  return refStacks.every((item) => item.f !== undefined);
-}
-
 function sumAmount(features: IOlFeature[]): number {
   let total = 0;
   for (const feature of features) {
@@ -1343,6 +1388,7 @@ function refreshFeatureClassifications(): void {
 function classifySelection(selected: IOlFeature[]): {
   classifications: Map<IOlFeature, IFeatureClassification>;
   lockBucket: IOlFeature[];
+  favoriteBucket: IOlFeature[];
   ownBucket: IOlFeature[];
   unknownBucket: IOlFeature[];
   keepOneBucket: IOlFeature[];
@@ -1351,6 +1397,7 @@ function classifySelection(selected: IOlFeature[]): {
   const context = buildClassificationContext();
   const classifications = classifyFeatures(selected, context);
   const lockBucket: IOlFeature[] = [];
+  const favoriteBucket: IOlFeature[] = [];
   const ownBucket: IOlFeature[] = [];
   const unknownBucket: IOlFeature[] = [];
   const keepOneBucket: IOlFeature[] = [];
@@ -1361,6 +1408,9 @@ function classifySelection(selected: IOlFeature[]): {
     switch (cls.deletion) {
       case 'lockedProtected':
         lockBucket.push(feature);
+        break;
+      case 'favoriteProtected':
+        favoriteBucket.push(feature);
         break;
       case 'ownProtected':
         ownBucket.push(feature);
@@ -1379,7 +1429,15 @@ function classifySelection(selected: IOlFeature[]): {
         break;
     }
   }
-  return { classifications, lockBucket, ownBucket, unknownBucket, keepOneBucket, payload };
+  return {
+    classifications,
+    lockBucket,
+    favoriteBucket,
+    ownBucket,
+    unknownBucket,
+    keepOneBucket,
+    payload,
+  };
 }
 
 /**
@@ -1394,6 +1452,7 @@ function classifySelection(selected: IOlFeature[]): {
  * - protective-mode + playerTeam=null - режим заявлен, выполнить нельзя.
  */
 function validateDeleteAllowed(protectiveMode: boolean): boolean {
+  if (maybeToastLegacyMigrationBlock()) return false;
   if (protectiveMode && hasSelectedPointsLoadingTeam()) {
     showToast(
       t({
@@ -1403,11 +1462,11 @@ function validateDeleteAllowed(protectiveMode: boolean): boolean {
     );
     return false;
   }
-  if (!isLockSupportAvailable(readInventoryCache())) {
+  if (!isProtectionFlagSupportAvailable(readInventoryCache())) {
     showToast(
       t({
-        en: 'Native lock support unavailable: server returned no f-flags. Deletion blocked.',
-        ru: 'Нативный lock недоступен (сервер не отдал поле f). Удаление заблокировано.',
+        en: 'Native lock/favorite protection unavailable: server returned no f-flags. Deletion blocked.',
+        ru: 'Нативная защита замочком или звёздочкой недоступна: сервер не отдал поле f. Удаление заблокировано.',
       }),
     );
     return false;
@@ -1504,14 +1563,16 @@ async function handleDeleteClick(): Promise<void> {
   const protectiveMode = ownTeamMode === 'keep' || ownTeamMode === 'keepOne';
   if (!validateDeleteAllowed(protectiveMode)) return;
 
-  // Единый источник: классификатор делит выделение на bucket'ы lock / own /
-  // unknown / keepOne и собирает DELETE-payload. UI-сводка уже использует
+  // Единый источник: классификатор делит выделение на bucket'ы lock / favorite /
+  // own / unknown / keepOne и собирает DELETE-payload. UI-сводка уже использует
   // тот же путь, поэтому "что вижу" = "что удалится".
-  const { lockBucket, ownBucket, unknownBucket, keepOneBucket, payload } =
+  const { lockBucket, favoriteBucket, ownBucket, unknownBucket, keepOneBucket, payload } =
     classifySelection(selected);
 
   if (payload.size === 0) {
-    showToast(buildAllProtectedToast(lockBucket, ownBucket, unknownBucket, keepOneBucket));
+    showToast(
+      buildAllProtectedToast(lockBucket, favoriteBucket, ownBucket, unknownBucket, keepOneBucket),
+    );
     return;
   }
 
@@ -1530,15 +1591,59 @@ async function handleDeleteClick(): Promise<void> {
   if (trashButton) trashButton.disabled = true;
 
   try {
-    const response = await deleteRefsFromServer(plan.items);
-    if (response.error) {
-      console.error(`[SVP] ${MODULE_ID}: deletion error:`, response.error);
-      // Сервер вернул ошибку - НИЧЕГО не удалилось.
-      showToast(buildPostDeleteToast(0, 0, plan.overallToDelete, plan.pointsInPayload.size));
+    // Race-protection: между confirm() и DELETE кэш мог обновиться -
+    // пользователь параллельно нажал нативный замочек или звёздочку,
+    // или сервер прислал обновлённый кэш с новым `f` в ответе на другой
+    // запрос (discover, marks). На mix-кэше после confirm блокируем
+    // целиком, симметрично с pre-confirm guard.
+    if (!isProtectionFlagSupportAvailable(readInventoryCache())) {
+      showToast(
+        t({
+          en: 'Native lock/favorite protection unavailable: server returned no f-flags. Deletion blocked.',
+          ru: 'Нативная защита замочком или звёздочкой недоступна: сервер не отдал поле f. Удаление заблокировано.',
+        }),
+      );
       return;
     }
-    applyDeletionLocally(refsSource, payload, plan, response.count?.total);
-    showToast(buildPostDeleteToast(plan.overallToDelete, plan.pointsInPayload.size, 0, 0));
+    // Защита однонаправленная: фильтруем payload через свежий classifier и
+    // выкидываем стопки точек, которые СТАЛИ защищёнными за время confirm.
+    // Обратный race (lock/favorite сняли) НЕ возвращает точку в payload:
+    // пользователь делал confirm в той картине, что эта точка защищена -
+    // удалять её без явного подтверждения нельзя.
+    const fresh = classifySelection(selected);
+    const newlyProtectedGuids = new Set<string>();
+    for (const feature of [...fresh.lockBucket, ...fresh.favoriteBucket]) {
+      const guid = getPointGuid(feature);
+      if (guid !== null) newlyProtectedGuids.add(guid);
+    }
+    const filteredPayload = new Map<IOlFeature, number>();
+    for (const [feature, deleteAmount] of payload) {
+      const guid = getPointGuid(feature);
+      if (guid !== null && newlyProtectedGuids.has(guid)) continue;
+      filteredPayload.set(feature, deleteAmount);
+    }
+    if (filteredPayload.size === 0) {
+      showToast(
+        t({
+          en: 'All selected keys became protected before deletion - aborted',
+          ru: 'Все выбранные ключи стали защищёнными до удаления - отменено',
+        }),
+      );
+      return;
+    }
+    const freshPlan = buildDeletePlan(filteredPayload);
+    const response = await deleteRefsFromServer(freshPlan.items);
+    if (response.error) {
+      console.error(`[SVP] ${MODULE_ID}: deletion error:`, response.error);
+      showToast(
+        buildPostDeleteToast(0, 0, freshPlan.overallToDelete, freshPlan.pointsInPayload.size),
+      );
+      return;
+    }
+    applyDeletionLocally(refsSource, filteredPayload, freshPlan, response.count?.total);
+    showToast(
+      buildPostDeleteToast(freshPlan.overallToDelete, freshPlan.pointsInPayload.size, 0, 0),
+    );
     updateSelectionUi();
   } catch (error) {
     console.error(`[SVP] ${MODULE_ID}: deletion failed:`, error);
@@ -1583,16 +1688,19 @@ function buildPostDeleteToast(
  */
 function buildAllProtectedToast(
   protectedByLock: IOlFeature[],
+  protectedByFavorite: IOlFeature[],
   protectedByOwnTeam: IOlFeature[],
   protectedByUnknownTeam: IOlFeature[],
   protectedByKeepOne: IOlFeature[],
 ): string {
   const lockN = protectedByLock.length;
+  const favoriteN = protectedByFavorite.length;
   const ownN = protectedByOwnTeam.length;
   const unknownN = protectedByUnknownTeam.length;
   const keepOneN = protectedByKeepOne.length;
-  const totalN = lockN + ownN + unknownN + keepOneN;
+  const totalN = lockN + favoriteN + ownN + unknownN + keepOneN;
   const onlyLock = lockN === totalN && lockN > 0;
+  const onlyFavorite = favoriteN === totalN && favoriteN > 0;
   const onlyOwn = ownN === totalN && ownN > 0;
   const onlyUnknown = unknownN === totalN && unknownN > 0;
   const onlyKeepOne = keepOneN === totalN && keepOneN > 0;
@@ -1600,6 +1708,12 @@ function buildAllProtectedToast(
     return t({
       en: 'All selected keys belong to locked points and cannot be deleted',
       ru: 'Все выбранные ключи относятся к locked-точкам и не могут быть удалены',
+    });
+  }
+  if (onlyFavorite) {
+    return t({
+      en: 'All selected keys belong to favorited points and cannot be deleted',
+      ru: 'Все выбранные ключи относятся к точкам со звёздочкой и не могут быть удалены',
     });
   }
   if (onlyOwn) {
@@ -1624,6 +1738,9 @@ function buildAllProtectedToast(
   const parts: string[] = [];
   if (lockN > 0) {
     parts.push(t({ en: `lock: ${lockN}`, ru: `locked: ${lockN}` }));
+  }
+  if (favoriteN > 0) {
+    parts.push(t({ en: `favorite: ${favoriteN}`, ru: `звёздочка: ${favoriteN}` }));
   }
   if (ownN > 0) {
     parts.push(t({ en: `own team: ${ownN}`, ru: `свои: ${ownN}` }));
@@ -1818,6 +1935,7 @@ function restoreGameUi(): void {
 
 function showViewer(): void {
   if (viewerOpen || !olMap || !refsSource) return;
+  if (maybeToastLegacyMigrationBlock()) return;
 
   const refs = readFullInventoryReferences();
   if (refs.length === 0) {
@@ -2128,6 +2246,7 @@ interface ISelectionInfoRefs {
   root: HTMLDivElement;
   totalRow: HTMLDivElement;
   protectedRow: HTMLDivElement;
+  favoriteRow: HTMLDivElement;
   ownRow: HTMLDivElement;
   unknownRow: HTMLDivElement;
   keepOneRow: HTMLDivElement;
@@ -2135,7 +2254,7 @@ interface ISelectionInfoRefs {
 }
 
 /**
- * Selection info: до 6 строк - total + protected (lock) + own + unknown +
+ * Selection info: до 7 строк - total + lock + favorite + own + unknown +
  * keepOne + toDelete (опциональные строки только при наличии бакета). Каждая
  * строка кроме total опциональна - hide когда bucket пуст.
  */
@@ -2148,6 +2267,9 @@ function createSelectionInfo(): ISelectionInfoRefs {
   const protectedRow = document.createElement('div');
   protectedRow.className = 'svp-refs-on-map-selection-info__protected';
   protectedRow.style.display = 'none';
+  const favoriteRow = document.createElement('div');
+  favoriteRow.className = 'svp-refs-on-map-selection-info__favorite';
+  favoriteRow.style.display = 'none';
   const ownRow = document.createElement('div');
   ownRow.className = 'svp-refs-on-map-selection-info__own';
   ownRow.style.display = 'none';
@@ -2161,11 +2283,21 @@ function createSelectionInfo(): ISelectionInfoRefs {
   toDeleteRow.className = 'svp-refs-on-map-selection-info__todelete';
   root.appendChild(totalRow);
   root.appendChild(protectedRow);
+  root.appendChild(favoriteRow);
   root.appendChild(ownRow);
   root.appendChild(unknownRow);
   root.appendChild(keepOneRow);
   root.appendChild(toDeleteRow);
-  return { root, totalRow, protectedRow, ownRow, unknownRow, keepOneRow, toDeleteRow };
+  return {
+    root,
+    totalRow,
+    protectedRow,
+    favoriteRow,
+    ownRow,
+    unknownRow,
+    keepOneRow,
+    toDeleteRow,
+  };
 }
 
 // ── layer construction ───────────────────────────────────────────────────────
@@ -2196,7 +2328,9 @@ function updateButtonVisibility(): void {
   if (!showButton) return;
   const activeTab = $('.inventory__tab.active');
   const tabIndex = activeTab instanceof HTMLElement ? activeTab.dataset.tab : null;
-  showButton.style.display = tabIndex === REFS_TAB_INDEX ? '' : 'none';
+  const onRefsTab = tabIndex === REFS_TAB_INDEX;
+  const migrationBlocks = isReferenceMassDeleteBlockedByLegacyMigration();
+  showButton.style.display = onRefsTab && !migrationBlocks ? '' : 'none';
 }
 
 // ── module ───────────────────────────────────────────────────────────────────
@@ -2205,8 +2339,8 @@ export const refsOnMap: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Refs on map', ru: 'Ключи на карте' },
   description: {
-    en: 'View and manage points with collected keys on the map at any zoom level. Mode for protecting own-team keys from accidental bulk delete.',
-    ru: 'Просмотр и управление точками с ключами на карте на любом масштабе. Режим защиты ключей своей команды от случайного массового удаления.',
+    en: 'View and manage points with collected keys on the map at any zoom level. Key protection: native SBG lock/favorite plus optional own-team mode against bulk delete.',
+    ru: 'Просмотр и управление точками с ключами на карте на любом масштабе. Защита ключей: нативный замочек/звёздочка SBG плюс опциональный режим защиты своей команды от массового удаления.',
   },
   defaultEnabled: true,
   category: 'feature',
@@ -2303,6 +2437,7 @@ export const refsOnMap: IFeatureModule = {
           selectionInfoEl = infoUi.root;
           selectionInfoTotalRow = infoUi.totalRow;
           selectionInfoProtectedRow = infoUi.protectedRow;
+          selectionInfoFavoriteRow = infoUi.favoriteRow;
           selectionInfoOwnRow = infoUi.ownRow;
           selectionInfoUnknownRow = infoUi.unknownRow;
           selectionInfoKeepOneRow = infoUi.keepOneRow;
@@ -2403,6 +2538,7 @@ function cleanupEnableSideEffects(): void {
   }
   selectionInfoTotalRow = null;
   selectionInfoProtectedRow = null;
+  selectionInfoFavoriteRow = null;
   selectionInfoOwnRow = null;
   selectionInfoUnknownRow = null;
   selectionInfoKeepOneRow = null;

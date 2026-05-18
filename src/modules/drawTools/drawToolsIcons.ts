@@ -12,15 +12,8 @@
 // побеждает любой author CSS, и мы гарантируем, что треугольник/ластик/копия/
 // корзина рендерятся именно как контур, а не как залитый силуэт.
 
-const SVG_OPEN_TOOLBAR =
+const SVG_OPEN =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16"' +
-  ' fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"' +
-  ' stroke-linejoin="round" class="svp-draw-tools-icon">';
-
-// Кнопка модуля DT крупнее (32x32, под region-picker), потому SVG 20x20 —
-// иначе иконка теряется в пустом пространстве.
-const SVG_OPEN_CONTROL =
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20"' +
   ' fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"' +
   ' stroke-linejoin="round" class="svp-draw-tools-icon">';
 
@@ -30,11 +23,7 @@ const SVG_CLOSE = '</svg>';
 const NO_FILL = ' style="fill:none"';
 
 function svg(body: string): string {
-  return `${SVG_OPEN_TOOLBAR}${body}${SVG_CLOSE}`;
-}
-
-function svgControl(body: string): string {
-  return `${SVG_OPEN_CONTROL}${body}${SVG_CLOSE}`;
+  return `${SVG_OPEN}${body}${SVG_CLOSE}`;
 }
 
 // Линия — две залитые точки (это намеренно filled, маркеры вершин)
@@ -103,8 +92,7 @@ export const ICON_CLOSE_X = svg(
 );
 
 // Иконка кнопки запуска модуля (DT) — перо, обводящее волнистую линию.
-// 20x20 (см. SVG_OPEN_CONTROL), потому что родитель крупнее тулбара.
-export const ICON_DRAW_TOOLS = svgControl(
+export const ICON_DRAW_TOOLS = svg(
   `<path${NO_FILL} d="M3 19c2-2 4-2 6 0s4 2 6 0"/>` +
     `<path${NO_FILL} d="M14 5l4 4-7 7-5 1 1-5z"/>`,
 );

@@ -2,7 +2,8 @@ import type { IDeletionEntry } from './cleanupCalculator';
 import { ITEM_TYPE_CORE, ITEM_TYPE_CATALYSER, ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import {
   INVENTORY_CACHE_KEY,
-  buildLockedPointGuids,
+  buildProtectedPointGuids,
+  isProtectionFlagSupportAvailable,
   readInventoryCache,
 } from '../../core/inventoryCache';
 import { isInventoryItem, isInventoryReference } from '../../core/inventoryTypes';
@@ -65,28 +66,22 @@ export async function deleteInventoryItems(
 ): Promise<IDeleteResult> {
   const hasReferences = deletions.some((entry) => entry.type === ITEM_TYPE_REFERENCE);
 
-  // Финальный guard для lock-флагов: перечитываем СВЕЖИЙ inventory-cache (он
-  // мог обновиться между расчётом deletions и этим вызовом — пользователь
-  // нажал замок прямо во время cleanup'а, или сервер вернул новые `f` в
-  // ответе на discover). Если точка теперь locked — удаление её ключей
-  // блокируется.
+  // Финальный guard для lock/favorite-флагов: перечитываем СВЕЖИЙ
+  // inventory-cache (он мог обновиться между расчётом deletions и этим
+  // вызовом — пользователь нажал замок или звёздочку прямо во время
+  // cleanup'а, или сервер вернул новые `f` в ответе на discover). Если точка
+  // теперь защищена (lock или favorite) — удаление её ключей блокируется.
   const freshCache = hasReferences ? readInventoryCache() : [];
-  const freshLockedPointGuids = hasReferences
-    ? buildLockedPointGuids(freshCache)
+  const freshProtectedPointGuids = hasReferences
+    ? buildProtectedPointGuids(freshCache)
     : new Set<string>();
   // Удаление ключей разрешено только если ВСЕ реф-стопки в свежем кэше имеют
-  // поле `f`. Раньше проверялось `some` (хотя бы одна), но при mix-кэше (часть
-  // стопок с `f`, часть без) стопки без `f` не попадают в `lockedPointGuids`
-  // (там `if (item.f === undefined) continue`) и могли быть удалены, даже если
-  // их точка по логике должна быть защищена. На 0.6.1+ сервер всегда отдаёт `f`
-  // для всех refs, mix маловероятен, но `every` исключает класс ошибки целиком,
-  // не полагаясь на неявные предположения о поведении сервера.
-  const refStacks = freshCache.filter(isInventoryReference);
-  const lockSupportAvailable =
-    refStacks.length > 0 && refStacks.every((item) => item.f !== undefined);
-
-  if (hasReferences && !lockSupportAvailable) {
-    throw new Error('Удаление ключей запрещено: нативный lock недоступен (guard)');
+  // поле `f` (см. `isProtectionFlagSupportAvailable`). Симметрично с
+  // cleanupCalculator, slowRefsDelete и refsOnMap.handleDeleteClick.
+  if (hasReferences && !isProtectionFlagSupportAvailable(freshCache)) {
+    throw new Error(
+      'Удаление ключей запрещено: нативная защита (lock/favorite) недоступна (guard)',
+    );
   }
 
   for (const entry of deletions) {
@@ -95,11 +90,13 @@ export async function deleteInventoryItems(
     }
     if (entry.type === ITEM_TYPE_REFERENCE) {
       if (entry.pointGuid === undefined) {
-        throw new Error(`Ключ ${entry.guid} без pointGuid не может быть удалён (guard lock)`);
-      }
-      if (freshLockedPointGuids.has(entry.pointGuid)) {
         throw new Error(
-          `Ключ от заблокированной точки ${entry.pointGuid} не может быть удалён (guard lock)`,
+          `Ключ ${entry.guid} без pointGuid не может быть удалён (guard lock/favorite)`,
+        );
+      }
+      if (freshProtectedPointGuids.has(entry.pointGuid)) {
+        throw new Error(
+          `Ключ от защищённой точки ${entry.pointGuid} не может быть удалён (guard lock/favorite)`,
         );
       }
     }

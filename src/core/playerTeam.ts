@@ -14,8 +14,20 @@
 export function getPlayerTeam(): number | null {
   const element = document.getElementById('self-info__name');
   if (!element) return null;
-  const match = /var\(--team-(\d+)\)/.exec(element.style.color);
-  if (!match) return null;
-  const team = parseInt(match[1], 10);
-  return Number.isFinite(team) ? team : null;
+  // В реальном браузере SBG ставит var(--team-N) через jQuery .css() - оба
+  // способа (element.style.color и getAttribute('style')) возвращают эту
+  // строку. В jsdom CSS-значения с var(...) отбрасываются из CSSStyleDeclaration
+  // при setAttribute('style', ...), но сохраняются в исходной строке атрибута;
+  // обратно, при прямом element.style.color = '...' jsdom сохраняет в style.color,
+  // но не сериализует в атрибут. Чтобы тесты могли использовать любой из двух
+  // путей задания стиля, проверяем оба источника.
+  const candidates = [element.style.color, element.getAttribute('style') ?? ''];
+  for (const candidate of candidates) {
+    const match = /var\(--team-(\d+)\)/.exec(candidate);
+    if (match) {
+      const team = parseInt(match[1], 10);
+      if (Number.isFinite(team)) return team;
+    }
+  }
+  return null;
 }

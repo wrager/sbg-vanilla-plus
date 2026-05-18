@@ -63,5 +63,33 @@ describe('dom', () => {
       await expect(promise).rejects.toThrow();
       jest.useRealTimers();
     });
+
+    test('rejects immediately when signal is already aborted', async () => {
+      const controller = new AbortController();
+      controller.abort();
+      await expect(waitForElement('.late', 10_000, controller.signal)).rejects.toThrow(/aborted/i);
+    });
+
+    test('rejects with AbortError when signal aborts before element appears', async () => {
+      const controller = new AbortController();
+      const promise = waitForElement('.never-appears', 10_000, controller.signal);
+      controller.abort();
+      await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+    });
+
+    test('после abort появление элемента не вызывает resolve', async () => {
+      const controller = new AbortController();
+      const promise = waitForElement('.late-after-abort', 10_000, controller.signal);
+      controller.abort();
+      await expect(promise).rejects.toThrow();
+
+      const el = document.createElement('div');
+      el.className = 'late-after-abort';
+      document.body.appendChild(el);
+      // Микротасков для MutationObserver достаточно, чтобы убедиться: повторного
+      // resolve не происходит (это бы привело к unhandled rejection / двойному
+      // settle Promise).
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
   });
 });

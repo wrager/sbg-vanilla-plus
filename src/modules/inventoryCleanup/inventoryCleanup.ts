@@ -1,11 +1,6 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { isModuleEnabledByUser } from '../../core/moduleRegistry';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
-import {
-  getFavoritedGuids,
-  isFavoritesSnapshotReady,
-  isLockMigrationDone,
-} from '../../core/favoritesStore';
+import { isReferenceMassDeleteBlockedByLegacyMigration } from '../../core/refsDeletionMigrationGate';
 // favoritesStore импортируется только для определения migrationPending — сам
 // legacy список SVP/CUI участвует только в favoritesMigration. inventoryCleanup
 // здесь использует список только как сигнал «миграция ещё не сделана».
@@ -82,8 +77,8 @@ async function runCleanupImpl(): Promise<void> {
   const items = parseInventoryCache();
   if (items.length === 0) return;
 
-  // Защита ключей: нативные locked точки (item.f & 0b10) защищены
-  // calculateDeletions/inventoryApi-guard'ами безусловно. Дополнительная
+  // Защита ключей: защищённые точки (lock 0b10 или favorite 0b01 поля
+  // item.f) защищены calculateDeletions/inventoryApi-guard'ами безусловно. Дополнительная
   // блокировка удаления ключей нужна, пока пользователь не подтвердил
   // миграцию SVP/CUI-избранных в native lock - иначе автоочистка удалила бы
   // legacy-favorited ключи, которые ещё не помечены замочком в игре.
@@ -103,12 +98,7 @@ async function runCleanupImpl(): Promise<void> {
   //   мигрировать;
   // - модуль активен, snapshot готов, legacy пустой - блок снимаем, нечего
   //   защищать.
-  const migrationModuleEnabled = isModuleEnabledByUser('favoritesMigration');
-  const snapshotReady = isFavoritesSnapshotReady();
-  const blockReferences =
-    !isLockMigrationDone() &&
-    migrationModuleEnabled &&
-    (!snapshotReady || getFavoritedGuids().size > 0);
+  const blockReferences = isReferenceMassDeleteBlockedByLegacyMigration();
   const limitsForRun = blockReferences
     ? { ...settings.limits, referencesMode: 'off' as const }
     : settings.limits;
@@ -125,7 +115,8 @@ async function runCleanupImpl(): Promise<void> {
 
   try {
     // Финальный guard: deleteInventoryItems перечитает свежий inventory-cache
-    // и проверит, что все удаляемые ключи всё ещё не locked (бит 0b10 поля f).
+    // и проверит, что все удаляемые ключи всё ещё не относятся к защищённым
+    // точкам (lock 0b10 или favorite 0b01 поля f).
     const result = await deleteInventoryItems(deletions);
     updateInventoryCache(deletions);
     updatePointRefCount();
@@ -230,8 +221,8 @@ export const inventoryCleanup: IFeatureModule = {
     ru: 'Автоочистка инвентаря',
   },
   description: {
-    en: 'Automatically removes excess items when discovering points. Protects keys of points marked with native lock.',
-    ru: 'Автоматически удаляет лишние предметы при изучении точек. Защищает ключи точек, помеченных нативным замочком.',
+    en: 'Automatically removes excess items when discovering points. Protects keys of points marked with native lock or favorite.',
+    ru: 'Автоматически удаляет лишние предметы при изучении точек. Защищает ключи точек, помеченных нативным замочком или звёздочкой.',
   },
   defaultEnabled: true,
   category: 'feature',
