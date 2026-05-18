@@ -1,6 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { injectStyles, removeStyles, waitForElement } from '../../core/dom';
+import { injectStyles, removeStyles } from '../../core/dom';
 import { t } from '../../core/l10n';
+import { registerOlControl } from '../../core/olControlStack';
 import { showToast } from '../../core/toast';
 import { findLayerByName, getOlMap } from '../../core/olMap';
 import type {
@@ -34,14 +35,10 @@ const DRAW_LAYER_NAME = 'svp-draw-tools';
 const DRAW_LAYER_Z_INDEX = 9;
 const SNAP_THRESHOLD_PX = 100;
 const DEFAULT_COLOR = '#a24ac3';
-// По refs/game/dom/body.html класс .region-picker уникален в DOM игры; остальные
-// два класса (ol-unselectable, ol-control) - visual hints на природу элемента,
-// которые ничего не добавляют к идентификации. Сужение до '.region-picker'
-// уменьшает coupling: если игра когда-нибудь уберёт ol-unselectable/ol-control
-// (например, переедет на не-OL-кнопку для picker'а), mount не упадёт по
-// waitForElement timeout, а MutationObserver-re-find продолжит работать.
-const REGION_PICKER_SELECTOR = '.region-picker';
 const CONTROL_BUTTON_ID = 'svp-draw-tools-menu-button';
+// Priority в стеке под .region-picker: drawTools первый ниже picker'а,
+// starCenter clear-control - следующий. См. src/core/olControlStack.ts.
+const OL_STACK_PRIORITY = 0;
 
 type ToolMode = 'none' | 'line' | 'polygon' | 'edit' | 'delete';
 
@@ -87,7 +84,7 @@ let drawSource: IVectorSourceWithRemove | null = null;
 let drawLayer: IOlLayer | null = null;
 
 let controlElement: HTMLDivElement | null = null;
-let controlMutationObserver: MutationObserver | null = null;
+let unregisterOlControl: (() => void) | null = null;
 let toolbar: HTMLDivElement | null = null;
 let copyModalOverlay: HTMLDivElement | null = null;
 let copyModalKeydownHandler: ((event: KeyboardEvent) => void) | null = null;
@@ -986,52 +983,20 @@ function createControlElement(): HTMLDivElement {
   return element;
 }
 
-async function mountOlControl(myToken: number): Promise<boolean> {
-  let picker = document.querySelector<HTMLElement>(REGION_PICKER_SELECTOR);
-  if (!picker) {
-    const found = await waitForElement(REGION_PICKER_SELECTOR);
-    // После await токен мог инвалидироваться (disable во время ожидания).
-    // Бросаем работу до любых записей в DOM/глобалы — иначе текущий enable
-    // перезапишет ресурсы более позднего enable, который уже отработал.
-    if (myToken !== enableToken) return false;
-    if (!(found instanceof HTMLElement)) {
-      throw new Error('Region picker not found');
-    }
-    picker = found;
-  }
-
+function mountOlControl(): void {
   controlElement = createControlElement();
-  picker.after(controlElement);
-
-  // Игра может пересоздавать DOM вокруг карты (например, при смене размера
-  // viewport). Если control оторвался от документа — снова приклеиваем после
-  // актуального picker'а (re-find динамически на случай, если игра пересоздала
-  // и сам picker, заменив старый узел новым).
-  //
-  // observe нацелен на parent picker'а (body для .region-picker) c childList
-  // БЕЗ subtree: scope сужен до прямых детей этого контейнера, callback
-  // дёргается только на add/remove самих узлов picker/control/соседей по
-  // body, а не на каждую DOM-мутацию игры (попапы, ввод, инвентарь). Если
-  // игра когда-нибудь пересоздаст и сам контейнер picker'а - control
-  // пере-смонтируется при следующем enable.
-  const observerTarget = picker.parentElement ?? document.body;
-  controlMutationObserver = new MutationObserver(() => {
-    if (!controlElement || controlElement.isConnected) return;
-    const fresh = document.querySelector<HTMLElement>(REGION_PICKER_SELECTOR);
-    fresh?.after(controlElement);
-  });
-  controlMutationObserver.observe(observerTarget, { childList: true });
-
-  return true;
+  // Общий стек кнопок под .region-picker: helper расставит элемент по priority,
+  // позиционирует через CSS-переменную, реагирует на пересоздание picker'а
+  // вместо локального MutationObserver.
+  unregisterOlControl = registerOlControl(OL_STACK_PRIORITY, controlElement);
 }
 
 function unmountOlControl(): void {
-  controlMutationObserver?.disconnect();
-  controlMutationObserver = null;
+  unregisterOlControl?.();
+  unregisterOlControl = null;
   if (controlElement) {
     const button = controlElement.querySelector('button');
     button?.removeEventListener('click', toggleToolbar);
-    controlElement.remove();
     controlElement = null;
   }
 }
@@ -1117,12 +1082,7 @@ export const drawTools: IFeatureModule = {
 
     try {
       mountToolbar();
-      const mounted = await mountOlControl(myToken);
-      // Если токен устарел во время mountOlControl — текущий enable «осиротел»:
-      // disable, который инвалидировал нас, уже отработал cleanup() для
-      // ресурсов, смонтированных до await. Никаких дополнительных teardown
-      // здесь вызывать нельзя — иначе уроним ресурсы более позднего enable.
-      if (!mounted) return;
+      mountOlControl();
 
       const olMap = await getOlMap();
       if (myToken !== enableToken) return;

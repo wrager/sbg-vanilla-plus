@@ -328,18 +328,18 @@ describe('drawTools module', () => {
     control?.remove();
     expect(control?.isConnected).toBe(false);
 
-    // Игра вставляет НОВЫЙ picker в другую точку body. MutationObserver
-    // должен заметить childList-мутацию parent'а picker'а, увидеть, что
-    // control оторван от документа, найти fresh picker через querySelector
-    // и приклеить control обратно как next sibling.
+    // Игра вставляет НОВЫЙ picker. olControlStack должен заметить childList-мутацию
+    // body, увидеть, что control оторван от документа, найти fresh picker через
+    // querySelector и приклеить control обратно как next sibling.
     const freshPicker = document.createElement('div');
     freshPicker.className = 'region-picker ol-unselectable ol-control';
     const freshButton = document.createElement('button');
     freshPicker.appendChild(freshButton);
     document.body.appendChild(freshPicker);
 
-    // MutationObserver callback дёргается в microtask queue.
-    await Promise.resolve();
+    // MutationObserver callback - microtask, затем внутри callback'а rAF-debounce.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 16));
 
     expect(control?.isConnected).toBe(true);
     expect(freshPicker.nextElementSibling).toBe(control);
@@ -596,6 +596,9 @@ describe('drawTools module', () => {
 
     await enable1;
     await enable2;
+    // olControlStack триггерится MutationObserver'ом на childList body + rAF-debounce.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 16));
 
     // Только UI второго enable должен остаться: один control, один toolbar
     expect(document.querySelectorAll('.svp-draw-tools-control')).toHaveLength(1);
