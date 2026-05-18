@@ -1,21 +1,7 @@
 import { installStarCenterButton, uninstallStarCenterButton } from './starCenterButton';
 import { clearStarCenter, getStarCenter, getStarCenterGuid, setStarCenter } from './starCenter';
-import { findLayerByName, getOlMap } from '../../core/olMap';
-import type { IOlFeature, IOlLayer, IOlVectorSource } from '../../core/olMap';
 
 const TOGGLE_CLASS = 'svp-star-center-btn';
-
-jest.mock('../../core/olMap', () => ({
-  getOlMap: jest.fn(() =>
-    Promise.resolve({
-      getLayers: () => ({ getArray: () => [] }),
-    }),
-  ),
-  findLayerByName: jest.fn(() => null),
-}));
-
-const findLayerByNameMock = jest.mocked(findLayerByName);
-const getOlMapMock = jest.mocked(getOlMap);
 
 const showToastMock = jest.fn();
 jest.mock('../../core/toast', () => ({
@@ -50,8 +36,6 @@ beforeEach(() => {
   clearStarCenter();
   localStorage.clear();
   showToastMock.mockClear();
-  // Восстанавливаем дефолтный мок findLayerByName — null (layer недоступен).
-  findLayerByNameMock.mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -83,7 +67,7 @@ describe('starCenterButton — состояние', () => {
   });
 
   test('текущая точка = центр: toggle is-active', () => {
-    setStarCenter('p1', 'Альфа');
+    setStarCenter('p1');
     const popup = createPopupDom('p1');
     installStarCenterButton();
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(true);
@@ -91,7 +75,7 @@ describe('starCenterButton — состояние', () => {
   });
 
   test('центр есть на другой точке: toggle без is-active', () => {
-    setStarCenter('other', 'Другая');
+    setStarCenter('other');
     const popup = createPopupDom('p1');
     installStarCenterButton();
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(false);
@@ -124,7 +108,7 @@ describe('starCenterButton — клики toggle', () => {
   });
 
   test('это центр → снимает центр', async () => {
-    setStarCenter('p1', 'Альфа');
+    setStarCenter('p1');
     const popup = createPopupDom('p1');
     installStarCenterButton();
     getToggle(popup)?.click();
@@ -134,7 +118,7 @@ describe('starCenterButton — клики toggle', () => {
   });
 
   test('центр на другой точке → переназначает на текущую', async () => {
-    setStarCenter('other', 'Другая');
+    setStarCenter('other');
     const popup = createPopupDom('p1');
     installStarCenterButton();
     getToggle(popup)?.click();
@@ -146,7 +130,7 @@ describe('starCenterButton — клики toggle', () => {
 
 describe('starCenterButton — реактивность', () => {
   test('смена data-guid пересчитывает состояние', async () => {
-    setStarCenter('p1', 'Альфа');
+    setStarCenter('p1');
     const popup = createPopupDom('p2');
     installStarCenterButton();
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(false);
@@ -168,241 +152,32 @@ describe('starCenterButton — реактивность', () => {
   });
 });
 
-describe('starCenterButton — getPointName (извлечение имени точки из feature)', () => {
-  // Toast при назначении показывается сразу с пустым именем (не блокируем
-  // setStarCenter ожиданием getOlMap), имя подтягивается асинхронно и
-  // пишется в localStorage. Поэтому проверяем имя через getStarCenter().name,
-  // не через содержимое toast.
-  function makeFeatureWithGet(id: string, props: Record<string, unknown>): IOlFeature {
-    return {
-      getId: () => id,
-      getGeometry: () => ({ getCoordinates: () => [0, 0] }),
-      setId: () => {},
-      setStyle: () => {},
-      get(key: string) {
-        return props[key];
-      },
-      getProperties() {
-        return props;
-      },
-    };
-  }
-
-  function makeFeatureWithPropsOnly(id: string, props: Record<string, unknown>): IOlFeature {
-    return {
-      getId: () => id,
-      getGeometry: () => ({ getCoordinates: () => [0, 0] }),
-      setId: () => {},
-      setStyle: () => {},
-      // get() отсутствует — должен сработать fallback на getProperties().
-      getProperties() {
-        return props;
-      },
-    };
-  }
-
-  function makeLayer(features: IOlFeature[]): IOlLayer {
-    const source: IOlVectorSource = {
-      getFeatures: () => features,
-      addFeature: () => {},
-      clear: () => {},
-      on: () => {},
-      un: () => {},
-    };
-    return {
-      get: () => 'points',
-      getSource: () => source,
-    };
-  }
-
-  function getLastToastMessage(): string {
-    const calls = showToastMock.mock.calls as unknown[][];
-    if (calls.length === 0) return '';
-    const last = calls[calls.length - 1];
-    const [first] = last;
-    return typeof first === 'string' ? first : '';
-  }
-
-  // 9.D all-pass: feature.get('title') → строка.
-  test('имя через feature.get(title) записывается в LS', async () => {
-    findLayerByNameMock.mockReturnValue(makeLayer([makeFeatureWithGet('p1', { title: 'Alpha' })]));
+describe('starCenterButton — назначение центра целиком синхронно', () => {
+  // После убирания имени точки из IStarCenter и тостов клик toggle полностью
+  // синхронен: ни getOlMap, ни getPointName, ни асинхронных race-чеков. LS
+  // содержит только guid; имя не подтягивается и не пишется.
+  test('LS после назначения содержит guid, без поля name', () => {
     const popup = createPopupDom('p1');
     installStarCenterButton();
     getToggle(popup)?.click();
-    await flushMicrotasks();
-    expect(getStarCenter()?.name).toBe('Alpha');
+    const star = getStarCenter();
+    expect(star?.guid).toBe('p1');
+    expect(star).not.toHaveProperty('name');
   });
 
-  // 9.D FALSE на title → переход к name.
-  test('title отсутствует — имя через feature.get(name)', async () => {
-    findLayerByNameMock.mockReturnValue(makeLayer([makeFeatureWithGet('p1', { name: 'Beta' })]));
+  test('toast при назначении - общая формулировка без интерполяции имени', () => {
     const popup = createPopupDom('p1');
     installStarCenterButton();
     getToggle(popup)?.click();
-    await flushMicrotasks();
-    expect(getStarCenter()?.name).toBe('Beta');
-  });
-
-  // 9.D: label — последний вариант.
-  test('title/name отсутствуют — имя через feature.get(label)', async () => {
-    findLayerByNameMock.mockReturnValue(makeLayer([makeFeatureWithGet('p1', { label: 'Gamma' })]));
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-    expect(getStarCenter()?.name).toBe('Gamma');
-  });
-
-  // 9.E FALSE: нет get() → fallback на getProperties().
-  test('feature без get() — имя через getProperties()[title]', async () => {
-    findLayerByNameMock.mockReturnValue(
-      makeLayer([makeFeatureWithPropsOnly('p1', { title: 'Delta' })]),
-    );
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-    expect(getStarCenter()?.name).toBe('Delta');
-  });
-
-  // 9.D.1 FALSE (undefined) на title, но есть name в getProperties.
-  test('get(title)=undefined и getProperties[name]=Epsilon — имя через getProperties', async () => {
-    const feature: IOlFeature = {
-      getId: () => 'p1',
-      getGeometry: () => ({ getCoordinates: () => [0, 0] }),
-      setId: () => {},
-      setStyle: () => {},
-      get: () => undefined,
-      getProperties: () => ({ name: 'Epsilon' }),
-    };
-    findLayerByNameMock.mockReturnValue(makeLayer([feature]));
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-    expect(getStarCenter()?.name).toBe('Epsilon');
-  });
-
-  // 9.D.2 FALSE: пустая строка → переход к name.
-  test('get(title) = "" — переходим к следующему candidateKey', async () => {
-    findLayerByNameMock.mockReturnValue(
-      makeLayer([makeFeatureWithGet('p1', { title: '', name: 'Zeta' })]),
-    );
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-    expect(getStarCenter()?.name).toBe('Zeta');
-  });
-
-  // Toast при назначении - всегда показывается, и без имени (формулировка CUI).
-  test('toast при назначении показывается сразу, до резолва имени', () => {
-    findLayerByNameMock.mockReturnValue(makeLayer([makeFeatureWithGet('p1', { title: 'Alpha' })]));
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    // Без await: getPointName ещё не резолвилась.
-    expect(getLastToastMessage()).toContain('selected as star center for drawing');
-    // Сам toast - без имени, имя приедет в LS позже.
-    expect(getLastToastMessage()).not.toContain('"');
-  });
-
-  // 9.E FALSE: props null.
-  test('feature без title/name/label и без getProperties — имя в LS пустое', async () => {
-    const feature: IOlFeature = {
-      getId: () => 'p1',
-      getGeometry: () => ({ getCoordinates: () => [0, 0] }),
-      setId: () => {},
-      setStyle: () => {},
-    };
-    findLayerByNameMock.mockReturnValue(makeLayer([feature]));
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-    expect(getStarCenter()?.guid).toBe('p1');
-    expect(getStarCenter()?.name).toBe('');
-  });
-
-  // 9.C TRUE: feature с другим GUID в source — не матчится, пустая строка.
-  test('feature с matching GUID не найдена среди features — имя в LS пустое', async () => {
-    findLayerByNameMock.mockReturnValue(
-      makeLayer([makeFeatureWithGet('other', { title: 'Other' })]),
-    );
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-    expect(getStarCenter()?.name).toBe('');
-  });
-
-  // 9.B TRUE: layer найден, но source = null.
-  test('layer без source — имя в LS пустое', async () => {
-    findLayerByNameMock.mockReturnValue({
-      get: () => 'points',
-      getSource: () => null,
+    const messages = showToastMock.mock.calls.map((call: unknown[]) => {
+      const [first] = call;
+      return typeof first === 'string' ? first : '';
     });
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-    expect(getStarCenter()?.name).toBe('');
-  });
-
-  // 9.A catch: getOlMap reject → warn + пустая строка.
-  test('getOlMap reject — warn, имя в LS пустое', async () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    getOlMapMock.mockRejectedValueOnce(new Error('no map'));
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-    expect(warn).toHaveBeenCalled();
-    expect(getStarCenter()?.name).toBe('');
-    warn.mockRestore();
-  });
-
-  // Главный кейс: getOlMap зависает (никогда не резолвится). Без правки
-  // setStarCenter тоже не вызывался, и клик молча терялся. С правкой -
-  // setStarCenter вызывается синхронно, имя остаётся пустым, но центр
-  // назначен и фильтр работает.
-  test('getOlMap зависает — setStarCenter всё равно вызывается синхронно', () => {
-    getOlMapMock.mockReturnValueOnce(new Promise(() => {}));
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    // Без await: setStarCenter должен сработать на синхронной части клика.
-    expect(getStarCenter()?.guid).toBe('p1');
-    expect(getStarCenter()?.name).toBe('');
-  });
-
-  // Race: пользователь снял центр до того как getPointName резолвилась.
-  // Запоздавший resolve не должен перетереть LS чужим именем.
-  test('центр снят до резолва getPointName — имя не записывается', async () => {
-    findLayerByNameMock.mockReturnValue(makeLayer([makeFeatureWithGet('p1', { title: 'Alpha' })]));
-    let resolveMap: () => void = () => {};
-    getOlMapMock.mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveMap = () => {
-          resolve({
-            getLayers: () => ({ getArray: () => [] }),
-          } as unknown as Awaited<ReturnType<typeof getOlMap>>);
-        };
-      }),
-    );
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    expect(getStarCenter()?.guid).toBe('p1');
-
-    // Пользователь снял центр до того как имя пришло.
-    clearStarCenter();
-    expect(getStarCenter()).toBeNull();
-
-    // getOlMap резолвится запоздало - имя не должно перезаписать LS.
-    resolveMap();
-    await flushMicrotasks();
-    expect(getStarCenter()).toBeNull();
+    expect(
+      messages.some((message) => message.includes('selected as star center for drawing')),
+    ).toBe(true);
+    // Имя в toast не появляется (нет кавычек интерполяции).
+    expect(messages.every((message) => !message.includes('"'))).toBe(true);
   });
 });
 
@@ -428,7 +203,7 @@ describe('starCenterButton — переоткрытие попапа при пе
 
   // Основной сценарий: переназначение центра с точки A на текущий попап B.
   test('центр был на другой точке → клик toggle закрывает и переоткрывает попап через window.showInfo', async () => {
-    setStarCenter('A', 'Alpha');
+    setStarCenter('A');
     const popup = createPopupWithClose('B');
     const closeSpy = jest.fn();
     popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
@@ -462,7 +237,7 @@ describe('starCenterButton — переоткрытие попапа при пе
   // Снятие центра — counter был [N] (попап центра), после снятия тоже [N],
   // переоткрытие не нужно.
   test('снятие центра через тот же попап — НЕ переоткрывает попап', async () => {
-    setStarCenter('A', 'Alpha');
+    setStarCenter('A');
     const popup = createPopupWithClose('A');
     const closeSpy = jest.fn();
     popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
@@ -479,7 +254,7 @@ describe('starCenterButton — переоткрытие попапа при пе
   // Graceful fallback: нет .popup-close → выход до click/showInfo, центр
   // всё равно назначен.
   test('нет .popup-close в DOM — не бросает, центр назначен, showInfo не вызван', async () => {
-    setStarCenter('A', 'Alpha');
+    setStarCenter('A');
     const popup = createPopupDom('B'); // без .popup-close
 
     installStarCenterButton();
@@ -494,7 +269,7 @@ describe('starCenterButton — переоткрытие попапа при пе
   // не закрывается (иначе пользователь потеряет контекст без переоткрытия).
   test('window.showInfo недоступна — попап остаётся открытым, центр назначен', async () => {
     delete (window as unknown as { showInfo?: typeof showInfoMock }).showInfo;
-    setStarCenter('A', 'Alpha');
+    setStarCenter('A');
     const popup = createPopupWithClose('B');
     const closeSpy = jest.fn();
     popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);

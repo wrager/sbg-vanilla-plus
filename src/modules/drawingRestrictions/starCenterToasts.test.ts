@@ -22,33 +22,17 @@ beforeEach(() => {
 // поэтому проверяем английские формулировки.
 
 describe('showCenterAssignedToast', () => {
-  test('пустое имя — общий текст без имени', () => {
-    showCenterAssignedToast('');
+  test('общий текст без имени точки', () => {
+    showCenterAssignedToast();
     expect(showToastMock).toHaveBeenCalledTimes(1);
-    const message = lastMessage();
-    expect(message).toBe('Point selected as star center for drawing.');
-  });
-
-  test('заданное имя — текст с именем в кавычках', () => {
-    showCenterAssignedToast('Alpha');
-    expect(showToastMock).toHaveBeenCalledTimes(1);
-    const message = lastMessage();
-    expect(message).toBe('Point "Alpha" selected as star center for drawing.');
+    expect(lastMessage()).toBe('Point selected as star center for drawing.');
   });
 });
 
 describe('showCenterClearedToast', () => {
-  test('пустое имя — общий текст без имени', () => {
-    showCenterClearedToast('');
+  test('общий текст без имени точки', () => {
+    showCenterClearedToast();
     expect(showToastMock).toHaveBeenCalledTimes(1);
-    const message = lastMessage();
-    expect(message).toBe('Star center cleared');
-  });
-
-  test('заданное имя — текст с двоеточием и именем', () => {
-    showCenterClearedToast('Alpha');
-    expect(showToastMock).toHaveBeenCalledTimes(1);
-    const message = lastMessage();
-    expect(message).toBe('Star center cleared: Alpha');
+    expect(lastMessage()).toBe('Star center cleared');
   });
 });

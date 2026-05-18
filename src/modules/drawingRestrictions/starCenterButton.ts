@@ -1,6 +1,5 @@
 import { waitForElement } from '../../core/dom';
 import { t } from '../../core/l10n';
-import { findLayerByName, getOlMap } from '../../core/olMap';
 import {
   STAR_CENTER_CHANGED_EVENT,
   clearStarCenter,
@@ -15,7 +14,6 @@ const TOGGLE_CLASS = 'svp-star-center-btn';
 const POPUP_ACTION_BUTTON_CLASS = 'svp-popup-action-button';
 const POPUP_SELECTOR = '.info.popup';
 const BUTTONS_SELECTOR = '.i-buttons';
-const POINTS_LAYER_NAME = 'points';
 
 let popupObserver: MutationObserver | null = null;
 let clickAbortController: AbortController | null = null;
@@ -37,39 +35,6 @@ function getCurrentGuid(popup: Element): string | null {
 
 function findToggle(popup: Element): HTMLButtonElement | null {
   return popup.querySelector<HTMLButtonElement>(`.${TOGGLE_CLASS}`);
-}
-
-/**
- * Достаёт название точки из features слоя `points`. Проверяет ряд вероятных
- * свойств (`title`, `name`, `label`) — конкретное имя зависит от того, как
- * игра заводит feature. Возвращает пустую строку, если не удалось найти.
- */
-async function getPointName(guid: string): Promise<string> {
-  try {
-    const map = await getOlMap();
-    const layer = findLayerByName(map, POINTS_LAYER_NAME);
-    const source = layer?.getSource();
-    if (!source) return '';
-    for (const feature of source.getFeatures()) {
-      if (feature.getId() !== guid) continue;
-      const candidateKeys = ['title', 'name', 'label'] as const;
-      for (const key of candidateKeys) {
-        const value = feature.get?.(key);
-        if (typeof value === 'string' && value.length > 0) return value;
-      }
-      const props = feature.getProperties?.();
-      if (props) {
-        for (const key of candidateKeys) {
-          const value = props[key];
-          if (typeof value === 'string' && value.length > 0) return value;
-        }
-      }
-      return '';
-    }
-  } catch (error) {
-    console.warn('[SVP drawingRestrictions] не удалось получить имя точки:', error);
-  }
-  return '';
 }
 
 function createButton(
@@ -134,24 +99,17 @@ function onToggleClick(popup: Element): void {
   const star = getStarCenter();
   const centerBefore = star?.guid ?? null;
   if (star?.guid === guid) {
-    // Снятие центра через ту же точку, где он назначен. Имя уже в LS - покажем
-    // его в toast перед очисткой. refreshPopupIfStarFilterWasActive увидит
-    // popupGuid === centerBefore и сделает no-op: для попапа центра keepByStar
-    // не применялся, count корректен сразу.
-    const name = star.name;
+    // Снятие центра через ту же точку, где он назначен.
+    // refreshPopupIfStarFilterWasActive увидит popupGuid === centerBefore и
+    // сделает no-op: для попапа центра keepByStar не применялся, count
+    // корректен сразу.
     clearStarCenter();
-    showCenterClearedToast(name);
+    showCenterClearedToast();
     refreshPopupIfStarFilterWasActive(centerBefore);
     return;
   }
-  // Назначение центра не должно ждать имя точки. getPointName требует
-  // getOlMap(), и если OL capture не резолвится (игровой скрипт обновлён,
-  // ol-инициализация залипла), кнопка молча перестаёт работать - клик не
-  // меняет ни LS, ни UI. Сначала назначаем центр и показываем toast по
-  // request пользователя, имя подтягиваем асинхронно и записываем в LS,
-  // когда оно станет доступно.
-  setStarCenter(guid, '');
-  showCenterAssignedToast('');
+  setStarCenter(guid);
+  showCenterAssignedToast();
   // Назначение нового центра (centerBefore = null) - утилита no-op.
   // Переназначение (centerBefore !== null && popupGuid !== centerBefore) -
   // утилита закрывает попап и переоткрывает через window.showInfo, игра делает
@@ -159,15 +117,6 @@ function onToggleClick(popup: Element): void {
   // отключён, т.к. currentPopup = новый center), счётчик и слайдер становятся
   // корректными и синхронными.
   refreshPopupIfStarFilterWasActive(centerBefore);
-  void getPointName(guid).then((name) => {
-    if (name.length === 0) return;
-    // Между запуском getPointName и его резолвом пользователь мог снять центр
-    // или назначить другой. Обновляем имя только если центр всё ещё на той же
-    // точке, иначе перезатрём свежее назначение чужим именем.
-    const current = getStarCenter();
-    if (current?.guid !== guid) return;
-    setStarCenter(guid, name);
-  });
 }
 
 function startObserving(popup: Element): void {

@@ -182,7 +182,7 @@ describe('buildHighlightStyle (косвенно через install + refreshOver
     mapHolder.current = makeMap();
     const source = makeSource([makeFeature('center', [10, 20])]);
     sourceHolder.current = source;
-    setStarCenter('center', '');
+    setStarCenter('center');
 
     // window.ol.style отсутствует полностью.
     if (window.ol) delete window.ol.style;
@@ -205,7 +205,7 @@ describe('buildHighlightStyle (косвенно через install + refreshOver
       mapHolder.current = makeMap();
       const source = makeSource([makeFeature('center')]);
       sourceHolder.current = source;
-      setStarCenter('center', '');
+      setStarCenter('center');
 
       if (window.ol?.style) {
         const style = window.ol.style as unknown as Record<string, unknown>;
@@ -225,7 +225,7 @@ describe('buildHighlightStyle (косвенно через install + refreshOver
     mapHolder.current = makeMap();
     const source = makeSource([makeFeature('center', [42, 11])]);
     sourceHolder.current = source;
-    setStarCenter('center', '');
+    setStarCenter('center');
 
     installStarCenterHighlight();
     await flushPromises();
@@ -322,7 +322,7 @@ describe('refreshOverlay', () => {
   // 7.C TRUE: guid === null → clear, выход.
   test('guid === null — overlay очищается и остаётся пустым', async () => {
     const { map, pointsSource } = await setupInstalled([makeFeature('center')]);
-    setStarCenter('center', '');
+    setStarCenter('center');
     expect(getOverlayFeatures(map).length).toBe(1);
 
     clearStarCenter();
@@ -333,14 +333,14 @@ describe('refreshOverlay', () => {
   // 7.D: !centerFeature — return (overlay пуст после clear).
   test('центр назначен, feature нет в source — overlay пуст', async () => {
     const { map } = await setupInstalled([makeFeature('other')]);
-    setStarCenter('missing-guid', '');
+    setStarCenter('missing-guid');
     expect(getOverlayFeatures(map).length).toBe(0);
   });
 
   // 7.C FALSE & 7.D FALSE & 7.F FALSE: всё проходит → addFeature.
   test('центр в source, стиль валидный — overlay feature добавлен', async () => {
     const { map } = await setupInstalled([makeFeature('center', [100, 200])]);
-    setStarCenter('center', '');
+    setStarCenter('center');
     expect(getOverlayFeatures(map).length).toBe(1);
   });
 
@@ -348,7 +348,7 @@ describe('refreshOverlay', () => {
   test('ol.Feature недоступен — overlay не создаётся', async () => {
     const { map } = await setupInstalled([makeFeature('center')]);
     if (window.ol) delete window.ol.Feature;
-    setStarCenter('center', '');
+    setStarCenter('center');
     expect(getOverlayFeatures(map).length).toBe(0);
   });
 
@@ -356,17 +356,17 @@ describe('refreshOverlay', () => {
   test('ol.geom.Point недоступен — overlay не создаётся', async () => {
     const { map } = await setupInstalled([makeFeature('center')]);
     if (window.ol) delete window.ol.geom;
-    setStarCenter('center', '');
+    setStarCenter('center');
     expect(getOverlayFeatures(map).length).toBe(0);
   });
 
   // Реакция на STAR_CENTER_CHANGED_EVENT (используется setStarCenter).
   test('dispatch STAR_CENTER_CHANGED_EVENT перерисовывает overlay', async () => {
     const { map } = await setupInstalled([makeFeature('a'), makeFeature('b')]);
-    setStarCenter('a', '');
+    setStarCenter('a');
     expect(getOverlayFeatures(map).length).toBe(1);
 
-    setStarCenter('b', '');
+    setStarCenter('b');
     // Overlay очищен и пересоздан с новыми координатами (1 feature для нового центра).
     expect(getOverlayFeatures(map).length).toBe(1);
   });
@@ -374,7 +374,7 @@ describe('refreshOverlay', () => {
   // Реакция на source 'addfeature' для центра — refreshOverlay отрабатывает.
   test('emit addfeature для центра — refreshOverlay создаёт overlay', async () => {
     const { map, pointsSource } = await setupInstalled([]);
-    setStarCenter('center', '');
+    setStarCenter('center');
     expect(getOverlayFeatures(map).length).toBe(0);
 
     const centerFeature = makeFeature('center');
@@ -387,7 +387,7 @@ describe('refreshOverlay', () => {
   // 'addfeature' для не-центра не триггерит refreshOverlay (фильтр по getId).
   test('emit addfeature для другой точки — overlay не пересчитывается', async () => {
     const { map, pointsSource } = await setupInstalled([makeFeature('center')]);
-    setStarCenter('center', '');
+    setStarCenter('center');
     expect(getOverlayFeatures(map).length).toBe(1);
     const initialFeature = getOverlayFeatures(map)[0];
 
@@ -404,7 +404,7 @@ describe('refreshOverlay', () => {
   test('emit removefeature для центра — overlay очищается', async () => {
     const centerFeature = makeFeature('center');
     const { map, pointsSource } = await setupInstalled([centerFeature]);
-    setStarCenter('center', '');
+    setStarCenter('center');
     expect(getOverlayFeatures(map).length).toBe(1);
 
     // Симулируем удаление feature из points-layer.
@@ -425,7 +425,7 @@ describe('findFeatureByGuid (через refreshOverlay)', () => {
     const source = makeSource([makeFeature('other'), makeFeature('center', [5, 7])]);
     mapHolder.current = map;
     sourceHolder.current = source;
-    setStarCenter('center', '');
+    setStarCenter('center');
     installStarCenterHighlight();
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(map._addedLayers[0].getSource()?.getFeatures().length).toBe(1);
@@ -437,7 +437,7 @@ describe('findFeatureByGuid (через refreshOverlay)', () => {
     const source = makeSource([makeFeature('a'), makeFeature('b')]);
     mapHolder.current = map;
     sourceHolder.current = source;
-    setStarCenter('missing', '');
+    setStarCenter('missing');
     installStarCenterHighlight();
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(map._addedLayers[0].getSource()?.getFeatures().length).toBe(0);
@@ -451,7 +451,7 @@ describe('uninstall', () => {
     const source = makeSource([makeFeature('center')]);
     mapHolder.current = map;
     sourceHolder.current = source;
-    setStarCenter('center', '');
+    setStarCenter('center');
     installStarCenterHighlight();
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(map._addedLayers.length).toBe(1);
@@ -466,7 +466,7 @@ describe('uninstall', () => {
     }).not.toThrow();
 
     // STAR_CENTER_CHANGED_EVENT больше не должен влиять.
-    setStarCenter('new', '');
+    setStarCenter('new');
     expect(map._addedLayers.length).toBe(0);
   });
 

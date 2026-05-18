@@ -4,28 +4,24 @@ export const STAR_CENTER_CHANGED_EVENT = 'svp:star-center-changed';
 
 export interface IStarCenter {
   guid: string;
-  /** Название точки-центра. Пустая строка если имя не удалось получить при назначении. */
-  name: string;
 }
 
 function parseStored(raw: string | null): IStarCenter | null {
   if (raw === null || raw.length === 0) return null;
-  // Обратная совместимость: раньше хранили чистый GUID без name. Если парсинг
-  // JSON не удался или результат — строка, трактуем как legacy-формат.
+  // Поддерживаем оба формата: JSON-объект `{ guid }` (с возможным полем name от
+  // прошлых версий - игнорируется) и чистый GUID как строка (legacy plain).
   try {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed === 'object' && parsed !== null && 'guid' in parsed) {
       const guidValue = parsed.guid;
       if (typeof guidValue === 'string' && guidValue.length > 0) {
-        const nameValue = 'name' in parsed ? parsed.name : undefined;
-        const name = typeof nameValue === 'string' ? nameValue : '';
-        return { guid: guidValue, name };
+        return { guid: guidValue };
       }
     }
   } catch {
-    // raw не JSON — возможно, legacy plain GUID.
+    // raw не JSON - возможно, legacy plain GUID.
   }
-  return { guid: raw, name: '' };
+  return { guid: raw };
 }
 
 export function getStarCenter(): IStarCenter | null {
@@ -40,10 +36,9 @@ function dispatchChange(): void {
   document.dispatchEvent(new CustomEvent(STAR_CENTER_CHANGED_EVENT));
 }
 
-export function setStarCenter(guid: string, name: string): void {
+export function setStarCenter(guid: string): void {
   if (typeof guid !== 'string' || guid.length === 0) return;
-  const safeName = typeof name === 'string' ? name : '';
-  const payload: IStarCenter = { guid, name: safeName };
+  const payload: IStarCenter = { guid };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   dispatchChange();
 }

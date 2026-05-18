@@ -68,7 +68,7 @@ describe('starCenterClearControl', () => {
 
   test('виден (hidden=false) когда центр назначен', () => {
     createMapWithRegionPicker();
-    setStarCenter('p1', 'Альфа');
+    setStarCenter('p1');
     installStarCenterClearControl();
     expect(getControl()?.hidden).toBe(false);
   });
@@ -78,7 +78,7 @@ describe('starCenterClearControl', () => {
     installStarCenterClearControl();
     expect(getControl()?.hidden).toBe(true);
 
-    setStarCenter('p1', 'Альфа');
+    setStarCenter('p1');
     expect(getControl()?.hidden).toBe(false);
 
     clearStarCenter();
@@ -87,7 +87,7 @@ describe('starCenterClearControl', () => {
 
   test('клик сбрасывает центр', () => {
     createMapWithRegionPicker();
-    setStarCenter('p1', 'Альфа');
+    setStarCenter('p1');
     installStarCenterClearControl();
     const button = getControl()?.querySelector<HTMLButtonElement>('button');
     button?.click();
@@ -120,7 +120,7 @@ describe('starCenterClearControl', () => {
     uninstallStarCenterClearControl();
     expect(getControl()).toBeNull();
 
-    setStarCenter('p1', 'Альфа');
+    setStarCenter('p1');
     await flushMutations();
     expect(getControl()).toBeNull();
   });
@@ -152,7 +152,7 @@ describe('starCenterClearControl — syncPosition и rect.width/height', () => {
     if (!picker) throw new Error('picker not found');
     mockRect(picker, { width: 0, height: 0 });
 
-    setStarCenter('p1', '');
+    setStarCenter('p1');
     installStarCenterClearControl();
     const control = getControl();
     expect(control).not.toBeNull();
@@ -169,7 +169,7 @@ describe('starCenterClearControl — syncPosition и rect.width/height', () => {
     if (!picker) throw new Error('picker not found');
     mockRect(picker, { width: 40, height: 0, bottom: 100, right: 200 });
 
-    setStarCenter('p1', '');
+    setStarCenter('p1');
     installStarCenterClearControl();
     expect(getControl()?.style.top).toBe('100px');
   });
@@ -182,7 +182,7 @@ describe('starCenterClearControl — syncPosition и rect.width/height', () => {
     mockRect(picker, { width: 40, height: 40, bottom: 150, right: 300 });
     window.innerWidth = 1000;
 
-    setStarCenter('p1', '');
+    setStarCenter('p1');
     installStarCenterClearControl();
     expect(getControl()?.style.top).toBe('150px');
     // 1000 - 300 = 700.
@@ -228,7 +228,7 @@ describe('starCenterClearControl — refresh попапа при сбросе ц
 
   test('попап точки B открыт + центр на A - клик map-control закрывает и переоткрывает B', () => {
     createMapWithRegionPicker();
-    setStarCenter('A', 'Alpha');
+    setStarCenter('A');
     const popup = createPopupWithClose('B');
     const closeSpy = jest.fn();
     popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
@@ -244,7 +244,7 @@ describe('starCenterClearControl — refresh попапа при сбросе ц
 
   test('попап бывшего центра открыт - клик map-control НЕ переоткрывает попап', () => {
     createMapWithRegionPicker();
-    setStarCenter('A', 'Alpha');
+    setStarCenter('A');
     const popup = createPopupWithClose('A');
     const closeSpy = jest.fn();
     popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
@@ -260,7 +260,7 @@ describe('starCenterClearControl — refresh попапа при сбросе ц
 
   test('попап не открыт - клик map-control НЕ переоткрывает', () => {
     createMapWithRegionPicker();
-    setStarCenter('A', 'Alpha');
+    setStarCenter('A');
 
     installStarCenterClearControl();
     const button = getControl()?.querySelector<HTMLButtonElement>('button');
@@ -303,7 +303,7 @@ describe('starCenterClearControl — window resize', () => {
       };
     };
     window.innerWidth = 500;
-    setStarCenter('p1', '');
+    setStarCenter('p1');
     installStarCenterClearControl();
     const control = getControl();
     expect(control?.style.top).toBe('50px');
@@ -392,7 +392,7 @@ describe('starCenterClearControl — ResizeObserver', () => {
       };
     };
     window.innerWidth = 1000;
-    setStarCenter('p1', '');
+    setStarCenter('p1');
     installStarCenterClearControl();
     const control = getControl();
     expect(control?.style.top).toBe('30px');

@@ -65,7 +65,7 @@ function createControl(): HTMLDivElement {
       const star = getStarCenter();
       const centerBefore = star?.guid ?? null;
       clearStarCenter();
-      if (star) showCenterClearedToast(star.name);
+      if (star) showCenterClearedToast();
       // При снятии центра через map-control попап другой точки может быть
       // открыт - там #draw-count и possible_lines всё ещё показывают
       // отфильтрованный список (только бывший центр). Без перезапроса /api/draw

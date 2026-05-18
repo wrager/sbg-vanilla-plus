@@ -426,7 +426,7 @@ describe('drawFilter', () => {
       lockProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
-    setStarCenter('center', '');
+    setStarCenter('center');
     createPopup('center');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
@@ -450,7 +450,7 @@ describe('drawFilter', () => {
       lockProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
-    setStarCenter('center', '');
+    setStarCenter('center');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
@@ -479,7 +479,7 @@ describe('drawFilter', () => {
       lockProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
-    setStarCenter('center', '');
+    setStarCenter('center');
     const popupCenter = createPopup('center');
     let resolveFetch: (response: Response) => void = () => {};
     window.fetch = jest.fn(
@@ -516,7 +516,7 @@ describe('drawFilter', () => {
       lockProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
-    setStarCenter('center', '');
+    setStarCenter('center');
     createPopup('center', true);
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
@@ -583,7 +583,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
       lockProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
-    setStarCenter('center', '');
+    setStarCenter('center');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
@@ -679,7 +679,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
       lockProtectionMode: 'off',
       maxDistanceMeters: 500,
     });
-    setStarCenter('center', '');
+    setStarCenter('center');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
@@ -709,7 +709,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1']);
-    setStarCenter('center', '');
+    setStarCenter('center');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
@@ -760,7 +760,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
       maxDistanceMeters: 500,
     });
     setLockedPoints(['fav1']);
-    setStarCenter('center', '');
+    setStarCenter('center');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
@@ -787,7 +787,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
       maxDistanceMeters: 500,
     });
     setLockedPoints(['fav1']);
-    setStarCenter('center', '');
+    setStarCenter('center');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
@@ -835,7 +835,7 @@ describe('drawFilter — hideAllLocked mode-aware toast', () => {
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1']);
-    setStarCenter('center', '');
+    setStarCenter('center');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
@@ -883,7 +883,7 @@ describe('drawFilter — hideAllLocked mode-aware toast', () => {
       maxDistanceMeters: 500,
     });
     setLockedPoints(['fav1']);
-    setStarCenter('center', '');
+    setStarCenter('center');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
