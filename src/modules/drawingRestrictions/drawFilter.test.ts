@@ -73,7 +73,7 @@ describe('drawFilter', () => {
   test('пропускает запросы не к /api/draw', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'fav1', a: 1 }] }));
@@ -88,7 +88,7 @@ describe('drawFilter', () => {
   test('protectLastKey скрывает последний ключ locked-точки', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     window.fetch = jest.fn().mockResolvedValue(
@@ -109,10 +109,10 @@ describe('drawFilter', () => {
     expect(body.data.find((entry) => entry.p === 'fav1')).toBeUndefined();
   });
 
-  test('hideAllFavorites скрывает все locked-точки независимо от amount', async () => {
+  test('hideAllLocked скрывает все locked-точки независимо от amount', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'hideAllFavorites',
+      lockProtectionMode: 'hideAllLocked',
       maxDistanceMeters: 0,
     });
     window.fetch = jest.fn().mockResolvedValue(
@@ -138,7 +138,7 @@ describe('drawFilter', () => {
     // locked-стопки в другом инвентаре.
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'hideAllFavorites',
+      lockProtectionMode: 'hideAllLocked',
       maxDistanceMeters: 0,
     });
     localStorage.setItem(
@@ -167,7 +167,7 @@ describe('drawFilter', () => {
   test('maxDistanceMeters скрывает цели дальше порога', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'off',
+      lockProtectionMode: 'off',
       maxDistanceMeters: 500,
     });
     window.fetch = jest.fn().mockResolvedValue(
@@ -189,7 +189,7 @@ describe('drawFilter', () => {
   test('не трогает POST /api/draw', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'hideAllFavorites',
+      lockProtectionMode: 'hideAllLocked',
       maxDistanceMeters: 0,
     });
     window.fetch = jest.fn().mockResolvedValue(buildResponse({ line: { id: 123 } }));
@@ -204,7 +204,7 @@ describe('drawFilter', () => {
   test('не падает при невалидном JSON', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1']);
@@ -218,7 +218,7 @@ describe('drawFilter', () => {
   test('response.json = строка — возвращается исходный Response', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1']);
@@ -232,7 +232,7 @@ describe('drawFilter', () => {
   test('response.json = null — возвращается исходный Response', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1']);
@@ -246,7 +246,7 @@ describe('drawFilter', () => {
   test('response.json без поля data — возвращается исходный Response', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1']);
@@ -260,7 +260,7 @@ describe('drawFilter', () => {
   test('response.json с data = null — возвращается исходный Response', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1']);
@@ -274,7 +274,7 @@ describe('drawFilter', () => {
   test('response.json с data-строкой — возвращается исходный Response', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1']);
@@ -288,7 +288,7 @@ describe('drawFilter', () => {
   test('все фильтры отключены — ответ не модифицируется', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'off',
+      lockProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
     const originalResponse = buildResponse({ data: [{ p: 'fav1', a: 1 }] });
@@ -305,7 +305,7 @@ describe('drawFilter', () => {
   test('content-length не копируется в headers модифицированного Response', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'hideAllFavorites',
+      lockProtectionMode: 'hideAllLocked',
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1']);
@@ -337,7 +337,7 @@ describe('drawFilter', () => {
     // но drawFilterEnabled = false и фильтр не срабатывает на /api/draw.
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     const mockFetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'fav1', a: 1 }] }));
@@ -361,7 +361,7 @@ describe('drawFilter', () => {
   test('повторный install после uninstall - тот же wrapper, фильтр снова работает', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'fav1', a: 1 }] }));
@@ -384,7 +384,7 @@ describe('drawFilter', () => {
     // window.fetch к native, refsLayerSync-обёртка тоже вылетела бы из цепочки.
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'off',
+      lockProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
     const native = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'a' }] }));
@@ -423,7 +423,7 @@ describe('drawFilter', () => {
   test('звезда: открыт попап центра — фильтр не срабатывает', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'off',
+      lockProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
     setStarCenter('center', '');
@@ -447,7 +447,7 @@ describe('drawFilter', () => {
   test('звезда: открыт попап другой точки — остаётся только центр', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'off',
+      lockProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
     setStarCenter('center', '');
@@ -476,7 +476,7 @@ describe('drawFilter', () => {
     // (данные были собраны для контекста A).
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'off',
+      lockProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
     setStarCenter('center', '');
@@ -513,7 +513,7 @@ describe('drawFilter', () => {
   test('звезда: попап hidden трактуется как «попап центра не открыт»', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'off',
+      lockProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
     setStarCenter('center', '');
@@ -536,7 +536,7 @@ describe('drawFilter', () => {
   test('настройки перечитываются при каждом запросе', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'off',
+      lockProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1']);
@@ -549,7 +549,7 @@ describe('drawFilter', () => {
 
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
 
@@ -566,7 +566,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
   test('s=0 d=0 k=0 (нет скрытых) — showToast не вызван', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     // Locked-точек нет → last-key не сработает. Центра нет, distance=0.
@@ -580,7 +580,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
   test('s=1 d=0 k=0 — star-only toast', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'off',
+      lockProtectionMode: 'off',
       maxDistanceMeters: 0,
     });
     setStarCenter('center', '');
@@ -605,7 +605,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
   test('s=0 d=1 k=0 — distance-only toast', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'off',
+      lockProtectionMode: 'off',
       maxDistanceMeters: 500,
     });
     window.fetch = jest.fn().mockResolvedValue(
@@ -629,7 +629,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
   test('s=0 d=0 k=1 — last-key toast с count=1 (единственное число)', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1']);
@@ -653,7 +653,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
   test('s=0 d=0 k=1 — last-key toast с count=2 (множественное)', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1', 'fav2']);
@@ -676,7 +676,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
   test('s=1 d=1 k=0 — combined star+distance toast (totalHidden)', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'off',
+      lockProtectionMode: 'off',
       maxDistanceMeters: 500,
     });
     setStarCenter('center', '');
@@ -705,7 +705,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
   test('s=1 d=0 k=1 — combined star+lastKey toast с breakdown', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1']);
@@ -731,7 +731,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
   test('s=0 d=1 k=1 — combined distance+lastKey toast', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 500,
     });
     setLockedPoints(['fav1']);
@@ -756,7 +756,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
   test('s=1 d=1 k=1 — all-three toast', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 500,
     });
     setLockedPoints(['fav1']);
@@ -783,7 +783,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
     // Двойная проверка: для all-three не вызываются дополнительные toast'ы.
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 500,
     });
     setLockedPoints(['fav1']);
@@ -803,11 +803,11 @@ describe('drawFilter — выбор toast по комбинации счётчи
   });
 });
 
-describe('drawFilter — hideAllFavorites mode-aware toast', () => {
-  test('hideAllFavorites соло — показывается toast с формулировкой "N locked points"', async () => {
+describe('drawFilter — hideAllLocked mode-aware toast', () => {
+  test('hideAllLocked соло — показывается toast с формулировкой "N locked points"', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'hideAllFavorites',
+      lockProtectionMode: 'hideAllLocked',
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1', 'fav2']);
@@ -824,14 +824,14 @@ describe('drawFilter — hideAllFavorites mode-aware toast', () => {
     await window.fetch('/api/draw');
     expect(showToastMock).toHaveBeenCalledTimes(1);
     expect(lastToastMessage()).toContain('2 locked points');
-    // protectLastKey-формулировка не должна попасть в hideAllFavorites toast.
+    // protectLastKey-формулировка не должна попасть в hideAllLocked toast.
     expect(lastToastMessage()).not.toContain('last key');
   });
 
-  test('hideAllFavorites + star — combined toast включает обе причины', async () => {
+  test('hideAllLocked + star — combined toast включает обе причины', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'hideAllFavorites',
+      lockProtectionMode: 'hideAllLocked',
       maxDistanceMeters: 0,
     });
     setLockedPoints(['fav1']);
@@ -853,10 +853,10 @@ describe('drawFilter — hideAllFavorites mode-aware toast', () => {
     expect(lastToastMessage()).toContain('locked points');
   });
 
-  test('hideAllFavorites + distance — combined toast', async () => {
+  test('hideAllLocked + distance — combined toast', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'hideAllFavorites',
+      lockProtectionMode: 'hideAllLocked',
       maxDistanceMeters: 500,
     });
     setLockedPoints(['fav1']);
@@ -876,10 +876,10 @@ describe('drawFilter — hideAllFavorites mode-aware toast', () => {
     expect(lastToastMessage()).toContain('locked points');
   });
 
-  test('hideAllFavorites + star + distance — all-three toast c hideAll-формулировкой', async () => {
+  test('hideAllLocked + star + distance — all-three toast c hideAll-формулировкой', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'hideAllFavorites',
+      lockProtectionMode: 'hideAllLocked',
       maxDistanceMeters: 500,
     });
     setLockedPoints(['fav1']);
@@ -899,16 +899,16 @@ describe('drawFilter — hideAllFavorites mode-aware toast', () => {
     expect(showToastMock).toHaveBeenCalledTimes(1);
     expect(lastToastMessage()).toContain('star mode');
     expect(lastToastMessage()).toContain('distance');
-    // hideAllFavorites all-three использует формулировку "locked points",
+    // hideAllLocked all-three использует формулировку "locked points",
     // не "last-key protection" (это для protectLastKey).
     expect(lastToastMessage()).toContain('locked points');
     expect(lastToastMessage()).not.toContain('last-key');
   });
 
-  test('hideAllFavorites без locked-точек — toast не показывается', async () => {
+  test('hideAllLocked без locked-точек — toast не показывается', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'hideAllFavorites',
+      lockProtectionMode: 'hideAllLocked',
       maxDistanceMeters: 0,
     });
     window.fetch = jest.fn().mockResolvedValue(

@@ -23,7 +23,7 @@ export interface IBuildPredicatesDeps {
 }
 
 function keepByLockMode(
-  mode: IDrawingRestrictionsSettings['favProtectionMode'],
+  mode: IDrawingRestrictionsSettings['lockProtectionMode'],
   lockedPoints: ReadonlySet<string>,
 ): DrawPredicate | null {
   if (mode === 'off') return null;
@@ -36,7 +36,7 @@ function keepByLockMode(
       return !(lockedPoints.has(pointGuid) && amount === 1);
     };
   }
-  // hideAllFavorites — историческое имя режима, теперь «скрыть все locked-точки».
+  // hideAllLocked: скрываем все locked-точки независимо от amount.
   return (entry) => {
     const pointGuid = entry.p;
     if (typeof pointGuid !== 'string') return true;
@@ -67,7 +67,7 @@ function keepByStar(
 
 export function buildPredicates(deps: IBuildPredicatesDeps): DrawPredicate[] {
   const predicates: DrawPredicate[] = [];
-  const lockPredicate = keepByLockMode(deps.settings.favProtectionMode, deps.lockedPoints);
+  const lockPredicate = keepByLockMode(deps.settings.lockProtectionMode, deps.lockedPoints);
   if (lockPredicate) predicates.push(lockPredicate);
   const distancePredicate = keepByDistance(deps.settings.maxDistanceMeters);
   if (distancePredicate) predicates.push(distancePredicate);
@@ -91,13 +91,13 @@ export function applyPredicates<T extends IDrawEntry>(
  * drawFilter (mode-aware wording, см. lockMessage).
  *
  * - mode='protectLastKey': считаем locked-точки с amount=1 (только последний ключ).
- * - mode='hideAllFavorites': считаем все locked-точки (любой amount).
+ * - mode='hideAllLocked': считаем все locked-точки (любой amount).
  * - mode='off': предикат не создаётся, ничего не скрывается.
  */
 export function countHiddenByLockMode(
   entries: readonly IDrawEntry[],
   lockedPoints: ReadonlySet<string>,
-  mode: IDrawingRestrictionsSettings['favProtectionMode'],
+  mode: IDrawingRestrictionsSettings['lockProtectionMode'],
 ): number {
   if (mode === 'off' || lockedPoints.size === 0) return 0;
   let hidden = 0;
@@ -107,7 +107,7 @@ export function countHiddenByLockMode(
       if (typeof entry.a !== 'number') continue;
       if (lockedPoints.has(entry.p) && entry.a === 1) hidden += 1;
     } else {
-      // hideAllFavorites: любой amount считается, поле `a` для решения не нужно.
+      // hideAllLocked: любой amount считается, поле `a` для решения не нужно.
       if (lockedPoints.has(entry.p)) hidden += 1;
     }
   }

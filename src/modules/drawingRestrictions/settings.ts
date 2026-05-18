@@ -1,8 +1,8 @@
-export type FavProtectionMode = 'off' | 'protectLastKey' | 'hideAllFavorites';
+export type LockProtectionMode = 'off' | 'protectLastKey' | 'hideAllLocked';
 
 export interface IDrawingRestrictionsSettings {
   version: number;
-  favProtectionMode: FavProtectionMode;
+  lockProtectionMode: LockProtectionMode;
   maxDistanceMeters: number;
 }
 
@@ -12,13 +12,13 @@ const LEGACY_STORAGE_KEY = 'svp_favoritedPoints';
 export function defaultDrawingRestrictionsSettings(): IDrawingRestrictionsSettings {
   return {
     version: 1,
-    favProtectionMode: 'protectLastKey',
+    lockProtectionMode: 'protectLastKey',
     maxDistanceMeters: 0,
   };
 }
 
-function isFavProtectionMode(value: unknown): value is FavProtectionMode {
-  return value === 'off' || value === 'protectLastKey' || value === 'hideAllFavorites';
+function isLockProtectionMode(value: unknown): value is LockProtectionMode {
+  return value === 'off' || value === 'protectLastKey' || value === 'hideAllLocked';
 }
 
 function isSettings(value: unknown): value is IDrawingRestrictionsSettings {
@@ -27,14 +27,14 @@ function isSettings(value: unknown): value is IDrawingRestrictionsSettings {
     value !== null &&
     'version' in value &&
     typeof value.version === 'number' &&
-    'favProtectionMode' in value &&
-    isFavProtectionMode(value.favProtectionMode) &&
+    'lockProtectionMode' in value &&
+    isLockProtectionMode(value.lockProtectionMode) &&
     'maxDistanceMeters' in value &&
     typeof value.maxDistanceMeters === 'number'
   );
 }
 
-function readLegacyFavMode(): FavProtectionMode | null {
+function readLegacyLockMode(): LockProtectionMode | null {
   const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
   if (!raw) return null;
   let parsed: unknown;
@@ -76,15 +76,15 @@ export function saveDrawingRestrictionsSettings(settings: IDrawingRestrictionsSe
 /**
  * Идемпотентная миграция: при отсутствии `svp_drawingRestrictions` переносит
  * настройку `hideLastFavRef` из legacy-ключа `svp_favoritedPoints` и сохраняет
- * defaults с подставленным `favProtectionMode`. Вызывается из `init()` модуля —
+ * defaults с подставленным `lockProtectionMode`. Вызывается из `init()` модуля —
  * один раз за жизнь страницы, до первого `load`.
  */
 export function migrateDrawingRestrictionsSettings(): void {
   if (localStorage.getItem(STORAGE_KEY) !== null) return;
-  const legacy = readLegacyFavMode();
+  const legacy = readLegacyLockMode();
   const migrated: IDrawingRestrictionsSettings = {
     ...defaultDrawingRestrictionsSettings(),
-    favProtectionMode: legacy ?? 'protectLastKey',
+    lockProtectionMode: legacy ?? 'protectLastKey',
   };
   saveDrawingRestrictionsSettings(migrated);
 }

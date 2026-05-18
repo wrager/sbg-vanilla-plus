@@ -15,9 +15,9 @@
 
 ## Toast-уведомления о скрытии
 
-Когда модифицированный ответ `/api/draw` содержит меньше целей, чем оригинал, игроку показывается ровно один toast — единый на response, выбираемый по комбинации активных правил. Bitmask 3-битный: `s` (звезда), `d` (дистанция), `lock` (защита locked-точек, оба режима — `protectLastKey` и `hideAllFavorites`).
+Когда модифицированный ответ `/api/draw` содержит меньше целей, чем оригинал, игроку показывается ровно один toast — единый на response, выбираемый по комбинации активных правил. Bitmask 3-битный: `s` (звезда), `d` (дистанция), `lock` (защита locked-точек, оба режима — `protectLastKey` и `hideAllLocked`).
 
-| Причины скрытия         | Пример сообщения (mode = `protectLastKey`)                         | Пример сообщения (mode = `hideAllFavorites`)                |
+| Причины скрытия         | Пример сообщения (mode = `protectLastKey`)                         | Пример сообщения (mode = `hideAllLocked`)                   |
 | ----------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------- |
 | Только звезда           | «Точки (N) скрыты: режим "Звезда"»                                 | «Точки (N) скрыты: режим "Звезда"»                          |
 | Только дистанция        | «Точки (N) скрыты: ограничение дальности (макс. X м)»              | «Точки (N) скрыты: ограничение дальности (макс. X м)»       |
@@ -27,19 +27,19 @@
 | Дистанция + защита lock | «Скрыто: N за X м, последние M ключей защищённых точек»            | «Скрыто: N за X м, M точек с замочком»                      |
 | Все три причины         | «Точки (N) скрыты: "Звезда" + дальность + защита последних ключей» | «Точки (N) скрыты: "Звезда" + дальность + точки с замочком» |
 
-Формулировка для бита `lock` зависит от выбранного режима защиты (radio в настройках модуля): `protectLastKey` использует склонение «последний/последние ключ/ключа/ключей» через helper `pluralizeLastRefs`; `hideAllFavorites` использует «N точек с замочком». Количество для одиночных и комбо-причин с `lock` — по breakdown; для «звезда + дистанция» и all-three показывается totalHidden (реально скрыто уникально после AND-композиции).
+Формулировка для бита `lock` зависит от выбранного режима защиты (radio в настройках модуля): `protectLastKey` использует склонение «последний/последние ключ/ключа/ключей» через helper `pluralizeLastRefs`; `hideAllLocked` использует «N точек с замочком». Количество для одиночных и комбо-причин с `lock` — по breakdown; для «звезда + дистанция» и all-three показывается totalHidden (реально скрыто уникально после AND-композиции).
 
 ## Архитектура
 
 - `drawingRestrictions.ts` — определение модуля. В `init()` один раз вызывается `migrateDrawingRestrictionsSettings()` для переноса `hideLastFavRef`; в `enable()` ставятся все перехватчики и observers.
-- `drawFilter.ts` — единственный перехватчик `GET /api/draw`. На `enable()` оборачивает `window.fetch`, на `disable()` восстанавливает оригинал. Двойная установка идемпотентна. При пустом массиве предикатов отдаёт оригинальный Response без парсинга JSON. На каждом ответе перечитывает `inventory-cache` через `buildLockedPointGuids` — фильтр сразу видит свежие замочки, проставленные пользователем нативной кнопкой игры или массовой миграцией. После применения предикатов считает три counter'а (`star/distance/lock`) и выбирает toast через `pickToastMessage` (bitmask-селектор на 8 ячеек, формулировка для бита `lock` зависит от `favProtectionMode` через `lockMessage` / `lockPhrase`).
+- `drawFilter.ts` — единственный перехватчик `GET /api/draw`. На `enable()` оборачивает `window.fetch`, на `disable()` восстанавливает оригинал. Двойная установка идемпотентна. При пустом массиве предикатов отдаёт оригинальный Response без парсинга JSON. На каждом ответе перечитывает `inventory-cache` через `buildLockedPointGuids` — фильтр сразу видит свежие замочки, проставленные пользователем нативной кнопкой игры или массовой миграцией. После применения предикатов считает три counter'а (`star/distance/lock`) и выбирает toast через `pickToastMessage` (bitmask-селектор на 8 ячеек, формулировка для бита `lock` зависит от `lockProtectionMode` через `lockMessage` / `lockPhrase`).
 - `filterRules.ts` — чистые предикаты и counter'ы. `buildPredicates({ settings, lockedPoints, starCenterGuid, currentPopupGuid })` возвращает активные правила, `applyPredicates()` — композиция AND. `countHiddenByStar` / `countHiddenByDistance` / `countHiddenByLockMode` — для toast-breakdown; `countHiddenByLockMode` единый для обоих режимов защиты locked-точек, режим разделяет внутри.
 - `starCenter*` — компоненты режима звезды: `starCenter.ts` (хранилище + событие), `starCenterButton.ts` (кнопка в попапе), `starCenterClearControl.ts` (OL-control на карте), `starCenterHighlight.ts` (overlay-слой с жёлтым кольцом), `starCenterIcon.ts` (SVG иконок), `starCenterToasts.ts` (общие toast-функции «центр назначен» / «центр снят» — используются и попапом, и clear-control'ом).
 - `starCenterButton.ts` и `starCenterHighlight.ts` используют флаг `pendingInstall` для защиты от race при async-установке через `waitForElement` / `getOlMap`.
 
 ## Настройки
 
-- `favProtectionMode: 'off' | 'protectLastKey' | 'hideAllFavorites'` — режим защиты locked-точек (default: `protectLastKey`)
+- `lockProtectionMode: 'off' | 'protectLastKey' | 'hideAllLocked'` — режим защиты locked-точек (default: `protectLastKey`)
 - `maxDistanceMeters: number` — максимальная дистанция в метрах, 0 отключает фильтр (default: `0`)
 - localStorage key: `svp_drawingRestrictions`
 
@@ -47,8 +47,8 @@
 
 У пользователей предыдущих версий SVP в localStorage может лежать ключ `svp_favoritedPoints` с полем `hideLastFavRef: boolean`. `migrateDrawingRestrictionsSettings()` вызывается один раз из `init()` модуля и при отсутствии `svp_drawingRestrictions` инициализирует свежий ключ из legacy-значения:
 
-- `true` → `favProtectionMode: 'protectLastKey'`
-- `false` → `favProtectionMode: 'off'`
+- `true` → `lockProtectionMode: 'protectLastKey'`
+- `false` → `lockProtectionMode: 'off'`
 - значение не-boolean / legacy-ключ отсутствует → defaults с `protectLastKey`
 
 После создания `svp_drawingRestrictions` миграция больше не срабатывает. `loadDrawingRestrictionsSettings()` — чистый геттер, без side effect'ов.

@@ -131,11 +131,11 @@ describe('openPanel (клик по Configure)', () => {
   });
 });
 
-describe('buildPanel — radio favProtectionMode', () => {
+describe('buildPanel — radio lockProtectionMode', () => {
   test('текущее значение отмечено как checked', () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'hideAllFavorites',
+      lockProtectionMode: 'hideAllLocked',
       maxDistanceMeters: 0,
     });
     createModuleRow('drawingRestrictions');
@@ -144,27 +144,27 @@ describe('buildPanel — radio favProtectionMode', () => {
     const radios = getPanel()?.querySelectorAll<HTMLInputElement>('input[type="radio"]');
     expect(radios).toBeDefined();
     const checked = Array.from(radios ?? []).find((radio) => radio.checked);
-    expect(checked?.value).toBe('hideAllFavorites');
+    expect(checked?.value).toBe('hideAllLocked');
   });
 
   test('смена radio сохраняет новый режим', () => {
     createModuleRow('drawingRestrictions');
     installSettingsUi();
     getConfigureButton()?.click();
-    const radio = getPanel()?.querySelector<HTMLInputElement>('input[value="hideAllFavorites"]');
+    const radio = getPanel()?.querySelector<HTMLInputElement>('input[value="hideAllLocked"]');
     expect(radio).not.toBeNull();
     if (radio) {
       radio.checked = true;
       radio.dispatchEvent(new Event('change'));
     }
-    expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('hideAllFavorites');
+    expect(loadDrawingRestrictionsSettings().lockProtectionMode).toBe('hideAllLocked');
   });
 
   // 6.A FALSE: `!radio.checked` → выход (только программный снят).
   test('событие change с checked=false не сохраняет', () => {
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'protectLastKey',
+      lockProtectionMode: 'protectLastKey',
       maxDistanceMeters: 0,
     });
     createModuleRow('drawingRestrictions');
@@ -176,7 +176,7 @@ describe('buildPanel — radio favProtectionMode', () => {
       radio.dispatchEvent(new Event('change'));
     }
     // Настройка не изменилась (остался protectLastKey).
-    expect(loadDrawingRestrictionsSettings().favProtectionMode).toBe('protectLastKey');
+    expect(loadDrawingRestrictionsSettings().lockProtectionMode).toBe('protectLastKey');
   });
 });
 
@@ -205,7 +205,7 @@ describe('buildPanel — distance input', () => {
     uninstallSettingsUi();
     saveDrawingRestrictionsSettings({
       version: 1,
-      favProtectionMode: 'off',
+      lockProtectionMode: 'off',
       maxDistanceMeters: 750,
     });
     document.body.innerHTML = '';
@@ -319,7 +319,7 @@ describe('settingsUi — refresh открытого попапа при изме
     delete (window as unknown as { showInfo?: typeof showInfoMock }).showInfo;
   });
 
-  test('смена favProtectionMode при открытом попапе - попап переоткрывается', () => {
+  test('смена lockProtectionMode при открытом попапе - попап переоткрывается', () => {
     const popup = createPopup('B');
     const closeSpy = jest.fn();
     popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
@@ -328,7 +328,7 @@ describe('settingsUi — refresh открытого попапа при изме
     installSettingsUi();
     getConfigureButton()?.click();
 
-    const radio = getPanel()?.querySelector<HTMLInputElement>('input[value="hideAllFavorites"]');
+    const radio = getPanel()?.querySelector<HTMLInputElement>('input[value="hideAllLocked"]');
     if (radio) {
       radio.checked = true;
       radio.dispatchEvent(new Event('change'));
@@ -361,7 +361,7 @@ describe('settingsUi — refresh открытого попапа при изме
     createModuleRow('drawingRestrictions');
     installSettingsUi();
     getConfigureButton()?.click();
-    const radio = getPanel()?.querySelector<HTMLInputElement>('input[value="hideAllFavorites"]');
+    const radio = getPanel()?.querySelector<HTMLInputElement>('input[value="hideAllLocked"]');
     if (radio) {
       radio.checked = true;
       radio.dispatchEvent(new Event('change'));

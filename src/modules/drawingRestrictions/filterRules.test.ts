@@ -25,7 +25,7 @@ function settings(
 ): IDrawingRestrictionsSettings {
   return {
     version: 1,
-    favProtectionMode: 'off',
+    lockProtectionMode: 'off',
     maxDistanceMeters: 0,
     ...partial,
   };
@@ -56,7 +56,7 @@ describe('buildPredicates', () => {
   });
 
   test('favMode=protectLastKey — скрывает locked-точку с a=1', () => {
-    expect(run(settings({ favProtectionMode: 'protectLastKey' }))).toEqual([
+    expect(run(settings({ lockProtectionMode: 'protectLastKey' }))).toEqual([
       'fav2',
       'n1',
       'n2',
@@ -65,8 +65,8 @@ describe('buildPredicates', () => {
     ]);
   });
 
-  test('favMode=hideAllFavorites — скрывает все locked-точки', () => {
-    expect(run(settings({ favProtectionMode: 'hideAllFavorites' }))).toEqual([
+  test('favMode=hideAllLocked — скрывает все locked-точки', () => {
+    expect(run(settings({ lockProtectionMode: 'hideAllLocked' }))).toEqual([
       'n1',
       'n2',
       'p3',
@@ -76,7 +76,7 @@ describe('buildPredicates', () => {
 
   test('favMode без locked-точек — ничего не фильтрует', () => {
     expect(
-      run(settings({ favProtectionMode: 'hideAllFavorites' }), { lockedPoints: new Set() }),
+      run(settings({ lockProtectionMode: 'hideAllLocked' }), { lockedPoints: new Set() }),
     ).toHaveLength(ENTRIES.length);
   });
 
@@ -120,23 +120,23 @@ describe('buildPredicates', () => {
     ]);
   });
 
-  test('композиция hideAllFavorites + distance=500', () => {
-    expect(
-      run(settings({ favProtectionMode: 'hideAllFavorites', maxDistanceMeters: 500 })),
-    ).toEqual(['n1', 'p3', 'noD']);
-  });
-
-  test('композиция protectLastKey + distance=500', () => {
-    expect(run(settings({ favProtectionMode: 'protectLastKey', maxDistanceMeters: 500 }))).toEqual([
+  test('композиция hideAllLocked + distance=500', () => {
+    expect(run(settings({ lockProtectionMode: 'hideAllLocked', maxDistanceMeters: 500 }))).toEqual([
       'n1',
       'p3',
       'noD',
     ]);
   });
 
+  test('композиция protectLastKey + distance=500', () => {
+    expect(run(settings({ lockProtectionMode: 'protectLastKey', maxDistanceMeters: 500 }))).toEqual(
+      ['n1', 'p3', 'noD'],
+    );
+  });
+
   test('композиция всех трёх правил, открыт попап другой точки — остаётся только центр', () => {
     expect(
-      run(settings({ favProtectionMode: 'hideAllFavorites', maxDistanceMeters: 500 }), {
+      run(settings({ lockProtectionMode: 'hideAllLocked', maxDistanceMeters: 500 }), {
         starCenterGuid: STAR_CENTER,
         currentPopupGuid: 'n1',
       }),
@@ -149,9 +149,9 @@ describe('countHiddenByLockMode', () => {
     expect(countHiddenByLockMode(ENTRIES, LOCKED_POINTS, 'protectLastKey')).toBe(1);
   });
 
-  test('mode=hideAllFavorites: считает все locked-точки независимо от amount', () => {
+  test('mode=hideAllLocked: считает все locked-точки независимо от amount', () => {
     // ENTRIES содержит fav1 (a=1) и fav2 (a=3), обе locked - всего 2.
-    expect(countHiddenByLockMode(ENTRIES, LOCKED_POINTS, 'hideAllFavorites')).toBe(2);
+    expect(countHiddenByLockMode(ENTRIES, LOCKED_POINTS, 'hideAllLocked')).toBe(2);
   });
 
   test('mode=off — 0', () => {
@@ -160,7 +160,7 @@ describe('countHiddenByLockMode', () => {
 
   test('пустой set locked-точек — 0 (любой mode)', () => {
     expect(countHiddenByLockMode(ENTRIES, new Set(), 'protectLastKey')).toBe(0);
-    expect(countHiddenByLockMode(ENTRIES, new Set(), 'hideAllFavorites')).toBe(0);
+    expect(countHiddenByLockMode(ENTRIES, new Set(), 'hideAllLocked')).toBe(0);
   });
 
   test('protectLastKey: игнорирует записи без p или a', () => {
@@ -168,14 +168,14 @@ describe('countHiddenByLockMode', () => {
     expect(countHiddenByLockMode(entries, LOCKED_POINTS, 'protectLastKey')).toBe(1);
   });
 
-  test('hideAllFavorites: считает запись без a (любой amount подходит)', () => {
+  test('hideAllLocked: считает запись без a (любой amount подходит)', () => {
     const entries: IDrawEntry[] = [{ p: 'fav1', a: 5 }, { p: 'fav2' }, { p: 'other', a: 1 }];
-    expect(countHiddenByLockMode(entries, LOCKED_POINTS, 'hideAllFavorites')).toBe(2);
+    expect(countHiddenByLockMode(entries, LOCKED_POINTS, 'hideAllLocked')).toBe(2);
   });
 
-  test('hideAllFavorites: игнорирует записи без p', () => {
+  test('hideAllLocked: игнорирует записи без p', () => {
     const entries: IDrawEntry[] = [{ p: 'fav1', a: 5 }, { a: 1 }];
-    expect(countHiddenByLockMode(entries, LOCKED_POINTS, 'hideAllFavorites')).toBe(1);
+    expect(countHiddenByLockMode(entries, LOCKED_POINTS, 'hideAllLocked')).toBe(1);
   });
 });
 

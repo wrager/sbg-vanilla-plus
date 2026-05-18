@@ -1,7 +1,7 @@
 import { t } from '../../core/l10n';
 import { refreshOpenPopup } from './refreshOpenPopup';
 import {
-  type FavProtectionMode,
+  type LockProtectionMode,
   loadDrawingRestrictionsSettings,
   saveDrawingRestrictionsSettings,
 } from './settings';
@@ -17,8 +17,8 @@ let rafId: number | null = null;
 
 function buildFavRow(
   labelText: string,
-  mode: FavProtectionMode,
-  current: FavProtectionMode,
+  mode: LockProtectionMode,
+  current: LockProtectionMode,
   radioName: string,
 ): HTMLLabelElement {
   const row = document.createElement('label');
@@ -31,7 +31,7 @@ function buildFavRow(
   radio.addEventListener('change', () => {
     if (!radio.checked) return;
     const updated = loadDrawingRestrictionsSettings();
-    updated.favProtectionMode = mode;
+    updated.lockProtectionMode = mode;
     saveDrawingRestrictionsSettings(updated);
     // Открытый попап держит stale possible_lines в closure'е - переоткрываем,
     // чтобы новые правила применились без ручного закрытия точки.
@@ -75,7 +75,7 @@ function buildPanel(): HTMLElement {
     buildFavRow(
       t({ en: 'No protection', ru: 'Без защиты' }),
       'off',
-      settings.favProtectionMode,
+      settings.lockProtectionMode,
       radioName,
     ),
   );
@@ -86,7 +86,7 @@ function buildPanel(): HTMLElement {
         ru: 'Защищать только последний ключ',
       }),
       'protectLastKey',
-      settings.favProtectionMode,
+      settings.lockProtectionMode,
       radioName,
     ),
   );
@@ -96,8 +96,8 @@ function buildPanel(): HTMLElement {
         en: 'Hide all locked targets',
         ru: 'Скрывать все цели с замочком',
       }),
-      'hideAllFavorites',
-      settings.favProtectionMode,
+      'hideAllLocked',
+      settings.lockProtectionMode,
       radioName,
     ),
   );
