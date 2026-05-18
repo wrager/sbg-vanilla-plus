@@ -206,7 +206,10 @@ export function getCurrentPopupGuid(): string | null {
   return guid && guid.length > 0 ? guid : null;
 }
 
-async function filterDrawResponse(response: Response): Promise<Response> {
+async function filterDrawResponse(
+  response: Response,
+  popupGuidAtRequest: string | null,
+): Promise<Response> {
   const settings = loadDrawingRestrictionsSettings();
   // Lock-флаг живёт на стопке (поле `f`, бит 0b10) в `inventory-cache`.
   // Перечитываем кэш на каждом ответе — чтобы фильтр сразу видел свежие
@@ -214,13 +217,12 @@ async function filterDrawResponse(response: Response): Promise<Response> {
   // массовой миграцией из favoritesMigration.
   const lockedPoints = buildLockedPointGuids(readInventoryCache());
   const starCenterGuid = getStarCenterGuid();
-  const currentPopupGuid = getCurrentPopupGuid();
 
   const predicates = buildPredicates({
     settings,
     lockedPoints,
     starCenterGuid,
-    currentPopupGuid,
+    currentPopupGuid: popupGuidAtRequest,
   });
   if (predicates.length === 0) return response;
 
@@ -237,7 +239,7 @@ async function filterDrawResponse(response: Response): Promise<Response> {
   parsed.data = applyPredicates(original, predicates);
 
   const message = pickToastMessage({
-    hiddenByStar: countHiddenByStar(original, starCenterGuid, currentPopupGuid),
+    hiddenByStar: countHiddenByStar(original, starCenterGuid, popupGuidAtRequest),
     hiddenByDistance: countHiddenByDistance(original, settings.maxDistanceMeters),
     hiddenByLock: countHiddenByLockMode(original, lockedPoints, settings.favProtectionMode),
     totalHidden: original.length - parsed.data.length,
@@ -273,7 +275,12 @@ export function installDrawFilter(): void {
     const method = getMethod(input, init);
     const promise = native.call(this, input, init);
     if (!matchesDrawList(url, method)) return promise;
-    return promise.then((response) => filterDrawResponse(response));
+    // Контекст попапа снапшотится В МОМЕНТ запроса, не на момент resolve'а
+    // ответа. Иначе при быстрой смене попапа (запрос ушёл из A, ответ пришёл
+    // когда уже открыт B) фильтр применит правила B к данным A, попап получит
+    // отфильтрованный список для чужого контекста.
+    const popupGuidAtRequest = getCurrentPopupGuid();
+    return promise.then((response) => filterDrawResponse(response, popupGuidAtRequest));
   };
 }
 

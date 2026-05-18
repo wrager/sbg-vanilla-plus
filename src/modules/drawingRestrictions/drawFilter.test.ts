@@ -407,6 +407,48 @@ describe('drawFilter', () => {
     expect(body.data.map((entry) => entry.p)).toEqual(['center']);
   });
 
+  test('звезда: popup-guid снапшотится в момент запроса, не в момент response', async () => {
+    // Сценарий: /api/draw ушёл когда был открыт попап центра (фильтр звезды
+    // НЕ применяется - предикат no-op'ит для попапа центра). Между запросом и
+    // ответом пользователь открыл попап другой точки. Без снапшота фильтр на
+    // resolve видит "B != center" и оставит только центр, что некорректно
+    // (данные были собраны для контекста A).
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'off',
+      maxDistanceMeters: 0,
+    });
+    setStarCenter('center', '');
+    const popupCenter = createPopup('center');
+    let resolveFetch: (response: Response) => void = () => {};
+    window.fetch = jest.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    installDrawFilter();
+
+    const pending = window.fetch('/api/draw');
+    // Между request и response пользователь сменил попап.
+    popupCenter.remove();
+    createPopup('other');
+    resolveFetch(
+      buildResponse({
+        data: [
+          { p: 'a', a: 2 },
+          { p: 'b', a: 2 },
+          { p: 'center', a: 5 },
+        ],
+      }),
+    );
+
+    const response = await pending;
+    const body = (await response.json()) as { data: { p: string }[] };
+    // Контекст A (попап центра) - звезда не применяется, все элементы остаются.
+    expect(body.data.map((entry) => entry.p)).toEqual(['a', 'b', 'center']);
+  });
+
   test('звезда: попап hidden трактуется как «попап центра не открыт»', async () => {
     saveDrawingRestrictionsSettings({
       version: 1,
