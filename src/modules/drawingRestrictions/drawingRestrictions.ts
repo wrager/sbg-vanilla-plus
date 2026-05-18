@@ -1,6 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { injectStyles, removeStyles } from '../../core/dom';
 import { installDrawFilter, uninstallDrawFilter } from './drawFilter';
+import { refreshOpenPopup } from './refreshOpenPopup';
 import { migrateDrawingRestrictionsSettings } from './settings';
 import { installSettingsUi, uninstallSettingsUi } from './settingsUi';
 import { installStarCenterButton, uninstallStarCenterButton } from './starCenterButton';
@@ -37,6 +38,11 @@ export const drawingRestrictions: IFeatureModule = {
     installStarCenterButton();
     installStarCenterClearControl();
     installStarCenterHighlight();
+    // Runtime включение модуля при уже открытом попапе: игра получила список
+    // целей без фильтра, possible_lines в closure'е stale. Без переоткрытия
+    // клик "Рисовать" использует нефильтрованный список, пока пользователь
+    // сам не закроет точку.
+    refreshOpenPopup();
   },
 
   disable() {

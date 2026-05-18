@@ -1,4 +1,5 @@
 import { t } from '../../core/l10n';
+import { refreshOpenPopup } from './refreshOpenPopup';
 import {
   type FavProtectionMode,
   loadDrawingRestrictionsSettings,
@@ -32,6 +33,9 @@ function buildFavRow(
     const updated = loadDrawingRestrictionsSettings();
     updated.favProtectionMode = mode;
     saveDrawingRestrictionsSettings(updated);
+    // Открытый попап держит stale possible_lines в closure'е - переоткрываем,
+    // чтобы новые правила применились без ручного закрытия точки.
+    refreshOpenPopup();
   });
   row.appendChild(radio);
   const label = document.createElement('span');
@@ -119,6 +123,7 @@ function buildPanel(): HTMLElement {
     updated.maxDistanceMeters = normalized;
     saveDrawingRestrictionsSettings(updated);
     distanceInput.value = String(normalized);
+    refreshOpenPopup();
   });
   distanceRow.appendChild(distanceInput);
   content.appendChild(distanceRow);

@@ -296,6 +296,80 @@ describe('MutationObserver — переинжект кнопки', () => {
   });
 });
 
+describe('settingsUi — refresh открытого попапа при изменении правил', () => {
+  function createPopup(guid: string): HTMLElement {
+    const popup = document.createElement('div');
+    popup.className = 'info popup';
+    popup.dataset.guid = guid;
+    const closeButton = document.createElement('button');
+    closeButton.className = 'popup-close';
+    popup.appendChild(closeButton);
+    document.body.appendChild(popup);
+    return popup;
+  }
+
+  const showInfoMock = jest.fn();
+
+  beforeEach(() => {
+    showInfoMock.mockClear();
+    (window as unknown as { showInfo: typeof showInfoMock }).showInfo = showInfoMock;
+  });
+
+  afterEach(() => {
+    delete (window as unknown as { showInfo?: typeof showInfoMock }).showInfo;
+  });
+
+  test('смена favProtectionMode при открытом попапе - попап переоткрывается', () => {
+    const popup = createPopup('B');
+    const closeSpy = jest.fn();
+    popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
+
+    createModuleRow('drawingRestrictions');
+    installSettingsUi();
+    getConfigureButton()?.click();
+
+    const radio = getPanel()?.querySelector<HTMLInputElement>('input[value="hideAllFavorites"]');
+    if (radio) {
+      radio.checked = true;
+      radio.dispatchEvent(new Event('change'));
+    }
+
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    expect(showInfoMock).toHaveBeenCalledWith('B');
+  });
+
+  test('смена maxDistanceMeters при открытом попапе - попап переоткрывается', () => {
+    const popup = createPopup('B');
+    const closeSpy = jest.fn();
+    popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
+
+    createModuleRow('drawingRestrictions');
+    installSettingsUi();
+    getConfigureButton()?.click();
+
+    const input = getPanel()?.querySelector<HTMLInputElement>('input[type="number"]');
+    if (input) {
+      input.value = '500';
+      input.dispatchEvent(new Event('change'));
+    }
+
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    expect(showInfoMock).toHaveBeenCalledWith('B');
+  });
+
+  test('смена правил без открытого попапа - showInfo не вызывается', () => {
+    createModuleRow('drawingRestrictions');
+    installSettingsUi();
+    getConfigureButton()?.click();
+    const radio = getPanel()?.querySelector<HTMLInputElement>('input[value="hideAllFavorites"]');
+    if (radio) {
+      radio.checked = true;
+      radio.dispatchEvent(new Event('change'));
+    }
+    expect(showInfoMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('uninstallSettingsUi', () => {
   test('полный uninstall удаляет кнопку, панель, отключает observer', async () => {
     createModuleRow('drawingRestrictions');
