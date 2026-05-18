@@ -21,7 +21,16 @@ interface IDrawResponseShape {
   data: IDrawEntry[];
 }
 
-let originalFetch: typeof window.fetch | null = null;
+// Persistent fetch-wrapper: ставится один раз за жизнь страницы и больше не
+// снимается. uninstall переводит флаг enabled в false; сам wrapper остаётся в
+// цепочке window.fetch. Иначе при последующей обёртке другого модуля (например,
+// refsLayerSync, который оборачивает текущий window.fetch как originalFetch),
+// наш uninstall, восстанавливающий native fetch, выкидывал бы из цепочки и
+// чужие обёртки, поставленные после нашего install. Семантика "снять только
+// своё, не трогать чужое" возможна только через persistent wrapper + флаг.
+let fetchInstalled = false;
+let drawFilterEnabled = false;
+let originalFetchBeforePatch: typeof window.fetch | null = null;
 
 function matchesDrawList(url: string, method: string | undefined): boolean {
   if (!DRAW_URL_PATTERN.test(url)) return false;
@@ -267,13 +276,16 @@ async function filterDrawResponse(
 }
 
 export function installDrawFilter(): void {
-  if (originalFetch) return;
-  originalFetch = window.fetch;
-  const native = originalFetch;
+  drawFilterEnabled = true;
+  if (fetchInstalled) return;
+  fetchInstalled = true;
+  const native = window.fetch;
+  originalFetchBeforePatch = native;
   window.fetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const promise = native.call(this, input, init);
+    if (!drawFilterEnabled) return promise;
     const url = getUrl(input);
     const method = getMethod(input, init);
-    const promise = native.call(this, input, init);
     if (!matchesDrawList(url, method)) return promise;
     // Контекст попапа снапшотится В МОМЕНТ запроса, не на момент resolve'а
     // ответа. Иначе при быстрой смене попапа (запрос ушёл из A, ответ пришёл
@@ -285,7 +297,14 @@ export function installDrawFilter(): void {
 }
 
 export function uninstallDrawFilter(): void {
-  if (!originalFetch) return;
-  window.fetch = originalFetch;
-  originalFetch = null;
+  drawFilterEnabled = false;
+}
+
+/** Тестовый сброс persistent fetch-патча. Только для тестов. */
+export function uninstallDrawFilterForTest(): void {
+  if (!fetchInstalled) return;
+  if (originalFetchBeforePatch) window.fetch = originalFetchBeforePatch;
+  originalFetchBeforePatch = null;
+  fetchInstalled = false;
+  drawFilterEnabled = false;
 }

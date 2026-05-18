@@ -1,4 +1,4 @@
-import { installDrawFilter, uninstallDrawFilter } from './drawFilter';
+import { installDrawFilter, uninstallDrawFilter, uninstallDrawFilterForTest } from './drawFilter';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import { saveDrawingRestrictionsSettings } from './settings';
@@ -63,7 +63,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  uninstallDrawFilter();
+  uninstallDrawFilterForTest();
   window.fetch = originalFetch;
   localStorage.clear();
   document.body.innerHTML = '';
@@ -331,7 +331,10 @@ describe('drawFilter', () => {
     expect(response.headers.get('content-type')).toBe('application/json');
   });
 
-  test('uninstall возвращает оригинальный fetch', async () => {
+  test('uninstall перестаёт фильтровать, но не выкидывает wrapper из цепочки', async () => {
+    // Persistent wrapper: после uninstall window.fetch остаётся обёрнутым
+    // (чтобы не выкинуть из цепочки чужие модули, оборачивающие нас позже),
+    // но drawFilterEnabled = false и фильтр не срабатывает на /api/draw.
     saveDrawingRestrictionsSettings({
       version: 1,
       favProtectionMode: 'protectLastKey',
@@ -341,13 +344,71 @@ describe('drawFilter', () => {
     window.fetch = mockFetch;
     setLockedPoints(['fav1']);
     installDrawFilter();
+    // Wrapper встал поверх mockFetch.
+    expect(window.fetch).not.toBe(mockFetch);
+    const wrapper = window.fetch;
     uninstallDrawFilter();
 
-    expect(window.fetch).toBe(mockFetch);
+    // window.fetch остаётся wrapper'ом, не выкидывается.
+    expect(window.fetch).toBe(wrapper);
 
     const response = await window.fetch('/api/draw');
     const body = (await response.json()) as { data: unknown[] };
+    // Фильтр выключен, fav1 не скрыт.
     expect(body.data).toHaveLength(1);
+  });
+
+  test('повторный install после uninstall - тот же wrapper, фильтр снова работает', async () => {
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'protectLastKey',
+      maxDistanceMeters: 0,
+    });
+    window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'fav1', a: 1 }] }));
+    setLockedPoints(['fav1']);
+    installDrawFilter();
+    const wrapper = window.fetch;
+    uninstallDrawFilter();
+    installDrawFilter();
+    expect(window.fetch).toBe(wrapper);
+
+    const response = await window.fetch('/api/draw');
+    const body = (await response.json()) as { data: unknown[] };
+    // Фильтр снова активен, fav1 скрыт.
+    expect(body.data).toHaveLength(0);
+  });
+
+  test('uninstall сохраняет в цепочке wrapper, поставленный поверх нас', async () => {
+    // Сценарий refsLayerSync: ставит свою обёртку ПОСЛЕ нашего install,
+    // захватывая наш wrapper как originalFetch. Если бы uninstall возвращал
+    // window.fetch к native, refsLayerSync-обёртка тоже вылетела бы из цепочки.
+    saveDrawingRestrictionsSettings({
+      version: 1,
+      favProtectionMode: 'off',
+      maxDistanceMeters: 0,
+    });
+    const native = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'a' }] }));
+    window.fetch = native;
+    installDrawFilter();
+    // Сторонний модуль оборачивает текущий window.fetch (наш wrapper).
+    const outerCalls: string[] = [];
+    const innerOriginal = window.fetch;
+    window.fetch = function outerWrapper(
+      this: typeof window,
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> {
+      outerCalls.push(typeof input === 'string' ? input : 'other');
+      return innerOriginal.call(this, input, init);
+    };
+    const outer = window.fetch;
+    uninstallDrawFilter();
+
+    // outer-wrapper не выкинут из цепочки.
+    expect(window.fetch).toBe(outer);
+    await window.fetch('/api/draw');
+    expect(outerCalls).toEqual(['/api/draw']);
+    expect(native).toHaveBeenCalled();
   });
 
   test('двойная установка не плодит обёртки', () => {
