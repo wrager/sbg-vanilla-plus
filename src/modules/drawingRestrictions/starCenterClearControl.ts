@@ -81,29 +81,35 @@ function createControl(): HTMLDivElement {
 }
 
 function tryAttach(): boolean {
-  if (controlElement && controlElement.isConnected) return true;
   const picker = document.querySelector<HTMLElement>(REGION_PICKER_SELECTOR);
-  if (!picker) return false;
-  // Если игра пересоздала picker (например, при смене режима), наш
-  // ResizeObserver наблюдает за DOM-узлом, которого уже нет в дереве.
-  // Переподписываемся на свежий picker, чтобы syncPosition реагировал на его
-  // resize, а не висел на zombie-ноде.
-  const pickerChanged = pickerElement !== null && pickerElement !== picker;
-  if (pickerChanged && resizeObserver) {
-    resizeObserver.disconnect();
-    resizeObserver.observe(picker);
+  if (!picker) return controlElement?.isConnected ?? false;
+
+  // Reattach нужен и когда control вылетел из DOM, и когда игра пересоздала
+  // picker (наш control остался у старого, ResizeObserver наблюдает за
+  // zombie-нодой). Сценарий: смена игрового режима/ререндер DOM вокруг карты,
+  // при котором picker заменяется свежим узлом, но наш ol-control не удаляется.
+  const pickerChanged = pickerElement !== picker;
+  const controlDetached = !controlElement || !controlElement.isConnected;
+
+  if (pickerChanged || controlDetached) {
+    if (pickerChanged && resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver.observe(picker);
+    }
+    pickerElement = picker;
+    if (!controlElement) controlElement = createControl();
+    // Переставляем сразу после свежего picker. Если control был в DOM у
+    // старого picker - это перемещение, а не дублирование.
+    picker.after(controlElement);
+    if (typeof ResizeObserver !== 'undefined' && !resizeObserver) {
+      resizeObserver = new ResizeObserver(() => {
+        syncPosition();
+      });
+      resizeObserver.observe(picker);
+    }
   }
-  pickerElement = picker;
-  if (!controlElement) controlElement = createControl();
-  picker.after(controlElement);
   syncPosition();
   applyVisibility();
-  if (typeof ResizeObserver !== 'undefined' && !resizeObserver) {
-    resizeObserver = new ResizeObserver(() => {
-      syncPosition();
-    });
-    resizeObserver.observe(picker);
-  }
   return true;
 }
 
@@ -119,11 +125,10 @@ export function installStarCenterClearControl(): void {
     if (rafId !== null) return;
     rafId = requestAnimationFrame(() => {
       rafId = null;
-      if (!controlElement || !controlElement.isConnected) {
-        tryAttach();
-      } else {
-        syncPosition();
-      }
+      // tryAttach сам различает три случая: control вылетел из DOM (reattach),
+      // picker пересоздан (переподписаться на свежий и переместить control),
+      // ничего не изменилось (только syncPosition по родительскому layout).
+      tryAttach();
     });
   });
   domObserver.observe(document.body, { childList: true, subtree: true });

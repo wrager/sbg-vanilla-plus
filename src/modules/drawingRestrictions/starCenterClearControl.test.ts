@@ -452,6 +452,36 @@ describe('starCenterClearControl — ResizeObserver', () => {
     expect(firstObserver?.disconnect).toHaveBeenCalled();
     expect(firstObserver?.observe).toHaveBeenLastCalledWith(newPicker);
   });
+
+  test('picker пересоздан, но control остался в DOM — переезжает к новому picker', async () => {
+    const container = createMapWithRegionPicker();
+    installStarCenterClearControl();
+    const firstPicker = container.querySelector('.region-picker');
+    const firstObserver = lastObserver;
+    const control = getControl();
+    expect(control).not.toBeNull();
+    expect(firstPicker?.nextElementSibling).toBe(control);
+
+    // Игра удалила старый picker, добавила свежий, но наш control НЕ удалён -
+    // он остался в DOM (sibling старого picker'а), но соседом теперь не
+    // является (picker, рядом с которым он стоял, ушёл из дерева).
+    firstPicker?.remove();
+    const newPicker = document.createElement('div');
+    newPicker.className = 'region-picker ol-unselectable ol-control';
+    container.appendChild(newPicker);
+    expect(control?.isConnected).toBe(true);
+    expect(newPicker.previousElementSibling).toBe(control);
+
+    document.body.appendChild(document.createElement('div'));
+    await flushMutations();
+
+    // Тот же control - переехал к новому picker.
+    expect(getControl()).toBe(control);
+    expect(newPicker.nextElementSibling).toBe(control);
+    // ResizeObserver переподписан на новый picker.
+    expect(firstObserver?.disconnect).toHaveBeenCalled();
+    expect(firstObserver?.observe).toHaveBeenLastCalledWith(newPicker);
+  });
 });
 
 describe('starCenterClearControl — ResizeObserver недоступен', () => {
