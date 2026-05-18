@@ -113,7 +113,7 @@ function updateButtons(popup: Element): void {
   } else {
     if (!toggle) {
       toggle = createButton(TOGGLE_CLASS, STAR_ICON_SVG, () => {
-        void onToggleClick(popup);
+        onToggleClick(popup);
       });
       buttons.appendChild(toggle);
     }
@@ -128,7 +128,7 @@ function updateButtons(popup: Element): void {
   }
 }
 
-async function onToggleClick(popup: Element): Promise<void> {
+function onToggleClick(popup: Element): void {
   const guid = getCurrentGuid(popup);
   if (guid === null) return;
   const star = getStarCenter();
@@ -144,9 +144,14 @@ async function onToggleClick(popup: Element): Promise<void> {
     refreshPopupIfStarFilterWasActive(centerBefore);
     return;
   }
-  const name = await getPointName(guid);
-  setStarCenter(guid, name);
-  showCenterAssignedToast(name);
+  // Назначение центра не должно ждать имя точки. getPointName требует
+  // getOlMap(), и если OL capture не резолвится (игровой скрипт обновлён,
+  // ol-инициализация залипла), кнопка молча перестаёт работать - клик не
+  // меняет ни LS, ни UI. Сначала назначаем центр и показываем toast по
+  // request пользователя, имя подтягиваем асинхронно и записываем в LS,
+  // когда оно станет доступно.
+  setStarCenter(guid, '');
+  showCenterAssignedToast('');
   // Назначение нового центра (centerBefore = null) - утилита no-op.
   // Переназначение (centerBefore !== null && popupGuid !== centerBefore) -
   // утилита закрывает попап и переоткрывает через window.showInfo, игра делает
@@ -154,6 +159,15 @@ async function onToggleClick(popup: Element): Promise<void> {
   // отключён, т.к. currentPopup = новый center), счётчик и слайдер становятся
   // корректными и синхронными.
   refreshPopupIfStarFilterWasActive(centerBefore);
+  void getPointName(guid).then((name) => {
+    if (name.length === 0) return;
+    // Между запуском getPointName и его резолвом пользователь мог снять центр
+    // или назначить другой. Обновляем имя только если центр всё ещё на той же
+    // точке, иначе перезатрём свежее назначение чужим именем.
+    const current = getStarCenter();
+    if (current?.guid !== guid) return;
+    setStarCenter(guid, name);
+  });
 }
 
 function startObserving(popup: Element): void {
