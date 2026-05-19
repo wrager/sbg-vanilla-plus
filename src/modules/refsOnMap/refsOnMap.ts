@@ -2004,6 +2004,13 @@ function showViewer(): void {
   // teamsLoading=true и покажет прогресс-бар.
   teamsLoading = false;
   if (closeButton) closeButton.style.display = '';
+  // bottomStack виден только при открытом viewer'е. position:fixed bottom/right
+  // + z-index:10 перекрывает другие fixed-элементы в нижнем правом углу
+  // (например, .svp-star-center-btn из drawingRestrictions). Внутренние
+  // trashButton/cancelButton управляют своей visibility через visibility:hidden
+  // (сохраняют layout внутри viewer'а), а сам контейнер - через display:none
+  // снаружи, чтобы вне viewer'а его геометрический след не блокировал клики.
+  if (bottomStack) bottomStack.style.display = '';
   if (trashButton) {
     trashButton.style.visibility = 'hidden';
     trashButton.style.display = '';
@@ -2087,6 +2094,7 @@ function hideViewer(): void {
   if (cancelButton) cancelButton.style.display = 'none';
   if (selectionInfoEl) selectionInfoEl.style.display = 'none';
   if (modeContainer) modeContainer.style.display = 'none';
+  if (bottomStack) bottomStack.style.display = 'none';
   // .checked у radio НЕ сбрасываем: настройка персистентна, следующий
   // showViewer всё равно перепишет из loadRefsOnMapSettings.
 
@@ -2404,9 +2412,12 @@ export const refsOnMap: IFeatureModule = {
           // bottomStack - общий fixed-контейнер для всех viewer-блоков
           // (selectionInfo / mode / trash / cancel) в правом нижнем углу.
           // Порядок детей фиксируется явным порядком appendChild внизу,
-          // не порядком создания.
+          // не порядком создания. Изначально скрыт - показывается только при
+          // открытом viewer'е через showViewer (см. комментарий там про
+          // перекрытие .svp-star-center-btn).
           bottomStack = document.createElement('div');
           bottomStack.className = 'svp-refs-on-map-bottom-stack';
+          bottomStack.style.display = 'none';
           document.body.appendChild(bottomStack);
 
           trashButton = createTrashButton(() => {

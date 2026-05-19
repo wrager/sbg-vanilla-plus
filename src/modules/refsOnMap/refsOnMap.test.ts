@@ -447,6 +447,29 @@ describe('refsOnMap enable/disable', () => {
     expect(document.querySelector('.svp-refs-on-map-trash')).toBeNull();
   });
 
+  test('bottomStack невидим до showViewer и после hideViewer', async () => {
+    // bottomStack - position:fixed; bottom:8px; right:8px; z-index:10. Когда
+    // viewer закрыт, контейнер с детьми (cancel с visibility:hidden занимает
+    // место в layout) висел бы в нижнем правом углу и перекрывал чужие
+    // fixed-элементы там (drawingRestrictions .svp-star-center-btn в
+    // bottom:5px right:5px). Клики уходили в bottomStack и до кнопок не
+    // доходили. Регрессия после merge - до фикса bottomStack был виден сразу
+    // после enable.
+    await refsOnMap.enable();
+    const stack = document.querySelector<HTMLElement>('.svp-refs-on-map-bottom-stack');
+    expect(stack).not.toBeNull();
+    expect(stack?.style.display).toBe('none');
+
+    setInventoryCache();
+    const showButton = document.querySelector<HTMLElement>('.svp-refs-on-map-button');
+    showButton?.click();
+    expect(stack?.style.display).toBe('');
+
+    const closeButton = document.querySelector<HTMLElement>('.svp-refs-on-map-close');
+    closeButton?.click();
+    expect(stack?.style.display).toBe('none');
+  });
+
   test('show button is hidden when not on refs tab', async () => {
     await refsOnMap.enable();
     const button = document.querySelector('.svp-refs-on-map-button') as HTMLElement;
