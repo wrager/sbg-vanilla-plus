@@ -13,22 +13,16 @@
   width: max-content !important;
   margin: 0;
   padding: 0 !important;
-  border: none !important;
-  background: none !important;
   font-size: 0.9em;
   /* nowrap нужен на самой .self-info, а не на дочерних span: span переносится
      как inline-уровень внутри строкового контекста flex-родителя, и nowrap на
      потомке не запрещает родителю переносить сам потомок. На .self-info nowrap
      гарантирует одну строку для всего содержимого панели. */
   white-space: nowrap;
-  /* Контраст текста поверх тайлов карты (наследуется на все вложенные span).
-     Тройной слой повышает итоговую непрозрачность тени примерно в 3 раза
-     при той же переменной --background-transp - один слой давал недостаточно
-     контраста на светлых тайлах. */
-  text-shadow:
-    0 0 4px var(--background-transp),
-    0 0 4px var(--background-transp),
-    0 0 4px var(--background-transp);
+  /* Контраст поверх тайлов карты: полупрозрачная подложка + рамка читаются
+     лучше, чем многослойная text-shadow, и не зависят от яркости тайлов. */
+  border: 2px var(--border) solid;
+  background-color: var(--background-transp);
 }
 
 /* Центрирование кнопки «Атака» по горизонтали экрана */
