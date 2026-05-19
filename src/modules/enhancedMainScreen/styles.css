@@ -16,6 +16,8 @@
   border: none !important;
   background: none !important;
   font-size: 0.9em;
+  /* Контраст текста поверх тайлов карты (наследуется на все вложенные span) */
+  text-shadow: 0 0 4px var(--background-transp);
 }
 
 /* Центрирование кнопки «Атака» по горизонтали экрана */

@@ -126,6 +126,51 @@ async function setup(): Promise<() => void> {
     selfInfo.appendChild(nameSpan);
   }
 
+  // Уровень и опыт рядом с ником (тем же шрифтом — наследуется от .self-info).
+  // Игра обновляет оба span по id через jQuery .text() (refs/game/script.js:2303-2306),
+  // поэтому reparent не ломает реактивность.
+  const explvSpan = $('#self-info__explv', container);
+  const explvSpanParent = explvSpan?.parentElement ?? null;
+  const explvSpanNextSibling = explvSpan?.nextSibling ?? null;
+  const expSpan = $('#self-info__exp', container);
+  const expSpanParent = expSpan?.parentElement ?? null;
+  const expSpanNextSibling = expSpan?.nextSibling ?? null;
+  const addedSpacers: Text[] = [];
+
+  const appendSpacer = (): void => {
+    const spacer = document.createTextNode(' ');
+    selfInfo.appendChild(spacer);
+    addedSpacers.push(spacer);
+  };
+
+  // Уровень: игра ставит текст вида "(Lv-10)" или "(Ур-10)" через i18next,
+  // пользователь хочет видеть "(10)" — вырезаем любой буквенный префикс
+  // с опциональным дефисом, оставляя число и скобки (работает для en/ru и
+  // любой другой локали). Guard на равенство нужен, чтобы наша же запись
+  // не зациклила observer (в Chromium characterData mutation срабатывает
+  // на присваивание textContent даже при том же значении).
+  let explvObserver: MutationObserver | null = null;
+  if (explvSpan) {
+    appendSpacer();
+    selfInfo.appendChild(explvSpan);
+
+    const stripLvPrefix = (): void => {
+      const current = explvSpan.textContent;
+      const stripped = current.replace(/\p{L}+-?/gu, '');
+      if (current !== stripped) {
+        explvSpan.textContent = stripped;
+      }
+    };
+    stripLvPrefix();
+    explvObserver = observeText(explvSpan, stripLvPrefix);
+  }
+
+  // Опыт: только reparent, реактивность игры по id работает as-is.
+  if (expSpan) {
+    appendSpacer();
+    selfInfo.appendChild(expSpan);
+  }
+
   // Статус инвентаря → текст кнопки OPS
   const opsInventory = setupOpsInventory(container, opsButton);
 
@@ -147,18 +192,33 @@ async function setup(): Promise<() => void> {
 
   container.classList.add('svp-compact');
 
+  const restoreSpan = (
+    span: Element | null,
+    parent: Node | null,
+    nextSibling: Node | null,
+  ): void => {
+    if (!span || !parent) return;
+    if (nextSibling) {
+      parent.insertBefore(span, nextSibling);
+    } else {
+      parent.appendChild(span);
+    }
+  };
+
   return () => {
+    explvObserver?.disconnect();
     opsInventory.destroy();
     if (isHTMLElement(settingsButton)) {
       restoreI18nText(settingsButton, settingsOriginalText, settingsI18nKey);
     }
-    // Вернуть span ника на прежнее место в оригинальной записи
-    if (nameSpan && nameSpanParent) {
-      if (nameSpanNextSibling) {
-        nameSpanParent.insertBefore(nameSpan, nameSpanNextSibling);
-      } else {
-        nameSpanParent.appendChild(nameSpan);
-      }
+    // Вернуть перенесённые span'ы на прежние места в оригинальных записях.
+    // Уровень и опыт возвращаются ДО ника, чтобы их nextSibling-ссылки
+    // оставались валидны (ник возвращается в свой parent, не затрагивающий их).
+    restoreSpan(nameSpan, nameSpanParent ?? null, nameSpanNextSibling);
+    restoreSpan(explvSpan, explvSpanParent, explvSpanNextSibling);
+    restoreSpan(expSpan, expSpanParent, expSpanNextSibling);
+    for (const spacer of addedSpacers) {
+      spacer.remove();
     }
     // Вернуть game-menu после self-info
     if (isHTMLElement(gameMenu)) {
@@ -175,8 +235,8 @@ export const enhancedMainScreen: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Enhanced Main Screen', ru: 'Улучшенный главный экран' },
   description: {
-    en: 'Compacts the top panel: nick below buttons, inventory in OPS, gear icon for Settings, attack button centered',
-    ru: 'Компактная верхняя панель: ник под кнопками, инвентарь в ОРПЦ, шестерёнка вместо «Настройки», кнопка атаки по центру',
+    en: 'Compacts the top panel: nick with level and XP below buttons, inventory in OPS, gear icon for Settings, attack button centered',
+    ru: 'Компактная верхняя панель: ник с уровнем и опытом под кнопками, инвентарь в ОРПЦ, шестерёнка вместо «Настройки», кнопка атаки по центру',
   },
   defaultEnabled: true,
   category: 'ui',
