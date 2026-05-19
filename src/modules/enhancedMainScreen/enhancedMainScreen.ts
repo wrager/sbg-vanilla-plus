@@ -114,9 +114,7 @@ async function setup(): Promise<() => void> {
   const nameSpanNextSibling = nameSpan?.nextSibling ?? null;
 
   // Скрываем все записи self-info (ник, опыт, инвентарь, координаты), effects остаётся
-  const allEntries = $$('.self-info__entry', container).filter(isHTMLElement);
-  const hiddenElements = [...allEntries];
-
+  const hiddenElements = $$('.self-info__entry', container).filter(isHTMLElement);
   for (const element of hiddenElements) {
     element.style.display = 'none';
   }
