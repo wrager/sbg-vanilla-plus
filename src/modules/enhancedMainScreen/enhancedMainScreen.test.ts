@@ -101,14 +101,17 @@ describe('enhancedMainScreen', () => {
     const nameSpan = document.getElementById('self-info__name');
     const explvSpan = document.getElementById('self-info__explv');
     const expSpan = document.getElementById('self-info__exp');
+    if (!selfInfo || !nameSpan || !expSpan || !explvSpan) {
+      throw new Error('self-info spans not found in DOM');
+    }
 
-    expect(explvSpan?.parentElement).toBe(selfInfo);
-    expect(expSpan?.parentElement).toBe(selfInfo);
+    expect(explvSpan.parentElement).toBe(selfInfo);
+    expect(expSpan.parentElement).toBe(selfInfo);
 
-    const directChildren = selfInfo ? [...selfInfo.children] : [];
-    const nameIndex = directChildren.indexOf(nameSpan as Element);
-    const expIndex = directChildren.indexOf(expSpan as Element);
-    const explvIndex = directChildren.indexOf(explvSpan as Element);
+    const directChildren = [...selfInfo.children];
+    const nameIndex = directChildren.indexOf(nameSpan);
+    const expIndex = directChildren.indexOf(expSpan);
+    const explvIndex = directChildren.indexOf(explvSpan);
     expect(nameIndex).toBeGreaterThanOrEqual(0);
     expect(nameIndex).toBeLessThan(expIndex);
     expect(expIndex).toBeLessThan(explvIndex);
