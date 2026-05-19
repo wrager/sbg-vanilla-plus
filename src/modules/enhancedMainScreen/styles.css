@@ -16,8 +16,14 @@
   border: none !important;
   background: none !important;
   font-size: 0.9em;
-  /* Контраст текста поверх тайлов карты (наследуется на все вложенные span) */
-  text-shadow: 0 0 4px var(--background-transp);
+  /* Контраст текста поверх тайлов карты (наследуется на все вложенные span).
+     Тройной слой повышает итоговую непрозрачность тени примерно в 3 раза
+     при той же переменной --background-transp - один слой давал недостаточно
+     контраста на светлых тайлах. */
+  text-shadow:
+    0 0 4px var(--background-transp),
+    0 0 4px var(--background-transp),
+    0 0 4px var(--background-transp);
 }
 
 /* Центрирование кнопки «Атака» по горизонтали экрана */
