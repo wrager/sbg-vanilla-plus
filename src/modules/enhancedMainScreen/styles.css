@@ -4,32 +4,16 @@
   left: 0.45em;
 }
 
-/* Компактная панель информации: ник под game-menu */
+/* Компактная панель информации: ник, опыт и уровень в одну строку под game-menu.
+   display: flex и background приходят из игрового CSS (.self-info), наш набор
+   только переопределяет layout-направление, ширину, отступ и убирает рамку. */
 .topleft-container.svp-compact .self-info {
-  display: flex !important;
-  /* Игровой CSS ставит flex-direction: column для .self-info (вертикальный
-     столбик строк ник/опыт/инвентарь). Без явного override наши перенесённые
-     ник, опыт и уровень тоже стекаются вниз, что выглядит как "перенос
-     текста" - на самом деле это flex-column layout. row возвращает все
-     три span в одну строку; gap из игрового CSS (column-gap 3.6px) даёт
-     отступы между ними автоматически. */
-  flex-direction: row !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
-  text-align: left !important;
-  width: max-content !important;
-  margin: 0;
-  padding: 0 !important;
+  flex-direction: row;
+  align-items: center;
+  width: max-content;
+  margin-top: 0.25em;
   font-size: 0.9em;
-  /* nowrap нужен на самой .self-info, а не на дочерних span: span переносится
-     как inline-уровень внутри строкового контекста flex-родителя, и nowrap на
-     потомке не запрещает родителю переносить сам потомок. На .self-info nowrap
-     гарантирует одну строку для всего содержимого панели. */
-  white-space: nowrap;
-  /* Контраст поверх тайлов карты: полупрозрачная подложка + рамка читаются
-     лучше, чем многослойная text-shadow, и не зависят от яркости тайлов. */
-  border: 2px var(--border) solid;
-  background-color: var(--background-transp);
+  border: none;
 }
 
 /* Опыт - нейтральный цвет системного текста кнопки, чтобы число не
