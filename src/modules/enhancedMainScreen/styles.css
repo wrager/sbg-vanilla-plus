@@ -25,6 +25,12 @@
   background-color: var(--background-transp);
 }
 
+/* Опыт - нейтральный цвет системного текста кнопки, чтобы число не
+   спорило с цветом ника (раскрашен по команде) и уровня. */
+.topleft-container.svp-compact #self-info__exp {
+  color: buttontext;
+}
+
 /* Центрирование кнопки «Атака» по горизонтали экрана */
 #attack-menu {
   position: fixed;
