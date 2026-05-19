@@ -4,6 +4,15 @@
   left: 0.45em;
 }
 
+/* Опыт - длинное число вида "18,726,221" не должно переноситься по
+   запятой, даже если ширина .self-info ограничена. nowrap нужен именно
+   на .self-info: max-content + flex обычно держат всё в строку, но если
+   родитель ограничит ширину (например, узкий viewport), браузер начнёт
+   wrap по запятым внутри числа - читать его становится невозможно. */
+.topleft-container.svp-compact #self-info__exp {
+  white-space: nowrap;
+}
+
 /* Компактная панель информации: ник под game-menu */
 .topleft-container.svp-compact .self-info {
   display: flex !important;
