@@ -1,5 +1,5 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { $, $$, injectStyles, removeStyles, waitForElement } from '../../core/dom';
+import { $, $$, injectStyles, observeText, removeStyles, waitForElement } from '../../core/dom';
 import css from './styles.css?inline';
 
 const MODULE_ID = 'enhancedMainScreen';
@@ -82,16 +82,18 @@ function setupOpsInventory(container: Element, opsButton: HTMLElement): { destro
 
   update();
 
-  const observer = new MutationObserver(update);
-  if (invSpan) observer.observe(invSpan, { childList: true, characterData: true, subtree: true });
-  if (limSpan) observer.observe(limSpan, { childList: true, characterData: true, subtree: true });
+  const textTargets = [invSpan, limSpan].filter((n): n is Element => n !== null);
+  const textObserver = observeText(textTargets, update);
+
+  const attrObserver = new MutationObserver(update);
   if (isHTMLElement(invEntry)) {
-    observer.observe(invEntry, { attributes: true, attributeFilter: ['style'] });
+    attrObserver.observe(invEntry, { attributes: true, attributeFilter: ['style'] });
   }
 
   return {
     destroy: () => {
-      observer.disconnect();
+      textObserver.disconnect();
+      attrObserver.disconnect();
       opsButton.style.color = '';
       restoreI18nText(opsButton, opsOriginalText, opsI18nKey);
     },

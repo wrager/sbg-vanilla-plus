@@ -60,6 +60,21 @@ export function waitForElement(
   });
 }
 
+/**
+ * Подписывается на изменения текста в одном или нескольких узлах. Опции
+ * (`childList` + `characterData` + `subtree`) подобраны под типовой случай
+ * обновления через jQuery `.text()` / i18next, который заменяет вложенный
+ * text-node, а событие приходит на родителя через subtree.
+ */
+export function observeText(targets: Node | Node[], callback: () => void): MutationObserver {
+  const observer = new MutationObserver(callback);
+  const list = Array.isArray(targets) ? targets : [targets];
+  for (const target of list) {
+    observer.observe(target, { childList: true, characterData: true, subtree: true });
+  }
+  return observer;
+}
+
 export function injectStyles(css: string, id: string): void {
   removeStyles(id);
   const style = document.createElement('style');

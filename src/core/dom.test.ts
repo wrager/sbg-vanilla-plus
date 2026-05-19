@@ -1,4 +1,4 @@
-import { injectStyles, removeStyles, $, $$, waitForElement } from './dom';
+import { injectStyles, observeText, removeStyles, $, $$, waitForElement } from './dom';
 
 describe('dom', () => {
   afterEach(() => {
@@ -90,6 +90,59 @@ describe('dom', () => {
       // resolve не происходит (это бы привело к unhandled rejection / двойному
       // settle Promise).
       await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  });
+
+  describe('observeText', () => {
+    const flushMutations = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+    test('callback срабатывает при смене textContent у единичной цели', async () => {
+      const span = document.createElement('span');
+      span.textContent = 'before';
+      document.body.appendChild(span);
+
+      const callback = jest.fn();
+      const observer = observeText(span, callback);
+
+      span.textContent = 'after';
+      await flushMutations();
+
+      expect(callback).toHaveBeenCalled();
+      observer.disconnect();
+    });
+
+    test('callback срабатывает при смене текста у любой из целей в массиве', async () => {
+      const a = document.createElement('span');
+      const b = document.createElement('span');
+      document.body.append(a, b);
+
+      const callback = jest.fn();
+      const observer = observeText([a, b], callback);
+
+      a.textContent = 'x';
+      await flushMutations();
+      const callsAfterA = callback.mock.calls.length;
+      expect(callsAfterA).toBeGreaterThan(0);
+
+      b.textContent = 'y';
+      await flushMutations();
+      expect(callback.mock.calls.length).toBeGreaterThan(callsAfterA);
+
+      observer.disconnect();
+    });
+
+    test('disconnect() останавливает наблюдение', async () => {
+      const span = document.createElement('span');
+      document.body.appendChild(span);
+
+      const callback = jest.fn();
+      const observer = observeText(span, callback);
+      observer.disconnect();
+
+      span.textContent = 'after';
+      await flushMutations();
+
+      expect(callback).not.toHaveBeenCalled();
     });
   });
 });
