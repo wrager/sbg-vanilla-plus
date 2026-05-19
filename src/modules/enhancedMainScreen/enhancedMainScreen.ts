@@ -57,7 +57,7 @@ function restoreI18nText(
   retranslateI18n(element);
 }
 
-/** Заменяет текст кнопки OPS на статус инвентаря «inv/lim» с реактивным обновлением */
+/** Заменяет текст кнопки OPS на статус инвентаря "inv/lim" с реактивным обновлением */
 function setupOpsInventory(container: Element, opsButton: HTMLElement): { destroy: () => void } {
   const invSpan = $('#self-info__inv', container);
   const limSpan = $('#self-info__inv-lim', container);
@@ -119,12 +119,12 @@ async function setup(): Promise<() => void> {
     element.style.display = 'none';
   }
 
-  // Ник — reparent оригинального span прямо в self-info
+  // Ник - reparent оригинального span прямо в self-info
   if (nameSpan) {
     selfInfo.appendChild(nameSpan);
   }
 
-  // Уровень и опыт рядом с ником (тем же шрифтом — наследуется от .self-info).
+  // Уровень и опыт рядом с ником (тем же шрифтом - наследуется от .self-info).
   // Игра обновляет оба span по id через jQuery .text() (refs/game/script.js:2303-2306),
   // поэтому reparent не ломает реактивность.
   const explvSpan = $('#self-info__explv', container);
@@ -149,7 +149,7 @@ async function setup(): Promise<() => void> {
   }
 
   // Уровень: игра ставит текст вида "(Lv-10)" или "(Ур-10)" через i18next,
-  // пользователь хочет видеть "(10)" — вырезаем любой буквенный префикс
+  // пользователь хочет видеть "(10)" - вырезаем любой буквенный префикс
   // с опциональным дефисом, оставляя число и скобки (работает для en/ru и
   // любой другой локали). Guard на равенство нужен, чтобы наша же запись
   // не зациклила observer (в Chromium characterData mutation срабатывает

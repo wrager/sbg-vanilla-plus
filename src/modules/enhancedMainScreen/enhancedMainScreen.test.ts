@@ -276,7 +276,7 @@ describe('enhancedMainScreen', () => {
   });
 
   test('restores text even if jQuery.localize is a no-op', async () => {
-    // jQuery есть, но localize ничего не делает — fallback должен сработать
+    // jQuery есть, но localize ничего не делает - fallback должен сработать
     const localizeMock = jest.fn();
     const jqueryMock = jest.fn(() => ({ localize: localizeMock }));
     (window as unknown as Record<string, unknown>).$ = jqueryMock;
