@@ -93,7 +93,7 @@ describe('enhancedMainScreen', () => {
     expect(nameSpan?.dataset.name).toBe('wrager');
   });
 
-  test('reparents xp and level spans into self-info: name, then xp, then level', async () => {
+  test('reparents level and xp spans into self-info: name, then level, then xp', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
 
@@ -113,19 +113,19 @@ describe('enhancedMainScreen', () => {
     const expIndex = directChildren.indexOf(expSpan);
     const explvIndex = directChildren.indexOf(explvSpan);
     expect(nameIndex).toBeGreaterThanOrEqual(0);
-    expect(nameIndex).toBeLessThan(expIndex);
-    expect(expIndex).toBeLessThan(explvIndex);
+    expect(nameIndex).toBeLessThan(explvIndex);
+    expect(explvIndex).toBeLessThan(expIndex);
   });
 
-  test('strips letter prefix from level text on enable', async () => {
+  test('strips all non-digits from level text on enable', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
 
-    // Исходно "(Ур-10)" -> после применения "(10)" (любые буквы с опциональным "-" вырезаны)
-    expect(document.getElementById('self-info__explv')?.textContent).toBe('(10)');
+    // Исходно "(Ур-10)" -> после применения "10" (всё нецифровое вырезано)
+    expect(document.getElementById('self-info__explv')?.textContent).toBe('10');
   });
 
-  test('keeps stripping letter prefix when game updates level text', async () => {
+  test('keeps stripping all non-digits when game updates level text', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
 
@@ -136,7 +136,7 @@ describe('enhancedMainScreen', () => {
     explvSpan.textContent = '(Lv-99)';
     await flushPromises();
 
-    expect(explvSpan.textContent).toBe('(99)');
+    expect(explvSpan.textContent).toBe('99');
   });
 
   test('replaces OPS button text with inventory status and removes data-i18n', async () => {

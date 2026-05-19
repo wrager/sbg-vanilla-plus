@@ -141,33 +141,31 @@ async function setup(): Promise<() => void> {
     addedSpacers.push(spacer);
   };
 
-  // Опыт сразу справа от ника - это первое, что нужно видеть; уровень
-  // менее частый сигнал, едет в конец строки.
-  if (expSpan) {
-    appendSpacer();
-    selfInfo.appendChild(expSpan);
-  }
-
-  // Уровень: игра ставит текст вида "(Lv-10)" или "(Ур-10)" через i18next,
-  // пользователь хочет видеть "(10)" - вырезаем любой буквенный префикс
-  // с опциональным дефисом, оставляя число и скобки (работает для en/ru и
-  // любой другой локали). Guard на равенство нужен, чтобы наша же запись
-  // не зациклила observer (в Chromium characterData mutation срабатывает
-  // на присваивание textContent даже при том же значении).
+  // Уровень сразу справа от ника, опыт после уровня. Игра ставит текст
+  // уровня вида "(Lv-10)" или "(Ур-10)" через i18next, пользователь хочет
+  // видеть просто число "10" - вырезаем всё нецифровое (работает для
+  // en/ru и любой другой локали). Guard на равенство нужен, чтобы наша
+  // же запись не зациклила observer (в Chromium characterData mutation
+  // срабатывает на присваивание textContent даже при том же значении).
+  // Gap между уровнем и опытом задан в CSS через margin-right на уровне.
   let explvObserver: MutationObserver | null = null;
   if (explvSpan) {
     appendSpacer();
     selfInfo.appendChild(explvSpan);
 
-    const stripLvPrefix = (): void => {
+    const stripToDigits = (): void => {
       const current = explvSpan.textContent;
-      const stripped = current.replace(/\p{L}+-?/gu, '');
+      const stripped = current.replace(/\D/g, '');
       if (current !== stripped) {
         explvSpan.textContent = stripped;
       }
     };
-    stripLvPrefix();
-    explvObserver = observeText(explvSpan, stripLvPrefix);
+    stripToDigits();
+    explvObserver = observeText(explvSpan, stripToDigits);
+  }
+
+  if (expSpan) {
+    selfInfo.appendChild(expSpan);
   }
 
   // Статус инвентаря → текст кнопки OPS

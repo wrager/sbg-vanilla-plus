@@ -28,6 +28,11 @@
   font-size: 0.9em;
 }
 
+/* Небольшой gap между уровнем и опытом - визуально разделяет два числа. */
+.topleft-container.svp-compact #self-info__explv {
+  margin-right: 0.5em;
+}
+
 /* Центрирование кнопки "Атака" по горизонтали экрана */
 #attack-menu {
   position: fixed;
