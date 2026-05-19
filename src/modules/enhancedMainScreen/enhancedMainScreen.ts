@@ -143,6 +143,13 @@ async function setup(): Promise<() => void> {
     addedSpacers.push(spacer);
   };
 
+  // Опыт сразу справа от ника - это первое, что нужно видеть; уровень
+  // менее частый сигнал, едет в конец строки.
+  if (expSpan) {
+    appendSpacer();
+    selfInfo.appendChild(expSpan);
+  }
+
   // Уровень: игра ставит текст вида "(Lv-10)" или "(Ур-10)" через i18next,
   // пользователь хочет видеть "(10)" — вырезаем любой буквенный префикс
   // с опциональным дефисом, оставляя число и скобки (работает для en/ru и
@@ -163,12 +170,6 @@ async function setup(): Promise<() => void> {
     };
     stripLvPrefix();
     explvObserver = observeText(explvSpan, stripLvPrefix);
-  }
-
-  // Опыт: только reparent, реактивность игры по id работает as-is.
-  if (expSpan) {
-    appendSpacer();
-    selfInfo.appendChild(expSpan);
   }
 
   // Статус инвентаря → текст кнопки OPS

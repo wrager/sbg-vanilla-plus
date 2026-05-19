@@ -93,7 +93,7 @@ describe('enhancedMainScreen', () => {
     expect(nameSpan?.dataset.name).toBe('wrager');
   });
 
-  test('reparents level and xp spans into self-info after name', async () => {
+  test('reparents xp and level spans into self-info: name, then xp, then level', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
 
@@ -107,11 +107,11 @@ describe('enhancedMainScreen', () => {
 
     const directChildren = selfInfo ? [...selfInfo.children] : [];
     const nameIndex = directChildren.indexOf(nameSpan as Element);
-    const explvIndex = directChildren.indexOf(explvSpan as Element);
     const expIndex = directChildren.indexOf(expSpan as Element);
+    const explvIndex = directChildren.indexOf(explvSpan as Element);
     expect(nameIndex).toBeGreaterThanOrEqual(0);
-    expect(nameIndex).toBeLessThan(explvIndex);
-    expect(explvIndex).toBeLessThan(expIndex);
+    expect(nameIndex).toBeLessThan(expIndex);
+    expect(expIndex).toBeLessThan(explvIndex);
   });
 
   test('strips letter prefix from level text on enable', async () => {
