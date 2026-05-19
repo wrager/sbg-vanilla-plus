@@ -21,6 +21,10 @@ export default defineConfig(({ command }) => {
     build: {
       outDir: 'dist',
       emptyOutDir: true,
+      minify: isDev ? false : 'esbuild',
+    },
+    esbuild: {
+      keepNames: true,
     },
     plugins: [
       monkey({
