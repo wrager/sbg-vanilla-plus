@@ -4,21 +4,36 @@
   left: 0.45em;
 }
 
-/* Компактная панель информации: ник под game-menu */
+/* Компактная панель информации: ник, опыт и уровень в одну строку под game-menu.
+   display: flex и background приходят из игрового CSS (.self-info), наш набор
+   только переопределяет layout-направление, ширину, отступ и убирает рамку. */
 .topleft-container.svp-compact .self-info {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: flex-start !important;
-  text-align: left !important;
-  width: max-content !important;
-  margin: 0;
-  padding: 0 !important;
-  border: none !important;
-  background: none !important;
+  flex-direction: row;
+  align-items: center;
+  width: max-content;
+  margin-top: 0.25em;
+  font-size: 0.9em;
+  border: none;
+}
+
+/* Опыт - нейтральный цвет системного текста кнопки, чтобы число не
+   спорило с цветом ника (раскрашен по команде) и уровня. */
+.topleft-container.svp-compact #self-info__exp {
+  color: buttontext;
+}
+
+/* Опыт и уровень мельче ника - вторичная информация рядом с основной. */
+.topleft-container.svp-compact #self-info__exp,
+.topleft-container.svp-compact #self-info__explv {
   font-size: 0.9em;
 }
 
-/* Центрирование кнопки «Атака» по горизонтали экрана */
+/* Небольшой gap между уровнем и опытом - визуально разделяет два числа. */
+.topleft-container.svp-compact #self-info__explv {
+  margin-right: 0.5em;
+}
+
+/* Центрирование кнопки "Атака" по горизонтали экрана */
 #attack-menu {
   position: fixed;
   left: 50%;

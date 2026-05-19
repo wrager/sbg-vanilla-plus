@@ -1,5 +1,5 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { $, $$, injectStyles, removeStyles, waitForElement } from '../../core/dom';
+import { $, $$, injectStyles, observeText, removeStyles, waitForElement } from '../../core/dom';
 import css from './styles.css?inline';
 
 const MODULE_ID = 'enhancedMainScreen';
@@ -57,7 +57,7 @@ function restoreI18nText(
   retranslateI18n(element);
 }
 
-/** Заменяет текст кнопки OPS на статус инвентаря «inv/lim» с реактивным обновлением */
+/** Заменяет текст кнопки OPS на статус инвентаря "inv/lim" с реактивным обновлением */
 function setupOpsInventory(container: Element, opsButton: HTMLElement): { destroy: () => void } {
   const invSpan = $('#self-info__inv', container);
   const limSpan = $('#self-info__inv-lim', container);
@@ -82,16 +82,18 @@ function setupOpsInventory(container: Element, opsButton: HTMLElement): { destro
 
   update();
 
-  const observer = new MutationObserver(update);
-  if (invSpan) observer.observe(invSpan, { childList: true, characterData: true, subtree: true });
-  if (limSpan) observer.observe(limSpan, { childList: true, characterData: true, subtree: true });
+  const textTargets = [invSpan, limSpan].filter((n): n is Element => n !== null);
+  const textObserver = observeText(textTargets, update);
+
+  const attrObserver = new MutationObserver(update);
   if (isHTMLElement(invEntry)) {
-    observer.observe(invEntry, { attributes: true, attributeFilter: ['style'] });
+    attrObserver.observe(invEntry, { attributes: true, attributeFilter: ['style'] });
   }
 
   return {
     destroy: () => {
-      observer.disconnect();
+      textObserver.disconnect();
+      attrObserver.disconnect();
       opsButton.style.color = '';
       restoreI18nText(opsButton, opsOriginalText, opsI18nKey);
     },
@@ -111,17 +113,65 @@ async function setup(): Promise<() => void> {
   const nameSpanParent = nameSpan?.parentElement;
   const nameSpanNextSibling = nameSpan?.nextSibling ?? null;
 
-  // Скрываем все записи self-info (ник, опыт, инвентарь, координаты), effects остаётся
-  const allEntries = $$('.self-info__entry', container).filter(isHTMLElement);
-  const hiddenElements = [...allEntries];
-
+  // Скрываем все записи self-info (ник, опыт, инвентарь, координаты), effects остаётся.
+  // Сохраняем исходный inline display каждой записи, чтобы при disable восстановить
+  // ровно то значение, что было до нашей правки (а не сбросить в пустую строку,
+  // потеряв возможные игровые inline-стили).
+  const hiddenElements = $$('.self-info__entry', container).filter(isHTMLElement);
+  const originalDisplays = new Map<HTMLElement, string>();
   for (const element of hiddenElements) {
+    originalDisplays.set(element, element.style.display);
     element.style.display = 'none';
   }
 
-  // Ник — reparent оригинального span прямо в self-info
+  // Ник - reparent оригинального span прямо в self-info
   if (nameSpan) {
     selfInfo.appendChild(nameSpan);
+  }
+
+  // Уровень и опыт рядом с ником (тем же шрифтом - наследуется от .self-info).
+  // Игра обновляет оба span по id через jQuery .text() (refs/game/script.js:2303-2306),
+  // поэтому reparent не ломает реактивность.
+  const explvSpan = $('#self-info__explv', container);
+  const explvSpanParent = explvSpan?.parentElement ?? null;
+  const explvSpanNextSibling = explvSpan?.nextSibling ?? null;
+  const originalExplvText = explvSpan?.textContent ?? null;
+  const expSpan = $('#self-info__exp', container);
+  const expSpanParent = expSpan?.parentElement ?? null;
+  const expSpanNextSibling = expSpan?.nextSibling ?? null;
+  const addedSpacers: Text[] = [];
+
+  const appendSpacer = (): void => {
+    const spacer = document.createTextNode(' ');
+    selfInfo.appendChild(spacer);
+    addedSpacers.push(spacer);
+  };
+
+  // Уровень сразу справа от ника, опыт после уровня. Игра ставит текст
+  // уровня вида "(Lv-10)" или "(Ур-10)" через i18next, пользователь хочет
+  // видеть просто число "10" - вырезаем всё нецифровое (работает для
+  // en/ru и любой другой локали). Guard на равенство нужен, чтобы наша
+  // же запись не зациклила observer (в Chromium characterData mutation
+  // срабатывает на присваивание textContent даже при том же значении).
+  // Gap между уровнем и опытом задан в CSS через margin-right на уровне.
+  let explvObserver: MutationObserver | null = null;
+  if (explvSpan) {
+    appendSpacer();
+    selfInfo.appendChild(explvSpan);
+
+    const stripToDigits = (): void => {
+      const current = explvSpan.textContent;
+      const stripped = current.replace(/\D/g, '');
+      if (current !== stripped) {
+        explvSpan.textContent = stripped;
+      }
+    };
+    stripToDigits();
+    explvObserver = observeText(explvSpan, stripToDigits);
+  }
+
+  if (expSpan) {
+    selfInfo.appendChild(expSpan);
   }
 
   // Статус инвентаря → текст кнопки OPS
@@ -145,25 +195,44 @@ async function setup(): Promise<() => void> {
 
   container.classList.add('svp-compact');
 
+  const restoreSpan = (
+    span: Element | null,
+    parent: Node | null,
+    nextSibling: Node | null,
+  ): void => {
+    if (!span || !parent) return;
+    if (nextSibling) {
+      parent.insertBefore(span, nextSibling);
+    } else {
+      parent.appendChild(span);
+    }
+  };
+
   return () => {
+    explvObserver?.disconnect();
+    // Текст уровня stripToDigits заменил на "10", оригинал был "(Ур-10)" /
+    // "(Lv-10)". Игра перерисует текст только при изменении уровня, поэтому
+    // без явного restore он останется обрезанным после disable.
+    if (explvSpan && originalExplvText !== null) {
+      explvSpan.textContent = originalExplvText;
+    }
     opsInventory.destroy();
     if (isHTMLElement(settingsButton)) {
       restoreI18nText(settingsButton, settingsOriginalText, settingsI18nKey);
     }
-    // Вернуть span ника на прежнее место в оригинальной записи
-    if (nameSpan && nameSpanParent) {
-      if (nameSpanNextSibling) {
-        nameSpanParent.insertBefore(nameSpan, nameSpanNextSibling);
-      } else {
-        nameSpanParent.appendChild(nameSpan);
-      }
+    // Вернуть перенесённые span'ы на прежние места в оригинальных записях.
+    restoreSpan(nameSpan, nameSpanParent ?? null, nameSpanNextSibling);
+    restoreSpan(explvSpan, explvSpanParent, explvSpanNextSibling);
+    restoreSpan(expSpan, expSpanParent, expSpanNextSibling);
+    for (const spacer of addedSpacers) {
+      spacer.remove();
     }
     // Вернуть game-menu после self-info
     if (isHTMLElement(gameMenu)) {
       selfInfo.after(gameMenu);
     }
     for (const element of hiddenElements) {
-      element.style.display = '';
+      element.style.display = originalDisplays.get(element) ?? '';
     }
     container.classList.remove('svp-compact');
   };
@@ -173,8 +242,8 @@ export const enhancedMainScreen: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Enhanced Main Screen', ru: 'Улучшенный главный экран' },
   description: {
-    en: 'Compacts the top panel: nick below buttons, inventory in OPS, gear icon for Settings, attack button centered',
-    ru: 'Компактная верхняя панель: ник под кнопками, инвентарь в ОРПЦ, шестерёнка вместо «Настройки», кнопка атаки по центру',
+    en: 'Compacts the top panel: nick with level and XP below buttons, inventory in OPS, gear icon for Settings, attack button centered',
+    ru: 'Компактная верхняя панель: ник с уровнем и опытом под кнопками, инвентарь в ОРПЦ, шестерёнка вместо «Настройки», кнопка атаки по центру',
   },
   defaultEnabled: true,
   category: 'ui',
