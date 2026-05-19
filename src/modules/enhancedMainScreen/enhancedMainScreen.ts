@@ -113,9 +113,14 @@ async function setup(): Promise<() => void> {
   const nameSpanParent = nameSpan?.parentElement;
   const nameSpanNextSibling = nameSpan?.nextSibling ?? null;
 
-  // Скрываем все записи self-info (ник, опыт, инвентарь, координаты), effects остаётся
+  // Скрываем все записи self-info (ник, опыт, инвентарь, координаты), effects остаётся.
+  // Сохраняем исходный inline display каждой записи, чтобы при disable восстановить
+  // ровно то значение, что было до нашей правки (а не сбросить в пустую строку,
+  // потеряв возможные игровые inline-стили).
   const hiddenElements = $$('.self-info__entry', container).filter(isHTMLElement);
+  const originalDisplays = new Map<HTMLElement, string>();
   for (const element of hiddenElements) {
+    originalDisplays.set(element, element.style.display);
     element.style.display = 'none';
   }
 
@@ -227,7 +232,7 @@ async function setup(): Promise<() => void> {
       selfInfo.after(gameMenu);
     }
     for (const element of hiddenElements) {
-      element.style.display = '';
+      element.style.display = originalDisplays.get(element) ?? '';
     }
     container.classList.remove('svp-compact');
   };

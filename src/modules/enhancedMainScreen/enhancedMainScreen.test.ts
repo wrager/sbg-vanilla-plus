@@ -320,6 +320,26 @@ describe('enhancedMainScreen', () => {
     expect(settingsButton?.getAttribute('data-i18n')).toBe('menu.settings');
   });
 
+  test('restores original inline display of entries on disable', async () => {
+    // Эмулируем игровую ситуацию: один из entry имеет нестандартный inline
+    // display, выставленный игрой до включения модуля (например, скрыт игрой
+    // для своего сценария или явно показан с display:flex).
+    const invEntry = getEntryFor('self-info__inv');
+    if (!invEntry) throw new Error('inv entry not found');
+    invEntry.style.display = 'flex';
+
+    await enhancedMainScreen.enable();
+    await flushPromises();
+
+    // Во время enable все entry скрыты на display:none
+    expect(invEntry.style.display).toBe('none');
+
+    await enhancedMainScreen.disable();
+
+    // После disable восстановлен оригинальный inline display, не пустая строка
+    expect(invEntry.style.display).toBe('flex');
+  });
+
   test('restores original level text on disable', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
