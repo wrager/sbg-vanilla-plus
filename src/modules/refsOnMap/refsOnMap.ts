@@ -1605,22 +1605,31 @@ async function handleDeleteClick(): Promise<void> {
       );
       return;
     }
-    // Защита однонаправленная: фильтруем payload через свежий classifier и
-    // выкидываем стопки точек, которые СТАЛИ защищёнными за время confirm.
-    // Обратный race (lock/favorite сняли) НЕ возвращает точку в payload:
-    // пользователь делал confirm в той картине, что эта точка защищена -
-    // удалять её без явного подтверждения нельзя.
+    // Защита однонаправленная: берём fresh classifier и удаляем точки, которые
+    // СТАЛИ защищёнными за время confirm. Обратный race (lock/favorite сняли,
+    // /api/inview принёс свою команду unknown-точке, между confirm и DELETE
+    // изменился ownTeamMode) НЕ возвращает точку в payload: пользователь делал
+    // confirm в той картине, что эта точка защищена, удалять её без явного
+    // подтверждения нельзя.
+    //
+    // Раньше фильтр учитывал только lock/favorite-bucket'ы; точка, ставшая
+    // защищённой через own-team/unknown/keepOne (например, /api/point-hook
+    // принёс команду игрока), оставалась в исходном payload и удалялась мимо
+    // подтверждённой картины. Теперь берём пересечение исходного payload (то,
+    // что пользователь подтверждал) и fresh.payload (актуальные deletable
+    // стопки): любой fresh non-deletable bucket автоматически выпадает.
     const fresh = classifySelection(selected);
-    const newlyProtectedGuids = new Set<string>();
-    for (const feature of [...fresh.lockBucket, ...fresh.favoriteBucket]) {
+    const originalGuids = new Set<string>();
+    for (const feature of payload.keys()) {
       const guid = getPointGuid(feature);
-      if (guid !== null) newlyProtectedGuids.add(guid);
+      if (guid !== null) originalGuids.add(guid);
     }
     const filteredPayload = new Map<IOlFeature, number>();
-    for (const [feature, deleteAmount] of payload) {
+    for (const [feature, deleteAmount] of fresh.payload) {
       const guid = getPointGuid(feature);
-      if (guid !== null && newlyProtectedGuids.has(guid)) continue;
-      filteredPayload.set(feature, deleteAmount);
+      if (guid !== null && originalGuids.has(guid)) {
+        filteredPayload.set(feature, deleteAmount);
+      }
     }
     if (filteredPayload.size === 0) {
       showToast(

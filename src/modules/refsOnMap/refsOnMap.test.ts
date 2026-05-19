@@ -1981,6 +1981,73 @@ describe('refsOnMap own-team protection', () => {
     // удалены". Перечисления защит больше нет (см. buildPostDeleteToast).
     expect(toast).toMatch(/успешно удалены|deleted successfully/i);
   });
+
+  test('race-protection: точка, ставшая own-team между confirm и DELETE, выпадает из payload', async () => {
+    // Режим keep, playerTeam=1, обе точки изначально enemy (team=2) -
+    // classifySelection кладёт обе в payload. Между confirm и DELETE
+    // /api/inview-hook принёс team=1 для point-2 (точка оказалась своей).
+    // Старая фильтрация payload учитывала только lock/favorite bucket'ы
+    // fresh classifier и пропускала такую точку в DELETE мимо подтверждённой
+    // картины. Теперь финальный payload собирается из fresh.payload
+    // пересечённого с исходным набором guid: own/unknown/keepOne тоже
+    // выпадают.
+    setPlayerTeam(1);
+    localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keep' }));
+    const items = [
+      { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Enemy A', f: 0 },
+      { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Enemy B', f: 0 },
+    ];
+    localStorage.setItem('inventory-cache', JSON.stringify(items));
+    clickShowButton();
+    await flushAsync();
+    applyTeamsToFeatures({ 'point-1': 2, 'point-2': 2 });
+
+    const clickHandler = map._clickListeners[0];
+    const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+      (r) => r.value as IOlFeature,
+    );
+    expect(allFeatures.length).toBe(2);
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[0]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+    (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+      (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+        callback(allFeatures[1]);
+      },
+    );
+    clickHandler({ pixel: [0, 0] });
+
+    // Confirm: пока пользователь смотрит на модал, /api/inview-hook принёс
+    // team=1 для point-2 - точка стала своей и должна перейти в ownBucket
+    // (защищена, не в payload) при режиме keep.
+    window.confirm = jest.fn(() => {
+      allFeatures[1].set?.('team', 1);
+      return true;
+    });
+    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
+      void _args;
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ count: { total: 90 } }),
+      } as unknown as Response);
+    });
+    window.fetch = fetchSpy as unknown as typeof window.fetch;
+
+    const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
+    trash.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    const body = JSON.parse(init.body as string) as { selection: Record<string, number> };
+    expect(body.selection).toHaveProperty('ref-1');
+    expect(body.selection).not.toHaveProperty('ref-2');
+  });
 });
 
 // ── /inview-driven team load ─────────────────────────────────────────────────
