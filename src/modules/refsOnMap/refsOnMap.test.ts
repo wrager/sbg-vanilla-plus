@@ -1571,17 +1571,17 @@ describe('refsOnMap own-team protection', () => {
   }
 
   /**
-   * Эмулирует пользовательский flow включения чекбокса: выбор фичи
-   * (uniqueRefsToDelete>0 ⇒ чекбокс становится visible), затем клик-toggle.
-   * Прямая запись keepOwnTeam через localStorage больше не работает -
-   * флаг эфемерный.
+   * Эмулирует пользовательский выбор radio-режима "Не удалять своих" (keep)
+   * через клик по соответствующему input. Прямая запись ownTeamMode через
+   * localStorage возможна (svp_refsOnMap), но переключение через UI
+   * проверяет цепочку change-event + saveRefsOnMapSettings.
    */
-  function enableKeepOwnTeamCheckbox(): void {
-    const checkbox = document.querySelector(
+  function selectKeepModeRadio(): void {
+    const radio = document.querySelector(
       '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change'));
   }
 
   beforeEach(async () => {
@@ -1630,7 +1630,7 @@ describe('refsOnMap own-team protection', () => {
     localStorage.setItem('inventory-cache', JSON.stringify(items));
   }
 
-  test('keepOwnTeam=true, playerTeam=1: своя точка в protected, чужая в payload', async () => {
+  test('mode=keep, playerTeam=1: своя точка в protected, чужая в payload', async () => {
     setMixedInventoryCache();
     clickShowButton();
     await flushAsync();
@@ -1654,7 +1654,7 @@ describe('refsOnMap own-team protection', () => {
     );
     clickHandler({ pixel: [0, 0] });
 
-    enableKeepOwnTeamCheckbox();
+    selectKeepModeRadio();
 
     window.confirm = jest.fn(() => true);
     const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
@@ -1678,7 +1678,7 @@ describe('refsOnMap own-team protection', () => {
     expect(body.selection).toHaveProperty('ref-2');
   });
 
-  test('keepOwnTeam=false (по дефолту): фильтр не работает, обе точки в payload', async () => {
+  test('mode=delete (по дефолту): фильтр не работает, обе точки в payload', async () => {
     setMixedInventoryCache();
     clickShowButton();
     await flushAsync();
@@ -1723,8 +1723,8 @@ describe('refsOnMap own-team protection', () => {
     expect(body.selection).toHaveProperty('ref-2');
   });
 
-  test('keepOwnTeam=true + playerTeam=null: trash disabled, fetch не идёт', async () => {
-    // playerTeam=null + keepOwnTeam=true -> computeSelectionBreakdown
+  test('mode=keep + playerTeam=null: trash disabled, fetch не идёт', async () => {
+    // playerTeam=null + mode=keep -> computeSelectionBreakdown
     // переводит всё selected в protectedByUnknownTeam (defensive). deletable=0,
     // trash.disabled=true. Click игнорируется, fetch не вызывается.
     setMixedInventoryCache();
@@ -1743,7 +1743,7 @@ describe('refsOnMap own-team protection', () => {
     );
     clickHandler({ pixel: [0, 0] });
 
-    enableKeepOwnTeamCheckbox();
+    selectKeepModeRadio();
     setPlayerTeam(null);
 
     const confirmSpy = jest.fn(() => true);
@@ -1789,13 +1789,13 @@ describe('refsOnMap own-team protection', () => {
     clickHandler({ pixel: [0, 0] });
 
     setPlayerTeam(null);
-    enableKeepOwnTeamCheckbox();
+    selectKeepModeRadio();
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     expect(trash.disabled).toBe(true);
   });
 
-  test('keepOwnTeam=true: точка с team=undefined fail-safe защищена', async () => {
+  test('mode=keep: точка с team=undefined fail-safe защищена', async () => {
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-unknown', ti: 'Unk', f: 0 },
       { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-enemy', ti: 'Enemy', f: 0 },
@@ -1823,7 +1823,7 @@ describe('refsOnMap own-team protection', () => {
     );
     clickHandler({ pixel: [0, 0] });
 
-    enableKeepOwnTeamCheckbox();
+    selectKeepModeRadio();
     // worker мог дёрнуть /api/point на default-fetch для point-unknown
     // (failed, не кэшируется по решению "не писать failed в teamCache").
     // Даём worker'у завершиться до установки fetchSpy, чтобы остался
@@ -1855,7 +1855,7 @@ describe('refsOnMap own-team protection', () => {
     expect(body.selection).toHaveProperty('ref-2');
   });
 
-  test('keepOwnTeam=true, deletable=0: только свои - trash disabled, fetch не идёт', async () => {
+  test('mode=keep, deletable=0: только свои - trash disabled, fetch не идёт', async () => {
     // Все выделенные точки = own -> deletable=0 -> trash.disabled=true.
     // Click игнорируется.
     setMixedInventoryCache();
@@ -1880,7 +1880,7 @@ describe('refsOnMap own-team protection', () => {
     );
     clickHandler({ pixel: [0, 0] });
 
-    enableKeepOwnTeamCheckbox();
+    selectKeepModeRadio();
 
     const confirmSpy = jest.fn(() => true);
     window.confirm = confirmSpy;
@@ -1896,7 +1896,7 @@ describe('refsOnMap own-team protection', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  test('keepOwnTeam=true, deletable=0: только unknown - trash disabled, fetch не идёт', async () => {
+  test('mode=keep, deletable=0: только unknown - trash disabled, fetch не идёт', async () => {
     // Обе точки без team -> все в protectedByUnknownTeam -> deletable=0 ->
     // trash.disabled=true. Click игнорируется.
     setMixedInventoryCache();
@@ -1920,7 +1920,7 @@ describe('refsOnMap own-team protection', () => {
     );
     clickHandler({ pixel: [0, 0] });
 
-    enableKeepOwnTeamCheckbox();
+    selectKeepModeRadio();
 
     const confirmSpy = jest.fn(() => true);
     window.confirm = confirmSpy;
@@ -1936,7 +1936,7 @@ describe('refsOnMap own-team protection', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  test('keepOwnTeam=true, 1 своя + 1 чужая (сценарий пользователя): чужая удаляется, тост "Свои"', async () => {
+  test('mode=keep, 1 своя + 1 чужая (сценарий пользователя): чужая удаляется, тост "Свои"', async () => {
     setMixedInventoryCache();
     clickShowButton();
     await flushAsync();
@@ -1959,7 +1959,7 @@ describe('refsOnMap own-team protection', () => {
     );
     clickHandler({ pixel: [0, 0] });
 
-    enableKeepOwnTeamCheckbox();
+    selectKeepModeRadio();
 
     window.confirm = jest.fn(() => true);
     const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
@@ -2542,10 +2542,10 @@ describe('refsOnMap visible-only active pull', () => {
     expect(teamFetchSpy).not.toHaveBeenCalled();
   });
 
-  test('moveend с новыми guid-ами НЕ сбрасывает keepOwnTeam (persistent)', async () => {
-    // Регрессия для feature: фильтр персистентен в localStorage и НЕ
+  test('moveend с новыми guid-ами НЕ сбрасывает ownTeamMode (persistent)', async () => {
+    // Регрессия для feature: режим персистентен в localStorage и НЕ
     // сбрасывается при смене видимой области. Точки без team защищены
-    // fail-safe (protectedByUnknownTeam) - сбрасывать чекбокс не нужно.
+    // fail-safe (protectedByUnknownTeam) - сбрасывать radio не нужно.
     setInventory();
     setExtent([100, 100, 200, 200]);
     clickShowButton();
@@ -2561,20 +2561,20 @@ describe('refsOnMap visible-only active pull', () => {
       },
     );
     clickHandler({ pixel: [0, 0] });
-    const checkbox = document.querySelector(
+    const radio = document.querySelector(
       '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
-    expect(checkbox.checked).toBe(true);
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change'));
+    expect(radio.checked).toBe(true);
 
     // Pan в новый extent с новыми guid'ами.
     setExtent([-1000, -1000, 1000, 1000]);
     emitMoveend();
     await flushAsync();
 
-    // Чекбокс остался включённым, toast не появился.
-    expect(checkbox.checked).toBe(true);
+    // Radio остался включённым, toast не появился.
+    expect(radio.checked).toBe(true);
     expect(document.querySelector('.svp-toast')).toBeNull();
   });
 
@@ -2611,7 +2611,7 @@ describe('refsOnMap visible-only active pull', () => {
   test('feature.team остаётся undefined для точек с failed-fetch в teamCache (fail-safe protection)', async () => {
     // fetch упал / ответ нераспознан -> teamCache='failed', feature.team
     // остаётся undefined. partitionByLockProtection классифицирует такие
-    // точки как protectedByUnknownTeam при keepOwnTeam=true.
+    // точки как protectedByUnknownTeam при mode=keep.
     const items = [{ t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-fail', ti: 'X', f: 0 }];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
     teamFetchSpy.mockImplementation(() =>
@@ -2630,7 +2630,7 @@ describe('refsOnMap visible-only active pull', () => {
     expect(features[0].getProperties?.().team).toBeUndefined();
   });
 
-  test('/api/point data.te:null (neutral): feature.team=null, точка deletable при keepOwnTeam=true', async () => {
+  test('/api/point data.te:null (neutral): feature.team=null, точка deletable при mode=keep', async () => {
     // Сервер вернул 200 OK с data.te:null - точка нейтральная, у неё нет
     // владельца. feature.team=null (а НЕ undefined), partitionByLockProtection
     // отнесёт точку в deletable (не своя), не в protectedByUnknownTeam.
@@ -2654,7 +2654,7 @@ describe('refsOnMap visible-only active pull', () => {
     // feature.team === null (neutral marker), не undefined.
     expect(features[0].getProperties?.().team).toBeNull();
 
-    // Выделяем точку, включаем keepOwnTeam. UI breakdown:
+    // Выделяем точку, переключаем ownTeamMode на keep. UI breakdown:
     const clickHandler = map._clickListeners[0];
     (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
       (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
@@ -2662,11 +2662,11 @@ describe('refsOnMap visible-only active pull', () => {
       },
     );
     clickHandler({ pixel: [0, 0] });
-    const checkbox = document.querySelector(
+    const radio = document.querySelector(
       '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change'));
 
     // Точка в deletable, НЕ в unknown.
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
@@ -2678,9 +2678,9 @@ describe('refsOnMap visible-only active pull', () => {
   });
 });
 
-// ── checkbox visibility ──────────────────────────────────────────────────────
+// ── mode radio visibility ────────────────────────────────────────────────────
 
-describe('refsOnMap checkbox visibility', () => {
+describe('refsOnMap mode radio visibility', () => {
   let view: ReturnType<typeof makeView>;
   let map: ReturnType<typeof makeMap>;
   let originalFetch: typeof window.fetch;
@@ -2763,7 +2763,7 @@ describe('refsOnMap checkbox visibility', () => {
     expect(modeBlock.style.display).toBe('none');
   });
 
-  test('team=1 (красные): текст чекбокса "Не удалять красные"', () => {
+  test('team=1 (красные): текст radio "Не удалять красные"', () => {
     mockGetPlayerTeam.mockReturnValue(1);
     setInventory();
     clickShowButton();
@@ -2771,7 +2771,7 @@ describe('refsOnMap checkbox visibility', () => {
     expect(label.textContent).toMatch(/(?:Не удалять красные|Keep red)/);
   });
 
-  test('team=2 (зелёные): текст чекбокса "Не удалять зелёные"', () => {
+  test('team=2 (зелёные): текст radio "Не удалять зелёные"', () => {
     mockGetPlayerTeam.mockReturnValue(2);
     setInventory();
     clickShowButton();
@@ -2779,7 +2779,7 @@ describe('refsOnMap checkbox visibility', () => {
     expect(label.textContent).toMatch(/(?:Не удалять зелёные|Keep green)/);
   });
 
-  test('team=3 (синие): текст чекбокса "Не удалять синие"', () => {
+  test('team=3 (синие): текст radio "Не удалять синие"', () => {
     mockGetPlayerTeam.mockReturnValue(3);
     setInventory();
     clickShowButton();
@@ -2787,7 +2787,7 @@ describe('refsOnMap checkbox visibility', () => {
     expect(label.textContent).toMatch(/(?:Не удалять синие|Keep blue)/);
   });
 
-  test('playerTeam=null: fallback "Не удалять свои" (чекбокс остаётся функциональным)', () => {
+  test('playerTeam=null: fallback "Не удалять свои" (radio остаётся функциональным)', () => {
     mockGetPlayerTeam.mockReturnValue(null);
     setInventory();
     clickShowButton();
@@ -2934,9 +2934,9 @@ describe('refsOnMap cancel button', () => {
   });
 });
 
-// ── keepOwnTeam persistence (localStorage) ──────────────────────────────────
+// ── ownTeamMode persistence (localStorage) ──────────────────────────────────
 
-describe('refsOnMap keepOwnTeam persistence', () => {
+describe('refsOnMap ownTeamMode persistence', () => {
   let view: ReturnType<typeof makeView>;
   let map: ReturnType<typeof makeMap>;
   let originalFetch: typeof window.fetch;
@@ -3011,25 +3011,25 @@ describe('refsOnMap keepOwnTeam persistence', () => {
     });
   });
 
-  test('повторное открытие viewer восстанавливает state чекбокса из storage', () => {
+  test('повторное открытие viewer восстанавливает state radio из storage', () => {
     localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keep' }));
     setInventory();
     clickShowButton();
-    const checkbox = document.querySelector(
+    const radio = document.querySelector(
       '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
-    expect(checkbox.checked).toBe(true);
+    expect(radio.checked).toBe(true);
 
     clickCloseButton();
     clickShowButton();
-    expect(checkbox.checked).toBe(true);
+    expect(radio.checked).toBe(true);
   });
 
-  test('keepOwnTeam=true сохранён: handleDeleteClick применяет фильтр после reopen viewer', async () => {
+  test('mode=keep сохранён: handleDeleteClick применяет фильтр после reopen viewer', async () => {
     // Установка через localStorage напрямую (имитация: пользователь
-    // включил в прошлом сеансе и перезагрузил страницу). keepOneKey=false
-    // явно - этот тест проверяет только keepOwnTeam, без вмешательства
-    // правила "оставлять 1 ключ".
+    // включил в прошлом сеансе и перезагрузил страницу). ownTeamMode=keep
+    // явно - этот тест проверяет только защиту своих, без вмешательства
+    // правила "оставлять 1 ключ" из режима keepOne.
     localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keep' }));
     mockGetPlayerTeam.mockReturnValue(1);
     const items = [
@@ -3080,7 +3080,7 @@ describe('refsOnMap keepOwnTeam persistence', () => {
     trash.click();
     await flushAsync();
 
-    // payload: только enemy (own отфильтрована через keepOwnTeam=true).
+    // payload: только enemy (own отфильтрована через mode=keep).
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const init = (
       fetchSpy.mock.calls as unknown as [RequestInfo | URL, RequestInit?][]
@@ -3128,7 +3128,7 @@ describe('refsOnMap progress + interaction lock', () => {
           pending.push(() => {
             resolve({
               ok: true,
-              // te:2 (enemy) - чтобы при keepOwnTeam=true (playerTeam=1)
+              // te:2 (enemy) - чтобы при mode=keep (playerTeam=1)
               // точка попала в deletable, а не в protectedByOwnTeam.
               // Иначе deletable=0 -> trash disabled от nothingToDelete.
               json: () => Promise.resolve({ data: { te: 2 } }),
@@ -3181,7 +3181,7 @@ describe('refsOnMap progress + interaction lock', () => {
     window.fetch = originalFetch;
   });
 
-  test('во время загрузки + keepOwnTeam=true: trashButton disabled', async () => {
+  test('во время загрузки + mode=keep: trashButton disabled', async () => {
     setInventory();
     const slow = configureSlowFallback();
     clickShowButton();
@@ -3189,7 +3189,7 @@ describe('refsOnMap progress + interaction lock', () => {
     await window.fetch('/api/inview?sw=1&ne=2&z=14');
     await flushAsync();
 
-    // Выбираем фичу, включаем keepOwnTeam - blocks trash.
+    // Выбираем фичу, переключаем ownTeamMode на keep - blocks trash.
     const clickHandler = map._clickListeners[0];
     const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
       (r) => r.value as IOlFeature,
@@ -3200,11 +3200,11 @@ describe('refsOnMap progress + interaction lock', () => {
       },
     );
     clickHandler({ pixel: [0, 0] });
-    const checkbox = document.querySelector(
+    const radio = document.querySelector(
       '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change'));
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     expect(trash.disabled).toBe(true);
@@ -3231,7 +3231,7 @@ describe('refsOnMap progress + interaction lock', () => {
     expect(progress.style.display).toBe('none');
   });
 
-  test('во время загрузки + keepOwnTeam=false: trashButton НЕ disabled', async () => {
+  test('во время загрузки + mode=delete: trashButton НЕ disabled', async () => {
     // Без фильтра свои feature.team не нужен в payload - lock защищается
     // через inventory-cache.f, удаление безопасно.
     setInventory();
@@ -3320,7 +3320,7 @@ describe('refsOnMap progress + interaction lock', () => {
             });
           });
         }
-        // Первые 5 точек - enemy (te:2), чтобы при keepOwnTeam=true они
+        // Первые 5 точек - enemy (te:2), чтобы при mode=keep они
         // попали в deletable, а не в own. Иначе deletable=0 -> trash
         // disabled (см. правило "nothing to delete -> disabled").
         return Promise.resolve({
@@ -3355,11 +3355,11 @@ describe('refsOnMap progress + interaction lock', () => {
     );
     clickHandler({ pixel: [0, 0] });
 
-    const checkbox = document.querySelector(
+    const radio = document.querySelector(
       '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change'));
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     expect(trash.disabled).toBe(false);
@@ -3479,7 +3479,7 @@ describe('refsOnMap selection breakdown UI', () => {
     expect(trash.style.visibility).toBe('hidden');
   });
 
-  test('select 1 стопка из point-own (deletable, keepOwnTeam=false): кнопка "1 (4 ключей)"', async () => {
+  test('select 1 стопка из point-own (deletable, mode=delete): кнопка "1 (4 ключей)"', async () => {
     setInventoryTwoPointsThreeStacks();
     clickShowButton();
     await flushAsync();
@@ -3510,7 +3510,7 @@ describe('refsOnMap selection breakdown UI', () => {
     expect(total.textContent).toMatch(/(?:Выделено|Selected):\s*1\s*\(\s*5\s*(?:ключей|keys)\)/);
   });
 
-  test('selectionInfo строки: total + protected + deletable, без own-row при keepOwnTeam=false', async () => {
+  test('selectionInfo строки: total + protected + deletable, без own-row при mode=delete', async () => {
     setInventoryTwoPointsThreeStacks();
     clickShowButton();
     await flushAsync();
@@ -3526,7 +3526,7 @@ describe('refsOnMap selection breakdown UI', () => {
     expect(total.textContent).toMatch(/(?:Выделено|Selected):\s*2\s*\(\s*6\s*(?:ключей|keys)\)/);
 
     // lock=0 -> protected row hidden. own/unknown тоже hidden при
-    // keepOwnTeam=false. Видимы только total и deletable.
+    // mode=delete. Видимы только total и deletable.
     const protectedRow = document.querySelector(
       '.svp-refs-on-map-selection-info__protected',
     ) as HTMLElement;
@@ -3597,8 +3597,8 @@ describe('refsOnMap selection breakdown UI', () => {
     expect(toDeleteRow.textContent).toMatch(/0\s*\(\s*0\s*(?:ключей|keys)\s*\)/);
   });
 
-  test('keepOne-row скрыт при keepOneKey=false', async () => {
-    // Глобальный beforeEach уже ставит keepOneKey=false.
+  test('keepOne-row скрыт при mode!=keepOne', async () => {
+    // Глобальный beforeEach уже ставит mode!=keepOne.
     const items = [{ t: 3, a: 1, c: [100, 13], g: 'r', l: 'p', ti: 'P', f: 0 }];
     localStorage.setItem('inventory-cache', JSON.stringify(items));
     clickShowButton();
@@ -3630,7 +3630,7 @@ describe('refsOnMap selection breakdown UI', () => {
     expect(total.textContent).toMatch(/(?:Из них|Of them):/);
   });
 
-  test('keepOwnTeam=true: own-row видна, deletable исключает своих, protected пуст без lock', async () => {
+  test('mode=keep: own-row видна, deletable исключает своих, protected пуст без lock', async () => {
     setInventoryTwoPointsThreeStacks();
     clickShowButton();
     await flushAsync();
@@ -3640,11 +3640,11 @@ describe('refsOnMap selection breakdown UI', () => {
     selectFeatureByIndex(1); // point-own (1)
     selectFeatureByIndex(2); // point-enemy (2)
 
-    const checkbox = document.querySelector(
+    const radio = document.querySelector(
       '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change'));
 
     const total = document.querySelector('.svp-refs-on-map-selection-info__total') as HTMLElement;
     // 2 точки (5 own + 2 enemy = 7 ключей суммарно). Из них:
@@ -3683,11 +3683,11 @@ describe('refsOnMap selection breakdown UI', () => {
     selectFeatureByIndex(1);
     selectFeatureByIndex(2);
 
-    const checkbox = document.querySelector(
+    const radio = document.querySelector(
       '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change'));
 
     const own = document.querySelector('.svp-refs-on-map-selection-info__own') as HTMLElement;
     expect(own.style.display).not.toBe('none');
@@ -3705,11 +3705,11 @@ describe('refsOnMap selection breakdown UI', () => {
     selectFeatureByIndex(1);
     selectFeatureByIndex(2);
 
-    const checkbox = document.querySelector(
+    const radio = document.querySelector(
       '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change'));
 
     const own = document.querySelector('.svp-refs-on-map-selection-info__own') as HTMLElement;
     expect(own.textContent).toMatch(/1\s*\(\s*5\s*(?:ключей|keys)\)\s*(?:синие|blue)/);
@@ -3718,16 +3718,16 @@ describe('refsOnMap selection breakdown UI', () => {
   test('own-row текст: playerTeam=null -> fallback "своего цвета"', async () => {
     // Defensive: при null breakdown defensive-режим относит всё в unknown,
     // own-row не показывается. Этот тест проверяет другой сценарий:
-    // playerTeam=null И keepOwnTeam=false (фильтр выключен) - own-row hidden
+    // playerTeam=null И mode=delete (фильтр выключен) - own-row hidden
     // независимо от текста. Реальный fallback-текст ownRow покрыт через
     // getOwnRowText() в условиях когда own-bucket не пуст. Сделаем through
-    // ручной вызов: точка с team=number, keepOwnTeam=true, playerTeam=null
+    // ручной вызов: точка с team=number, mode=keep, playerTeam=null
     // -> defensive переводит ВСЁ в unknown (см. computeSelectionBreakdown),
     // own-row пуст. Проверим что fallback все же подключается через
     // getOwnRowText прямо: forging breakdown руками не получится без рефакторинга,
     // поэтому просто проверим что текст в строке не нарушает формат -
-    // покрытие fallback есть в getKeepOwnTeamLabelText через "Не удалять свои"
-    // (label-test ниже в checkbox visibility блоке).
+    // покрытие fallback есть в getModeLabelKeep через "Не удалять свои"
+    // (label-test ниже в mode radio visibility блоке).
     mockGetPlayerTeam.mockReturnValue(null);
     setInventoryTwoPointsThreeStacks();
     clickShowButton();
@@ -3736,7 +3736,7 @@ describe('refsOnMap selection breakdown UI', () => {
     selectFeatureByIndex(0);
 
     const own = document.querySelector('.svp-refs-on-map-selection-info__own') as HTMLElement;
-    // keepOwnTeam=false по beforeEach => row hidden.
+    // mode=delete по beforeEach => row hidden.
     expect(own.style.display).toBe('none');
   });
 
@@ -3833,7 +3833,7 @@ describe('refsOnMap selection breakdown UI', () => {
   });
 
   test('disjoint строки lock/own/unknown/deletable: сумма = total', async () => {
-    // 4 точки: lock, own, enemy, unknown (без team). keepOwnTeam=true.
+    // 4 точки: lock, own, enemy, unknown (без team). mode=keep.
     // Каждый bucket - 1 точка, 1 ключ. Строки lock/own/unknown/deletable
     // должны быть disjoint, в сумме = 4 (total).
     const items = [
@@ -3853,11 +3853,11 @@ describe('refsOnMap selection breakdown UI', () => {
     selectFeatureByIndex(2);
     selectFeatureByIndex(3);
 
-    const checkbox = document.querySelector(
+    const radio = document.querySelector(
       '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change'));
 
     const total = document.querySelector('.svp-refs-on-map-selection-info__total') as HTMLElement;
     expect(total.textContent).toMatch(/(?:Выделено|Selected):\s*4\s*\(\s*4\s*(?:ключей|keys)\)/);
@@ -3888,7 +3888,7 @@ describe('refsOnMap selection breakdown UI', () => {
 
 /**
  * Серия тестов-инвариантов на единственное обещание модуля: ключи, которые
- * UI помечает защищёнными (lock / own / unknown при keepOwnTeam), НЕ должны
+ * UI помечает защищёнными (lock / own / unknown при ownTeamMode), НЕ должны
  * попадать в payload DELETE /api/inventory ни при каких комбинациях. Тесты
  * читают реальные guid'ы из тела запроса и сверяют их с partition-bucket'ами.
  *
@@ -3932,11 +3932,11 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
   }
 
   function enableKeepOwn(): void {
-    const checkbox = document.querySelector(
+    const radio = document.querySelector(
       '.svp-refs-on-map-mode__option--keep input[type="radio"]',
     ) as HTMLInputElement;
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event('change'));
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change'));
   }
 
   function extractDeletePayload(): Record<string, number> {
@@ -3996,7 +3996,7 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     window.fetch = originalFetch;
   });
 
-  test('lock+own+unknown одновременно (keepOwnTeam=true): payload только enemy guid', async () => {
+  test('lock+own+unknown одновременно (mode=keep): payload только enemy guid', async () => {
     // 4 точки: locked, own-team, unknown-team, enemy. Только enemy идёт
     // в DELETE.
     const items = [
@@ -4062,7 +4062,7 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     expect(payload).not.toHaveProperty('lock-c');
   });
 
-  test('keepOwnTeam=true: ВСЕ стопки своей точки защищены (per-point own filter)', async () => {
+  test('mode=keep: ВСЕ стопки своей точки защищены (per-point own filter)', async () => {
     // 2 стопки point-own (team=player). Обе должны быть protected.
     const items = [
       { t: 3, a: 1, c: [100.5, 13.7], g: 'own-a', l: 'point-own', ti: 'O', f: 0 },
@@ -4089,7 +4089,7 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     expect(payload).not.toHaveProperty('own-b');
   });
 
-  test('keepOwnTeam=true, point с team=undefined: protected, payload не содержит unknown', async () => {
+  test('mode=keep, point с team=undefined: protected, payload не содержит unknown', async () => {
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'unk', l: 'point-unk', ti: 'U', f: 0 },
       { t: 3, a: 8, c: [100.5, 13.7], g: 'enemy', l: 'point-enemy', ti: 'E', f: 0 },
@@ -4200,7 +4200,7 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
   });
 
   test('инвариант: payload guids НИКОГДА не пересекается с partition.protected*', async () => {
-    // Property-style: при ЛЮБОМ выборе и keepOwnTeam=true, payload guids
+    // Property-style: при ЛЮБОМ выборе и mode=keep, payload guids
     // не должны содержать ни одного guid'а из защищённых bucket'ов.
     const items = [
       { t: 3, a: 1, c: [100.5, 13.7], g: 'g1', l: 'p-lock', ti: 'L', f: 0b10 },
@@ -4239,10 +4239,10 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
   });
 });
 
-// ── keepOneKey: ни одна выделенная точка не теряет все ключи в инвентаре ─────
+// ── mode=keepOne: ни одна выделенная точка не теряет все ключи в инвентаре ─────
 
 /**
- * Серия critical-safety тестов на инвариант keepOneKey: при включённом флаге
+ * Серия critical-safety тестов на инвариант mode=keepOne: при включённом флаге
  * сумма payload[refGuid] для всех стопок одной точки СТРОГО МЕНЬШЕ суммарного
  * inventory amount этой точки. После DELETE у пользователя в инвентаре по
  * каждой выделенной точке остаётся минимум 1 ключ.
@@ -4252,7 +4252,7 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
  * комбинации с lock/own/unknown, default-значение флага, восстановление из
  * localStorage. Регрессия здесь = пользователь теряет все ключи точки.
  */
-describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () => {
+describe('refsOnMap critical safety: mode=keepOne leaves >=1 key per point', () => {
   let view: ReturnType<typeof makeView>;
   let map: ReturnType<typeof makeMap>;
   let originalFetch: typeof window.fetch;
@@ -4344,20 +4344,20 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     window.fetch = originalFetch;
   });
 
-  test('default keepOneKey=true: новый пользователь защищён без явных действий', () => {
-    // Глобальный beforeEach ставит false, этот блок true, но сейчас проверим
-    // что чекбокс в DOM checked=true после showViewer и onChange сохраняет
-    // оба флага. Это страховка: если default в settings когда-то поменяют
-    // на false, тест упадёт.
+  test('default mode=keepOne: новый пользователь защищён без явных действий', () => {
+    // Глобальный beforeEach ставит ownTeamMode=delete, этот блок keepOne, но
+    // сейчас проверим что radio keepOne в DOM checked=true после showViewer
+    // и change-event сохраняет состояние. Страховка: если default в settings
+    // когда-нибудь поменяют, тест упадёт.
     clickShowButton();
-    const checkbox = document.querySelector(
+    const radio = document.querySelector(
       '.svp-refs-on-map-mode__option--keepOne input[type="radio"]',
     ) as HTMLInputElement;
-    expect(checkbox).not.toBeNull();
-    expect(checkbox.checked).toBe(true);
+    expect(radio).not.toBeNull();
+    expect(radio.checked).toBe(true);
   });
 
-  test('1 stack 5 ключей, выделена, keepOneKey=true: удалится 4, останется 1', async () => {
+  test('1 stack 5 ключей, выделена, mode=keepOne: удалится 4, останется 1', async () => {
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ t: 3, a: 5, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'P', f: 0 }]),
@@ -4425,7 +4425,7 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
   });
 
   test('2 stacks (5+3), выделена только одна (5): невыделенная даёт 3 ключа, удалится 5 полностью', async () => {
-    // unselectedAmount=3 >= 1: keepOneKey не вмешивается, ref-a удаляется
+    // unselectedAmount=3 >= 1: mode=keepOne не вмешивается, ref-a удаляется
     // полностью. ИНВАРИАНТ: после удаления в инвентаре остаются 3 ключа
     // в ref-b. По точке osталось >=1.
     localStorage.setItem(
@@ -4480,10 +4480,10 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     expect(payload).not.toHaveProperty('ref-small');
   });
 
-  test('lock на одной из стопок: lock защищает точку, deletable не доходит до keepOneKey', async () => {
+  test('lock на одной из стопок: lock защищает точку, deletable не доходит до mode=keepOne', async () => {
     // Если у точки есть lock-стопка, partitionByLockProtection всю точку
     // помечает protectedByLock (lock-семантика per-point). deletable=0,
-    // keepOneKey не вмешивается.
+    // mode=keepOne не вмешивается.
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([
@@ -4535,7 +4535,7 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([
-        // Точка A: 1 ключ, защищена keepOneKey полностью.
+        // Точка A: 1 ключ, защищена mode=keepOne полностью.
         { t: 3, a: 1, c: [100.5, 13.7], g: 'a', l: 'pt-A', ti: 'A', f: 0 },
         // Точка B: 5 ключей, удалится 4.
         { t: 3, a: 5, c: [101, 14], g: 'b', l: 'pt-B', ti: 'B', f: 0 },
@@ -4557,7 +4557,7 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     await flushAsync();
 
     const payload = extractDeletePayload();
-    // 'a' защищена keepOneKey (не в payload).
+    // 'a' защищена mode=keepOne (не в payload).
     expect(payload).not.toHaveProperty('a');
     // 'b': удаляется 4.
     expect(payload.b).toBe(4);
@@ -4565,9 +4565,9 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     expect(payload.c1).toBe(3);
   });
 
-  test('сохранённый keepOneKey=true в localStorage защищает после reopen viewer', async () => {
+  test('сохранённый mode=keepOne в localStorage защищает после reopen viewer', async () => {
     // Имитация: пользователь включил в прошлом сеансе, перезагрузил
-    // страницу, открыл viewer. keepOneKey восстанавливается из storage.
+    // страницу, открыл viewer. mode=keepOne восстанавливается из storage.
     // Без этого восстановления пользователь, не зная о новой фиче, при
     // следующем DELETE потерял бы все ключи 1-stack точки.
     localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keepOne' }));
@@ -4589,10 +4589,10 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     expect(payload).toEqual({ r: 1 });
   });
 
-  test('keepOneKey=false: payload содержит ВСЕ amount (классическое полное удаление)', async () => {
+  test('mode!=keepOne: payload содержит ВСЕ amount (классическое полное удаление)', async () => {
     // Контрольный негативный тест: при выключенном флаге payload идентичен
     // selected.amount. Гарантирует что новая логика не "случайно" применяется
-    // при keepOneKey=false.
+    // при mode!=keepOne.
     localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'delete' }));
     localStorage.setItem(
       'inventory-cache',
@@ -4612,10 +4612,10 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     expect(payload).toEqual({ r: 5 });
   });
 
-  test('toggle keepOneKey off->on прямо перед кликом: фикс сразу применяется', async () => {
-    // Сценарий: пользователь до этого момента кликов не делал, он толкает
-    // чекбокс ON и сразу нажимает Корзину. Изменение должно сразу повлиять
-    // на payload, без необходимости перевыбрать фичу.
+  test('toggle mode=keepOne off->on прямо перед кликом: фикс сразу применяется', async () => {
+    // Сценарий: пользователь до этого момента кликов не делал, он переключает
+    // radio на keepOne и сразу нажимает Корзину. Изменение должно сразу
+    // повлиять на payload, без необходимости перевыбрать фичу.
     localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'delete' }));
     localStorage.setItem(
       'inventory-cache',
@@ -4626,13 +4626,13 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     applyTeams({ p: 2 });
 
     selectFeatureByIndex(0);
-    // Включаем keepOneKey ПОСЛЕ выбора.
-    const keepOneCheckbox = document.querySelector(
+    // Переключаем radio на keepOne ПОСЛЕ выбора.
+    const keepOneRadio = document.querySelector(
       '.svp-refs-on-map-mode__option--keepOne input[type="radio"]',
     ) as HTMLInputElement;
-    expect(keepOneCheckbox.checked).toBe(false);
-    keepOneCheckbox.checked = true;
-    keepOneCheckbox.dispatchEvent(new Event('change'));
+    expect(keepOneRadio.checked).toBe(false);
+    keepOneRadio.checked = true;
+    keepOneRadio.dispatchEvent(new Event('change'));
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -4642,7 +4642,7 @@ describe('refsOnMap critical safety: keepOneKey leaves >=1 key per point', () =>
     expect(payload).toEqual({ r: 4 });
   });
 
-  test('UI: кнопка "Корзина" учитывает keepOneKey (показывает payload sum)', async () => {
+  test('UI: кнопка "Корзина" учитывает mode=keepOne (показывает payload sum)', async () => {
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ t: 3, a: 5, c: [100.5, 13.7], g: 'r', l: 'p', ti: 'P', f: 0 }]),
