@@ -7,6 +7,13 @@
 /* Компактная панель информации: ник под game-menu */
 .topleft-container.svp-compact .self-info {
   display: flex !important;
+  /* Игровой CSS ставит flex-direction: column для .self-info (вертикальный
+     столбик строк ник/опыт/инвентарь). Без явного override наши перенесённые
+     ник, опыт и уровень тоже стекаются вниз, что выглядит как "перенос
+     текста" - на самом деле это flex-column layout. row возвращает все
+     три span в одну строку; gap из игрового CSS (column-gap 3.6px) даёт
+     отступы между ними автоматически. */
+  flex-direction: row !important;
   align-items: center !important;
   justify-content: flex-start !important;
   text-align: left !important;
