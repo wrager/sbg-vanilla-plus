@@ -85,7 +85,7 @@
 
 Инвариант, проверяемый отдельной серией critical-safety тестов:
 
-- guid из protected-bucket (lock/own/unknown) НЕ может попасть в payload DELETE ни при одной комбинации.
+- guid из protected-bucket (lock/favorite/own/unknown) НЕ может попасть в payload DELETE ни при одной комбинации.
 - При режиме `keepOne` сумма payload по СВОЕЙ точке СТРОГО МЕНЬШЕ суммарного inventory amount. То есть после DELETE у каждой выделенной своей точки в инвентаре остаётся минимум 1 ключ.
 
 ### Прогресс-бар и блокировки
