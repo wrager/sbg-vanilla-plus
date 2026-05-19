@@ -22,6 +22,12 @@
   color: buttontext;
 }
 
+/* Опыт и уровень мельче ника - вторичная информация рядом с основной. */
+.topleft-container.svp-compact #self-info__exp,
+.topleft-container.svp-compact #self-info__explv {
+  font-size: 0.9em;
+}
+
 /* Центрирование кнопки «Атака» по горизонтали экрана */
 #attack-menu {
   position: fixed;
