@@ -130,6 +130,7 @@ async function setup(): Promise<() => void> {
   const explvSpan = $('#self-info__explv', container);
   const explvSpanParent = explvSpan?.parentElement ?? null;
   const explvSpanNextSibling = explvSpan?.nextSibling ?? null;
+  const originalExplvText = explvSpan?.textContent ?? null;
   const expSpan = $('#self-info__exp', container);
   const expSpanParent = expSpan?.parentElement ?? null;
   const expSpanNextSibling = expSpan?.nextSibling ?? null;
@@ -204,6 +205,12 @@ async function setup(): Promise<() => void> {
 
   return () => {
     explvObserver?.disconnect();
+    // Текст уровня stripToDigits заменил на "10", оригинал был "(Ур-10)" /
+    // "(Lv-10)". Игра перерисует текст только при изменении уровня, поэтому
+    // без явного restore он останется обрезанным после disable.
+    if (explvSpan && originalExplvText !== null) {
+      explvSpan.textContent = originalExplvText;
+    }
     opsInventory.destroy();
     if (isHTMLElement(settingsButton)) {
       restoreI18nText(settingsButton, settingsOriginalText, settingsI18nKey);

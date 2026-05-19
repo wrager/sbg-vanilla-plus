@@ -320,6 +320,19 @@ describe('enhancedMainScreen', () => {
     expect(settingsButton?.getAttribute('data-i18n')).toBe('menu.settings');
   });
 
+  test('restores original level text on disable', async () => {
+    await enhancedMainScreen.enable();
+    await flushPromises();
+
+    // Strip применился: "(Ур-10)" -> "10"
+    expect(document.getElementById('self-info__explv')?.textContent).toBe('10');
+
+    await enhancedMainScreen.disable();
+
+    // Текст уровня вернулся к исходному значению из DOM
+    expect(document.getElementById('self-info__explv')?.textContent).toBe('(Ур-10)');
+  });
+
   test('restores level and xp spans into their original entries on disable', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
