@@ -109,3 +109,20 @@ export function isProtectionFlagSupportAvailable(items: readonly unknown[]): boo
   if (refStacks.length === 0) return false;
   return refStacks.every((item) => item.f !== undefined);
 }
+
+/**
+ * Аналог buildLockedPointGuids для бита 0 поля `f` - favorite. На точке как
+ * правило одна стопка ключей, но если их несколько, fav-флаг любой из них
+ * означает «точка в избранном» для UI. См. inventoryTypes:30 и
+ * refs/game/script.js:3404 - `is_fav = !!(item?.f & 0b1)`.
+ */
+export function buildFavoritedPointGuids(items: readonly unknown[]): Set<string> {
+  const favorited = new Set<string>();
+  for (const item of items) {
+    if (!isInventoryReference(item)) continue;
+    if (item.f === undefined) continue;
+    if ((item.f & 0b1) === 0) continue;
+    favorited.add(item.l);
+  }
+  return favorited;
+}

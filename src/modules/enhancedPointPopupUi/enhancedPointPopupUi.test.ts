@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { enhancedPointPopupUi } from './enhancedPointPopupUi';
 
 describe('enhancedPointPopupUi', () => {
@@ -22,6 +24,19 @@ describe('enhancedPointPopupUi', () => {
     await enhancedPointPopupUi.enable();
     await enhancedPointPopupUi.enable();
     expect(document.querySelectorAll('#svp-enhancedPointPopupUi').length).toBe(1);
+  });
+
+  test('styles.css задаёт .i-image-box.imghid min-height', () => {
+    // Нативная настройка SBG "не показывать картинки" (settings.imghid=true)
+    // даёт .imghid на .i-image-box, box схлопывается до высоты #i-ref, и наши
+    // 44x44 кнопки fav/lock с position:absolute top:0 right:0 физически
+    // перекрывают тапаемый #i-ref. min-height удерживает зазор.
+    //
+    // CSS читаем из файла напрямую: jest резолвит '*.css?inline' через
+    // src/__mocks__/cssMock.ts в пустую строку, проверить injected
+    // textContent невозможно.
+    const css = readFileSync(join(__dirname, 'styles.css'), 'utf8');
+    expect(css).toMatch(/\.i-image-box\.imghid\s*\{[^}]*min-height:\s*5\.5em/);
   });
 });
 

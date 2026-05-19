@@ -4,6 +4,7 @@ import {
   readInventoryReferences,
   readFullInventoryReferences,
   buildLockedPointGuids,
+  buildFavoritedPointGuids,
   buildProtectedPointGuids,
   isProtectionFlagSupportAvailable,
 } from './inventoryCache';
@@ -106,24 +107,77 @@ function ref(g: string, point: string, amount: number, f?: number): IInventoryIt
 }
 
 describe('buildLockedPointGuids', () => {
-  test('lock-flag (bit 1) adds point', () => {
-    const items = [ref('s1', 'p1', 5, 0b10)];
-    expect([...buildLockedPointGuids(items)]).toEqual(['p1']);
+  it('returns empty set when no items', () => {
+    expect(buildLockedPointGuids([])).toEqual(new Set());
   });
 
-  test('favorite-flag (bit 0) alone does NOT add point (lock-only semantics)', () => {
-    const items = [ref('s1', 'p1', 5, 0b01)];
-    expect(buildLockedPointGuids(items).size).toBe(0);
+  it('skips items without f field', () => {
+    const items = [{ g: 'r1', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 2 }];
+    expect(buildLockedPointGuids(items)).toEqual(new Set());
   });
 
-  test('per-point aggregation: one locked stack => entire point locked', () => {
+  it('skips items with f bit 1 unset', () => {
+    const items = [{ g: 'r1', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 2, f: 0b00 }];
+    expect(buildLockedPointGuids(items)).toEqual(new Set());
+  });
+
+  it('includes points with f bit 1 set (locked)', () => {
+    const items = [{ g: 'r1', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 2, f: 0b10 }];
+    expect(buildLockedPointGuids(items)).toEqual(new Set(['point-a']));
+  });
+
+  it('includes points with both bits set', () => {
+    const items = [{ g: 'r1', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 2, f: 0b11 }];
+    expect(buildLockedPointGuids(items)).toEqual(new Set(['point-a']));
+  });
+
+  it('does not include points with only favorite bit', () => {
+    const items = [{ g: 'r1', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 2, f: 0b01 }];
+    expect(buildLockedPointGuids(items)).toEqual(new Set());
+  });
+
+  it('per-point aggregation: one locked stack => entire point locked', () => {
     const items = [ref('stack-a', 'p1', 3, 0b10), ref('stack-b', 'p1', 2, 0)];
     expect([...buildLockedPointGuids(items)]).toEqual(['p1']);
   });
+});
 
-  test('ignores entries without f field (0.6.0 compatibility)', () => {
-    const items = [ref('s1', 'p1', 5)];
-    expect(buildLockedPointGuids(items).size).toBe(0);
+describe('buildFavoritedPointGuids', () => {
+  it('returns empty set when no items', () => {
+    expect(buildFavoritedPointGuids([])).toEqual(new Set());
+  });
+
+  it('skips items without f field', () => {
+    const items = [{ g: 'r1', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 2 }];
+    expect(buildFavoritedPointGuids(items)).toEqual(new Set());
+  });
+
+  it('skips items with f bit 0 unset', () => {
+    const items = [{ g: 'r1', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 2, f: 0b00 }];
+    expect(buildFavoritedPointGuids(items)).toEqual(new Set());
+  });
+
+  it('includes points with f bit 0 set (favorited)', () => {
+    const items = [{ g: 'r1', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 2, f: 0b01 }];
+    expect(buildFavoritedPointGuids(items)).toEqual(new Set(['point-a']));
+  });
+
+  it('includes points with both bits set', () => {
+    const items = [{ g: 'r1', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 2, f: 0b11 }];
+    expect(buildFavoritedPointGuids(items)).toEqual(new Set(['point-a']));
+  });
+
+  it('does not include points with only locked bit', () => {
+    const items = [{ g: 'r1', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 2, f: 0b10 }];
+    expect(buildFavoritedPointGuids(items)).toEqual(new Set());
+  });
+
+  it('aggregates per-point when multiple stacks (any fav stack flags the point)', () => {
+    const items = [
+      { g: 'r1', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 2, f: 0b00 },
+      { g: 'r2', t: ITEM_TYPE_REFERENCE, l: 'point-a', a: 3, f: 0b01 },
+    ];
+    expect(buildFavoritedPointGuids(items)).toEqual(new Set(['point-a']));
   });
 });
 

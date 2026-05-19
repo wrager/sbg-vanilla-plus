@@ -10,6 +10,7 @@ import {
   readInventoryCache,
   readInventoryReferences,
 } from '../../core/inventoryCache';
+import { getPlayerTeam } from '../../core/playerTeam';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { showToast as showCoreToast } from '../../core/toast';
 import type { IDeletionEntry } from './cleanupCalculator';
@@ -35,18 +36,6 @@ const BROOM_ICON = '\u{1F9F9}';
 let slowDeleteInFlight = false;
 
 let bodyObserver: MutationObserver | null = null;
-
-function getPlayerTeam(): number | null {
-  const element = document.getElementById('self-info__name');
-  if (!element) return null;
-  // getAttribute('style') вместо element.style.color: jsdom не сохраняет
-  // CSS variables в CSSStyleDeclaration, но getAttribute возвращает исходную строку.
-  const styleAttr = element.getAttribute('style') ?? '';
-  const match = /var\(--team-(\d+)\)/.exec(styleAttr);
-  if (!match) return null;
-  const team = parseInt(match[1], 10);
-  return Number.isFinite(team) ? team : null;
-}
 
 export async function fetchPointTeam(pointGuid: string): Promise<number | null> {
   try {
@@ -424,7 +413,7 @@ async function runSlowDelete(): Promise<void> {
       if (newlyProtectedCount > 0) {
         const keptText = t({
           en: ` (${String(newlyProtectedCount)} key(s) kept: became protected during request)`,
-          ru: ` (${String(newlyProtectedCount)} ключ(ей) оставлено: стали защищёнными во время запроса)`,
+          ru: ` (${String(newlyProtectedCount)} ключей оставлено: стали защищёнными во время запроса)`,
         });
         showSlowToast(deletedText + keptText);
       } else {
