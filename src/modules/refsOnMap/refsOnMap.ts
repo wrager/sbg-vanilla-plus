@@ -1837,7 +1837,14 @@ async function runTeamLoadWorker(): Promise<void> {
     if (teamLoadQueue.size > 0) await sleep(TEAM_BATCH_DELAY_MS);
   }
 
-  teamLoadInProgress = false;
+  // teamLoadInProgress сбрасывает только владелец актуального generation.
+  // Иначе при hideViewer + showViewer старый worker (зависший в await) при
+  // выходе по generation mismatch обнулил бы флаг, выставленный новым worker'ом
+  // (myGenerationNew = teamLoadGeneration), и следующий moveend смог бы
+  // запустить ещё один worker поверх работающего.
+  if (myGeneration === teamLoadGeneration) {
+    teamLoadInProgress = false;
+  }
   // applyTeamsLoadedState вызываем только для актуальной сессии. Если
   // generation сменился, новый worker уже стартовал в showViewer - его
   // applyTeamsLoadedState вызовется по окончанию его очереди.
