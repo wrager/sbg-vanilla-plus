@@ -211,8 +211,6 @@ async function setup(): Promise<() => void> {
       restoreI18nText(settingsButton, settingsOriginalText, settingsI18nKey);
     }
     // Вернуть перенесённые span'ы на прежние места в оригинальных записях.
-    // Уровень и опыт возвращаются ДО ника, чтобы их nextSibling-ссылки
-    // оставались валидны (ник возвращается в свой parent, не затрагивающий их).
     restoreSpan(nameSpan, nameSpanParent ?? null, nameSpanNextSibling);
     restoreSpan(explvSpan, explvSpanParent, explvSpanNextSibling);
     restoreSpan(expSpan, expSpanParent, expSpanNextSibling);
