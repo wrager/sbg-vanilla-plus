@@ -413,7 +413,7 @@ async function runSlowDelete(): Promise<void> {
       if (newlyProtectedCount > 0) {
         const keptText = t({
           en: ` (${String(newlyProtectedCount)} key(s) kept: became protected during request)`,
-          ru: ` (${String(newlyProtectedCount)} ключ(ей) оставлено: стали защищёнными во время запроса)`,
+          ru: ` (${String(newlyProtectedCount)} ключей оставлено: стали защищёнными во время запроса)`,
         });
         showSlowToast(deletedText + keptText);
       } else {

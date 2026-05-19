@@ -1977,7 +1977,7 @@ describe('refsOnMap own-team protection', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const toast = document.querySelector('.svp-toast')?.textContent ?? '';
-    // Тост-итог после успешного удаления: "Y ключ(ей) от X точ(ек) успешно
+    // Тост-итог после успешного удаления: "Y ключей от X точек успешно
     // удалены". Перечисления защит больше нет (см. buildPostDeleteToast).
     expect(toast).toMatch(/успешно удалены|deleted successfully/i);
   });

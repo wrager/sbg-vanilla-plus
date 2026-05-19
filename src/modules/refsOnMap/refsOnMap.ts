@@ -1579,7 +1579,7 @@ async function handleDeleteClick(): Promise<void> {
   const plan = buildDeletePlan(payload);
   const message = t({
     en: `Delete ${plan.overallToDelete} ref(s) from ${plan.pointsInPayload.size} point(s)?`,
-    ru: `Удалить ${plan.overallToDelete} ключ(ей) от ${plan.pointsInPayload.size} точ(ек)?`,
+    ru: `Удалить ${plan.overallToDelete} ключей от ${plan.pointsInPayload.size} точек?`,
   });
 
   if (!confirm(message)) return;
@@ -1671,12 +1671,12 @@ function buildPostDeleteToast(
   if (failedKeys === 0) {
     return t({
       en: `${deletedKeys} key(s) from ${deletedPoints} point(s) deleted successfully.`,
-      ru: `${deletedKeys} ключ(ей) от ${deletedPoints} точ(ек) успешно удалены.`,
+      ru: `${deletedKeys} ключей от ${deletedPoints} точек успешно удалены.`,
     });
   }
   return t({
     en: `⚠️ Failed to delete ${failedKeys} key(s) from ${failedPoints} point(s)`,
-    ru: `⚠️ Ошибка удаления ${failedKeys} ключ(ей) от ${failedPoints} точ(ек)`,
+    ru: `⚠️ Ошибка удаления ${failedKeys} ключей от ${failedPoints} точек`,
   });
 }
 
