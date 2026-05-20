@@ -34,3 +34,19 @@ export function showCannotSetLockedCenterToast(): void {
     4000,
   );
 }
+
+/**
+ * Toast при install-time auto-clear: центр звезды был назначен в прошлой сессии,
+ * между сессиями точка получила замочек, на старте мы сняли центр. Юзер не
+ * совершал клика, поэтому сообщение объясняет именно факт снятия и причину,
+ * а не запрет действия.
+ */
+export function showCenterClearedBecauseLockedToast(): void {
+  showToast(
+    t({
+      en: 'Star center cleared: the point is now locked.',
+      ru: 'Центр звезды снят: точка стала с замочком.',
+    }),
+    4000,
+  );
+}

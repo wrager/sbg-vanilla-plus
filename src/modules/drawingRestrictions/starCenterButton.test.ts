@@ -452,9 +452,9 @@ describe('starCenterButton — legacy locked center при installStarCenterButt
     installStarCenterButton();
 
     expect(getStarCenter()).toBeNull();
-    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
-      true,
-    );
+    expect(
+      toastMessages().some((m) => m.includes('Star center cleared: the point is now locked')),
+    ).toBe(true);
   });
 
   test('центр был на не-locked точке - остаётся, toast не показывается', () => {

@@ -12,6 +12,7 @@ import { refreshPopupIfStarFilterWasActive } from './starCenterRefresh';
 import {
   showCannotSetLockedCenterToast,
   showCenterAssignedToast,
+  showCenterClearedBecauseLockedToast,
   showCenterClearedToast,
 } from './starCenterToasts';
 
@@ -207,7 +208,7 @@ export function installStarCenterButton(): void {
     const lockedPoints = buildLockedPointGuids(readInventoryCache());
     if (lockedPoints.has(existingGuid)) {
       clearStarCenter();
-      showCannotSetLockedCenterToast();
+      showCenterClearedBecauseLockedToast();
     }
   }
   installGeneration++;

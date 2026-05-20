@@ -1,6 +1,7 @@
 import {
   showCannotSetLockedCenterToast,
   showCenterAssignedToast,
+  showCenterClearedBecauseLockedToast,
   showCenterClearedToast,
 } from './starCenterToasts';
 
@@ -46,5 +47,13 @@ describe('showCannotSetLockedCenterToast', () => {
     showCannotSetLockedCenterToast();
     expect(showToastMock).toHaveBeenCalledTimes(1);
     expect(lastMessage()).toBe("Locked point can't be a star center.");
+  });
+});
+
+describe('showCenterClearedBecauseLockedToast', () => {
+  test('сообщает о снятии центра с указанием причины', () => {
+    showCenterClearedBecauseLockedToast();
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(lastMessage()).toBe('Star center cleared: the point is now locked.');
   });
 });
