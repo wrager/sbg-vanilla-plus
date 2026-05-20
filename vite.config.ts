@@ -18,6 +18,9 @@ export default defineConfig(({ command }) => {
     define: {
       __SVP_VERSION__: JSON.stringify(version),
     },
+    server: {
+      port: 5174,
+    },
     build: {
       outDir: 'dist',
       emptyOutDir: true,
