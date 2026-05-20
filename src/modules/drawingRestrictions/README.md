@@ -9,9 +9,11 @@
 
   Управление:
   - **Кнопка в попапе точки** (лучи из точки, в правом нижнем углу `.i-buttons`) — «назначить центром» / «снять центр» / «переназначить центр на эту точку» в зависимости от состояния
-  - **Кнопка-control на карте** (под стандартной `.region-picker`) — «сбросить центр звезды»; видна только когда центр назначен. При клике показывается toast с названием снятой точки-центра
+  - **Кнопка-control на карте** (под стандартной `.region-picker`) — «сбросить центр звезды»; видна только когда центр назначен. При клике показывается toast
 
-  Locked-точку центром звезды не назначить. Все её ключи защищены замочком и не расходуются на линии. Клик «назначить» в попапе locked-точки показывает предупреждение; ранее назначенный центр снимается.
+  Locked-точку центром звезды не назначить. Все её ключи защищены замочком и не расходуются на линии. Кнопка «назначить центром» в попапе locked-точки disabled с подсказкой «Точка с замочком не может быть центром звезды».
+
+  Legacy: если центр звезды был назначен на точку, которая стала locked между сессиями, при следующем старте скрипта центр снимается автоматически и показывается toast. Если lock поставлен в текущей сессии, центр остаётся — снять можно через попап центральной точки (кнопка станет «снять центр») или через кнопку на карте.
 
 ## Toast-уведомления о скрытии
 
@@ -30,7 +32,8 @@
 - `drawingRestrictions.ts` — определение модуля. В `enable()` ставятся все перехватчики и observers.
 - `drawFilter.ts` — единственный перехватчик `GET /api/draw`. На `enable()` оборачивает `window.fetch`, на `disable()` восстанавливает оригинал. Двойная установка идемпотентна. При пустом массиве предикатов отдаёт оригинальный Response без парсинга JSON. После применения предикатов считает два counter'а (`star/distance`) и выбирает toast через `pickToastMessage` (bitmask-селектор на 4 ячейки).
 - `filterRules.ts` — чистые предикаты и counter'ы. `buildPredicates({ settings, starCenterGuid, currentPopupGuid })` возвращает активные правила, `applyPredicates()` — композиция AND. `countHiddenByStar` / `countHiddenByDistance` — для toast-breakdown.
-- `starCenter*` — компоненты режима звезды: `starCenter.ts` (хранилище + событие), `starCenterButton.ts` (кнопка в попапе с проверкой lock-флага через `buildLockedPointGuids` перед назначением), `starCenterClearControl.ts` (OL-control на карте), `starCenterHighlight.ts` (overlay-слой с жёлтым кольцом), `starCenterIcon.ts` (SVG иконок), `starCenterToasts.ts` (toast-функции «центр назначен» / «центр снят» / «нельзя назначить locked-точку центром»).
+- `starCenter*` — компоненты режима звезды: `starCenter.ts` (хранилище + событие), `starCenterButton.ts` (кнопка в попапе с lock-aware UI — legacy check при `installStarCenterButton` и disabled-состояние для locked-точки в `updateButtons`), `starCenterClearControl.ts` (OL-control на карте), `starCenterHighlight.ts` (overlay-слой с жёлтым кольцом), `starCenterIcon.ts` (SVG иконок), `starCenterToasts.ts` (toast-функции «центр назначен» / «центр снят» / «нельзя назначить locked-точку центром»), `starCenterRefresh.ts` (re-open попапа после смены центра, чтобы `#draw-count` обновился под актуальные правила).
+- `refreshOpenPopup.ts` — закрывает и переоткрывает открытый попап через `window.showInfo`, заставляя игру сделать свежий `/api/draw` и пересчитать `#draw-count`. Используется при изменении настроек или enable модуля с открытым попапом, а также внутри `starCenterRefresh` при смене центра.
 - `starCenterButton.ts` и `starCenterHighlight.ts` используют флаг `pendingInstall` для защиты от race при async-установке через `waitForElement` / `getOlMap`.
 
 ## Настройки
@@ -53,4 +56,6 @@
 | `starCenterClearControl.ts` | OL-control на карте (под `.region-picker`) — сбросить центр с toast                     |
 | `starCenterHighlight.ts`    | Overlay-слой с жёлтым кольцом вокруг центра звезды (оригинальный вид точки сохраняется) |
 | `starCenterToasts.ts`       | Toast-функции для button и clear-control: назначен / снят / locked не назначается       |
+| `starCenterRefresh.ts`      | Wrapper над `refreshOpenPopup` с отсечкой по centerBeforeChange для пересчёта draw-count |
+| `refreshOpenPopup.ts`       | Закрывает и переоткрывает попап через `window.showInfo` для свежего `/api/draw`         |
 | `styles.css`                | Стили кнопки «Настроить», кнопок звезды и модалки настроек                              |
