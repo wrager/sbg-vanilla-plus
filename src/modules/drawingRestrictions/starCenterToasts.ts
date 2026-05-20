@@ -29,7 +29,7 @@ export function showCannotSetLockedCenterToast(): void {
   showToast(
     t({
       en: "Locked point can't be a star center.",
-      ru: 'Защищённая точка не может быть центром звезды.',
+      ru: 'Точка с замочком не может быть центром звезды.',
     }),
     4000,
   );
