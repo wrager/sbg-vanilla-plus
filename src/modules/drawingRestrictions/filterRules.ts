@@ -2,7 +2,6 @@ import type { IDrawingRestrictionsSettings } from './settings';
 
 export interface IDrawEntry {
   p?: string;
-  a?: number;
   d?: number;
 }
 

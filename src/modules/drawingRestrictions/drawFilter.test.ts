@@ -55,7 +55,7 @@ describe('drawFilter', () => {
     saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     window.fetch = jest
       .fn()
-      .mockResolvedValue(buildResponse({ data: [{ p: 'p1', a: 1, d: 900 }] }));
+      .mockResolvedValue(buildResponse({ data: [{ p: 'p1', d: 900 }] }));
     installDrawFilter();
 
     const response = await window.fetch('/api/point?guid=x');
@@ -68,9 +68,9 @@ describe('drawFilter', () => {
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
         data: [
-          { p: 'p1', a: 2, d: 300 },
-          { p: 'p2', a: 2, d: 800 },
-          { p: 'p3', a: 2 },
+          { p: 'p1', d: 300 },
+          { p: 'p2', d: 800 },
+          { p: 'p3' },
         ],
       }),
     );
@@ -146,7 +146,7 @@ describe('drawFilter', () => {
 
   test('все фильтры отключены — ответ не модифицируется', async () => {
     saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 0 });
-    const originalResponse = buildResponse({ data: [{ p: 'p1', a: 1, d: 100 }] });
+    const originalResponse = buildResponse({ data: [{ p: 'p1', d: 100 }] });
     window.fetch = jest.fn().mockResolvedValue(originalResponse);
     installDrawFilter();
 
@@ -159,8 +159,8 @@ describe('drawFilter', () => {
     const originalResponse = new Response(
       JSON.stringify({
         data: [
-          { p: 'p1', a: 5, d: 900 },
-          { p: 'p2', a: 1, d: 100 },
+          { p: 'p1', d: 900 },
+          { p: 'p2', d: 100 },
         ],
       }),
       {
@@ -180,7 +180,7 @@ describe('drawFilter', () => {
     saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     const mockFetch = jest
       .fn()
-      .mockResolvedValue(buildResponse({ data: [{ p: 'p1', a: 1, d: 900 }] }));
+      .mockResolvedValue(buildResponse({ data: [{ p: 'p1', d: 900 }] }));
     window.fetch = mockFetch;
     installDrawFilter();
     expect(window.fetch).not.toBe(mockFetch);
@@ -198,7 +198,7 @@ describe('drawFilter', () => {
     saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     window.fetch = jest
       .fn()
-      .mockResolvedValue(buildResponse({ data: [{ p: 'p1', a: 1, d: 900 }] }));
+      .mockResolvedValue(buildResponse({ data: [{ p: 'p1', d: 900 }] }));
     installDrawFilter();
     const wrapper = window.fetch;
     uninstallDrawFilter();
@@ -250,9 +250,9 @@ describe('drawFilter', () => {
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
         data: [
-          { p: 'a', a: 2 },
-          { p: 'b', a: 2 },
-          { p: 'center', a: 5 },
+          { p: 'a' },
+          { p: 'b' },
+          { p: 'center' },
         ],
       }),
     );
@@ -270,9 +270,9 @@ describe('drawFilter', () => {
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
         data: [
-          { p: 'a', a: 2 },
-          { p: 'b', a: 2 },
-          { p: 'center', a: 5 },
+          { p: 'a' },
+          { p: 'b' },
+          { p: 'center' },
         ],
       }),
     );
@@ -302,9 +302,9 @@ describe('drawFilter', () => {
     resolveFetch(
       buildResponse({
         data: [
-          { p: 'a', a: 2 },
-          { p: 'b', a: 2 },
-          { p: 'center', a: 5 },
+          { p: 'a' },
+          { p: 'b' },
+          { p: 'center' },
         ],
       }),
     );
@@ -321,8 +321,8 @@ describe('drawFilter', () => {
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
         data: [
-          { p: 'a', a: 2 },
-          { p: 'center', a: 5 },
+          { p: 'a' },
+          { p: 'center' },
         ],
       }),
     );
@@ -355,7 +355,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
 
   test('s=0 d=0 (нет скрытых) — showToast не вызван', async () => {
     saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 0 });
-    window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'a', a: 3 }] }));
+    window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'a' }] }));
     installDrawFilter();
     await window.fetch('/api/draw');
     expect(showToastMock).not.toHaveBeenCalled();
@@ -368,9 +368,9 @@ describe('drawFilter — выбор toast по комбинации счётчи
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
         data: [
-          { p: 'a', a: 2 },
-          { p: 'b', a: 2 },
-          { p: 'center', a: 5 },
+          { p: 'a' },
+          { p: 'b' },
+          { p: 'center' },
         ],
       }),
     );
@@ -431,8 +431,8 @@ describe('drawFilter — выбор toast по комбинации счётчи
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
         data: [
-          { p: 'a', a: 1, d: 900 },
-          { p: 'center', a: 5, d: 200 },
+          { p: 'a', d: 900 },
+          { p: 'center', d: 200 },
         ],
       }),
     );

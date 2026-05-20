@@ -10,12 +10,12 @@ import type { IDrawingRestrictionsSettings } from './settings';
 const STAR_CENTER = 'p3';
 
 const ENTRIES: IDrawEntry[] = [
-  { p: 'a1', a: 1, d: 300 },
-  { p: 'a2', a: 3, d: 900 },
-  { p: 'n1', a: 2, d: 300 },
-  { p: 'n2', a: 1, d: 900 },
-  { p: 'p3', a: 4, d: 500 },
-  { p: 'noD', a: 2 },
+  { p: 'a1', d: 300 },
+  { p: 'a2', d: 900 },
+  { p: 'n1', d: 300 },
+  { p: 'n2', d: 900 },
+  { p: 'p3', d: 500 },
+  { p: 'noD' },
 ];
 
 function settings(
@@ -118,12 +118,12 @@ describe('countHiddenByStar', () => {
   });
 
   test('entry без поля p не считается скрытым', () => {
-    const entries: IDrawEntry[] = [{ a: 1 }, { p: 'p3', a: 5 }, { p: 'other', a: 2 }];
+    const entries: IDrawEntry[] = [{}, { p: 'p3' }, { p: 'other' }];
     expect(countHiddenByStar(entries, STAR_CENTER, 'n1')).toBe(1);
   });
 
   test('все точки равны центру — 0', () => {
-    const entries: IDrawEntry[] = [{ p: STAR_CENTER, a: 1 }];
+    const entries: IDrawEntry[] = [{ p: STAR_CENTER }];
     expect(countHiddenByStar(entries, STAR_CENTER, 'n1')).toBe(0);
   });
 });
