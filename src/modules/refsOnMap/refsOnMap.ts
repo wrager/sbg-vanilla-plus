@@ -687,12 +687,12 @@ function getOwnRowText(points: number, keys: number): { en: string; ru: string }
   if (color === null) {
     return {
       en: `${points} (${keys} keys) own team and unprotected, won't be deleted`,
-      ru: `${points} (${keys} ключей) своего цвета и незащищённые, но не удалятся`,
+      ru: `${points} (${keys} ключей) своего цвета без замочка и звёздочки, но не удалятся`,
     };
   }
   return {
     en: `${points} (${keys} keys) ${color.en} and unprotected, won't be deleted`,
-    ru: `${points} (${keys} ключей) ${color.ru} и незащищённые, но не удалятся`,
+    ru: `${points} (${keys} ключей) ${color.ru} без замочка и звёздочки, но не удалятся`,
   };
 }
 
@@ -1142,7 +1142,7 @@ function updateSelectionUi(): void {
           selectionInfoProtectedRow,
           t({
             en: `${breakdown.lockPoints} (${breakdown.lockKeys} keys) protected by lock`,
-            ru: `${breakdown.lockPoints} (${breakdown.lockKeys} ключей) защищено замочком`,
+            ru: `${breakdown.lockPoints} (${breakdown.lockKeys} ключей) заблокировано замочком`,
           }),
         );
       }
@@ -1155,7 +1155,7 @@ function updateSelectionUi(): void {
           selectionInfoFavoriteRow,
           t({
             en: `${breakdown.favoritePoints} (${breakdown.favoriteKeys} keys) protected by favorite`,
-            ru: `${breakdown.favoritePoints} (${breakdown.favoriteKeys} ключей) защищено звёздочкой`,
+            ru: `${breakdown.favoritePoints} (${breakdown.favoriteKeys} ключей) в избранном со звёздочкой`,
           }),
         );
       }
@@ -1635,7 +1635,7 @@ async function handleDeleteClick(): Promise<void> {
       showToast(
         t({
           en: 'All selected keys became protected before deletion - aborted',
-          ru: 'Все выбранные ключи стали защищёнными до удаления - отменено',
+          ru: 'Все выбранные ключи стали избранными или заблокированными до удаления - отменено',
         }),
       );
       return;
@@ -1763,7 +1763,7 @@ function buildAllProtectedToast(
   const breakdown = parts.join(', ');
   return t({
     en: `All selected keys are protected (${breakdown}) and cannot be deleted`,
-    ru: `Все выбранные ключи защищены (${breakdown}) и не могут быть удалены`,
+    ru: `Все выбранные ключи (${breakdown}) не могут быть удалены`,
   });
 }
 

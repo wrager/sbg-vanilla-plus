@@ -290,7 +290,7 @@ async function runSlowDelete(): Promise<void> {
       showSlowToast(
         t({
           en: 'No unprotected keys to process',
-          ru: 'Нет незащищённых ключей для обработки',
+          ru: 'Нет ключей без замочка и звёздочки для обработки',
         }),
       );
       return;
@@ -364,7 +364,7 @@ async function runSlowDelete(): Promise<void> {
       showSlowToast(
         t({
           en: 'All keys became protected (locked or favorited) before deletion - aborted',
-          ru: 'Все ключи стали защищёнными (с замочком или звёздочкой) до удаления - отменено',
+          ru: 'Все ключи получили замочек или звёздочку до удаления - отменено',
         }),
       );
       return;
@@ -413,7 +413,7 @@ async function runSlowDelete(): Promise<void> {
       if (newlyProtectedCount > 0) {
         const keptText = t({
           en: ` (${String(newlyProtectedCount)} key(s) kept: became protected during request)`,
-          ru: ` (${String(newlyProtectedCount)} ключей оставлено: стали защищёнными во время запроса)`,
+          ru: ` (${String(newlyProtectedCount)} ключей оставлено: стали избранными или заблокированными во время запроса)`,
         });
         showSlowToast(deletedText + keptText);
       } else {
