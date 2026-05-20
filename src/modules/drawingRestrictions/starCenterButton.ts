@@ -47,7 +47,7 @@ function getCurrentGuid(popup: Element): string | null {
  * реальных DOM-mutations единицы раз в секунду (filter self-trigger'ов уже
  * закрыл шторм), общая нагрузка незаметна.
  */
-function getLockedPointsFor(): Set<string> {
+function readLockedPointGuids(): Set<string> {
   return buildLockedPointGuids(readInventoryCache());
 }
 
@@ -138,7 +138,7 @@ function onToggleClick(popup: Element): void {
   // Click-only check: locked точку нельзя сделать центром. Нативный замочек
   // защищает ключи от расходования на линии, и из такого центра не вышло бы
   // нарисовать ни одной линии звезды.
-  const lockedPoints = getLockedPointsFor();
+  const lockedPoints = readLockedPointGuids();
   if (lockedPoints.has(guid)) {
     showCannotSetLockedCenterToast();
     return;
@@ -205,7 +205,7 @@ export function installStarCenterButton(): void {
   // state if the user has never loaded inventory in this session.
   const existingGuid = getStarCenter()?.guid ?? null;
   if (existingGuid !== null) {
-    const lockedPoints = buildLockedPointGuids(readInventoryCache());
+    const lockedPoints = readLockedPointGuids();
     if (lockedPoints.has(existingGuid)) {
       clearStarCenter();
       showCenterClearedBecauseLockedToast();
