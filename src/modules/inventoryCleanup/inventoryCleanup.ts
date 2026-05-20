@@ -221,8 +221,8 @@ export const inventoryCleanup: IFeatureModule = {
     ru: 'Автоочистка инвентаря',
   },
   description: {
-    en: 'Automatically removes excess items when discovering points. Protects keys of points marked with native lock or favorite.',
-    ru: 'Автоматически удаляет лишние предметы при изучении точек. Защищает ключи точек, помеченных нативным замочком или звёздочкой.',
+    en: 'Automatically removes excess items when discovering points. Does not remove favorited or locked keys',
+    ru: 'Автоматически удаляет лишние предметы при изучении точек. Не удаляет избранные и заблокированные ключи',
   },
   defaultEnabled: true,
   category: 'feature',

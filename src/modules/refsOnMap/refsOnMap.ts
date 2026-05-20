@@ -2363,8 +2363,8 @@ export const refsOnMap: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Refs on map', ru: 'Ключи на карте' },
   description: {
-    en: 'View and manage points with collected keys on the map at any zoom level. Key protection: native SBG lock/favorite plus optional own-team mode against bulk delete.',
-    ru: 'Просмотр и управление точками с ключами на карте на любом масштабе. Защита ключей: нативный замочек/звёздочка SBG плюс опциональный режим защиты своей команды от массового удаления.',
+    en: 'View keys on the map and bulk delete them',
+    ru: 'Просмотр ключей на карте и их массовое удаление',
   },
   defaultEnabled: true,
   category: 'feature',

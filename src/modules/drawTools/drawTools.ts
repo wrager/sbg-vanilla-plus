@@ -1068,8 +1068,8 @@ export const drawTools: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Draw tools', ru: 'Инструменты рисования' },
   description: {
-    en: 'Draw and edit plans (2-point lines and 3-point triangles), snap to points, import/export between players',
-    ru: 'Рисование и редактирование схем (линии из 2 точек и треугольники из 3 точек), привязка к точкам, импорт/экспорт между игроками',
+    en: 'Draw and edit lines on the map with import and export',
+    ru: 'Рисование и редактирование линий на карте с возможностью импорта и экспорта',
   },
   defaultEnabled: true,
   category: 'map',
