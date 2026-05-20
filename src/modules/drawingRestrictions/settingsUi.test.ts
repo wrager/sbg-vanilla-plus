@@ -53,14 +53,12 @@ describe('injectConfigureButton', () => {
     expect(button?.parentElement?.className).toBe('svp-module-name-line');
   });
 
-  // 6.C: textContent !== MODULE_ID — skip.
   test('не вставляет кнопку в module-row другого модуля', () => {
     createModuleRow('favoritedPoints');
     installSettingsUi();
     expect(getConfigureButton()).toBeNull();
   });
 
-  // 6.D: !row — skip (module-id без обёртки svp-module-row).
   test('без .svp-module-row вокруг module-id — не вставляет кнопку', () => {
     const idElement = document.createElement('span');
     idElement.className = 'svp-module-id';
@@ -70,20 +68,16 @@ describe('injectConfigureButton', () => {
     expect(getConfigureButton()).toBeNull();
   });
 
-  // 6.E: row уже содержит configure-button — ничего не делаем.
   test('повторный install не создаёт вторую кнопку', () => {
     createModuleRow('drawingRestrictions');
     installSettingsUi();
     uninstallSettingsUi();
-    // Кнопка удалена uninstall'ом. Но если бы оставалась — guard должен сработать.
-    // Поэтому проверим иначе: installSettingsUi два раза без uninstall.
     installSettingsUi();
     installSettingsUi();
     const buttons = document.querySelectorAll(`.${CONFIGURE_BUTTON_CLASS}`);
     expect(buttons.length).toBe(1);
   });
 
-  // 6.F: !nameLine — skip.
   test('без .svp-module-name-line — кнопка не вставлена', () => {
     createModuleRow('drawingRestrictions', false);
     installSettingsUi();
@@ -131,55 +125,6 @@ describe('openPanel (клик по Configure)', () => {
   });
 });
 
-describe('buildPanel — radio lockProtectionMode', () => {
-  test('текущее значение отмечено как checked', () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'hideAllLocked',
-      maxDistanceMeters: 0,
-    });
-    createModuleRow('drawingRestrictions');
-    installSettingsUi();
-    getConfigureButton()?.click();
-    const radios = getPanel()?.querySelectorAll<HTMLInputElement>('input[type="radio"]');
-    expect(radios).toBeDefined();
-    const checked = Array.from(radios ?? []).find((radio) => radio.checked);
-    expect(checked?.value).toBe('hideAllLocked');
-  });
-
-  test('смена radio сохраняет новый режим', () => {
-    createModuleRow('drawingRestrictions');
-    installSettingsUi();
-    getConfigureButton()?.click();
-    const radio = getPanel()?.querySelector<HTMLInputElement>('input[value="hideAllLocked"]');
-    expect(radio).not.toBeNull();
-    if (radio) {
-      radio.checked = true;
-      radio.dispatchEvent(new Event('change'));
-    }
-    expect(loadDrawingRestrictionsSettings().lockProtectionMode).toBe('hideAllLocked');
-  });
-
-  // 6.A FALSE: `!radio.checked` → выход (только программный снят).
-  test('событие change с checked=false не сохраняет', () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    createModuleRow('drawingRestrictions');
-    installSettingsUi();
-    getConfigureButton()?.click();
-    const radio = getPanel()?.querySelector<HTMLInputElement>('input[value="off"]');
-    if (radio) {
-      radio.checked = false;
-      radio.dispatchEvent(new Event('change'));
-    }
-    // Настройка не изменилась (остался protectLastKey).
-    expect(loadDrawingRestrictionsSettings().lockProtectionMode).toBe('protectLastKey');
-  });
-});
-
 describe('buildPanel — distance input', () => {
   function changeDistance(value: string): void {
     const input = getPanel()?.querySelector<HTMLInputElement>('input[type="number"]');
@@ -200,14 +145,9 @@ describe('buildPanel — distance input', () => {
     getConfigureButton()?.click();
   });
 
-  // Базовое значение из настроек.
   test('текущее значение показывается в поле', () => {
     uninstallSettingsUi();
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'off',
-      maxDistanceMeters: 750,
-    });
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 750 });
     document.body.innerHTML = '';
     createModuleRow('drawingRestrictions');
     installSettingsUi();
@@ -215,28 +155,24 @@ describe('buildPanel — distance input', () => {
     expect(getDistanceValue()).toBe('750');
   });
 
-  // 6.B all-pass: целое положительное.
   test('целое положительное значение сохраняется', () => {
     changeDistance('500');
     expect(loadDrawingRestrictionsSettings().maxDistanceMeters).toBe(500);
     expect(getDistanceValue()).toBe('500');
   });
 
-  // 6.B all-pass: дробное округляется Math.floor.
   test('дробное значение округляется Math.floor', () => {
     changeDistance('3.7');
     expect(loadDrawingRestrictionsSettings().maxDistanceMeters).toBe(3);
     expect(getDistanceValue()).toBe('3');
   });
 
-  // 6.B.1 FALSE: Number.isFinite(raw) = false.
   test('пустое поле → 0 (raw=NaN, Number.isFinite=false)', () => {
     changeDistance('');
     expect(loadDrawingRestrictionsSettings().maxDistanceMeters).toBe(0);
     expect(getDistanceValue()).toBe('0');
   });
 
-  // 6.B.2 FALSE: raw <= 0 (но finite).
   test('ввод 0 → 0', () => {
     changeDistance('0');
     expect(loadDrawingRestrictionsSettings().maxDistanceMeters).toBe(0);
@@ -259,14 +195,12 @@ describe('MutationObserver — переинжект кнопки', () => {
     getConfigureButton()?.remove();
     expect(getConfigureButton()).toBeNull();
 
-    // Триггерим мутацию — добавляем dummy element, чтобы observer проснулся.
     document.body.appendChild(document.createElement('div'));
     await flushRaf();
 
     expect(getConfigureButton()).not.toBeNull();
   });
 
-  // 6.H FALSE: кнопка на месте — reinject не вызывается.
   test('мутация без удаления кнопки — не пересоздаёт', async () => {
     createModuleRow('drawingRestrictions');
     installSettingsUi();
@@ -279,13 +213,11 @@ describe('MutationObserver — переинжект кнопки', () => {
     expect(getConfigureButton()).toBe(first);
   });
 
-  // 6.G TRUE: rafId уже задан → следующая мутация не планирует второй rAF.
   test('массовые мутации за один тик — один rAF', async () => {
     createModuleRow('drawingRestrictions');
     installSettingsUi();
     getConfigureButton()?.remove();
 
-    // Несколько синхронных мутаций.
     for (let i = 0; i < 10; i++) {
       document.body.appendChild(document.createElement('div'));
     }
@@ -319,25 +251,6 @@ describe('settingsUi — refresh открытого попапа при изме
     delete (window as unknown as { showInfo?: typeof showInfoMock }).showInfo;
   });
 
-  test('смена lockProtectionMode при открытом попапе - попап переоткрывается', () => {
-    const popup = createPopup('B');
-    const closeSpy = jest.fn();
-    popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
-
-    createModuleRow('drawingRestrictions');
-    installSettingsUi();
-    getConfigureButton()?.click();
-
-    const radio = getPanel()?.querySelector<HTMLInputElement>('input[value="hideAllLocked"]');
-    if (radio) {
-      radio.checked = true;
-      radio.dispatchEvent(new Event('change'));
-    }
-
-    expect(closeSpy).toHaveBeenCalledTimes(1);
-    expect(showInfoMock).toHaveBeenCalledWith('B');
-  });
-
   test('смена maxDistanceMeters при открытом попапе - попап переоткрывается', () => {
     const popup = createPopup('B');
     const closeSpy = jest.fn();
@@ -361,10 +274,10 @@ describe('settingsUi — refresh открытого попапа при изме
     createModuleRow('drawingRestrictions');
     installSettingsUi();
     getConfigureButton()?.click();
-    const radio = getPanel()?.querySelector<HTMLInputElement>('input[value="hideAllLocked"]');
-    if (radio) {
-      radio.checked = true;
-      radio.dispatchEvent(new Event('change'));
+    const input = getPanel()?.querySelector<HTMLInputElement>('input[type="number"]');
+    if (input) {
+      input.value = '500';
+      input.dispatchEvent(new Event('change'));
     }
     expect(showInfoMock).not.toHaveBeenCalled();
   });
@@ -382,30 +295,24 @@ describe('uninstallSettingsUi', () => {
     expect(getConfigureButton()).toBeNull();
     expect(getPanel()).toBeNull();
 
-    // После uninstall мутации не должны возрождать кнопку.
     document.body.appendChild(document.createElement('div'));
     await flushRaf();
     expect(getConfigureButton()).toBeNull();
   });
 
-  // 6.I TRUE: rafId !== null → cancelAnimationFrame.
   test('uninstall во время запланированного rAF отменяет переинжект', async () => {
     createModuleRow('drawingRestrictions');
     installSettingsUi();
     getConfigureButton()?.remove();
 
-    // Планируем rAF через мутацию.
     document.body.appendChild(document.createElement('div'));
-    // Сразу uninstall, не дожидаясь rAF.
     uninstallSettingsUi();
 
     await flushRaf();
     expect(getConfigureButton()).toBeNull();
   });
 
-  // 6.J optional chaining: uninstall без открытой панели не падает.
   test('uninstall без панели и кнопки не бросает', () => {
-    // Модуль-row отсутствует → install не инжектит кнопку.
     installSettingsUi();
     expect(() => {
       uninstallSettingsUi();

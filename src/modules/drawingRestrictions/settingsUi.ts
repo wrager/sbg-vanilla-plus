@@ -1,10 +1,6 @@
 import { t } from '../../core/l10n';
 import { refreshOpenPopup } from './refreshOpenPopup';
-import {
-  type LockProtectionMode,
-  loadDrawingRestrictionsSettings,
-  saveDrawingRestrictionsSettings,
-} from './settings';
+import { loadDrawingRestrictionsSettings, saveDrawingRestrictionsSettings } from './settings';
 
 const MODULE_ID = 'drawingRestrictions';
 const CONFIGURE_BUTTON_CLASS = 'svp-dr-configure-button';
@@ -14,35 +10,6 @@ let panel: HTMLElement | null = null;
 let configureButton: HTMLElement | null = null;
 let moduleRowObserver: MutationObserver | null = null;
 let rafId: number | null = null;
-
-function buildFavRow(
-  labelText: string,
-  mode: LockProtectionMode,
-  current: LockProtectionMode,
-  radioName: string,
-): HTMLLabelElement {
-  const row = document.createElement('label');
-  row.className = 'svp-dr-settings-radio-row';
-  const radio = document.createElement('input');
-  radio.type = 'radio';
-  radio.name = radioName;
-  radio.value = mode;
-  radio.checked = current === mode;
-  radio.addEventListener('change', () => {
-    if (!radio.checked) return;
-    const updated = loadDrawingRestrictionsSettings();
-    updated.lockProtectionMode = mode;
-    saveDrawingRestrictionsSettings(updated);
-    // Открытый попап держит stale possible_lines в closure'е - переоткрываем,
-    // чтобы новые правила применились без ручного закрытия точки.
-    refreshOpenPopup();
-  });
-  row.appendChild(radio);
-  const label = document.createElement('span');
-  label.textContent = ' ' + labelText;
-  row.appendChild(label);
-  return row;
-}
 
 function buildPanel(): HTMLElement {
   const settings = loadDrawingRestrictionsSettings();
@@ -61,48 +28,6 @@ function buildPanel(): HTMLElement {
   const content = document.createElement('div');
   content.className = 'svp-dr-settings-content';
 
-  // Группа radio — защита точек с нативным замочком (item.f & 0b10)
-  const favGroupTitle = document.createElement('div');
-  favGroupTitle.className = 'svp-dr-settings-group-title';
-  favGroupTitle.textContent = t({
-    en: 'Locked points protection',
-    ru: 'Защита точек с замочком',
-  });
-  content.appendChild(favGroupTitle);
-
-  const radioName = 'svp-dr-fav-mode';
-  content.appendChild(
-    buildFavRow(
-      t({ en: 'No protection', ru: 'Без защиты' }),
-      'off',
-      settings.lockProtectionMode,
-      radioName,
-    ),
-  );
-  content.appendChild(
-    buildFavRow(
-      t({
-        en: 'Protect last key only',
-        ru: 'Защищать только последний ключ',
-      }),
-      'protectLastKey',
-      settings.lockProtectionMode,
-      radioName,
-    ),
-  );
-  content.appendChild(
-    buildFavRow(
-      t({
-        en: 'Hide all locked targets',
-        ru: 'Скрывать все цели с замочком',
-      }),
-      'hideAllLocked',
-      settings.lockProtectionMode,
-      radioName,
-    ),
-  );
-
-  // Числовое поле — максимальная дистанция
   const distanceRow = document.createElement('label');
   distanceRow.className = 'svp-dr-settings-number-row';
   const distanceLabel = document.createElement('span');

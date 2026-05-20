@@ -1,6 +1,4 @@
 import { installDrawFilter, uninstallDrawFilter, uninstallDrawFilterForTest } from './drawFilter';
-import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
-import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 import { saveDrawingRestrictionsSettings } from './settings';
 import { clearStarCenter, setStarCenter } from './starCenter';
 
@@ -17,23 +15,6 @@ function lastToastMessage(): string {
   const last = calls[calls.length - 1];
   const [first] = last;
   return typeof first === 'string' ? first : '';
-}
-
-/**
- * Записывает в `localStorage['inventory-cache']` стопки ключей с lock-битом
- * (`f & 0b10`) для каждой переданной точки. Фильтр drawingRestrictions
- * читает кэш на каждом ответе через `buildLockedPointGuids`, поэтому это —
- * единственный способ имитировать «эта точка с замочком» в тесте.
- */
-function setLockedPoints(pointGuids: string[]): void {
-  const cache = pointGuids.map((guid, index) => ({
-    g: `stack-${guid}-${index}`,
-    t: ITEM_TYPE_REFERENCE,
-    l: guid,
-    a: 1,
-    f: 0b10,
-  }));
-  localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(cache));
 }
 
 function buildResponse(body: unknown, status = 200): Response {
@@ -71,13 +52,10 @@ afterEach(() => {
 
 describe('drawFilter', () => {
   test('пропускает запросы не к /api/draw', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'fav1', a: 1 }] }));
-    setLockedPoints(['fav1']);
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
+    window.fetch = jest
+      .fn()
+      .mockResolvedValue(buildResponse({ data: [{ p: 'p1', a: 1, d: 900 }] }));
     installDrawFilter();
 
     const response = await window.fetch('/api/point?guid=x');
@@ -85,91 +63,8 @@ describe('drawFilter', () => {
     expect(body.data).toHaveLength(1);
   });
 
-  test('protectLastKey скрывает последний ключ locked-точки', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    window.fetch = jest.fn().mockResolvedValue(
-      buildResponse({
-        data: [
-          { p: 'fav1', a: 1 },
-          { p: 'fav2', a: 3 },
-          { p: 'other', a: 1 },
-        ],
-      }),
-    );
-    setLockedPoints(['fav1', 'fav2']);
-    installDrawFilter();
-
-    const response = await window.fetch('/api/draw?from=x');
-    const body = (await response.json()) as { data: { p: string; a: number }[] };
-    expect(body.data).toHaveLength(2);
-    expect(body.data.find((entry) => entry.p === 'fav1')).toBeUndefined();
-  });
-
-  test('hideAllLocked скрывает все locked-точки независимо от amount', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'hideAllLocked',
-      maxDistanceMeters: 0,
-    });
-    window.fetch = jest.fn().mockResolvedValue(
-      buildResponse({
-        data: [
-          { p: 'fav1', a: 1 },
-          { p: 'fav2', a: 5 },
-          { p: 'other', a: 2 },
-        ],
-      }),
-    );
-    setLockedPoints(['fav1', 'fav2']);
-    installDrawFilter();
-
-    const response = await window.fetch('/api/draw');
-    const body = (await response.json()) as { data: { p: string }[] };
-    expect(body.data.map((entry) => entry.p)).toEqual(['other']);
-  });
-
-  test('точка с lock-битом 0 не считается защищённой', async () => {
-    // Lock-флаг — `item.f & 0b10`. Стопка с `f=0` (не помечена замочком) не
-    // должна попадать под protectLastKey, даже если точка та же что у
-    // locked-стопки в другом инвентаре.
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'hideAllLocked',
-      maxDistanceMeters: 0,
-    });
-    localStorage.setItem(
-      INVENTORY_CACHE_KEY,
-      JSON.stringify([
-        { g: 'stack1', t: ITEM_TYPE_REFERENCE, l: 'p1', a: 5, f: 0 },
-        { g: 'stack2', t: ITEM_TYPE_REFERENCE, l: 'p2', a: 5, f: 0b01 },
-      ]),
-    );
-    window.fetch = jest.fn().mockResolvedValue(
-      buildResponse({
-        data: [
-          { p: 'p1', a: 1 },
-          { p: 'p2', a: 1 },
-        ],
-      }),
-    );
-    installDrawFilter();
-
-    const response = await window.fetch('/api/draw');
-    const body = (await response.json()) as { data: { p: string }[] };
-    // Ни p1 (f=0), ни p2 (f=0b01 — favorite-бит, не lock-бит) не скрываются.
-    expect(body.data.map((entry) => entry.p)).toEqual(['p1', 'p2']);
-  });
-
   test('maxDistanceMeters скрывает цели дальше порога', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'off',
-      maxDistanceMeters: 500,
-    });
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
         data: [
@@ -187,13 +82,8 @@ describe('drawFilter', () => {
   });
 
   test('не трогает POST /api/draw', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'hideAllLocked',
-      maxDistanceMeters: 0,
-    });
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     window.fetch = jest.fn().mockResolvedValue(buildResponse({ line: { id: 123 } }));
-    setLockedPoints(['fav1']);
     installDrawFilter();
 
     const response = await window.fetch('/api/draw', { method: 'POST' });
@@ -202,26 +92,15 @@ describe('drawFilter', () => {
   });
 
   test('не падает при невалидном JSON', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    setLockedPoints(['fav1']);
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     window.fetch = jest.fn().mockResolvedValue(new Response('not json', { status: 200 }));
     installDrawFilter();
     const response = await window.fetch('/api/draw');
     expect(response.status).toBe(200);
   });
 
-  // isDrawResponseShape narrowing: FALSE-ветки атомарных проверок.
   test('response.json = строка — возвращается исходный Response', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    setLockedPoints(['fav1']);
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     const originalResponse = buildResponse('just-a-string');
     window.fetch = jest.fn().mockResolvedValue(originalResponse);
     installDrawFilter();
@@ -230,12 +109,7 @@ describe('drawFilter', () => {
   });
 
   test('response.json = null — возвращается исходный Response', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    setLockedPoints(['fav1']);
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     const originalResponse = buildResponse(null);
     window.fetch = jest.fn().mockResolvedValue(originalResponse);
     installDrawFilter();
@@ -244,12 +118,7 @@ describe('drawFilter', () => {
   });
 
   test('response.json без поля data — возвращается исходный Response', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    setLockedPoints(['fav1']);
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     const originalResponse = buildResponse({ other: 1 });
     window.fetch = jest.fn().mockResolvedValue(originalResponse);
     installDrawFilter();
@@ -258,12 +127,7 @@ describe('drawFilter', () => {
   });
 
   test('response.json с data = null — возвращается исходный Response', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    setLockedPoints(['fav1']);
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     const originalResponse = buildResponse({ data: null });
     window.fetch = jest.fn().mockResolvedValue(originalResponse);
     installDrawFilter();
@@ -272,12 +136,7 @@ describe('drawFilter', () => {
   });
 
   test('response.json с data-строкой — возвращается исходный Response', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    setLockedPoints(['fav1']);
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     const originalResponse = buildResponse({ data: 'not-an-array' });
     window.fetch = jest.fn().mockResolvedValue(originalResponse);
     installDrawFilter();
@@ -286,35 +145,22 @@ describe('drawFilter', () => {
   });
 
   test('все фильтры отключены — ответ не модифицируется', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'off',
-      maxDistanceMeters: 0,
-    });
-    const originalResponse = buildResponse({ data: [{ p: 'fav1', a: 1 }] });
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 0 });
+    const originalResponse = buildResponse({ data: [{ p: 'p1', a: 1, d: 100 }] });
     window.fetch = jest.fn().mockResolvedValue(originalResponse);
-    setLockedPoints(['fav1']);
     installDrawFilter();
 
     const response = await window.fetch('/api/draw');
-    // Без активных предикатов drawFilter должен возвращать оригинальный Response —
-    // никакой фильтрации и никакого тоста.
     expect(response).toBe(originalResponse);
   });
 
   test('content-length не копируется в headers модифицированного Response', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'hideAllLocked',
-      maxDistanceMeters: 0,
-    });
-    setLockedPoints(['fav1']);
-    // Оригинал с явным content-length, не соответствующим длине отфильтрованного body.
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     const originalResponse = new Response(
       JSON.stringify({
         data: [
-          { p: 'fav1', a: 5 },
-          { p: 'other', a: 1 },
+          { p: 'p1', a: 5, d: 900 },
+          { p: 'p2', a: 1, d: 100 },
         ],
       }),
       {
@@ -327,45 +173,32 @@ describe('drawFilter', () => {
 
     const response = await window.fetch('/api/draw');
     expect(response.headers.get('content-length')).toBeNull();
-    // content-type сохраняется (это валидный остающийся заголовок).
     expect(response.headers.get('content-type')).toBe('application/json');
   });
 
   test('uninstall перестаёт фильтровать, но не выкидывает wrapper из цепочки', async () => {
-    // Persistent wrapper: после uninstall window.fetch остаётся обёрнутым
-    // (чтобы не выкинуть из цепочки чужие модули, оборачивающие нас позже),
-    // но drawFilterEnabled = false и фильтр не срабатывает на /api/draw.
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    const mockFetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'fav1', a: 1 }] }));
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
+    const mockFetch = jest
+      .fn()
+      .mockResolvedValue(buildResponse({ data: [{ p: 'p1', a: 1, d: 900 }] }));
     window.fetch = mockFetch;
-    setLockedPoints(['fav1']);
     installDrawFilter();
-    // Wrapper встал поверх mockFetch.
     expect(window.fetch).not.toBe(mockFetch);
     const wrapper = window.fetch;
     uninstallDrawFilter();
 
-    // window.fetch остаётся wrapper'ом, не выкидывается.
     expect(window.fetch).toBe(wrapper);
 
     const response = await window.fetch('/api/draw');
     const body = (await response.json()) as { data: unknown[] };
-    // Фильтр выключен, fav1 не скрыт.
     expect(body.data).toHaveLength(1);
   });
 
   test('повторный install после uninstall - тот же wrapper, фильтр снова работает', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'fav1', a: 1 }] }));
-    setLockedPoints(['fav1']);
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
+    window.fetch = jest
+      .fn()
+      .mockResolvedValue(buildResponse({ data: [{ p: 'p1', a: 1, d: 900 }] }));
     installDrawFilter();
     const wrapper = window.fetch;
     uninstallDrawFilter();
@@ -374,23 +207,14 @@ describe('drawFilter', () => {
 
     const response = await window.fetch('/api/draw');
     const body = (await response.json()) as { data: unknown[] };
-    // Фильтр снова активен, fav1 скрыт.
     expect(body.data).toHaveLength(0);
   });
 
   test('uninstall сохраняет в цепочке wrapper, поставленный поверх нас', async () => {
-    // Сценарий refsLayerSync: ставит свою обёртку ПОСЛЕ нашего install,
-    // захватывая наш wrapper как originalFetch. Если бы uninstall возвращал
-    // window.fetch к native, refsLayerSync-обёртка тоже вылетела бы из цепочки.
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'off',
-      maxDistanceMeters: 0,
-    });
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 0 });
     const native = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'a' }] }));
     window.fetch = native;
     installDrawFilter();
-    // Сторонний модуль оборачивает текущий window.fetch (наш wrapper).
     const outerCalls: string[] = [];
     const innerOriginal = window.fetch;
     window.fetch = function outerWrapper(
@@ -404,7 +228,6 @@ describe('drawFilter', () => {
     const outer = window.fetch;
     uninstallDrawFilter();
 
-    // outer-wrapper не выкинут из цепочки.
     expect(window.fetch).toBe(outer);
     await window.fetch('/api/draw');
     expect(outerCalls).toEqual(['/api/draw']);
@@ -421,11 +244,7 @@ describe('drawFilter', () => {
   });
 
   test('звезда: открыт попап центра — фильтр не срабатывает', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'off',
-      maxDistanceMeters: 0,
-    });
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 0 });
     setStarCenter('center');
     createPopup('center');
     window.fetch = jest.fn().mockResolvedValue(
@@ -445,11 +264,7 @@ describe('drawFilter', () => {
   });
 
   test('звезда: открыт попап другой точки — остаётся только центр', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'off',
-      maxDistanceMeters: 0,
-    });
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 0 });
     setStarCenter('center');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
@@ -469,16 +284,7 @@ describe('drawFilter', () => {
   });
 
   test('звезда: popup-guid снапшотится в момент запроса, не в момент response', async () => {
-    // Сценарий: /api/draw ушёл когда был открыт попап центра (фильтр звезды
-    // НЕ применяется - предикат no-op'ит для попапа центра). Между запросом и
-    // ответом пользователь открыл попап другой точки. Без снапшота фильтр на
-    // resolve видит "B != center" и оставит только центр, что некорректно
-    // (данные были собраны для контекста A).
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'off',
-      maxDistanceMeters: 0,
-    });
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 0 });
     setStarCenter('center');
     const popupCenter = createPopup('center');
     let resolveFetch: (response: Response) => void = () => {};
@@ -491,7 +297,6 @@ describe('drawFilter', () => {
     installDrawFilter();
 
     const pending = window.fetch('/api/draw');
-    // Между request и response пользователь сменил попап.
     popupCenter.remove();
     createPopup('other');
     resolveFetch(
@@ -506,16 +311,11 @@ describe('drawFilter', () => {
 
     const response = await pending;
     const body = (await response.json()) as { data: { p: string }[] };
-    // Контекст A (попап центра) - звезда не применяется, все элементы остаются.
     expect(body.data.map((entry) => entry.p)).toEqual(['a', 'b', 'center']);
   });
 
   test('звезда: попап hidden трактуется как «попап центра не открыт»', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'off',
-      maxDistanceMeters: 0,
-    });
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 0 });
     setStarCenter('center');
     createPopup('center', true);
     window.fetch = jest.fn().mockResolvedValue(
@@ -534,24 +334,15 @@ describe('drawFilter', () => {
   });
 
   test('настройки перечитываются при каждом запросе', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'off',
-      maxDistanceMeters: 0,
-    });
-    setLockedPoints(['fav1']);
-    window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'fav1', a: 1 }] }));
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 0 });
+    window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'p1', d: 900 }] }));
     installDrawFilter();
 
     const first = await window.fetch('/api/draw');
     const firstBody = (await first.json()) as { data: unknown[] };
     expect(firstBody.data).toHaveLength(1);
 
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
 
     const second = await window.fetch('/api/draw');
     const secondBody = (await second.json()) as { data: unknown[] };
@@ -560,29 +351,18 @@ describe('drawFilter', () => {
 });
 
 describe('drawFilter — выбор toast по комбинации счётчиков', () => {
-  // s/d/k = hiddenByStar/Distance/LastKey > 0.
+  // s/d = hiddenByStar/Distance > 0.
 
-  // 0 0 0 — ничего не скрыто → showToast не вызывается.
-  test('s=0 d=0 k=0 (нет скрытых) — showToast не вызван', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    // Locked-точек нет → last-key не сработает. Центра нет, distance=0.
+  test('s=0 d=0 (нет скрытых) — showToast не вызван', async () => {
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 0 });
     window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'a', a: 3 }] }));
     installDrawFilter();
     await window.fetch('/api/draw');
     expect(showToastMock).not.toHaveBeenCalled();
   });
 
-  // 1 0 0 — только звезда.
-  test('s=1 d=0 k=0 — star-only toast', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'off',
-      maxDistanceMeters: 0,
-    });
+  test('s=1 d=0 — star-only toast', async () => {
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 0 });
     setStarCenter('center');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
@@ -601,13 +381,8 @@ describe('drawFilter — выбор toast по комбинации счётчи
     expect(lastToastMessage()).toContain('(2)');
   });
 
-  // 0 1 0 — только дистанция.
-  test('s=0 d=1 k=0 — distance-only toast', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'off',
-      maxDistanceMeters: 500,
-    });
+  test('s=0 d=1 — distance-only toast', async () => {
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
         data: [
@@ -625,65 +400,13 @@ describe('drawFilter — выбор toast по комбинации счётчи
     expect(lastToastMessage()).toContain('500');
   });
 
-  // 0 0 1 — только last-key, count=1 (единственное число через pluralizeLastRefs).
-  test('s=0 d=0 k=1 — last-key toast с count=1 (единственное число)', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    setLockedPoints(['fav1']);
-    window.fetch = jest.fn().mockResolvedValue(
-      buildResponse({
-        data: [
-          { p: 'fav1', a: 1 },
-          { p: 'other', a: 5 },
-        ],
-      }),
-    );
-    installDrawFilter();
-    await window.fetch('/api/draw');
-    expect(showToastMock).toHaveBeenCalledTimes(1);
-    // l10n в jsdom отдаёт en — проверяем единственное число "1 last key".
-    expect(lastToastMessage()).toContain('1 last key');
-    expect(lastToastMessage()).not.toContain('last keys');
-  });
-
-  // 0 0 1 — только last-key, count=2 (множественное число).
-  test('s=0 d=0 k=1 — last-key toast с count=2 (множественное)', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    setLockedPoints(['fav1', 'fav2']);
-    window.fetch = jest.fn().mockResolvedValue(
-      buildResponse({
-        data: [
-          { p: 'fav1', a: 1 },
-          { p: 'fav2', a: 1 },
-          { p: 'other', a: 5 },
-        ],
-      }),
-    );
-    installDrawFilter();
-    await window.fetch('/api/draw');
-    expect(showToastMock).toHaveBeenCalledTimes(1);
-    expect(lastToastMessage()).toContain('2 last keys');
-  });
-
-  // 1 1 0 — звезда + дистанция.
-  test('s=1 d=1 k=0 — combined star+distance toast (totalHidden)', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'off',
-      maxDistanceMeters: 500,
-    });
+  test('s=1 d=1 — combined star+distance toast (totalHidden)', async () => {
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     setStarCenter('center');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
-        // center (d=300), другие: a(d=300, скрыт звездой), b(d=900, скрыт и звездой и distance),
+        // center (d=300), a(d=300, скрыт звездой), b(d=900, скрыт и звездой и distance),
         // c(d=200, скрыт звездой). originalLength=4, filteredLength=1, totalHidden=3.
         data: [
           { p: 'center', d: 300 },
@@ -701,98 +424,14 @@ describe('drawFilter — выбор toast по комбинации счётчи
     expect(lastToastMessage()).toContain('(3)');
   });
 
-  // 1 0 1 — звезда + last-key.
-  test('s=1 d=0 k=1 — combined star+lastKey toast с breakdown', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 0,
-    });
-    setLockedPoints(['fav1']);
-    setStarCenter('center');
-    createPopup('other');
-    window.fetch = jest.fn().mockResolvedValue(
-      buildResponse({
-        data: [
-          { p: 'fav1', a: 1 }, // last-key hit (и звезда)
-          { p: 'a', a: 2 }, // star hit
-          { p: 'center', a: 5 }, // остаётся
-        ],
-      }),
-    );
-    installDrawFilter();
-    await window.fetch('/api/draw');
-    expect(showToastMock).toHaveBeenCalledTimes(1);
-    expect(lastToastMessage()).toContain('star mode');
-    expect(lastToastMessage()).toContain('last key');
-  });
-
-  // 0 1 1 — дистанция + last-key.
-  test('s=0 d=1 k=1 — combined distance+lastKey toast', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 500,
-    });
-    setLockedPoints(['fav1']);
-    window.fetch = jest.fn().mockResolvedValue(
-      buildResponse({
-        data: [
-          { p: 'fav1', a: 1, d: 300 }, // last-key hit
-          { p: 'a', a: 2, d: 900 }, // distance hit
-          { p: 'b', a: 2, d: 300 }, // остаётся
-        ],
-      }),
-    );
-    installDrawFilter();
-    await window.fetch('/api/draw');
-    expect(showToastMock).toHaveBeenCalledTimes(1);
-    expect(lastToastMessage()).toContain('beyond');
-    expect(lastToastMessage()).toContain('500');
-    expect(lastToastMessage()).toContain('last key');
-  });
-
-  // 1 1 1 — все три.
-  test('s=1 d=1 k=1 — all-three toast', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 500,
-    });
-    setLockedPoints(['fav1']);
-    setStarCenter('center');
-    createPopup('other');
-    window.fetch = jest.fn().mockResolvedValue(
-      buildResponse({
-        data: [
-          { p: 'fav1', a: 1, d: 300 }, // last-key hit (и star)
-          { p: 'a', a: 2, d: 900 }, // star + distance hit
-          { p: 'center', a: 5, d: 200 }, // остаётся
-        ],
-      }),
-    );
-    installDrawFilter();
-    await window.fetch('/api/draw');
-    expect(showToastMock).toHaveBeenCalledTimes(1);
-    expect(lastToastMessage()).toContain('star mode');
-    expect(lastToastMessage()).toContain('distance');
-    expect(lastToastMessage()).toContain('last-key');
-  });
-
   test('ровно один showToast на response при любой активной комбинации', async () => {
-    // Двойная проверка: для all-three не вызываются дополнительные toast'ы.
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'protectLastKey',
-      maxDistanceMeters: 500,
-    });
-    setLockedPoints(['fav1']);
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     setStarCenter('center');
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
         data: [
-          { p: 'fav1', a: 1, d: 900 },
+          { p: 'a', a: 1, d: 900 },
           { p: 'center', a: 5, d: 200 },
         ],
       }),
@@ -800,127 +439,5 @@ describe('drawFilter — выбор toast по комбинации счётчи
     installDrawFilter();
     await window.fetch('/api/draw');
     expect(showToastMock).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('drawFilter — hideAllLocked mode-aware toast', () => {
-  test('hideAllLocked соло — показывается toast с формулировкой "N locked points"', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'hideAllLocked',
-      maxDistanceMeters: 0,
-    });
-    setLockedPoints(['fav1', 'fav2']);
-    window.fetch = jest.fn().mockResolvedValue(
-      buildResponse({
-        data: [
-          { p: 'fav1', a: 5 },
-          { p: 'fav2', a: 3 },
-          { p: 'other', a: 1 },
-        ],
-      }),
-    );
-    installDrawFilter();
-    await window.fetch('/api/draw');
-    expect(showToastMock).toHaveBeenCalledTimes(1);
-    expect(lastToastMessage()).toContain('2 locked points');
-    // protectLastKey-формулировка не должна попасть в hideAllLocked toast.
-    expect(lastToastMessage()).not.toContain('last key');
-  });
-
-  test('hideAllLocked + star — combined toast включает обе причины', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'hideAllLocked',
-      maxDistanceMeters: 0,
-    });
-    setLockedPoints(['fav1']);
-    setStarCenter('center');
-    createPopup('other');
-    window.fetch = jest.fn().mockResolvedValue(
-      buildResponse({
-        data: [
-          { p: 'fav1', a: 5 }, // locked - hideAll hit (и star, т.к. != center)
-          { p: 'a', a: 2 }, // star hit
-          { p: 'center', a: 5 }, // остаётся
-        ],
-      }),
-    );
-    installDrawFilter();
-    await window.fetch('/api/draw');
-    expect(showToastMock).toHaveBeenCalledTimes(1);
-    expect(lastToastMessage()).toContain('star mode');
-    expect(lastToastMessage()).toContain('locked points');
-  });
-
-  test('hideAllLocked + distance — combined toast', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'hideAllLocked',
-      maxDistanceMeters: 500,
-    });
-    setLockedPoints(['fav1']);
-    window.fetch = jest.fn().mockResolvedValue(
-      buildResponse({
-        data: [
-          { p: 'fav1', a: 5, d: 300 }, // locked hit (но не distance)
-          { p: 'a', a: 2, d: 900 }, // distance hit
-          { p: 'b', a: 2, d: 300 }, // остаётся
-        ],
-      }),
-    );
-    installDrawFilter();
-    await window.fetch('/api/draw');
-    expect(showToastMock).toHaveBeenCalledTimes(1);
-    expect(lastToastMessage()).toContain('beyond');
-    expect(lastToastMessage()).toContain('locked points');
-  });
-
-  test('hideAllLocked + star + distance — all-three toast c hideAll-формулировкой', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'hideAllLocked',
-      maxDistanceMeters: 500,
-    });
-    setLockedPoints(['fav1']);
-    setStarCenter('center');
-    createPopup('other');
-    window.fetch = jest.fn().mockResolvedValue(
-      buildResponse({
-        data: [
-          { p: 'fav1', a: 5, d: 300 }, // locked + star
-          { p: 'a', a: 2, d: 900 }, // star + distance
-          { p: 'center', a: 5, d: 200 }, // остаётся
-        ],
-      }),
-    );
-    installDrawFilter();
-    await window.fetch('/api/draw');
-    expect(showToastMock).toHaveBeenCalledTimes(1);
-    expect(lastToastMessage()).toContain('star mode');
-    expect(lastToastMessage()).toContain('distance');
-    // hideAllLocked all-three использует формулировку "locked points",
-    // не "last-key protection" (это для protectLastKey).
-    expect(lastToastMessage()).toContain('locked points');
-    expect(lastToastMessage()).not.toContain('last-key');
-  });
-
-  test('hideAllLocked без locked-точек — toast не показывается', async () => {
-    saveDrawingRestrictionsSettings({
-      version: 1,
-      lockProtectionMode: 'hideAllLocked',
-      maxDistanceMeters: 0,
-    });
-    window.fetch = jest.fn().mockResolvedValue(
-      buildResponse({
-        data: [
-          { p: 'a', a: 5 },
-          { p: 'b', a: 3 },
-        ],
-      }),
-    );
-    installDrawFilter();
-    await window.fetch('/api/draw');
-    expect(showToastMock).not.toHaveBeenCalled();
   });
 });
