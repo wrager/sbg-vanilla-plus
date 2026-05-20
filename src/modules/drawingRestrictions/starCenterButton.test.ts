@@ -312,10 +312,10 @@ describe('starCenterButton — переоткрытие попапа при пе
 });
 
 describe('starCenterButton — попытка назначить locked-точку центром', () => {
-  // Двухслойная защита: (1) UI - toggle.disabled = true в updateButtons для
-  // locked-точки, которая не является текущим центром; (2) safety-net в
-  // onToggleClick - fresh read inventory-cache при click, чтобы блокировать
-  // назначение даже если updateButtons видел stale-кэш locked-точек.
+  // Click-only check: кнопка остаётся enabled, проверка locked делается в
+  // onToggleClick свежим чтением inventory-cache. Live-проверка в
+  // updateButtons была отменена в b7d1e73, чтобы не парсить inventory на
+  // каждом тике mutation observer.
 
   test('safety-net в onToggleClick: lock после install (stale cache) - click не назначает + toast', async () => {
     // Stale-cache scenario: пользователь открыл попап (cache = empty),
