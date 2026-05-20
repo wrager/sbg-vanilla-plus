@@ -1375,7 +1375,9 @@ describe('refsOnMap lock protection', () => {
     await Promise.resolve();
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/protect|заблокирован|избранн/i);
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(
+      /protect|заблокирован|избранн/i,
+    );
   });
 
   test('race-protection: кэш без f после confirm блокирует DELETE и показывает toast', async () => {
