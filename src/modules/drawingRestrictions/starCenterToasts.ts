@@ -28,8 +28,8 @@ export function showCenterClearedToast(): void {
 export function showCannotSetLockedCenterToast(): void {
   showToast(
     t({
-      en: "Locked point can't be a star center: no lines could be drawn from it.",
-      ru: 'Защищённая точка не может быть центром звезды: из неё не нарисовать ни одной линии.',
+      en: "Locked point can't be a star center.",
+      ru: 'Защищённая точка не может быть центром звезды.',
     }),
     4000,
   );

@@ -42,9 +42,9 @@ describe('showCenterClearedToast', () => {
 });
 
 describe('showCannotSetLockedCenterToast', () => {
-  test('сообщение объясняет блокировку через нативный замочек', () => {
+  test('короткое сообщение про блокировку locked-точки как центра звезды', () => {
     showCannotSetLockedCenterToast();
     expect(showToastMock).toHaveBeenCalledTimes(1);
-    expect(lastMessage()).toContain("Locked point can't be a star center");
+    expect(lastMessage()).toBe("Locked point can't be a star center.");
   });
 });
