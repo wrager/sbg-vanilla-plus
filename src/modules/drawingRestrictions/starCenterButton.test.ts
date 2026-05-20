@@ -371,6 +371,62 @@ describe('starCenterButton — попытка назначить locked-точк
       false,
     );
   });
+
+  // Регрессия: при попытке переназначения центра с не-locked точки на locked
+  // попап не должен переоткрываться. Старый центр снимается, но обновлять
+  // список рисования в попапе locked-точки бессмысленно (рисовать с неё всё
+  // равно нельзя), а лишний close+showInfo проявлялся бы как мерцание попапа.
+  describe('переоткрытие попапа в locked-ветке не происходит', () => {
+    const showInfoMock = jest.fn();
+
+    beforeEach(() => {
+      showInfoMock.mockClear();
+      (window as unknown as { showInfo: typeof showInfoMock }).showInfo = showInfoMock;
+    });
+
+    afterEach(() => {
+      delete (window as unknown as { showInfo?: typeof showInfoMock }).showInfo;
+    });
+
+    function createLockedPopupWithClose(guid: string): HTMLElement {
+      const popup = createPopupDom(guid);
+      const closeButton = document.createElement('button');
+      closeButton.className = 'popup-close';
+      popup.appendChild(closeButton);
+      return popup;
+    }
+
+    test('переназначение с не-locked центра на locked-точку: закрытие/showInfo не вызываются', async () => {
+      setStarCenter('A');
+      setLockedPoints(['B']);
+      const popup = createLockedPopupWithClose('B');
+      const closeSpy = jest.fn();
+      popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
+
+      installStarCenterButton();
+      getToggle(popup)?.click();
+      await flushMicrotasks();
+
+      expect(getStarCenter()).toBeNull();
+      expect(closeSpy).not.toHaveBeenCalled();
+      expect(showInfoMock).not.toHaveBeenCalled();
+    });
+
+    test('первая попытка назначить locked при пустом центре: закрытие/showInfo не вызываются', async () => {
+      setLockedPoints(['p1']);
+      const popup = createLockedPopupWithClose('p1');
+      const closeSpy = jest.fn();
+      popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
+
+      installStarCenterButton();
+      getToggle(popup)?.click();
+      await flushMicrotasks();
+
+      expect(getStarCenter()).toBeNull();
+      expect(closeSpy).not.toHaveBeenCalled();
+      expect(showInfoMock).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('starCenterButton — идемпотентность async install', () => {

@@ -119,11 +119,15 @@ function onToggleClick(popup: Element): void {
   // снимаем по явному пожеланию пользователя: намерение переключиться уже
   // выражено, а оставлять прежний центр было бы неожиданно после тоста про
   // невозможность нового назначения.
+  //
+  // refreshPopupIfStarFilterWasActive здесь НЕ вызываем: попап открыт на
+  // locked-точке, и обновлять её список целей рисования бессмысленно (игра
+  // всё равно не даст рисовать с этой точки ни одной линии). Лишнее
+  // переоткрытие проявлялось бы как мерцание попапа без пользы для игрока.
   const lockedPoints = buildLockedPointGuids(readInventoryCache());
   if (lockedPoints.has(guid)) {
     if (centerBefore !== null) clearStarCenter();
     showCannotSetLockedCenterToast();
-    refreshPopupIfStarFilterWasActive(centerBefore);
     return;
   }
   setStarCenter(guid);
