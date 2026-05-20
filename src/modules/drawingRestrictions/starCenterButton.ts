@@ -1,4 +1,5 @@
 import { waitForElement } from '../../core/dom';
+import { buildLockedPointGuids, readInventoryCache } from '../../core/inventoryCache';
 import { t } from '../../core/l10n';
 import {
   STAR_CENTER_CHANGED_EVENT,
@@ -8,7 +9,11 @@ import {
 } from './starCenter';
 import { STAR_ICON_SVG } from './starCenterIcon';
 import { refreshPopupIfStarFilterWasActive } from './starCenterRefresh';
-import { showCenterAssignedToast, showCenterClearedToast } from './starCenterToasts';
+import {
+  showCannotSetLockedCenterToast,
+  showCenterAssignedToast,
+  showCenterClearedToast,
+} from './starCenterToasts';
 
 const TOGGLE_CLASS = 'svp-star-center-btn';
 const POPUP_ACTION_BUTTON_CLASS = 'svp-popup-action-button';
@@ -105,6 +110,19 @@ function onToggleClick(popup: Element): void {
     // корректен сразу.
     clearStarCenter();
     showCenterClearedToast();
+    refreshPopupIfStarFilterWasActive(centerBefore);
+    return;
+  }
+  // Locked-точку нельзя сделать центром звезды: нативный замочек защищает
+  // ключи от расходования на линии, и из такого центра не получилось бы
+  // нарисовать ни одной линии. Старый центр (если был на не-locked точке)
+  // снимаем по явному пожеланию пользователя: намерение переключиться уже
+  // выражено, а оставлять прежний центр было бы неожиданно после тоста про
+  // невозможность нового назначения.
+  const lockedPoints = buildLockedPointGuids(readInventoryCache());
+  if (lockedPoints.has(guid)) {
+    if (centerBefore !== null) clearStarCenter();
+    showCannotSetLockedCenterToast();
     refreshPopupIfStarFilterWasActive(centerBefore);
     return;
   }

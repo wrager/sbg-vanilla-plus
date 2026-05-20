@@ -19,3 +19,18 @@ export function showCenterAssignedToast(): void {
 export function showCenterClearedToast(): void {
   showToast(t({ en: 'Star center cleared', ru: 'Центр звезды снят' }), 3000);
 }
+
+/**
+ * Toast при попытке назначить locked-точку центром звезды. Назначение блокируется:
+ * нативный замочек защищает ключи от расходования на линии, поэтому из такого
+ * центра невозможно было бы нарисовать ни одной линии звезды.
+ */
+export function showCannotSetLockedCenterToast(): void {
+  showToast(
+    t({
+      en: "Locked point can't be a star center: no lines could be drawn from it.",
+      ru: 'Защищённая точка не может быть центром звезды: из неё не нарисовать ни одной линии.',
+    }),
+    4000,
+  );
+}

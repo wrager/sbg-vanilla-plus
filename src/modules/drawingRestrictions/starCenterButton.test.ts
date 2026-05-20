@@ -1,5 +1,7 @@
 import { installStarCenterButton, uninstallStarCenterButton } from './starCenterButton';
 import { clearStarCenter, getStarCenter, getStarCenterGuid, setStarCenter } from './starCenter';
+import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
+import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 
 const TOGGLE_CLASS = 'svp-star-center-btn';
 
@@ -9,6 +11,29 @@ jest.mock('../../core/toast', () => ({
     showToastMock(...args);
   },
 }));
+
+/**
+ * Кладёт в inventory-cache стопки ключей с lock-битом (`f & 0b10`) для
+ * переданных точек. `buildLockedPointGuids` читает свежий кэш при каждом клике,
+ * поэтому через этот helper тест имитирует "точка с замочком".
+ */
+function setLockedPoints(pointGuids: string[]): void {
+  const cache = pointGuids.map((guid, index) => ({
+    g: `stack-${guid}-${index}`,
+    t: ITEM_TYPE_REFERENCE,
+    l: guid,
+    a: 1,
+    f: 0b10,
+  }));
+  localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(cache));
+}
+
+function toastMessages(): string[] {
+  return showToastMock.mock.calls.map((call: unknown[]) => {
+    const [first] = call;
+    return typeof first === 'string' ? first : '';
+  });
+}
 
 function createPopupDom(guid: string | null, hidden = false): HTMLElement {
   const popup = document.createElement('div');
@@ -280,6 +305,71 @@ describe('starCenterButton — переоткрытие попапа при пе
 
     expect(getStarCenterGuid()).toBe('B');
     expect(closeSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('starCenterButton — попытка назначить locked-точку центром', () => {
+  // Назначение блокируется: нативный замочек защищает ключи от расходования
+  // на линии, и из такого центра невозможно нарисовать ни одной линии.
+
+  test('центра нет → клик в попапе locked-точки не назначает, показывает блок-toast', async () => {
+    setLockedPoints(['p1']);
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+
+    expect(getStarCenter()).toBeNull();
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      true,
+    );
+    expect(toastMessages().some((m) => m.includes('selected as star center'))).toBe(false);
+  });
+
+  test('центр на не-locked точке → клик в попапе locked-точки снимает старый центр, новый не назначает', async () => {
+    setStarCenter('A');
+    setLockedPoints(['B']);
+    const popup = createPopupDom('B');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+
+    expect(getStarCenter()).toBeNull();
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      true,
+    );
+  });
+
+  test('клик в попапе locked-точки, который уже является центром, снимает центр как обычно', async () => {
+    // Center уже был назначен на locked-точку (через legacy localStorage или
+    // ручным добавлением замочка между сессиями). Клик в попапе самой
+    // центральной точки трактуется как "снять центр", не как "переназначить".
+    setStarCenter('p1');
+    setLockedPoints(['p1']);
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+
+    expect(getStarCenter()).toBeNull();
+    expect(toastMessages().some((m) => m.includes('Star center cleared'))).toBe(true);
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      false,
+    );
+  });
+
+  test('не-locked точка назначается как раньше', async () => {
+    setLockedPoints(['other']);
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+
+    expect(getStarCenterGuid()).toBe('p1');
+    expect(toastMessages().some((m) => m.includes('selected as star center'))).toBe(true);
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      false,
+    );
   });
 });
 
