@@ -473,6 +473,21 @@ describe('starCenterButton — legacy locked center при installStarCenterButt
     expect(getStarCenter()).toBeNull();
     expect(showToastMock).not.toHaveBeenCalled();
   });
+
+  test('lock встаёт на центр в текущей сессии - центр не снимается автоматически', () => {
+    // Инвариант README:16 "Если lock поставлен в текущей сессии, центр
+    // остаётся". Live auto-clear отменён в 208a964 ради производительности
+    // (mutation observer не парсит inventory на каждом тике). Снять центр
+    // можно только через клик или install-time legacy clear при следующем
+    // старте.
+    setStarCenter('p1');
+    createPopupDom('p2');
+    installStarCenterButton();
+    setLockedPoints(['p1']);
+
+    expect(getStarCenterGuid()).toBe('p1');
+    expect(showToastMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('starCenterButton — фильтр self-trigger mutations (hasRelevantMutations)', () => {
