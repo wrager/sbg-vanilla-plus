@@ -20,8 +20,8 @@ export const drawingRestrictions: IFeatureModule = {
     ru: 'Ограничения рисования',
   },
   description: {
-    en: 'Adds a star drawing mode (many lines converging on one fixed center) and a distance filter for the drawing target list.',
-    ru: 'Добавляет режим рисования звезды (множество линий, сходящихся в одну зафиксированную точку-центр) и фильтр дальности целей рисования.',
+    en: 'Adds a "star" drawing mode and a distance filter for the drawing target list.',
+    ru: 'Добавляет режим рисования "звезда" и фильтр дальности целей рисования.',
   },
   defaultEnabled: true,
   category: 'feature',
