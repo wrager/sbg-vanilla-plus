@@ -309,10 +309,11 @@ describe('starCenterButton — переоткрытие попапа при пе
 });
 
 describe('starCenterButton — попытка назначить locked-точку центром', () => {
-  // Назначение блокируется: нативный замочек защищает ключи от расходования
-  // на линии, и из такого центра невозможно нарисовать ни одной линии.
+  // Защита на UI-уровне: toggle.disabled = true в updateButtons для
+  // locked-точки, которая не является текущим центром. Click на disabled
+  // button не вызывает handler ни в браузерах, ни в jsdom.
 
-  test('центра нет → клик в попапе locked-точки не назначает, показывает блок-toast', async () => {
+  test('центра нет: click на toggle locked-точки - no-op (кнопка disabled)', async () => {
     setLockedPoints(['p1']);
     const popup = createPopupDom('p1');
     installStarCenterButton();
@@ -320,13 +321,10 @@ describe('starCenterButton — попытка назначить locked-точк
     await flushMicrotasks();
 
     expect(getStarCenter()).toBeNull();
-    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
-      true,
-    );
-    expect(toastMessages().some((m) => m.includes('selected as star center'))).toBe(false);
+    expect(toastMessages()).toEqual([]);
   });
 
-  test('центр на не-locked точке → клик в попапе locked-точки снимает старый центр, новый не назначает', async () => {
+  test('центр на не-locked точке: click на toggle locked-точки - no-op (кнопка disabled), центр остаётся', async () => {
     setStarCenter('A');
     setLockedPoints(['B']);
     const popup = createPopupDom('B');
@@ -334,10 +332,8 @@ describe('starCenterButton — попытка назначить locked-точк
     getToggle(popup)?.click();
     await flushMicrotasks();
 
-    expect(getStarCenter()).toBeNull();
-    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
-      true,
-    );
+    expect(getStarCenterGuid()).toBe('A');
+    expect(toastMessages()).toEqual([]);
   });
 
   test('клик в попапе locked-точки, который уже является центром, снимает центр как обычно', async () => {
@@ -357,6 +353,33 @@ describe('starCenterButton — попытка назначить locked-точк
     expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
       false,
     );
+  });
+
+  test('locked-точка, не центр: toggle disabled с lock-title', () => {
+    setLockedPoints(['p1']);
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+
+    const toggle = getToggle(popup);
+    expect(toggle?.disabled).toBe(true);
+    expect(toggle?.title).toBe("Locked point can't be a star center");
+    expect(toggle?.classList.contains('is-active')).toBe(false);
+  });
+
+  test('locked-точка, которая уже является центром: toggle активен (для снятия)', () => {
+    // locked-центр - результат legacy install check race (или ручной правки
+    // localStorage). Кнопка остаётся активной, чтобы дать пользователю выход.
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    setStarCenter('p1');
+    setLockedPoints(['p1']);
+    // Триггер пересчёта updateButtons (через STAR_CENTER_CHANGED_EVENT,
+    // setLockedPoints сам по себе observer не дёргает).
+    document.dispatchEvent(new Event('svp:star-center-changed'));
+
+    const toggle = getToggle(popup);
+    expect(toggle?.disabled).toBe(false);
+    expect(toggle?.classList.contains('is-active')).toBe(true);
   });
 
   test('не-locked точка назначается как раньше', async () => {
@@ -397,7 +420,7 @@ describe('starCenterButton — попытка назначить locked-точк
       return popup;
     }
 
-    test('переназначение с не-locked центра на locked-точку: закрытие/showInfo не вызываются', async () => {
+    test('центр на не-locked точке, click на locked-точке: центр остаётся, закрытие/showInfo не вызываются', async () => {
       setStarCenter('A');
       setLockedPoints(['B']);
       const popup = createLockedPopupWithClose('B');
@@ -408,7 +431,7 @@ describe('starCenterButton — попытка назначить locked-точк
       getToggle(popup)?.click();
       await flushMicrotasks();
 
-      expect(getStarCenter()).toBeNull();
+      expect(getStarCenterGuid()).toBe('A');
       expect(closeSpy).not.toHaveBeenCalled();
       expect(showInfoMock).not.toHaveBeenCalled();
     });

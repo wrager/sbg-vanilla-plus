@@ -87,14 +87,29 @@ function updateButtons(popup: Element): void {
       });
       buttons.appendChild(toggle);
     }
-    toggle.disabled = false;
-    toggle.classList.toggle('is-active', isCurrentCenter);
-    toggle.setAttribute('aria-pressed', isCurrentCenter ? 'true' : 'false');
-    toggle.title = isCurrentCenter
-      ? t({ en: 'Clear star center', ru: 'Снять центр звезды' })
-      : starCenterGuid !== null
-        ? t({ en: 'Reassign star center to this point', ru: 'Назначить эту точку центром звезды' })
-        : t({ en: 'Set as star center', ru: 'Назначить центром звезды' });
+    // Locked-точка (не текущий центр): кнопка disabled. Title объясняет
+    // причину. Если точка locked И уже центр - кнопка остаётся активной для
+    // снятия центра (звёздочный режим бесполезен, нужен выход).
+    const lockedPoints = buildLockedPointGuids(readInventoryCache());
+    const isLockedNonCenter = lockedPoints.has(popupGuid) && !isCurrentCenter;
+    if (isLockedNonCenter) {
+      toggle.disabled = true;
+      toggle.classList.remove('is-active');
+      toggle.setAttribute('aria-pressed', 'false');
+      toggle.title = t({
+        en: "Locked point can't be a star center",
+        ru: 'Точка с замочком не может быть центром звезды',
+      });
+    } else {
+      toggle.disabled = false;
+      toggle.classList.toggle('is-active', isCurrentCenter);
+      toggle.setAttribute('aria-pressed', isCurrentCenter ? 'true' : 'false');
+      toggle.title = isCurrentCenter
+        ? t({ en: 'Clear star center', ru: 'Снять центр звезды' })
+        : starCenterGuid !== null
+          ? t({ en: 'Reassign star center to this point', ru: 'Назначить эту точку центром звезды' })
+          : t({ en: 'Set as star center', ru: 'Назначить центром звезды' });
+    }
   }
 }
 
@@ -113,23 +128,9 @@ function onToggleClick(popup: Element): void {
     refreshPopupIfStarFilterWasActive(centerBefore);
     return;
   }
-  // Locked-точку нельзя сделать центром звезды: нативный замочек защищает
-  // ключи от расходования на линии, и из такого центра не получилось бы
-  // нарисовать ни одной линии. Старый центр (если был на не-locked точке)
-  // снимаем по явному пожеланию пользователя: намерение переключиться уже
-  // выражено, а оставлять прежний центр было бы неожиданно после тоста про
-  // невозможность нового назначения.
-  //
-  // refreshPopupIfStarFilterWasActive здесь НЕ вызываем: попап открыт на
-  // locked-точке, и обновлять её список целей рисования бессмысленно (игра
-  // всё равно не даст рисовать с этой точки ни одной линии). Лишнее
-  // переоткрытие проявлялось бы как мерцание попапа без пользы для игрока.
-  const lockedPoints = buildLockedPointGuids(readInventoryCache());
-  if (lockedPoints.has(guid)) {
-    if (centerBefore !== null) clearStarCenter();
-    showCannotSetLockedCenterToast();
-    return;
-  }
+  // Locked-точка для не-центра защищена на UI-уровне в updateButtons
+  // (toggle.disabled = true). Здесь locked-ветка не нужна: click на disabled
+  // button не вызывает handler.
   setStarCenter(guid);
   showCenterAssignedToast();
   // Назначение нового центра (centerBefore = null) - утилита no-op.
