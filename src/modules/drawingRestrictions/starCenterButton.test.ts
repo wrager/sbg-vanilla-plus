@@ -72,7 +72,6 @@ async function flushMicrotasks(): Promise<void> {
 beforeEach(() => {
   localStorage.clear();
   clearStarCenter();
-  localStorage.clear();
   showToastMock.mockClear();
 });
 
