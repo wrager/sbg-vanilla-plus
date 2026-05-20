@@ -50,33 +50,6 @@ function createPopupDom(guid: string | null, hidden = false): HTMLElement {
   return popup;
 }
 
-/**
- * Имитирует игровой #self-info__name с inline color = var(--team-N).
- * `getPlayerTeam` парсит этот цвет.
- */
-function setPlayerTeam(team: number): void {
-  let element = document.getElementById('self-info__name');
-  if (!element) {
-    element = document.createElement('span');
-    element.id = 'self-info__name';
-    document.body.appendChild(element);
-  }
-  element.setAttribute('style', `color: var(--team-${team});`);
-}
-
-/**
- * Имитирует игровой #i-stat__owner с inline color = var(--team-N).
- * `getPopupPointTeam` парсит этот цвет.
- */
-function setPopupPointTeam(team: number): void {
-  let element = document.getElementById('i-stat__owner');
-  if (!element) {
-    element = document.createElement('span');
-    element.id = 'i-stat__owner';
-    document.body.appendChild(element);
-  }
-  element.setAttribute('style', `color: var(--team-${team});`);
-}
 
 function createPopupWithClose(guid: string): HTMLElement {
   const popup = createPopupDom(guid);
@@ -555,76 +528,6 @@ describe('starCenterButton — фильтр self-trigger mutations (hasRelevantM
 
   test('пустой список - false', () => {
     expect(hasRelevantMutations([])).toBe(false);
-  });
-});
-
-describe('starCenterButton — точка чужой команды (click-only check)', () => {
-  // Источник team точки - inline color на #i-stat__owner (игра ставит
-  // var(--team-N) в showInfo). Источник player team - inline color на
-  // #self-info__name. Проверка происходит только в onToggleClick: live
-  // disabled-состояние не ставится, чтобы не парсить DOM на каждом
-  // mutation hot-path.
-
-  test('click на enemy точку: блокирует назначение, показывает toast', async () => {
-    setPlayerTeam(2);
-    setPopupPointTeam(3);
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-
-    expect(getStarCenter()).toBeNull();
-    expect(
-      toastMessages().some((m) => m.includes("Point not in your team can't be a star center")),
-    ).toBe(true);
-  });
-
-  test('click на нейтральную точку (team=0): блокирует, toast', async () => {
-    setPlayerTeam(2);
-    setPopupPointTeam(0);
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-
-    expect(getStarCenter()).toBeNull();
-    expect(
-      toastMessages().some((m) => m.includes("Point not in your team can't be a star center")),
-    ).toBe(true);
-  });
-
-  test('click на свою точку: назначает как обычно', async () => {
-    setPlayerTeam(2);
-    setPopupPointTeam(2);
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-
-    expect(getStarCenterGuid()).toBe('p1');
-    expect(toastMessages().some((m) => m.includes('selected as star center'))).toBe(true);
-  });
-
-  test('player team неизвестна: click не блокируется (fail-safe)', async () => {
-    // #self-info__name отсутствует - getPlayerTeam null. Click не блокируется.
-    setPopupPointTeam(3);
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-
-    expect(getStarCenterGuid()).toBe('p1');
-  });
-
-  test('team точки неизвестна: click не блокируется (fail-safe)', async () => {
-    // #i-stat__owner отсутствует или без team-color. Click не блокируется.
-    setPlayerTeam(2);
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-
-    expect(getStarCenterGuid()).toBe('p1');
   });
 });
 

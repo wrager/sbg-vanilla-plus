@@ -35,17 +35,3 @@ export function showCannotSetLockedCenterToast(): void {
   );
 }
 
-/**
- * Toast при попытке назначить точку другой команды центром звезды (или при
- * захвате текущего центра противником). Рисовать линии можно только со своих
- * точек, поэтому центром может быть только точка своей команды.
- */
-export function showEnemyTeamCannotBeCenterToast(): void {
-  showToast(
-    t({
-      en: "Point not in your team can't be a star center.",
-      ru: 'Точка не вашей команды не может быть центром звезды.',
-    }),
-    4000,
-  );
-}

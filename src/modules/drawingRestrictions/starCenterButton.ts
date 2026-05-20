@@ -1,7 +1,6 @@
 import { waitForElement } from '../../core/dom';
 import { buildLockedPointGuids, readInventoryCache } from '../../core/inventoryCache';
 import { t } from '../../core/l10n';
-import { getPlayerTeam } from '../../core/playerTeam';
 import {
   STAR_CENTER_CHANGED_EVENT,
   clearStarCenter,
@@ -14,7 +13,6 @@ import {
   showCannotSetLockedCenterToast,
   showCenterAssignedToast,
   showCenterClearedToast,
-  showEnemyTeamCannotBeCenterToast,
 } from './starCenterToasts';
 
 export const TOGGLE_CLASS = 'svp-star-center-btn';
@@ -50,46 +48,6 @@ function getCurrentGuid(popup: Element): string | null {
  */
 function getLockedPointsFor(): Set<string> {
   return buildLockedPointGuids(readInventoryCache());
-}
-
-/**
- * Команда (фракция) точки открытого попапа из inline style.color на
- * `#i-stat__owner`. Игра в showInfo ставит `color: var(--team-N)` через
- * jQuery .css() (refs/game/script.js:2126). Источник работает и для
- * клика на карту, и для showInfo(guid) из профиля/инвентаря/favorites -
- * не зависит от viewport карты и наличия feature в points-layer.
- *
- * Возвращает undefined если элемент отсутствует или color не парсится.
- * Вызывающий обязан трактовать undefined как "неизвестно" и не блокировать
- * UI (fail-safe enable).
- */
-function getPopupPointTeam(): number | undefined {
-  const element = document.getElementById('i-stat__owner');
-  if (!element) return undefined;
-  // jsdom разный для element.style.color и getAttribute('style') - см.
-  // комментарий в playerTeam.ts. Чекаем оба источника.
-  const candidates = [element.style.color, element.getAttribute('style') ?? ''];
-  for (const candidate of candidates) {
-    const match = /var\(--team-(\d+)\)/.exec(candidate);
-    if (match) {
-      const team = parseInt(match[1], 10);
-      if (Number.isFinite(team)) return team;
-    }
-  }
-  return undefined;
-}
-
-/**
- * true если точка чужой команды (или нейтральная) и player team известна.
- * Нейтральная точка (team === 0 в игре) не своя - использовать как центр
- * нельзя (рисовать с неё линии тоже нельзя).
- */
-function isEnemyTeamPoint(): boolean {
-  const pointTeam = getPopupPointTeam();
-  if (pointTeam === undefined) return false; // unknown - fail-safe enable
-  const playerTeam = getPlayerTeam();
-  if (playerTeam === null) return false; // player team unknown - fail-safe
-  return pointTeam !== playerTeam;
 }
 
 function findToggle(popup: Element): HTMLButtonElement | null {
@@ -176,16 +134,12 @@ function onToggleClick(popup: Element): void {
     refreshPopupIfStarFilterWasActive(centerBefore);
     return;
   }
-  // Safety-net: fresh checks при click. Между updateButtons и click игра
-  // могла обновить lock-флаг или захват точки, mutation observer мог не
-  // успеть fire.
+  // Click-only check: locked точку нельзя сделать центром. Нативный замочек
+  // защищает ключи от расходования на линии, и из такого центра не вышло бы
+  // нарисовать ни одной линии звезды.
   const lockedPoints = getLockedPointsFor();
   if (lockedPoints.has(guid)) {
     showCannotSetLockedCenterToast();
-    return;
-  }
-  if (isEnemyTeamPoint()) {
-    showEnemyTeamCannotBeCenterToast();
     return;
   }
   setStarCenter(guid);
