@@ -341,13 +341,14 @@ describe('starCenterButton — попытка назначить locked-точк
   });
 
   test('клик в попапе locked-точки, который уже является центром, снимает центр как обычно', async () => {
-    // Center уже был назначен на locked-точку (через legacy localStorage или
-    // ручным добавлением замочка между сессиями). Клик в попапе самой
-    // центральной точки трактуется как "снять центр", не как "переназначить".
-    setStarCenter('p1');
-    setLockedPoints(['p1']);
+    // p1 стала locked после того, как была назначена центром и после
+    // installStarCenterButton (legacy check уже отработал при install и
+    // ничего не нашёл). Клик в попапе самой центральной точки снимает центр
+    // как обычно (star.guid === guid ветка в onToggleClick).
     const popup = createPopupDom('p1');
-    installStarCenterButton();
+    installStarCenterButton(); // legacy check: центра нет - no-op
+    setStarCenter('p1');       // назначаем центром после install
+    setLockedPoints(['p1']);   // точка становится locked
     getToggle(popup)?.click();
     await flushMicrotasks();
 
@@ -426,6 +427,38 @@ describe('starCenterButton — попытка назначить locked-точк
       expect(closeSpy).not.toHaveBeenCalled();
       expect(showInfoMock).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('starCenterButton — legacy locked center при installStarCenterButton', () => {
+  test('центр был на locked-точке - снимается, показывает блок-toast', () => {
+    setStarCenter('p1');
+    setLockedPoints(['p1']);
+    createPopupDom('p2');
+    installStarCenterButton();
+
+    expect(getStarCenter()).toBeNull();
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      true,
+    );
+  });
+
+  test('центр был на не-locked точке - остаётся, toast не показывается', () => {
+    setStarCenter('p1');
+    setLockedPoints(['other']);
+    createPopupDom('p2');
+    installStarCenterButton();
+
+    expect(getStarCenterGuid()).toBe('p1');
+    expect(showToastMock).not.toHaveBeenCalled();
+  });
+
+  test('центр не назначен - ничего не происходит', () => {
+    createPopupDom('p1');
+    installStarCenterButton();
+
+    expect(getStarCenter()).toBeNull();
+    expect(showToastMock).not.toHaveBeenCalled();
   });
 });
 

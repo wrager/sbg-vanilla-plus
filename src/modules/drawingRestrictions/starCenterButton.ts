@@ -165,6 +165,19 @@ function startObserving(popup: Element): void {
 
 export function installStarCenterButton(): void {
   if (popupObserver || pendingInstall) return;
+  // Legacy: center may have been assigned in a previous session when the point
+  // was unlocked, then the point got a lock between sessions. Clear it now so
+  // star mode does not silently show 0 draw targets from all other popups.
+  // Low-probability race: inventory-cache may not yet reflect the latest lock
+  // state if the user has never loaded inventory in this session.
+  const existingGuid = getStarCenter()?.guid ?? null;
+  if (existingGuid !== null) {
+    const lockedPoints = buildLockedPointGuids(readInventoryCache());
+    if (lockedPoints.has(existingGuid)) {
+      clearStarCenter();
+      showCannotSetLockedCenterToast();
+    }
+  }
   installGeneration++;
   const generation = installGeneration;
   const existing = document.querySelector(POPUP_SELECTOR);
