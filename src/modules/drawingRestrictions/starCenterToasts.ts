@@ -34,4 +34,3 @@ export function showCannotSetLockedCenterToast(): void {
     4000,
   );
 }
-

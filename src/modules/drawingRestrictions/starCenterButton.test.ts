@@ -8,7 +8,6 @@ import { clearStarCenter, getStarCenter, getStarCenterGuid, setStarCenter } from
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 
-
 const showToastMock = jest.fn();
 jest.mock('../../core/toast', () => ({
   showToast: (...args: unknown[]) => {
@@ -49,7 +48,6 @@ function createPopupDom(guid: string | null, hidden = false): HTMLElement {
   document.body.appendChild(popup);
   return popup;
 }
-
 
 function createPopupWithClose(guid: string): HTMLElement {
   const popup = createPopupDom(guid);
@@ -325,7 +323,7 @@ describe('starCenterButton — попытка назначить locked-точк
     // Click срабатывает - safety-net пересчитывает inventory и блокирует.
     const popup = createPopupDom('p1');
     installStarCenterButton(); // updateButtons: lockedPoints empty, cache = empty
-    setLockedPoints(['p1']);   // lock после install, cache stale
+    setLockedPoints(['p1']); // lock после install, cache stale
     getToggle(popup)?.click();
     await flushMicrotasks();
 
@@ -356,8 +354,8 @@ describe('starCenterButton — попытка назначить locked-точк
     // как обычно (star.guid === guid ветка в onToggleClick).
     const popup = createPopupDom('p1');
     installStarCenterButton(); // legacy check: центра нет - no-op
-    setStarCenter('p1');       // назначаем центром после install
-    setLockedPoints(['p1']);   // точка становится locked
+    setStarCenter('p1'); // назначаем центром после install
+    setLockedPoints(['p1']); // точка становится locked
     getToggle(popup)?.click();
     await flushMicrotasks();
 

@@ -43,19 +43,19 @@
 
 ## Файловая структура
 
-| Файл                        | Назначение                                                                              |
-| --------------------------- | --------------------------------------------------------------------------------------- |
-| `drawingRestrictions.ts`    | Определение модуля: enable / disable                                                    |
-| `settings.ts`               | `load` (чистый геттер), `save`                                                          |
-| `settingsUi.ts`             | UI настроек: числовое поле макс. расстояния                                             |
-| `filterRules.ts`            | Чистые предикаты `IDrawEntry` + counter'ы для toast-breakdown                           |
-| `drawFilter.ts`             | Обёртка `window.fetch` для `GET /api/draw`, применяет предикаты, выбирает toast         |
-| `starCenter.ts`             | Хранилище {guid} центра звезды в localStorage + событие `svp:star-center-changed`       |
-| `starCenterIcon.ts`         | SVG иконок звезды (обычная и со слешем)                                                 |
-| `starCenterButton.ts`       | Кнопка в попапе точки: назначить/снять/переназначить + блокировка locked-точки          |
-| `starCenterClearControl.ts` | OL-control на карте (под `.region-picker`) — сбросить центр с toast                     |
-| `starCenterHighlight.ts`    | Overlay-слой с жёлтым кольцом вокруг центра звезды (оригинальный вид точки сохраняется) |
-| `starCenterToasts.ts`       | Toast-функции для button и clear-control: назначен / снят / locked не назначается       |
+| Файл                        | Назначение                                                                               |
+| --------------------------- | ---------------------------------------------------------------------------------------- |
+| `drawingRestrictions.ts`    | Определение модуля: enable / disable                                                     |
+| `settings.ts`               | `load` (чистый геттер), `save`                                                           |
+| `settingsUi.ts`             | UI настроек: числовое поле макс. расстояния                                              |
+| `filterRules.ts`            | Чистые предикаты `IDrawEntry` + counter'ы для toast-breakdown                            |
+| `drawFilter.ts`             | Обёртка `window.fetch` для `GET /api/draw`, применяет предикаты, выбирает toast          |
+| `starCenter.ts`             | Хранилище {guid} центра звезды в localStorage + событие `svp:star-center-changed`        |
+| `starCenterIcon.ts`         | SVG иконок звезды (обычная и со слешем)                                                  |
+| `starCenterButton.ts`       | Кнопка в попапе точки: назначить/снять/переназначить + блокировка locked-точки           |
+| `starCenterClearControl.ts` | OL-control на карте (под `.region-picker`) — сбросить центр с toast                      |
+| `starCenterHighlight.ts`    | Overlay-слой с жёлтым кольцом вокруг центра звезды (оригинальный вид точки сохраняется)  |
+| `starCenterToasts.ts`       | Toast-функции для button и clear-control: назначен / снят / locked не назначается        |
 | `starCenterRefresh.ts`      | Wrapper над `refreshOpenPopup` с отсечкой по centerBeforeChange для пересчёта draw-count |
-| `refreshOpenPopup.ts`       | Закрывает и переоткрывает попап через `window.showInfo` для свежего `/api/draw`         |
-| `styles.css`                | Стили кнопки «Настроить», кнопок звезды и модалки настроек                              |
+| `refreshOpenPopup.ts`       | Закрывает и переоткрывает попап через `window.showInfo` для свежего `/api/draw`          |
+| `styles.css`                | Стили кнопки «Настроить», кнопок звезды и модалки настроек                               |

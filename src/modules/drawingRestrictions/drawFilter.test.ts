@@ -53,9 +53,7 @@ afterEach(() => {
 describe('drawFilter', () => {
   test('пропускает запросы не к /api/draw', async () => {
     saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
-    window.fetch = jest
-      .fn()
-      .mockResolvedValue(buildResponse({ data: [{ p: 'p1', d: 900 }] }));
+    window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'p1', d: 900 }] }));
     installDrawFilter();
 
     const response = await window.fetch('/api/point?guid=x');
@@ -67,11 +65,7 @@ describe('drawFilter', () => {
     saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
-        data: [
-          { p: 'p1', d: 300 },
-          { p: 'p2', d: 800 },
-          { p: 'p3' },
-        ],
+        data: [{ p: 'p1', d: 300 }, { p: 'p2', d: 800 }, { p: 'p3' }],
       }),
     );
     installDrawFilter();
@@ -178,9 +172,7 @@ describe('drawFilter', () => {
 
   test('uninstall перестаёт фильтровать, но не выкидывает wrapper из цепочки', async () => {
     saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
-    const mockFetch = jest
-      .fn()
-      .mockResolvedValue(buildResponse({ data: [{ p: 'p1', d: 900 }] }));
+    const mockFetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'p1', d: 900 }] }));
     window.fetch = mockFetch;
     installDrawFilter();
     expect(window.fetch).not.toBe(mockFetch);
@@ -196,9 +188,7 @@ describe('drawFilter', () => {
 
   test('повторный install после uninstall - тот же wrapper, фильтр снова работает', async () => {
     saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
-    window.fetch = jest
-      .fn()
-      .mockResolvedValue(buildResponse({ data: [{ p: 'p1', d: 900 }] }));
+    window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'p1', d: 900 }] }));
     installDrawFilter();
     const wrapper = window.fetch;
     uninstallDrawFilter();
@@ -249,11 +239,7 @@ describe('drawFilter', () => {
     createPopup('center');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
-        data: [
-          { p: 'a' },
-          { p: 'b' },
-          { p: 'center' },
-        ],
+        data: [{ p: 'a' }, { p: 'b' }, { p: 'center' }],
       }),
     );
     installDrawFilter();
@@ -269,11 +255,7 @@ describe('drawFilter', () => {
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
-        data: [
-          { p: 'a' },
-          { p: 'b' },
-          { p: 'center' },
-        ],
+        data: [{ p: 'a' }, { p: 'b' }, { p: 'center' }],
       }),
     );
     installDrawFilter();
@@ -301,11 +283,7 @@ describe('drawFilter', () => {
     createPopup('other');
     resolveFetch(
       buildResponse({
-        data: [
-          { p: 'a' },
-          { p: 'b' },
-          { p: 'center' },
-        ],
+        data: [{ p: 'a' }, { p: 'b' }, { p: 'center' }],
       }),
     );
 
@@ -320,10 +298,7 @@ describe('drawFilter', () => {
     createPopup('center', true);
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
-        data: [
-          { p: 'a' },
-          { p: 'center' },
-        ],
+        data: [{ p: 'a' }, { p: 'center' }],
       }),
     );
     installDrawFilter();
@@ -367,11 +342,7 @@ describe('drawFilter — выбор toast по комбинации счётчи
     createPopup('other');
     window.fetch = jest.fn().mockResolvedValue(
       buildResponse({
-        data: [
-          { p: 'a' },
-          { p: 'b' },
-          { p: 'center' },
-        ],
+        data: [{ p: 'a' }, { p: 'b' }, { p: 'center' }],
       }),
     );
     installDrawFilter();
