@@ -1,9 +1,5 @@
 import { waitForElement } from '../../core/dom';
-import {
-  INVENTORY_CACHE_KEY,
-  buildLockedPointGuids,
-  readInventoryCache,
-} from '../../core/inventoryCache';
+import { buildLockedPointGuids, readInventoryCache } from '../../core/inventoryCache';
 import { t } from '../../core/l10n';
 import {
   STAR_CENTER_CHANGED_EVENT,
@@ -28,17 +24,6 @@ let popupObserver: MutationObserver | null = null;
 let clickAbortController: AbortController | null = null;
 let changeHandler: (() => void) | null = null;
 let installGeneration = 0;
-// Кэш locked-точек, рассчитанных через buildLockedPointGuids(readInventoryCache()).
-// Invalidates при смене popupGuid И при изменении длины JSON-строки
-// inventory-cache. Length-fingerprint ловит lock toggle на текущей открытой
-// точке: игра добавляет/убирает поле "f":2 в стопке ключей, длина JSON
-// гарантированно меняется. Без fingerprint cache держал бы stale Set, и
-// disabled-состояние кнопки не отражало бы свежий lock-флаг.
-let cachedLockedPoints: { forGuid: string; cacheLength: number; set: Set<string> } | null = null;
-
-function getInventoryCacheLength(): number {
-  return localStorage.getItem(INVENTORY_CACHE_KEY)?.length ?? 0;
-}
 // pendingInstall защищает от race `install() → install()` до того как первый
 // waitForElement резолвится: синхронный guard `popupObserver !== null`
 // недостаточен, потому что observer ставится только в .then(). Без флага оба
@@ -53,17 +38,16 @@ function getCurrentGuid(popup: Element): string | null {
   return guid && guid.length > 0 ? guid : null;
 }
 
-function getLockedPointsFor(popupGuid: string): Set<string> {
-  const currentLength = getInventoryCacheLength();
-  if (
-    cachedLockedPoints?.forGuid === popupGuid &&
-    cachedLockedPoints.cacheLength === currentLength
-  ) {
-    return cachedLockedPoints.set;
-  }
-  const set = buildLockedPointGuids(readInventoryCache());
-  cachedLockedPoints = { forGuid: popupGuid, cacheLength: currentLength, set };
-  return set;
+/**
+ * Свежий read inventory-cache при каждом вызове. Кэш не используется:
+ * игра меняет lock-bit "f" в-place в JSON-строке (например "f":0 -> "f":2),
+ * длина строки и popupGuid не меняются - cache invalidation по этим ключам
+ * не ловит изменение. JSON.parse 200KB занимает ~1ms, observer fires при
+ * реальных DOM-mutations единицы раз в секунду (filter self-trigger'ов уже
+ * закрыл шторм), общая нагрузка незаметна.
+ */
+function getLockedPointsFor(): Set<string> {
+  return buildLockedPointGuids(readInventoryCache());
 }
 
 function findToggle(popup: Element): HTMLButtonElement | null {
@@ -118,7 +102,7 @@ function updateButtons(popup: Element): void {
     // Locked-точка (не текущий центр): кнопка disabled. Title объясняет
     // причину. Если точка locked И уже центр - кнопка остаётся активной для
     // снятия центра (звёздочный режим бесполезен, нужен выход).
-    const lockedPoints = getLockedPointsFor(popupGuid);
+    const lockedPoints = getLockedPointsFor();
     const isLockedNonCenter = lockedPoints.has(popupGuid) && !isCurrentCenter;
     if (isLockedNonCenter) {
       toggle.disabled = true;
@@ -156,15 +140,10 @@ function onToggleClick(popup: Element): void {
     refreshPopupIfStarFilterWasActive(centerBefore);
     return;
   }
-  // Safety-net: основная защита от назначения locked-центра - disabled-кнопка
-  // в updateButtons, но кэш lockedPoints инвалидируется только при смене
-  // popupGuid. Если пользователь поставил lock на текущую открытую точку,
-  // updateButtons получит stale-кэш и кнопка останется enabled до следующего
-  // open popup. Здесь делаем fresh read при click, чтобы блокировать
-  // назначение даже если UI не успел обновиться. Кэш также обновляем, чтобы
-  // следующий updateButtons увидел свежий lock.
-  cachedLockedPoints = null;
-  const lockedPoints = getLockedPointsFor(guid);
+  // Safety-net: fresh inventory read при click. Если между updateButtons и
+  // click игра обновила lock-флаг (mutation observer не успел fire), это
+  // блокирует назначение locked-центра.
+  const lockedPoints = getLockedPointsFor();
   if (lockedPoints.has(guid)) {
     showCannotSetLockedCenterToast();
     return;
@@ -268,7 +247,6 @@ export function uninstallStarCenterButton(): void {
     document.removeEventListener(STAR_CENTER_CHANGED_EVENT, changeHandler);
     changeHandler = null;
   }
-  cachedLockedPoints = null;
   document.querySelectorAll(`.${TOGGLE_CLASS}`).forEach((element) => {
     element.remove();
   });

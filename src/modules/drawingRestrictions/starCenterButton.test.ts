@@ -394,42 +394,43 @@ describe('starCenterButton — попытка назначить locked-точк
     expect(toggle?.classList.contains('is-active')).toBe(true);
   });
 
-  test('cache инвалидируется при изменении inventory length (lock поставлен на текущей точке)', () => {
-    // Length-fingerprint ловит lock toggle на текущей открытой точке:
-    // popupGuid не меняется, но length JSON-строки inventory-cache меняется
-    // когда игра добавляет/убирает "f":2 в стопке ключей.
+  test('lock поставлен на текущую открытую точку - кнопка сразу disabled', () => {
+    // updateButtons делает fresh read inventory-cache при каждом вызове,
+    // не кэширует - lock toggle на той же точке (popupGuid не меняется,
+    // length JSON inventory-cache не меняется, т.к. игра меняет "f":0 -> "f":2
+    // в-place) ловится сразу.
     const popup = createPopupDom('p1');
-    installStarCenterButton(); // cache for p1 = empty, button enabled
+    installStarCenterButton(); // p1 не locked, button enabled
     expect(getToggle(popup)?.disabled).toBe(false);
 
-    setLockedPoints(['p1']); // lock на текущую точку - length меняется
+    setLockedPoints(['p1']);
     document.dispatchEvent(new Event('svp:star-center-changed')); // triggers updateButtons
 
-    expect(getToggle(popup)?.disabled).toBe(true); // cache invalidated by fingerprint
+    expect(getToggle(popup)?.disabled).toBe(true);
   });
 
-  test('cache инвалидируется при удалении lock на текущей открытой точке', () => {
+  test('lock снят с текущей открытой точки - кнопка сразу enabled', () => {
     setLockedPoints(['p1']);
     const popup = createPopupDom('p1');
     installStarCenterButton(); // p1 locked, button disabled
     expect(getToggle(popup)?.disabled).toBe(true);
 
-    localStorage.setItem(INVENTORY_CACHE_KEY, '[]'); // lock убран - length меняется
+    localStorage.setItem(INVENTORY_CACHE_KEY, '[]');
     document.dispatchEvent(new Event('svp:star-center-changed'));
 
-    expect(getToggle(popup)?.disabled).toBe(false); // cache invalidated, no longer locked
+    expect(getToggle(popup)?.disabled).toBe(false);
   });
 
-  test('cache инвалидируется при смене popupGuid', async () => {
+  test('смена popupGuid на locked-точку - кнопка disabled', async () => {
     setLockedPoints(['p2']);
     const popup = createPopupDom('p1');
-    installStarCenterButton(); // p1 не locked, button enabled
+    installStarCenterButton();
     expect(getToggle(popup)?.disabled).toBe(false);
 
-    popup.dataset.guid = 'p2'; // смена popupGuid - MutationObserver fires
+    popup.dataset.guid = 'p2';
     await flushMicrotasks();
 
-    expect(getToggle(popup)?.disabled).toBe(true); // cache invalidated, p2 locked
+    expect(getToggle(popup)?.disabled).toBe(true);
   });
 
   test('не-locked точка назначается как раньше', async () => {
