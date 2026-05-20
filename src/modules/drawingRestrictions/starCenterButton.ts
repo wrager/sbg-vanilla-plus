@@ -1,5 +1,9 @@
 import { waitForElement } from '../../core/dom';
-import { buildLockedPointGuids, readInventoryCache } from '../../core/inventoryCache';
+import {
+  INVENTORY_CACHE_KEY,
+  buildLockedPointGuids,
+  readInventoryCache,
+} from '../../core/inventoryCache';
 import { t } from '../../core/l10n';
 import {
   STAR_CENTER_CHANGED_EVENT,
@@ -25,11 +29,16 @@ let clickAbortController: AbortController | null = null;
 let changeHandler: (() => void) | null = null;
 let installGeneration = 0;
 // Кэш locked-точек, рассчитанных через buildLockedPointGuids(readInventoryCache()).
-// invalidates при смене popupGuid - кэшируется чтобы не парсить inventory-cache
-// заново на каждый tick MutationObserver'а (subtree: true + childList: true
-// триггерит callback десятки/сотни раз при анимации splide-карусели ключей в
-// попапе и при перерисовке игрой UI замочка после POST /api/marks).
-let cachedLockedPoints: { forGuid: string; set: Set<string> } | null = null;
+// Invalidates при смене popupGuid И при изменении длины JSON-строки
+// inventory-cache. Length-fingerprint ловит lock toggle на текущей открытой
+// точке: игра добавляет/убирает поле "f":2 в стопке ключей, длина JSON
+// гарантированно меняется. Без fingerprint cache держал бы stale Set, и
+// disabled-состояние кнопки не отражало бы свежий lock-флаг.
+let cachedLockedPoints: { forGuid: string; cacheLength: number; set: Set<string> } | null = null;
+
+function getInventoryCacheLength(): number {
+  return localStorage.getItem(INVENTORY_CACHE_KEY)?.length ?? 0;
+}
 // pendingInstall защищает от race `install() → install()` до того как первый
 // waitForElement резолвится: синхронный guard `popupObserver !== null`
 // недостаточен, потому что observer ставится только в .then(). Без флага оба
@@ -45,11 +54,15 @@ function getCurrentGuid(popup: Element): string | null {
 }
 
 function getLockedPointsFor(popupGuid: string): Set<string> {
-  if (cachedLockedPoints?.forGuid === popupGuid) {
+  const currentLength = getInventoryCacheLength();
+  if (
+    cachedLockedPoints?.forGuid === popupGuid &&
+    cachedLockedPoints.cacheLength === currentLength
+  ) {
     return cachedLockedPoints.set;
   }
   const set = buildLockedPointGuids(readInventoryCache());
-  cachedLockedPoints = { forGuid: popupGuid, set };
+  cachedLockedPoints = { forGuid: popupGuid, cacheLength: currentLength, set };
   return set;
 }
 

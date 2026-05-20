@@ -394,20 +394,30 @@ describe('starCenterButton — попытка назначить locked-точк
     expect(toggle?.classList.contains('is-active')).toBe(true);
   });
 
-  test('cache lockedPoints: stale при том же popupGuid (не пересчитывается на каждом mutation)', () => {
-    // Защита от шторма JSON.parse в hot-path MutationObserver-callback.
-    // При том же popupGuid повторный вызов updateButtons использует cached
-    // lockedPoints. Side-effect: lock, поставленный в текущей открытой точке,
-    // не отразится в UI до next popup open - safety-net в onToggleClick
-    // закрывает этот зазор на click.
+  test('cache инвалидируется при изменении inventory length (lock поставлен на текущей точке)', () => {
+    // Length-fingerprint ловит lock toggle на текущей открытой точке:
+    // popupGuid не меняется, но length JSON-строки inventory-cache меняется
+    // когда игра добавляет/убирает "f":2 в стопке ключей.
     const popup = createPopupDom('p1');
     installStarCenterButton(); // cache for p1 = empty, button enabled
     expect(getToggle(popup)?.disabled).toBe(false);
 
-    setLockedPoints(['p1']); // lock после install - cache stale
+    setLockedPoints(['p1']); // lock на текущую точку - length меняется
     document.dispatchEvent(new Event('svp:star-center-changed')); // triggers updateButtons
 
-    expect(getToggle(popup)?.disabled).toBe(false); // cached, stale value
+    expect(getToggle(popup)?.disabled).toBe(true); // cache invalidated by fingerprint
+  });
+
+  test('cache инвалидируется при удалении lock на текущей открытой точке', () => {
+    setLockedPoints(['p1']);
+    const popup = createPopupDom('p1');
+    installStarCenterButton(); // p1 locked, button disabled
+    expect(getToggle(popup)?.disabled).toBe(true);
+
+    localStorage.setItem(INVENTORY_CACHE_KEY, '[]'); // lock убран - length меняется
+    document.dispatchEvent(new Event('svp:star-center-changed'));
+
+    expect(getToggle(popup)?.disabled).toBe(false); // cache invalidated, no longer locked
   });
 
   test('cache инвалидируется при смене popupGuid', async () => {
