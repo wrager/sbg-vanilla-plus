@@ -46,6 +46,16 @@ function createPopupDom(guid: string | null, hidden = false): HTMLElement {
   return popup;
 }
 
+function createPopupWithClose(guid: string): HTMLElement {
+  const popup = createPopupDom(guid);
+  const closeButton = document.createElement('button');
+  closeButton.className = 'popup-close';
+  popup.appendChild(closeButton);
+  return popup;
+}
+
+const showInfoMock = jest.fn();
+
 function getToggle(popup: HTMLElement): HTMLButtonElement | null {
   return popup.querySelector<HTMLButtonElement>(`.${TOGGLE_CLASS}`);
 }
@@ -207,16 +217,6 @@ describe('starCenterButton — назначение центра целиком 
 });
 
 describe('starCenterButton — переоткрытие попапа при переназначении центра', () => {
-  function createPopupWithClose(guid: string): HTMLElement {
-    const popup = createPopupDom(guid);
-    const closeButton = document.createElement('button');
-    closeButton.className = 'popup-close';
-    popup.appendChild(closeButton);
-    return popup;
-  }
-
-  const showInfoMock = jest.fn();
-
   beforeEach(() => {
     showInfoMock.mockClear();
     (window as unknown as { showInfo: typeof showInfoMock }).showInfo = showInfoMock;
@@ -401,8 +401,6 @@ describe('starCenterButton — попытка назначить locked-точк
   // список рисования в попапе locked-точки бессмысленно (рисовать с неё всё
   // равно нельзя), а лишний close+showInfo проявлялся бы как мерцание попапа.
   describe('переоткрытие попапа в locked-ветке не происходит', () => {
-    const showInfoMock = jest.fn();
-
     beforeEach(() => {
       showInfoMock.mockClear();
       (window as unknown as { showInfo: typeof showInfoMock }).showInfo = showInfoMock;
@@ -412,18 +410,10 @@ describe('starCenterButton — попытка назначить locked-точк
       delete (window as unknown as { showInfo?: typeof showInfoMock }).showInfo;
     });
 
-    function createLockedPopupWithClose(guid: string): HTMLElement {
-      const popup = createPopupDom(guid);
-      const closeButton = document.createElement('button');
-      closeButton.className = 'popup-close';
-      popup.appendChild(closeButton);
-      return popup;
-    }
-
     test('центр на не-locked точке, click на locked-точке: центр остаётся, закрытие/showInfo не вызываются', async () => {
       setStarCenter('A');
       setLockedPoints(['B']);
-      const popup = createLockedPopupWithClose('B');
+      const popup = createPopupWithClose('B');
       const closeSpy = jest.fn();
       popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
 
@@ -438,7 +428,7 @@ describe('starCenterButton — попытка назначить locked-точк
 
     test('первая попытка назначить locked при пустом центре: закрытие/showInfo не вызываются', async () => {
       setLockedPoints(['p1']);
-      const popup = createLockedPopupWithClose('p1');
+      const popup = createPopupWithClose('p1');
       const closeSpy = jest.fn();
       popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
 
