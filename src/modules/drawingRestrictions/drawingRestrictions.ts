@@ -2,7 +2,6 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 import { injectStyles, removeStyles } from '../../core/dom';
 import { installDrawFilter, uninstallDrawFilter } from './drawFilter';
 import { refreshOpenPopup } from './refreshOpenPopup';
-import { migrateDrawingRestrictionsSettings } from './settings';
 import { installSettingsUi, uninstallSettingsUi } from './settingsUi';
 import { installStarCenterButton, uninstallStarCenterButton } from './starCenterButton';
 import {
@@ -21,15 +20,13 @@ export const drawingRestrictions: IFeatureModule = {
     ru: 'Ограничения рисования',
   },
   description: {
-    en: 'Hide locked targets, too-far targets, and non-center targets (star mode) from the draw list. Prevents accidental line drawing to unwanted points.',
-    ru: 'Скрывает из списка рисования цели с замочком, слишком далёкие цели и все цели кроме центра звезды. Предотвращает случайное рисование линий на нежелательные точки.',
+    en: 'Adds a "star" drawing mode and a distance filter for the drawing target list.',
+    ru: 'Добавляет режим рисования "звезда" и фильтр дальности целей рисования.',
   },
   defaultEnabled: true,
   category: 'feature',
 
-  init() {
-    migrateDrawingRestrictionsSettings();
-  },
+  init() {},
 
   enable() {
     injectStyles(styles, MODULE_ID);

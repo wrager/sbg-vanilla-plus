@@ -63,33 +63,13 @@
   padding: 12px 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
   font-size: 13px;
-}
-
-.svp-dr-settings-group-title {
-  font-size: 12px;
-  font-weight: bold;
-  color: var(--text-disabled, #aaa);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-top: 4px;
-}
-
-.svp-dr-settings-radio-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  user-select: none;
-  padding-left: 8px;
 }
 
 .svp-dr-settings-number-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 8px;
 }
 
 .svp-dr-settings-number-row input[type='number'] {

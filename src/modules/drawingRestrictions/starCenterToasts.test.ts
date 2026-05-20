@@ -1,4 +1,9 @@
-import { showCenterAssignedToast, showCenterClearedToast } from './starCenterToasts';
+import {
+  showCannotSetLockedCenterToast,
+  showCenterAssignedToast,
+  showCenterClearedBecauseLockedToast,
+  showCenterClearedToast,
+} from './starCenterToasts';
 
 const showToastMock = jest.fn();
 jest.mock('../../core/toast', () => ({
@@ -34,5 +39,21 @@ describe('showCenterClearedToast', () => {
     showCenterClearedToast();
     expect(showToastMock).toHaveBeenCalledTimes(1);
     expect(lastMessage()).toBe('Star center cleared');
+  });
+});
+
+describe('showCannotSetLockedCenterToast', () => {
+  test('короткое сообщение про блокировку locked-точки как центра звезды', () => {
+    showCannotSetLockedCenterToast();
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(lastMessage()).toBe("Locked point can't be a star center.");
+  });
+});
+
+describe('showCenterClearedBecauseLockedToast', () => {
+  test('сообщает о снятии центра с указанием причины', () => {
+    showCenterClearedBecauseLockedToast();
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(lastMessage()).toBe('Star center cleared: the point is now locked.');
   });
 });

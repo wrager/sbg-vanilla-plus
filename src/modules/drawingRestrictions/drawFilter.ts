@@ -1,16 +1,13 @@
-import { buildLockedPointGuids, readInventoryCache } from '../../core/inventoryCache';
 import { t } from '../../core/l10n';
 import { showToast } from '../../core/toast';
 import {
   applyPredicates,
   buildPredicates,
   countHiddenByDistance,
-  countHiddenByLockMode,
   countHiddenByStar,
   type IDrawEntry,
 } from './filterRules';
-import { pluralizeLastRefs } from './lastRefsPluralize';
-import { loadDrawingRestrictionsSettings, type LockProtectionMode } from './settings';
+import { loadDrawingRestrictionsSettings } from './settings';
 import { getStarCenterGuid } from './starCenter';
 
 const POPUP_SELECTOR = '.info.popup';
@@ -56,41 +53,6 @@ function isDrawResponseShape(value: unknown): value is IDrawResponseShape {
   );
 }
 
-/**
- * Mode-aware фрагмент для бита lock в toast-сообщении. Подставляется и в
- * соло-формулировку, и в комбинации с star/distance. Английский: единая
- * терминология "locked points" для обоих режимов; русский: грамматика разная
- * (последние ключи vs N точек с замочком), поэтому возвращаем готовую пару.
- */
-function lockPhrase(count: number, mode: LockProtectionMode): { ru: string; en: string } {
-  if (mode === 'protectLastKey') {
-    const refs = pluralizeLastRefs(count);
-    return {
-      ru: `${refs.ru} защищённых точек`,
-      en: `${refs.en} of locked points`,
-    };
-  }
-  // hideAllLocked: считаются все locked-точки независимо от amount.
-  return {
-    ru: `${count} точек с замочком`,
-    en: `${count} locked points`,
-  };
-}
-
-function lockMessage(hidden: number, mode: LockProtectionMode): string {
-  const phrase = lockPhrase(hidden, mode);
-  if (mode === 'protectLastKey' && hidden === 1) {
-    return t({
-      en: `Hidden ${phrase.en.replace(' of locked points', '')} from a locked point`,
-      ru: `Скрыт ${phrase.ru.replace(' защищённых точек', '')} от защищённой точки`,
-    });
-  }
-  return t({
-    en: `Hidden: ${phrase.en}`,
-    ru: `Скрыто: ${phrase.ru}`,
-  });
-}
-
 function starMessage(hidden: number): string {
   return t({
     en: `Points (${hidden}) hidden: star mode`,
@@ -112,93 +74,32 @@ function starAndDistanceMessage(totalHidden: number): string {
   });
 }
 
-function starAndLockMessage(star: number, lock: number, mode: LockProtectionMode): string {
-  const phrase = lockPhrase(lock, mode);
-  return t({
-    en: `Hidden: ${star} in star mode, ${phrase.en}`,
-    ru: `Скрыто: ${star} в режиме "Звезда", ${phrase.ru}`,
-  });
-}
-
-function distanceAndLockMessage(
-  distance: number,
-  lock: number,
-  maxMeters: number,
-  mode: LockProtectionMode,
-): string {
-  const phrase = lockPhrase(lock, mode);
-  return t({
-    en: `Hidden: ${distance} beyond ${maxMeters} m, ${phrase.en}`,
-    ru: `Скрыто: ${distance} за ${maxMeters} м, ${phrase.ru}`,
-  });
-}
-
-function allThreeMessage(totalHidden: number, mode: LockProtectionMode): string {
-  if (mode === 'protectLastKey') {
-    return t({
-      en: `Points (${totalHidden}) hidden: star mode + distance + last-key protection`,
-      ru: `Точки (${totalHidden}) скрыты: "Звезда" + дальность + защита последних ключей`,
-    });
-  }
-  return t({
-    en: `Points (${totalHidden}) hidden: star mode + distance + locked points`,
-    ru: `Точки (${totalHidden}) скрыты: "Звезда" + дальность + точки с замочком`,
-  });
-}
-
 interface IToastInputs {
   hiddenByStar: number;
   hiddenByDistance: number;
-  hiddenByLock: number;
   totalHidden: number;
   maxDistanceMeters: number;
-  lockProtectionMode: LockProtectionMode;
 }
 
 /**
  * Выбор единственного toast-сообщения по комбинации счётчиков (ровно один
- * showToast на response). Bitmask 3-битный s/d/lock: бит lock включает оба
- * режима защиты locked-точек (protectLastKey и hideAllLocked), формулировка
- * для бита lock зависит от lockProtectionMode (mode-aware wording через
- * lockPhrase / lockMessage).
- *
- * Матрица покрывает 7 ненулевых комбинаций + no-op при all-zero. Для
- * star+distance и all-three используется totalHidden (реально скрыто уникально
- * после AND-композиции предикатов); для комбинаций с lock - breakdown по
- * причинам, lock-скрытие подсчитывается отдельно от остальных.
+ * showToast на response). Bitmask 2-битный s/d. Для star+distance используется
+ * totalHidden (реально скрыто уникально после AND-композиции предикатов).
  */
 function pickToastMessage(inputs: IToastInputs): string | null {
   const s = inputs.hiddenByStar > 0 ? 1 : 0;
   const d = inputs.hiddenByDistance > 0 ? 1 : 0;
-  const lock = inputs.hiddenByLock > 0 ? 1 : 0;
-  const mask = (s << 2) | (d << 1) | lock;
+  const mask = (s << 1) | d;
 
   switch (mask) {
-    case 0b000:
+    case 0b00:
       return null;
-    case 0b100:
+    case 0b10:
       return starMessage(inputs.hiddenByStar);
-    case 0b010:
+    case 0b01:
       return distanceMessage(inputs.hiddenByDistance, inputs.maxDistanceMeters);
-    case 0b001:
-      return lockMessage(inputs.hiddenByLock, inputs.lockProtectionMode);
-    case 0b110:
+    case 0b11:
       return starAndDistanceMessage(inputs.totalHidden);
-    case 0b101:
-      return starAndLockMessage(
-        inputs.hiddenByStar,
-        inputs.hiddenByLock,
-        inputs.lockProtectionMode,
-      );
-    case 0b011:
-      return distanceAndLockMessage(
-        inputs.hiddenByDistance,
-        inputs.hiddenByLock,
-        inputs.maxDistanceMeters,
-        inputs.lockProtectionMode,
-      );
-    case 0b111:
-      return allThreeMessage(inputs.totalHidden, inputs.lockProtectionMode);
     default:
       return null;
   }
@@ -224,16 +125,10 @@ async function filterDrawResponse(
   popupGuidAtRequest: string | null,
 ): Promise<Response> {
   const settings = loadDrawingRestrictionsSettings();
-  // Lock-флаг живёт на стопке (поле `f`, бит 0b10) в `inventory-cache`.
-  // Перечитываем кэш на каждом ответе — чтобы фильтр сразу видел свежие
-  // замочки/звёздочки, проставленные пользователем нативной кнопкой игры или
-  // массовой миграцией из favoritesMigration.
-  const lockedPoints = buildLockedPointGuids(readInventoryCache());
   const starCenterGuid = getStarCenterGuid();
 
   const predicates = buildPredicates({
     settings,
-    lockedPoints,
     starCenterGuid,
     currentPopupGuid: popupGuidAtRequest,
   });
@@ -254,10 +149,8 @@ async function filterDrawResponse(
   const message = pickToastMessage({
     hiddenByStar: countHiddenByStar(original, starCenterGuid, popupGuidAtRequest),
     hiddenByDistance: countHiddenByDistance(original, settings.maxDistanceMeters),
-    hiddenByLock: countHiddenByLockMode(original, lockedPoints, settings.lockProtectionMode),
     totalHidden: original.length - parsed.data.length,
     maxDistanceMeters: settings.maxDistanceMeters,
-    lockProtectionMode: settings.lockProtectionMode,
   });
   if (message !== null) showToast(message, 4000);
 

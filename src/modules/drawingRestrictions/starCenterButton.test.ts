@@ -1,7 +1,12 @@
-import { installStarCenterButton, uninstallStarCenterButton } from './starCenterButton';
+import {
+  TOGGLE_CLASS,
+  hasRelevantMutations,
+  installStarCenterButton,
+  uninstallStarCenterButton,
+} from './starCenterButton';
 import { clearStarCenter, getStarCenter, getStarCenterGuid, setStarCenter } from './starCenter';
-
-const TOGGLE_CLASS = 'svp-star-center-btn';
+import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
+import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 
 const showToastMock = jest.fn();
 jest.mock('../../core/toast', () => ({
@@ -9,6 +14,29 @@ jest.mock('../../core/toast', () => ({
     showToastMock(...args);
   },
 }));
+
+/**
+ * Кладёт в inventory-cache стопки ключей с lock-битом (`f & 0b10`) для
+ * переданных точек. `buildLockedPointGuids` читает свежий кэш при каждом клике,
+ * поэтому через этот helper тест имитирует "точка с замочком".
+ */
+function setLockedPoints(pointGuids: string[]): void {
+  const cache = pointGuids.map((guid, index) => ({
+    g: `stack-${guid}-${index}`,
+    t: ITEM_TYPE_REFERENCE,
+    l: guid,
+    a: 1,
+    f: 0b10,
+  }));
+  localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(cache));
+}
+
+function toastMessages(): string[] {
+  return showToastMock.mock.calls.map((call: unknown[]) => {
+    const [first] = call;
+    return typeof first === 'string' ? first : '';
+  });
+}
 
 function createPopupDom(guid: string | null, hidden = false): HTMLElement {
   const popup = document.createElement('div');
@@ -20,6 +48,16 @@ function createPopupDom(guid: string | null, hidden = false): HTMLElement {
   document.body.appendChild(popup);
   return popup;
 }
+
+function createPopupWithClose(guid: string): HTMLElement {
+  const popup = createPopupDom(guid);
+  const closeButton = document.createElement('button');
+  closeButton.className = 'popup-close';
+  popup.appendChild(closeButton);
+  return popup;
+}
+
+const showInfoMock = jest.fn();
 
 function getToggle(popup: HTMLElement): HTMLButtonElement | null {
   return popup.querySelector<HTMLButtonElement>(`.${TOGGLE_CLASS}`);
@@ -34,7 +72,6 @@ async function flushMicrotasks(): Promise<void> {
 beforeEach(() => {
   localStorage.clear();
   clearStarCenter();
-  localStorage.clear();
   showToastMock.mockClear();
 });
 
@@ -182,16 +219,6 @@ describe('starCenterButton — назначение центра целиком 
 });
 
 describe('starCenterButton — переоткрытие попапа при переназначении центра', () => {
-  function createPopupWithClose(guid: string): HTMLElement {
-    const popup = createPopupDom(guid);
-    const closeButton = document.createElement('button');
-    closeButton.className = 'popup-close';
-    popup.appendChild(closeButton);
-    return popup;
-  }
-
-  const showInfoMock = jest.fn();
-
   beforeEach(() => {
     showInfoMock.mockClear();
     (window as unknown as { showInfo: typeof showInfoMock }).showInfo = showInfoMock;
@@ -280,6 +307,239 @@ describe('starCenterButton — переоткрытие попапа при пе
 
     expect(getStarCenterGuid()).toBe('B');
     expect(closeSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('starCenterButton — попытка назначить locked-точку центром', () => {
+  // Click-only check: кнопка остаётся enabled, проверка locked делается в
+  // onToggleClick свежим чтением inventory-cache. Live-проверка в
+  // updateButtons была отменена в b7d1e73, чтобы не парсить inventory на
+  // каждом тике mutation observer.
+
+  test('safety-net в onToggleClick: lock после install (stale cache) - click не назначает + toast', async () => {
+    // Stale-cache scenario: пользователь открыл попап (cache = empty),
+    // установил lock на эту же точку, кнопка остаётся enabled до next open.
+    // Click срабатывает - safety-net пересчитывает inventory и блокирует.
+    const popup = createPopupDom('p1');
+    installStarCenterButton(); // updateButtons: lockedPoints empty, cache = empty
+    setLockedPoints(['p1']); // lock после install, cache stale
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+
+    expect(getStarCenter()).toBeNull();
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      true,
+    );
+  });
+
+  test('safety-net: lock после install не снимает предыдущий центр + toast', async () => {
+    setStarCenter('A');
+    const popup = createPopupDom('B');
+    installStarCenterButton();
+    setLockedPoints(['B']); // lock после install
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+
+    expect(getStarCenterGuid()).toBe('A');
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      true,
+    );
+  });
+
+  test('клик в попапе locked-точки, который уже является центром, снимает центр как обычно', async () => {
+    // p1 стала locked после того, как была назначена центром и после
+    // installStarCenterButton (legacy check уже отработал при install и
+    // ничего не нашёл). Клик в попапе самой центральной точки снимает центр
+    // как обычно (star.guid === guid ветка в onToggleClick).
+    const popup = createPopupDom('p1');
+    installStarCenterButton(); // legacy check: центра нет - no-op
+    setStarCenter('p1'); // назначаем центром после install
+    setLockedPoints(['p1']); // точка становится locked
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+
+    expect(getStarCenter()).toBeNull();
+    expect(toastMessages().some((m) => m.includes('Star center cleared'))).toBe(true);
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      false,
+    );
+  });
+
+  test('locked-точка: toggle всегда enabled (click-only mode), click показывает toast', async () => {
+    setLockedPoints(['p1']);
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+
+    // В click-only режиме кнопка не disabled: проверка происходит только при click.
+    expect(getToggle(popup)?.disabled).toBe(false);
+
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+
+    expect(getStarCenter()).toBeNull();
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      true,
+    );
+  });
+
+  test('не-locked точка назначается как раньше', async () => {
+    setLockedPoints(['other']);
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+
+    expect(getStarCenterGuid()).toBe('p1');
+    expect(toastMessages().some((m) => m.includes('selected as star center'))).toBe(true);
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      false,
+    );
+  });
+
+  // Регрессия: при попытке переназначения центра с не-locked точки на locked
+  // попап не должен переоткрываться. Старый центр снимается, но обновлять
+  // список рисования в попапе locked-точки бессмысленно (рисовать с неё всё
+  // равно нельзя), а лишний close+showInfo проявлялся бы как мерцание попапа.
+  describe('переоткрытие попапа в locked-ветке не происходит', () => {
+    beforeEach(() => {
+      showInfoMock.mockClear();
+      (window as unknown as { showInfo: typeof showInfoMock }).showInfo = showInfoMock;
+    });
+
+    afterEach(() => {
+      delete (window as unknown as { showInfo?: typeof showInfoMock }).showInfo;
+    });
+
+    test('центр на не-locked точке, click на locked-точке: центр остаётся, закрытие/showInfo не вызываются', async () => {
+      setStarCenter('A');
+      setLockedPoints(['B']);
+      const popup = createPopupWithClose('B');
+      const closeSpy = jest.fn();
+      popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
+
+      installStarCenterButton();
+      getToggle(popup)?.click();
+      await flushMicrotasks();
+
+      expect(getStarCenterGuid()).toBe('A');
+      expect(closeSpy).not.toHaveBeenCalled();
+      expect(showInfoMock).not.toHaveBeenCalled();
+    });
+
+    test('первая попытка назначить locked при пустом центре: закрытие/showInfo не вызываются', async () => {
+      setLockedPoints(['p1']);
+      const popup = createPopupWithClose('p1');
+      const closeSpy = jest.fn();
+      popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
+
+      installStarCenterButton();
+      getToggle(popup)?.click();
+      await flushMicrotasks();
+
+      expect(getStarCenter()).toBeNull();
+      expect(closeSpy).not.toHaveBeenCalled();
+      expect(showInfoMock).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('starCenterButton — legacy locked center при installStarCenterButton', () => {
+  test('центр был на locked-точке - снимается, показывает блок-toast', () => {
+    setStarCenter('p1');
+    setLockedPoints(['p1']);
+    createPopupDom('p2');
+    installStarCenterButton();
+
+    expect(getStarCenter()).toBeNull();
+    expect(
+      toastMessages().some((m) => m.includes('Star center cleared: the point is now locked')),
+    ).toBe(true);
+  });
+
+  test('центр был на не-locked точке - остаётся, toast не показывается', () => {
+    setStarCenter('p1');
+    setLockedPoints(['other']);
+    createPopupDom('p2');
+    installStarCenterButton();
+
+    expect(getStarCenterGuid()).toBe('p1');
+    expect(showToastMock).not.toHaveBeenCalled();
+  });
+
+  test('центр не назначен - ничего не происходит', () => {
+    createPopupDom('p1');
+    installStarCenterButton();
+
+    expect(getStarCenter()).toBeNull();
+    expect(showToastMock).not.toHaveBeenCalled();
+  });
+
+  test('lock встаёт на центр в текущей сессии - центр не снимается автоматически', () => {
+    // Инвариант README:16 "Если lock поставлен в текущей сессии, центр
+    // остаётся". Live auto-clear отменён в 208a964 ради производительности
+    // (mutation observer не парсит inventory на каждом тике). Снять центр
+    // можно только через клик или install-time legacy clear при следующем
+    // старте.
+    setStarCenter('p1');
+    createPopupDom('p2');
+    installStarCenterButton();
+    setLockedPoints(['p1']);
+
+    expect(getStarCenterGuid()).toBe('p1');
+    expect(showToastMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('starCenterButton — фильтр self-trigger mutations (hasRelevantMutations)', () => {
+  // Регрессия beta.8: updateButtons менял classList на toggle, Chrome fires
+  // BUTTON.class mutation -> observer fires -> updateButtons -> снова mutation
+  // -> infinite loop, 100% CPU, зависание страницы.
+
+  function createMutation(target: Element, type: 'attributes' | 'childList'): MutationRecord {
+    return {
+      type,
+      target,
+      addedNodes: { length: 0 } as unknown as NodeList,
+      removedNodes: { length: 0 } as unknown as NodeList,
+      attributeName: type === 'attributes' ? 'class' : null,
+      attributeNamespace: null,
+      nextSibling: null,
+      previousSibling: null,
+      oldValue: null,
+    };
+  }
+
+  test('mutation attribute на toggle - false (self-trigger игнорируется)', () => {
+    const toggle = document.createElement('button');
+    toggle.className = TOGGLE_CLASS;
+    expect(hasRelevantMutations([createMutation(toggle, 'attributes')])).toBe(false);
+  });
+
+  test('mutation attribute на другом элементе - true', () => {
+    const otherBtn = document.createElement('button');
+    expect(hasRelevantMutations([createMutation(otherBtn, 'attributes')])).toBe(true);
+  });
+
+  test('mutation childList даже на toggle - true (не self-trigger)', () => {
+    const toggle = document.createElement('button');
+    toggle.className = TOGGLE_CLASS;
+    expect(hasRelevantMutations([createMutation(toggle, 'childList')])).toBe(true);
+  });
+
+  test('смесь: только toggle attribute + другие - true (другие relevant)', () => {
+    const toggle = document.createElement('button');
+    toggle.className = TOGGLE_CLASS;
+    const otherDiv = document.createElement('div');
+    expect(
+      hasRelevantMutations([
+        createMutation(toggle, 'attributes'),
+        createMutation(otherDiv, 'attributes'),
+      ]),
+    ).toBe(true);
+  });
+
+  test('пустой список - false', () => {
+    expect(hasRelevantMutations([])).toBe(false);
   });
 });
 
