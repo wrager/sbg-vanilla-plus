@@ -20,8 +20,8 @@ export const drawingRestrictions: IFeatureModule = {
     ru: 'Ограничения рисования',
   },
   description: {
-    en: 'Hide too-far targets and non-center targets (star mode) from the draw list. Prevents accidental line drawing to unwanted points.',
-    ru: 'Скрывает из списка рисования слишком далёкие цели и все цели кроме центра звезды. Предотвращает случайное рисование линий на нежелательные точки.',
+    en: 'Adds a star drawing mode (many lines converging on one fixed center) and a distance filter for the drawing target list.',
+    ru: 'Добавляет режим рисования звезды (множество линий, сходящихся в одну зафиксированную точку-центр) и фильтр дальности целей рисования.',
   },
   defaultEnabled: true,
   category: 'feature',
