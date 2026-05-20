@@ -4,9 +4,9 @@ import type { OwnTeamMode } from './refsOnMapSettings';
 
 /**
  * Единый классификатор фич слоя svp-refs-on-map. Один источник правды для:
- * 1. Карты (иконки lock/star, текст "=1", alpha выделения защищённых).
+ * 1. Карты (иконки lock/star, текст "=1", alpha выделения удерживаемых от удаления).
  * 2. Удаления (payload + bucket'ы для единого тоста).
- * 3. Селекшен-инфо (счётчики по категориям защиты).
+ * 3. Селекшен-инфо (счётчики по причинам удержания от удаления).
  *
  * isLocked/isFavorited - всегда из inventory-cache, независимо от выделения и
  * mode. deletion - судьба фичи при текущем mode/playerTeam:
@@ -14,11 +14,11 @@ import type { OwnTeamMode } from './refsOnMapSettings';
  * - lockedProtected: locked в инвентаре (бит 0b10), не удаляется ни при каком mode.
  * - favoriteProtected: favorite в инвентаре (бит 0b01), не удаляется ни при каком mode.
  *   Приоритет lock > favorite: точка с обоими битами получает lockedProtected.
- * - ownProtected: своя команда, mode='keep' - полная защита.
+ * - ownProtected: своя команда, mode='keep' - полное удержание.
  * - unknownProtected: команда не загружена (team=undefined) при mode='keep'/'keepOne' -
  *   fail-safe, цвет неизвестен.
  * - keepOneTrimmed: mode='keepOne', своя точка - стопка частично удаляется или
- *   полностью защищена (правило "оставить 1 ключ" применилось).
+ *   полностью удержана (правило "оставить 1 ключ" применилось).
  * - fullyDeletable: подлежит полному удалению.
  * - nothingToDelete: невыделенная фича; либо выделенная с amount<=0;
  *   либо без pointGuid (нарушение инварианта данных - safe default).
@@ -40,7 +40,7 @@ export interface IFeatureClassification {
   isLocked: boolean;
   isFavorited: boolean;
   deletion: DeletionOutcome;
-  // Сколько ключей пойдёт в DELETE-payload для этой стопки (0 для защищённых).
+  // Сколько ключей пойдёт в DELETE-payload для этой стопки (0 для удержанных).
   toDelete: number;
   // Сколько ключей останется в инвентаре по этой стопке после удаления.
   toSurvive: number;
@@ -211,7 +211,7 @@ function applyKeepOneTrimming(
 
     const toDeleteTotal = selectedAmount - 1;
     if (toDeleteTotal <= 0) {
-      // selectedAmount <= 1: вся выделенная часть точки защищена правилом.
+      // selectedAmount <= 1: вся выделенная часть точки удержана правилом.
       for (const feature of group) {
         const amount = getAmount(feature);
         const current = result.get(feature);

@@ -226,7 +226,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
     await expect(deleteInventoryItems(deletions)).rejects.toThrow(
-      'Удаление ключей запрещено: нативная защита (lock/favorite) недоступна',
+      'Удаление ключей запрещено: нативная семантика lock/favorite недоступна',
     );
     expect(mockFetch).not.toHaveBeenCalled();
   });
@@ -247,7 +247,7 @@ describe('deleteInventoryItems', () => {
   test('guard: mix-кэш (часть стопок без f) блокирует удаление', async () => {
     // Раньше isProtectionFlagSupportAvailable считался через some — хватало одной стопки
     // с f. Стопки без f не попадают в freshProtectedPointGuids, и удаление их
-    // ключей могло пройти, даже если их точка фактически защищена. Теперь
+    // ключей могло пройти, даже если их точка заблокирована или в избранном. Теперь
     // every — mix блокируется целиком.
     localStorage.setItem(
       'inventory-cache',
@@ -260,7 +260,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'r1', type: 3, level: null, amount: 1, pointGuid: 'p1' },
     ];
     await expect(deleteInventoryItems(deletions)).rejects.toThrow(
-      'нативная защита (lock/favorite) недоступна',
+      'нативная семантика lock/favorite недоступна',
     );
     expect(mockFetch).not.toHaveBeenCalled();
   });
@@ -276,7 +276,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
     await expect(deleteInventoryItems(deletions)).rejects.toThrow(
-      'Ключ от защищённой точки p1 не может быть удалён',
+      'Ключ от заблокированной или избранной точки p1 не может быть удалён',
     );
     expect(mockFetch).not.toHaveBeenCalled();
   });
@@ -293,15 +293,15 @@ describe('deleteInventoryItems', () => {
       { guid: 'r1', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
     await expect(deleteInventoryItems(deletions)).rejects.toThrow(
-      'Ключ от защищённой точки p1 не может быть удалён',
+      'Ключ от заблокированной или избранной точки p1 не может быть удалён',
     );
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  test('guard: per-point агрегация - locked стопка той же точки защищает все её стопки', async () => {
+  test('guard: per-point агрегация - locked стопка той же точки удерживает все её стопки', async () => {
     // Кэш одной точки p1 с двумя стопками: одна locked (f=0b10), вторая - нет
-    // (f=0). buildProtectedPointGuids агрегирует per-point: одной защищённой
-    // стопки достаточно, чтобы вся точка попала в protectedPointGuids. Если
+    // (f=0). buildProtectedPointGuids агрегирует per-point: одной стопки с
+    // замочком или звёздочкой достаточно, чтобы вся точка попала в protectedPointGuids. Если
     // refactor случайно превратит функцию в per-stack-проверку, удаление
     // стопки r2 (f=0) пройдёт мимо guard'а - тест зафиксирует регрессию.
     localStorage.setItem(
@@ -315,13 +315,13 @@ describe('deleteInventoryItems', () => {
       { guid: 'r2', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
     await expect(deleteInventoryItems(deletions)).rejects.toThrow(
-      'Ключ от защищённой точки p1 не может быть удалён',
+      'Ключ от заблокированной или избранной точки p1 не может быть удалён',
     );
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  test('guard: per-point агрегация - favorite стопка той же точки защищает все её стопки', async () => {
-    // Симметричный кейс с lock per-point: одна favorite-стопка защищает
+  test('guard: per-point агрегация - favorite стопка той же точки удерживает все её стопки', async () => {
+    // Симметричный кейс с lock per-point: одна favorite-стопка удерживает
     // все стопки той же точки от удаления.
     localStorage.setItem(
       'inventory-cache',
@@ -334,7 +334,7 @@ describe('deleteInventoryItems', () => {
       { guid: 'r2', type: 3, level: null, amount: 5, pointGuid: 'p1' },
     ];
     await expect(deleteInventoryItems(deletions)).rejects.toThrow(
-      'Ключ от защищённой точки p1 не может быть удалён',
+      'Ключ от заблокированной или избранной точки p1 не может быть удалён',
     );
     expect(mockFetch).not.toHaveBeenCalled();
   });

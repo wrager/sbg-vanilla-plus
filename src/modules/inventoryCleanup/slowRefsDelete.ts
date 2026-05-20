@@ -348,9 +348,9 @@ async function runSlowDelete(): Promise<void> {
     // это время пользователь мог пометить какие-то точки нативным замочком
     // или звёздочкой. Финальный guard в deleteInventoryItems re-fetch'ит и
     // выбрасывает throw на ВСЁМ батче при любой ставшей-protected точке -
-    // пользователь теряет возможность удалить и не-защищённые ключи. Делаем
+    // пользователь теряет возможность удалить и ключи без замочка/звёздочки. Делаем
     // partial filter здесь, симметрично с refsOnMap.handleDeleteClick: в
-    // deletions оставляем только точки, всё ещё незащищённые на момент DELETE.
+    // deletions оставляем только точки без замочка и звёздочки на момент DELETE.
     const freshCache = readInventoryCache();
     const freshProtectedPointGuids = buildProtectedPointGuids(freshCache);
     const finalDeletions = deletions.filter((entry) => {

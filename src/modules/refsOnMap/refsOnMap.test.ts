@@ -842,7 +842,7 @@ describe('refsOnMap lock protection', () => {
   });
 
   function setInventoryCacheWithLocks(): void {
-    // ref-2 в стопке locked (бит 0b10 поля f) - точка point-2 защищена.
+    // ref-2 в стопке locked (бит 0b10 поля f) - точка point-2 заблокирована.
     // У ref-1 поле `f` явно 0 (без lock-бита) - isProtectionFlagSupportAvailable=true,
     // удаление разрешено. Mix-кэш (часть стопок без `f`) проверяется
     // отдельным тестом ниже.
@@ -854,8 +854,8 @@ describe('refsOnMap lock protection', () => {
   }
 
   function setInventoryCacheWithFavorites(): void {
-    // ref-2 в стопке favorite (бит 0b01 поля f) - точка point-2 защищена.
-    // Зеркальный кейс к setInventoryCacheWithLocks: семантика защиты
+    // ref-2 в стопке favorite (бит 0b01 поля f) - точка point-2 в избранном.
+    // Зеркальный кейс к setInventoryCacheWithLocks: семантика удержания
     // едина для locked и favorite, тест фиксирует это в viewer'е.
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open Point', f: 0 },
@@ -987,9 +987,9 @@ describe('refsOnMap lock protection', () => {
   });
 
   test('partitionByProtection через handleDeleteClick: favorite не уходит в payload', async () => {
-    // Зеркальный кейс к locked: favorite (бит 0b01) защищает так же, как
+    // Зеркальный кейс к locked: favorite (бит 0b01) удерживает так же, как
     // lock (бит 0b10). Проверяем, что viewer пропускает в payload только
-    // незащищённые точки.
+    // точки без замочка и звёздочки.
     setInventoryCacheWithFavorites();
     clickShowButton();
 
@@ -1266,7 +1266,7 @@ describe('refsOnMap lock protection', () => {
     expect(document.querySelector('.svp-toast')?.textContent).toMatch(/lock|нативный|f-flag/i);
   });
 
-  test('race-protection: точка, ставшая защищённой между confirm и DELETE, выпадает из payload', async () => {
+  test('race-protection: точка, получившая замочек или звёздочку между confirm и DELETE, выпадает из payload', async () => {
     // Сценарий: ref-1 (point-1, f=0) и ref-2 (point-2, f=0) изначально оба
     // открыты. Пользователь выбирает обе, нажимает trash, видит confirm и
     // подтверждает. Между confirm и DELETE сервер прислал обновлённый кэш с
@@ -1299,7 +1299,7 @@ describe('refsOnMap lock protection', () => {
     clickHandler({ pixel: [0, 0] });
 
     // confirm-обёртка: ВО ВРЕМЯ confirm пользователь нажал нативный замочек
-    // на point-2; обновляем кэш под защищённое состояние. Возвращаем true,
+    // на point-2; обновляем кэш под заблокированное состояние. Возвращаем true,
     // как обычное подтверждение в диалоге.
     window.confirm = jest.fn(() => {
       const updated = [
@@ -1329,7 +1329,7 @@ describe('refsOnMap lock protection', () => {
     expect(body.selection).not.toHaveProperty('ref-2');
   });
 
-  test('race-protection: все точки защищены до DELETE - fetch не уходит, показан toast', async () => {
+  test('race-protection: все точки получили замочек или звёздочку до DELETE - fetch не уходит, показан toast', async () => {
     // Edge-сценарий: пользователь выбрал обе точки, подтвердил confirm, а
     // между confirm и DELETE сервер обновил кэш так, что обе стали locked.
     // Удаления не должно произойти, должен быть toast.
@@ -1375,7 +1375,7 @@ describe('refsOnMap lock protection', () => {
     await Promise.resolve();
 
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/protect|защищ/i);
+    expect(document.querySelector('.svp-toast')?.textContent).toMatch(/protect|заблокирован|избранн/i);
   });
 
   test('race-protection: кэш без f после confirm блокирует DELETE и показывает toast', async () => {
@@ -1469,9 +1469,9 @@ describe('refsOnMap lock protection', () => {
     // Сценарий: ref-1 (point-1) изначально open, ref-2 (point-2) изначально
     // locked. Пользователь выбирает обе, partition отправляет ref-1 в
     // deletable, ref-2 в protectedRefs. Между confirm и DELETE пользователь
-    // снял замочек с point-2: ref-2 больше не защищён, но в payload не
+    // снял замочек с point-2: ref-2 больше не заблокирован, но в payload не
     // пошёл (его не было в deletable). Тост "оставлено" не должен учитывать
-    // ref-2 - на момент DELETE он уже не защищён.
+    // ref-2 - на момент DELETE он уже не заблокирован.
     const initialItems = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-1', ti: 'Open A', f: 0 },
       { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-2', ti: 'Locked B', f: 0b10 },
@@ -1522,7 +1522,7 @@ describe('refsOnMap lock protection', () => {
     await Promise.resolve();
 
     // ref-1 ушёл в DELETE как и прежде; ref-2 НЕ в payload, но также НЕ в
-    // тосте "оставлено" - на момент DELETE уже не защищён.
+    // тосте "оставлено" - на момент DELETE уже не заблокирован.
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     // jest.fn() без типизации аргументов даёт mock.calls как never[][]; используем
     // unknown cast для доступа к реальным данным.
@@ -1533,7 +1533,7 @@ describe('refsOnMap lock protection', () => {
     expect(body.selection).not.toHaveProperty('ref-2');
     // ref-2 разлочен между confirm и DELETE - kept-toast не появляется.
     const toast = document.querySelector('.svp-toast');
-    expect(toast?.textContent ?? '').not.toMatch(/protect|защищ/i);
+    expect(toast?.textContent ?? '').not.toMatch(/protect|заблокирован|избранн/i);
     // isSelected на ref-2 сброшен: больше не считается выбранным.
     expect(allFeatures[1].getProperties?.().isSelected).toBe(false);
   });
@@ -1795,7 +1795,7 @@ describe('refsOnMap own-team protection', () => {
     expect(trash.disabled).toBe(true);
   });
 
-  test('mode=keep: точка с team=undefined fail-safe защищена', async () => {
+  test('mode=keep: точка с team=undefined fail-safe удержана', async () => {
     const items = [
       { t: 3, a: 4, c: [100.5, 13.7], g: 'ref-1', l: 'point-unknown', ti: 'Unk', f: 0 },
       { t: 3, a: 2, c: [101.0, 14.0], g: 'ref-2', l: 'point-enemy', ti: 'Enemy', f: 0 },
@@ -2022,7 +2022,7 @@ describe('refsOnMap own-team protection', () => {
 
     // Confirm: пока пользователь смотрит на модал, /api/inview-hook принёс
     // team=1 для point-2 - точка стала своей и должна перейти в ownBucket
-    // (защищена, не в payload) при режиме keep.
+    // (удержана, не в payload) при режиме keep.
     window.confirm = jest.fn(() => {
       allFeatures[1].set?.('team', 1);
       return true;
@@ -2544,7 +2544,7 @@ describe('refsOnMap visible-only active pull', () => {
 
   test('moveend с новыми guid-ами НЕ сбрасывает ownTeamMode (persistent)', async () => {
     // Регрессия для feature: режим персистентен в localStorage и НЕ
-    // сбрасывается при смене видимой области. Точки без team защищены
+    // сбрасывается при смене видимой области. Точки без team удержаны
     // fail-safe (protectedByUnknownTeam) - сбрасывать radio не нужно.
     setInventory();
     setExtent([100, 100, 200, 200]);
@@ -3232,7 +3232,7 @@ describe('refsOnMap progress + interaction lock', () => {
   });
 
   test('во время загрузки + mode=delete: trashButton НЕ disabled', async () => {
-    // Без фильтра свои feature.team не нужен в payload - lock защищается
+    // Без фильтра свои feature.team не нужен в payload - lock удерживается
     // через inventory-cache.f, удаление безопасно.
     setInventory();
     const slow = configureSlowFallback();
@@ -3547,7 +3547,7 @@ describe('refsOnMap selection breakdown UI', () => {
   test('keepOne-row: показывает "X последних ключей останутся" когда правило сработало', async () => {
     // keepOne в новой модели применяется ТОЛЬКО к своим - ставим точку
     // team=1, совпадающую с playerTeam=1 (см. beforeEach блока). Точка с 1
-    // ключом - полностью защищена правилом: classifyFeatures отдаёт
+    // ключом - полностью удержана правилом: classifyFeatures отдаёт
     // deletion=keepOneTrimmed, toSurvive=1.
     localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keepOne' }));
     const items = [{ t: 3, a: 1, c: [100, 13], g: 'r', l: 'p', ti: 'P', f: 0 }];
@@ -3762,7 +3762,7 @@ describe('refsOnMap selection breakdown UI', () => {
     keepRadio.checked = true;
     keepRadio.dispatchEvent(new Event('change'));
 
-    // keep: own (point-own, 4 ключа) защищён -> 1 точка (2 ключа).
+    // keep: own (point-own, 4 ключа) удержан -> 1 точка (2 ключа).
     expect(trash.textContent).toMatch(/1\s*\(\s*2\s*(?:ключей|keys)\)/);
 
     deleteRadio.checked = true;
@@ -3794,7 +3794,7 @@ describe('refsOnMap selection breakdown UI', () => {
     ) as HTMLElement;
     // 1 locked точка (2 ключа).
     expect(protectedRow.textContent).toMatch(
-      /1\s*\(\s*2\s*(?:ключей|keys)\)\s*(?:защищено|protected)/,
+      /1\s*\(\s*2\s*(?:ключей|keys)\)\s*(?:заблокировано|protected)/,
     );
   });
 
@@ -3867,7 +3867,7 @@ describe('refsOnMap selection breakdown UI', () => {
     ) as HTMLElement;
     expect(protectedRow.style.display).not.toBe('none');
     expect(protectedRow.textContent).toMatch(
-      /1\s*\(\s*1\s*(?:ключей|keys)\)\s*(?:защищено|protected)/,
+      /1\s*\(\s*1\s*(?:ключей|keys)\)\s*(?:заблокировано|protected)/,
     );
 
     const own = document.querySelector('.svp-refs-on-map-selection-info__own') as HTMLElement;
@@ -3888,11 +3888,11 @@ describe('refsOnMap selection breakdown UI', () => {
 
 /**
  * Серия тестов-инвариантов на единственное обещание модуля: ключи, которые
- * UI помечает защищёнными (lock / own / unknown при ownTeamMode), НЕ должны
+ * UI помечает удерживаемыми (lock / own / unknown при ownTeamMode), НЕ должны
  * попадать в payload DELETE /api/inventory ни при каких комбинациях. Тесты
  * читают реальные guid'ы из тела запроса и сверяют их с partition-bucket'ами.
  *
- * Регрессия здесь = пользователь теряет защищённые ключи без своего ведома.
+ * Регрессия здесь = пользователь теряет удерживаемые ключи без своего ведома.
  */
 describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
   let view: ReturnType<typeof makeView>;
@@ -4032,9 +4032,9 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     expect(payload).not.toHaveProperty('ref-unk');
   });
 
-  test('lock защищает все стопки своей точки (несколько стопок одной locked-точки)', async () => {
+  test('lock удерживает все стопки своей точки (несколько стопок одной locked-точки)', async () => {
     // point-lock имеет 3 стопки, у одной f=lock. lockedPointGuids
-    // агрегирует per-point - все 3 стопки защищены.
+    // агрегирует per-point - все 3 стопки удержаны.
     const items = [
       { t: 3, a: 1, c: [100.5, 13.7], g: 'lock-a', l: 'point-lock', ti: 'L', f: 0b10 },
       { t: 3, a: 2, c: [100.5, 13.7], g: 'lock-b', l: 'point-lock', ti: 'L', f: 0 },
@@ -4062,7 +4062,7 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
     expect(payload).not.toHaveProperty('lock-c');
   });
 
-  test('mode=keep: ВСЕ стопки своей точки защищены (per-point own filter)', async () => {
+  test('mode=keep: ВСЕ стопки своей точки удержаны (per-point own filter)', async () => {
     // 2 стопки point-own (team=player). Обе должны быть protected.
     const items = [
       { t: 3, a: 1, c: [100.5, 13.7], g: 'own-a', l: 'point-own', ti: 'O', f: 0 },
@@ -4201,7 +4201,7 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
 
   test('инвариант: payload guids НИКОГДА не пересекается с partition.protected*', async () => {
     // Property-style: при ЛЮБОМ выборе и mode=keep, payload guids
-    // не должны содержать ни одного guid'а из защищённых bucket'ов.
+    // не должны содержать ни одного guid'а из удерживаемых bucket'ов.
     const items = [
       { t: 3, a: 1, c: [100.5, 13.7], g: 'g1', l: 'p-lock', ti: 'L', f: 0b10 },
       { t: 3, a: 2, c: [100.5, 13.7], g: 'g2', l: 'p-own', ti: 'O', f: 0 },
@@ -4344,7 +4344,7 @@ describe('refsOnMap critical safety: mode=keepOne leaves >=1 key per point', () 
     window.fetch = originalFetch;
   });
 
-  test('default mode=keepOne: новый пользователь защищён без явных действий', () => {
+  test('default mode=keepOne: новый пользователь под удержанием без явных действий', () => {
     // Глобальный beforeEach ставит ownTeamMode=delete, этот блок keepOne, но
     // сейчас проверим что radio keepOne в DOM checked=true после showViewer
     // и change-event сохраняет состояние. Страховка: если default в settings
@@ -4480,7 +4480,7 @@ describe('refsOnMap critical safety: mode=keepOne leaves >=1 key per point', () 
     expect(payload).not.toHaveProperty('ref-small');
   });
 
-  test('lock на одной из стопок: lock защищает точку, deletable не доходит до mode=keepOne', async () => {
+  test('lock на одной из стопок: lock удерживает точку, deletable не доходит до mode=keepOne', async () => {
     // Если у точки есть lock-стопка, partitionByLockProtection всю точку
     // помечает protectedByLock (lock-семантика per-point). deletable=0,
     // mode=keepOne не вмешивается.
@@ -4535,7 +4535,7 @@ describe('refsOnMap critical safety: mode=keepOne leaves >=1 key per point', () 
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([
-        // Точка A: 1 ключ, защищена mode=keepOne полностью.
+        // Точка A: 1 ключ, удержана mode=keepOne полностью.
         { t: 3, a: 1, c: [100.5, 13.7], g: 'a', l: 'pt-A', ti: 'A', f: 0 },
         // Точка B: 5 ключей, удалится 4.
         { t: 3, a: 5, c: [101, 14], g: 'b', l: 'pt-B', ti: 'B', f: 0 },
@@ -4557,7 +4557,7 @@ describe('refsOnMap critical safety: mode=keepOne leaves >=1 key per point', () 
     await flushAsync();
 
     const payload = extractDeletePayload();
-    // 'a' защищена mode=keepOne (не в payload).
+    // 'a' удержана mode=keepOne (не в payload).
     expect(payload).not.toHaveProperty('a');
     // 'b': удаляется 4.
     expect(payload.b).toBe(4);
@@ -4565,7 +4565,7 @@ describe('refsOnMap critical safety: mode=keepOne leaves >=1 key per point', () 
     expect(payload.c1).toBe(3);
   });
 
-  test('сохранённый mode=keepOne в localStorage защищает после reopen viewer', async () => {
+  test('сохранённый mode=keepOne в localStorage удерживает после reopen viewer', async () => {
     // Имитация: пользователь включил в прошлом сеансе, перезагрузил
     // страницу, открыл viewer. mode=keepOne восстанавливается из storage.
     // Без этого восстановления пользователь, не зная о новой фиче, при
@@ -4658,7 +4658,7 @@ describe('refsOnMap critical safety: mode=keepOne leaves >=1 key per point', () 
     expect(trash.textContent).toMatch(/1\s*\(\s*4\s*(?:ключей|keys)\)/);
   });
 
-  test('UI: точка с 1 ключом полностью защищена правилом - кнопка "0 (0 ключей)" и disabled', async () => {
+  test('UI: точка с 1 ключом полностью удержана правилом - кнопка "0 (0 ключей)" и disabled', async () => {
     localStorage.setItem(
       'inventory-cache',
       JSON.stringify([{ t: 3, a: 1, c: [100.5, 13.7], g: 'r', l: 'p', ti: 'P', f: 0 }]),

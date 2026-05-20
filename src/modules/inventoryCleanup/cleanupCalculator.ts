@@ -47,11 +47,11 @@ export function calculateDeletions(
   // Ключи удаляются при выполнении базовых условий выбора режима И наличии
   // нативной поддержки lock/favorite-флагов в кэше: ВСЕ реф-стопки имеют
   // поле `f`. Это сигнал, что сервер уже отдаёт lock/favorite-семантику для
-  // всего инвентаря (0.6.1+); без него защита невозможна — не трогаем ключи,
+  // всего инвентаря (0.6.1+); без него удержание невозможно - не трогаем ключи,
   // чтобы не удалить их вслепую (например, на старом 0.6.0 или при mix-кэше,
   // когда часть стопок ещё с прежним форматом без `f`). Раньше проверялось
   // `some`, но при mix-кэше стопки без `f` не попадают в protectedPointGuids
-  // и могли быть удалены даже у фактически защищённой точки. Симметрично с
+  // и могли быть удалены даже у точки с замочком или звёздочкой. Симметрично с
   // финальным guard в inventoryApi и с виверовым guard в refsOnMap через
   // одну и ту же core-функцию isProtectionFlagSupportAvailable.
   // Legacy SVP/CUI-избранные в логике удаления НЕ участвуют — они только
@@ -128,7 +128,7 @@ function addReferenceDeletions(
 
   const protectedPointGuids = buildProtectedPointGuids(items);
 
-  // Отфильтровать ключи защищённых точек (lock или favorite) ПЕРЕД расчётом лимита.
+  // Отфильтровать ключи заблокированных и избранных точек (lock или favorite) ПЕРЕД расчётом лимита.
   const matching: IInventoryReference[] = items.filter(
     (item): item is IInventoryReference =>
       isInventoryReference(item) && item.a > 0 && !protectedPointGuids.has(item.l),

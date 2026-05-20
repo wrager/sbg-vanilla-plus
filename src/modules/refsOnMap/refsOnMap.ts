@@ -63,7 +63,7 @@ const STYLE_TITLE_OFFSET_Y_PX = 18;
 
 // Alpha-каналы заливки: невыделенная точка - 0.25 от team-цвета; выделенная,
 // которая реально удалится, - 0.5 SELECTED_COLOR; выделенная, которая
-// защищена (lock / own / unknown / keepOne полностью защищена), - 0 fill,
+// удерживается (lock / own / unknown / keepOne полностью удержана), - 0 fill,
 // только обводка держит индикацию выделения.
 const STYLE_FILL_ALPHA_TEAM = 0.25;
 const STYLE_FILL_ALPHA_SELECTED_DELETABLE = 0.5;
@@ -755,7 +755,7 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
     const toDelete = typeof properties.toDelete === 'number' ? properties.toDelete : 0;
     const toSurvive = typeof properties.toSurvive === 'number' ? properties.toSurvive : 0;
     // Выделенная точка, у которой по итогу удаления НЕ уйдёт ни одного
-    // ключа: locked/own/unknown-защищена либо keepOne-полностью защищена
+    // ключа: locked/own/unknown-удержана либо keepOne-полностью удержана
     // (правило не позволило обрезать). Для них fill полностью прозрачный -
     // только обводка выделения держит индикацию "selected", оранжевый под
     // заливкой не намекает на "к удалению".
@@ -777,7 +777,7 @@ function createLayerStyleFunction(): (feature: IOlFeature) => unknown[] {
 
     // CUI style: transparent fill + colored stroke. Выделенный кружок,
     // который реально пойдёт в удаление - fill полупрозрачный SELECTED_COLOR
-    // (видно "к удалению"). Выделенный защищённый (не пойдёт в payload) -
+    // (видно "к удалению"). Выделенный удержанный (не пойдёт в payload) -
     // fill полностью прозрачный: только обводка держит индикацию
     // selected-state, оранжевый не намекает на удаление.
     const selectedFillAlpha = willNotBeDeleted
@@ -915,7 +915,7 @@ interface ISelectionBreakdown {
   unknownPoints: number;
   unknownKeys: number;
   // keepOneKey: точки, у которых правило "Оставлять 1 ключ" сохранило хотя
-  // бы 1 ключ (полностью защищена + частично удалена). keepOneKeyKeys -
+  // бы 1 ключ (полностью удержана + частично удалена). keepOneKeyKeys -
   // сумма этих сохранённых ключей.
   keepOneKeyPoints: number;
   keepOneKeyKeys: number;
@@ -952,7 +952,7 @@ function uniquePointCount(features: IOlFeature[]): number {
  * загружается (guid в teamLoadQueue или teamLoadInFlight). Используется
  * для решения, надо ли блокировать trashButton при keepOwnTeam: общая
  * фоновая загрузка для невыбранных точек удалению не мешает - lock
- * защищается через inventory-cache.f, а фильтр свои читает team только
+ * удерживается через inventory-cache.f, а фильтр свои читает team только
  * у выбранных. Заменяет старую проверку global teamsLoading, которая
  * блокировала кнопку при любой фоновой загрузке.
  */
@@ -970,7 +970,7 @@ function hasSelectedPointsLoadingTeam(): boolean {
 /**
  * Per-feature разбивка текущего selection'а через classifyFeatures - единый
  * источник правды, общий с handleDeleteClick. UI всегда показывает реальный
- * исход кнопки (что попадёт в DELETE-payload, что защищено).
+ * исход кнопки (что попадёт в DELETE-payload, что удержано).
  *
  * Defensive case: ownTeamMode='keep'|'keepOne' И playerTeam=null -
  * handleDeleteClick блокирует удаление тостом. classifyFeatures сам возвращает
@@ -1003,7 +1003,7 @@ function computeSelectionBreakdown(): ISelectionBreakdown {
     if (guid !== null) pointsInPayload.add(guid);
   }
   // keepOneKeyKeys считается per-feature: сумма toSurvive у всех фич, чья
-  // классификация keepOneTrimmed (включая защищённые точки с 1 ключом и
+  // классификация keepOneTrimmed (включая удержанные точки с 1 ключом и
   // частично удалённые стопки, где toSurvive=1).
   let keepOneKeyKeysFinal = 0;
   const keepOneKeyPointGuids = new Set<string>();
@@ -1605,15 +1605,15 @@ async function handleDeleteClick(): Promise<void> {
       );
       return;
     }
-    // Защита однонаправленная: берём fresh classifier и удаляем точки, которые
-    // СТАЛИ защищёнными за время confirm. Обратный race (lock/favorite сняли,
+    // Удержание однонаправленное: берём fresh classifier и удаляем точки, которые
+    // СТАЛИ удержанными за время confirm. Обратный race (lock/favorite сняли,
     // /api/inview принёс свою команду unknown-точке, между confirm и DELETE
     // изменился ownTeamMode) НЕ возвращает точку в payload: пользователь делал
-    // confirm в той картине, что эта точка защищена, удалять её без явного
+    // confirm в той картине, что эта точка удержана, удалять её без явного
     // подтверждения нельзя.
     //
     // Раньше фильтр учитывал только lock/favorite-bucket'ы; точка, ставшая
-    // защищённой через own-team/unknown/keepOne (например, /api/point-hook
+    // удержанной через own-team/unknown/keepOne (например, /api/point-hook
     // принёс команду игрока), оставалась в исходном payload и удалялась мимо
     // подтверждённой картины. Теперь берём пересечение исходного payload (то,
     // что пользователь подтверждал) и fresh.payload (актуальные deletable
@@ -1690,7 +1690,7 @@ function buildPostDeleteToast(
 }
 
 /**
- * Текст тоста "все выбранные защищены": честно отражает категории защиты.
+ * Текст тоста "все выбранные удержаны": честно отражает причины удержания.
  * Только одна категория - конкретный текст; смешанные - перечисление
  * количеств. Цель - пользователь видит почему ничего не удалилось и какое
  * действие предпринять.

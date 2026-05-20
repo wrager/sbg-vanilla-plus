@@ -136,7 +136,7 @@ function onToggleClick(popup: Element): void {
     return;
   }
   // Click-only check: locked точку нельзя сделать центром. Нативный замочек
-  // защищает ключи от расходования на линии, и из такого центра не вышло бы
+  // блокирует расходование ключей на линии, и из такого центра не вышло бы
   // нарисовать ни одной линии звезды.
   const lockedPoints = readLockedPointGuids();
   if (lockedPoints.has(guid)) {

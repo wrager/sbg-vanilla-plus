@@ -70,7 +70,7 @@ export async function deleteInventoryItems(
   // inventory-cache (он мог обновиться между расчётом deletions и этим
   // вызовом — пользователь нажал замок или звёздочку прямо во время
   // cleanup'а, или сервер вернул новые `f` в ответе на discover). Если точка
-  // теперь защищена (lock или favorite) — удаление её ключей блокируется.
+  // теперь заблокирована или в избранном (lock или favorite) - удаление её ключей блокируется.
   const freshCache = hasReferences ? readInventoryCache() : [];
   const freshProtectedPointGuids = hasReferences
     ? buildProtectedPointGuids(freshCache)
@@ -80,7 +80,7 @@ export async function deleteInventoryItems(
   // cleanupCalculator, slowRefsDelete и refsOnMap.handleDeleteClick.
   if (hasReferences && !isProtectionFlagSupportAvailable(freshCache)) {
     throw new Error(
-      'Удаление ключей запрещено: нативная защита (lock/favorite) недоступна (guard)',
+      'Удаление ключей запрещено: нативная семантика lock/favorite недоступна (guard)',
     );
   }
 
@@ -96,7 +96,7 @@ export async function deleteInventoryItems(
       }
       if (freshProtectedPointGuids.has(entry.pointGuid)) {
         throw new Error(
-          `Ключ от защищённой точки ${entry.pointGuid} не может быть удалён (guard lock/favorite)`,
+          `Ключ от заблокированной или избранной точки ${entry.pointGuid} не может быть удалён (guard lock/favorite)`,
         );
       }
     }

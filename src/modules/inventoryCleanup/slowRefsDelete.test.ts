@@ -748,7 +748,7 @@ describe('runSlowDelete: isProtectionFlagSupportAvailable=false блокируе
     fetchSpy.mockRestore();
   });
 
-  test('race-protection: точка, ставшая защищённой между confirm и DELETE, выпадает из payload', async () => {
+  test('race-protection: точка, получившая замочек или звёздочку между confirm и DELETE, выпадает из payload', async () => {
     // Slow-flow async: между confirm (пользователь подтвердил запрос /api/point)
     // и финальным DELETE крутится fetchTeamsForGuids - иногда минуты при больших
     // списках. За это время пользователь мог пометить точку нативным замочком
@@ -773,7 +773,7 @@ describe('runSlowDelete: isProtectionFlagSupportAvailable=false блокируе
 
     const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
     // /api/point возвращает team игрока для обеих точек; после первого вызова
-    // обновляем кэш, делая point-2 защищённой.
+    // обновляем кэш, ставя на point-2 замочек.
     let pointCallCount = 0;
     const fetchSpy = jest.spyOn(window, 'fetch').mockImplementation((input) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;

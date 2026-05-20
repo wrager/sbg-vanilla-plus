@@ -569,7 +569,7 @@ async function runFlow(flag: MigrationFlag, panelElement: HTMLElement): Promise<
       }
       // Modal alert при наличии непокрытых точек: пользователь должен явно
       // знать, что часть избранных осталась без замочка, иначе при сборе
-      // ключей таких точек они не будут защищены автоочисткой. Toast на
+      // ключей таких точек автоочистка их удалит. Toast на
       // мобильном устройстве может пройти незамеченным.
       if (candidates.withoutKeysGuids.length > 0) {
         alertWithoutKeys(candidates.withoutKeysGuids);
