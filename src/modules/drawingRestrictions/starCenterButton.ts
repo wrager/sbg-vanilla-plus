@@ -15,7 +15,7 @@ import {
   showCenterClearedToast,
 } from './starCenterToasts';
 
-const TOGGLE_CLASS = 'svp-star-center-btn';
+export const TOGGLE_CLASS = 'svp-star-center-btn';
 const POPUP_ACTION_BUTTON_CLASS = 'svp-popup-action-button';
 const POPUP_SELECTOR = '.info.popup';
 const BUTTONS_SELECTOR = '.i-buttons';
@@ -24,6 +24,12 @@ let popupObserver: MutationObserver | null = null;
 let clickAbortController: AbortController | null = null;
 let changeHandler: (() => void) | null = null;
 let installGeneration = 0;
+// Кэш locked-точек, рассчитанных через buildLockedPointGuids(readInventoryCache()).
+// invalidates при смене popupGuid - кэшируется чтобы не парсить inventory-cache
+// заново на каждый tick MutationObserver'а (subtree: true + childList: true
+// триггерит callback десятки/сотни раз при анимации splide-карусели ключей в
+// попапе и при перерисовке игрой UI замочка после POST /api/marks).
+let cachedLockedPoints: { forGuid: string; set: Set<string> } | null = null;
 // pendingInstall защищает от race `install() → install()` до того как первый
 // waitForElement резолвится: синхронный guard `popupObserver !== null`
 // недостаточен, потому что observer ставится только в .then(). Без флага оба
@@ -36,6 +42,15 @@ function getCurrentGuid(popup: Element): string | null {
   if (!(popup instanceof HTMLElement)) return null;
   const guid = popup.dataset.guid;
   return guid && guid.length > 0 ? guid : null;
+}
+
+function getLockedPointsFor(popupGuid: string): Set<string> {
+  if (cachedLockedPoints?.forGuid === popupGuid) {
+    return cachedLockedPoints.set;
+  }
+  const set = buildLockedPointGuids(readInventoryCache());
+  cachedLockedPoints = { forGuid: popupGuid, set };
+  return set;
 }
 
 function findToggle(popup: Element): HTMLButtonElement | null {
@@ -90,7 +105,7 @@ function updateButtons(popup: Element): void {
     // Locked-точка (не текущий центр): кнопка disabled. Title объясняет
     // причину. Если точка locked И уже центр - кнопка остаётся активной для
     // снятия центра (звёздочный режим бесполезен, нужен выход).
-    const lockedPoints = buildLockedPointGuids(readInventoryCache());
+    const lockedPoints = getLockedPointsFor(popupGuid);
     const isLockedNonCenter = lockedPoints.has(popupGuid) && !isCurrentCenter;
     if (isLockedNonCenter) {
       toggle.disabled = true;
@@ -128,9 +143,19 @@ function onToggleClick(popup: Element): void {
     refreshPopupIfStarFilterWasActive(centerBefore);
     return;
   }
-  // Locked-точка для не-центра защищена на UI-уровне в updateButtons
-  // (toggle.disabled = true). Здесь locked-ветка не нужна: click на disabled
-  // button не вызывает handler.
+  // Safety-net: основная защита от назначения locked-центра - disabled-кнопка
+  // в updateButtons, но кэш lockedPoints инвалидируется только при смене
+  // popupGuid. Если пользователь поставил lock на текущую открытую точку,
+  // updateButtons получит stale-кэш и кнопка останется enabled до следующего
+  // open popup. Здесь делаем fresh read при click, чтобы блокировать
+  // назначение даже если UI не успел обновиться. Кэш также обновляем, чтобы
+  // следующий updateButtons увидел свежий lock.
+  cachedLockedPoints = null;
+  const lockedPoints = getLockedPointsFor(guid);
+  if (lockedPoints.has(guid)) {
+    showCannotSetLockedCenterToast();
+    return;
+  }
   setStarCenter(guid);
   showCenterAssignedToast();
   // Назначение нового центра (centerBefore = null) - утилита no-op.
@@ -142,10 +167,30 @@ function onToggleClick(popup: Element): void {
   refreshPopupIfStarFilterWasActive(centerBefore);
 }
 
+/**
+ * Фильтр self-trigger'ов observer'а: updateButtons меняет class на toggle
+ * (через classList.toggle/remove), Chrome fires mutation BUTTON.class даже на
+ * no-op classList.remove. Без фильтра observer ловит свой же mutation,
+ * вызывает updateButtons -> снова меняет class -> infinite loop (100% CPU,
+ * зависание страницы). Filter оставляет childList (для перевставки .i-buttons
+ * игрой) и attribute-mutations на других элементах (data-guid root popup,
+ * class попапа .hidden), отсекает только toggle.
+ */
+export function hasRelevantMutations(mutations: readonly MutationRecord[]): boolean {
+  return mutations.some((m) => {
+    if (m.type === 'childList') return true;
+    if (m.target instanceof Element && m.target.classList.contains(TOGGLE_CLASS)) {
+      return false;
+    }
+    return true;
+  });
+}
+
 function startObserving(popup: Element): void {
   updateButtons(popup);
 
-  popupObserver = new MutationObserver(() => {
+  popupObserver = new MutationObserver((mutations) => {
+    if (!hasRelevantMutations(mutations)) return;
     updateButtons(popup);
   });
   // Наблюдаем и за атрибутами попапа (смена data-guid/class), и за subtree —
@@ -210,6 +255,7 @@ export function uninstallStarCenterButton(): void {
     document.removeEventListener(STAR_CENTER_CHANGED_EVENT, changeHandler);
     changeHandler = null;
   }
+  cachedLockedPoints = null;
   document.querySelectorAll(`.${TOGGLE_CLASS}`).forEach((element) => {
     element.remove();
   });

@@ -1,9 +1,13 @@
-import { installStarCenterButton, uninstallStarCenterButton } from './starCenterButton';
+import {
+  TOGGLE_CLASS,
+  hasRelevantMutations,
+  installStarCenterButton,
+  uninstallStarCenterButton,
+} from './starCenterButton';
 import { clearStarCenter, getStarCenter, getStarCenterGuid, setStarCenter } from './starCenter';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 
-const TOGGLE_CLASS = 'svp-star-center-btn';
 
 const showToastMock = jest.fn();
 jest.mock('../../core/toast', () => ({
@@ -309,31 +313,39 @@ describe('starCenterButton — переоткрытие попапа при пе
 });
 
 describe('starCenterButton — попытка назначить locked-точку центром', () => {
-  // Защита на UI-уровне: toggle.disabled = true в updateButtons для
-  // locked-точки, которая не является текущим центром. Click на disabled
-  // button не вызывает handler ни в браузерах, ни в jsdom.
+  // Двухслойная защита: (1) UI - toggle.disabled = true в updateButtons для
+  // locked-точки, которая не является текущим центром; (2) safety-net в
+  // onToggleClick - fresh read inventory-cache при click, чтобы блокировать
+  // назначение даже если updateButtons видел stale-кэш locked-точек.
 
-  test('центра нет: click на toggle locked-точки - no-op (кнопка disabled)', async () => {
-    setLockedPoints(['p1']);
+  test('safety-net в onToggleClick: lock после install (stale cache) - click не назначает + toast', async () => {
+    // Stale-cache scenario: пользователь открыл попап (cache = empty),
+    // установил lock на эту же точку, кнопка остаётся enabled до next open.
+    // Click срабатывает - safety-net пересчитывает inventory и блокирует.
     const popup = createPopupDom('p1');
-    installStarCenterButton();
+    installStarCenterButton(); // updateButtons: lockedPoints empty, cache = empty
+    setLockedPoints(['p1']);   // lock после install, cache stale
     getToggle(popup)?.click();
     await flushMicrotasks();
 
     expect(getStarCenter()).toBeNull();
-    expect(toastMessages()).toEqual([]);
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      true,
+    );
   });
 
-  test('центр на не-locked точке: click на toggle locked-точки - no-op (кнопка disabled), центр остаётся', async () => {
+  test('safety-net: lock после install не снимает предыдущий центр + toast', async () => {
     setStarCenter('A');
-    setLockedPoints(['B']);
     const popup = createPopupDom('B');
     installStarCenterButton();
+    setLockedPoints(['B']); // lock после install
     getToggle(popup)?.click();
     await flushMicrotasks();
 
     expect(getStarCenterGuid()).toBe('A');
-    expect(toastMessages()).toEqual([]);
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      true,
+    );
   });
 
   test('клик в попапе locked-точки, который уже является центром, снимает центр как обычно', async () => {
@@ -380,6 +392,34 @@ describe('starCenterButton — попытка назначить locked-точк
     const toggle = getToggle(popup);
     expect(toggle?.disabled).toBe(false);
     expect(toggle?.classList.contains('is-active')).toBe(true);
+  });
+
+  test('cache lockedPoints: stale при том же popupGuid (не пересчитывается на каждом mutation)', () => {
+    // Защита от шторма JSON.parse в hot-path MutationObserver-callback.
+    // При том же popupGuid повторный вызов updateButtons использует cached
+    // lockedPoints. Side-effect: lock, поставленный в текущей открытой точке,
+    // не отразится в UI до next popup open - safety-net в onToggleClick
+    // закрывает этот зазор на click.
+    const popup = createPopupDom('p1');
+    installStarCenterButton(); // cache for p1 = empty, button enabled
+    expect(getToggle(popup)?.disabled).toBe(false);
+
+    setLockedPoints(['p1']); // lock после install - cache stale
+    document.dispatchEvent(new Event('svp:star-center-changed')); // triggers updateButtons
+
+    expect(getToggle(popup)?.disabled).toBe(false); // cached, stale value
+  });
+
+  test('cache инвалидируется при смене popupGuid', async () => {
+    setLockedPoints(['p2']);
+    const popup = createPopupDom('p1');
+    installStarCenterButton(); // p1 не locked, button enabled
+    expect(getToggle(popup)?.disabled).toBe(false);
+
+    popup.dataset.guid = 'p2'; // смена popupGuid - MutationObserver fires
+    await flushMicrotasks();
+
+    expect(getToggle(popup)?.disabled).toBe(true); // cache invalidated, p2 locked
   });
 
   test('не-locked точка назначается как раньше', async () => {
@@ -472,6 +512,59 @@ describe('starCenterButton — legacy locked center при installStarCenterButt
 
     expect(getStarCenter()).toBeNull();
     expect(showToastMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('starCenterButton — фильтр self-trigger mutations (hasRelevantMutations)', () => {
+  // Регрессия beta.8: updateButtons менял classList на toggle, Chrome fires
+  // BUTTON.class mutation -> observer fires -> updateButtons -> снова mutation
+  // -> infinite loop, 100% CPU, зависание страницы.
+
+  function createMutation(target: Element, type: 'attributes' | 'childList'): MutationRecord {
+    return {
+      type,
+      target,
+      addedNodes: { length: 0 } as unknown as NodeList,
+      removedNodes: { length: 0 } as unknown as NodeList,
+      attributeName: type === 'attributes' ? 'class' : null,
+      attributeNamespace: null,
+      nextSibling: null,
+      previousSibling: null,
+      oldValue: null,
+    };
+  }
+
+  test('mutation attribute на toggle - false (self-trigger игнорируется)', () => {
+    const toggle = document.createElement('button');
+    toggle.className = TOGGLE_CLASS;
+    expect(hasRelevantMutations([createMutation(toggle, 'attributes')])).toBe(false);
+  });
+
+  test('mutation attribute на другом элементе - true', () => {
+    const otherBtn = document.createElement('button');
+    expect(hasRelevantMutations([createMutation(otherBtn, 'attributes')])).toBe(true);
+  });
+
+  test('mutation childList даже на toggle - true (не self-trigger)', () => {
+    const toggle = document.createElement('button');
+    toggle.className = TOGGLE_CLASS;
+    expect(hasRelevantMutations([createMutation(toggle, 'childList')])).toBe(true);
+  });
+
+  test('смесь: только toggle attribute + другие - true (другие relevant)', () => {
+    const toggle = document.createElement('button');
+    toggle.className = TOGGLE_CLASS;
+    const otherDiv = document.createElement('div');
+    expect(
+      hasRelevantMutations([
+        createMutation(toggle, 'attributes'),
+        createMutation(otherDiv, 'attributes'),
+      ]),
+    ).toBe(true);
+  });
+
+  test('пустой список - false', () => {
+    expect(hasRelevantMutations([])).toBe(false);
   });
 });
 
