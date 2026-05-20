@@ -365,7 +365,7 @@ describe('migrationUi: runFlow lock-migration-done при пустом toSend', 
 
     expect(isLockMigrationDone()).toBe(true);
     // Modal alert вместо toast: пользователь должен явно знать, что одна точка
-    // не помечена замочком, иначе при сборе её ключей они не будут защищены.
+    // не помечена замочком, иначе при сборе её ключей автоочистка их удалит.
     expect(alertSpy).toHaveBeenCalledTimes(1);
     const message = String(alertSpy.mock.calls[0][0]);
     // GUID-prefix первых 8 символов в списке.
@@ -389,7 +389,7 @@ describe('migrationUi: runFlow lock-migration-done при пустом toSend', 
     expect(isLockMigrationDone()).toBe(true);
   });
 
-  test('flag = favorite + alreadyApplied > 0: флаг НЕ ставится (favorite не защищает)', async () => {
+  test('flag = favorite + alreadyApplied > 0: флаг НЕ ставится (favorite не снимает блок)', async () => {
     await seedFavorites([{ guid: 'p1', cooldown: null }]);
     await loadFavorites();
     setInventoryCache([{ g: 's1', t: 3, l: 'p1', a: 5, f: 0b01 }]);
@@ -539,7 +539,7 @@ describe('migrationUi: e2e успешная миграция в locked выст�
     }
     expect(favButton.disabled).toBe(false);
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    // favorite не защищает от удаления, флаг не выставляется.
+    // favorite не снимает блок удаления, флаг не выставляется.
     expect(isLockMigrationDone()).toBe(false);
   });
 

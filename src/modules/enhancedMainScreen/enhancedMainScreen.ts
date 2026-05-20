@@ -242,8 +242,8 @@ export const enhancedMainScreen: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Enhanced Main Screen', ru: 'Улучшенный главный экран' },
   description: {
-    en: 'Compacts the top panel: nick with level and XP below buttons, inventory in OPS, gear icon for Settings, attack button centered',
-    ru: 'Компактная верхняя панель: ник с уровнем и опытом под кнопками, инвентарь в ОРПЦ, шестерёнка вместо «Настройки», кнопка атаки по центру',
+    en: 'Compact top panel, attack button centered',
+    ru: 'Компактная верхняя панель, кнопка атаки по центру',
   },
   defaultEnabled: true,
   category: 'ui',

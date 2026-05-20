@@ -32,14 +32,14 @@ describe('calculateDeletions — lock/favorite-aware фильтрация реф
     expect(deletions).toHaveLength(0);
   });
 
-  test('locked-точка с 2 стопками (одна с lock, другая без) — обе защищены (per-point)', () => {
-    // Стопки в реальности — деталь хранения. UI агрегирует, защита per-point.
+  test('locked-точка с 2 стопками (одна с lock, другая без) — обе удержаны от удаления (per-point)', () => {
+    // Стопки в реальности — деталь хранения. UI агрегирует, удержание per-point.
     const items: IInventoryItem[] = [ref('stack-a', 'p1', 3, 0b10), ref('stack-b', 'p1', 2, 0)];
     const deletions = calculateDeletions(items, FAST_LIMIT_2);
     expect(deletions).toHaveLength(0);
   });
 
-  test('не-защищённая точка с превышением лимита — удаляется, защищённая точка рядом не страдает', () => {
+  test('точка без замочка и звёздочки с превышением лимита — удаляется, заблокированная или избранная точка рядом не страдает', () => {
     const items: IInventoryItem[] = [
       ref('locked-stack', 'locked-point', 5, 0b10),
       ref('normal-stack', 'normal-point', 5, 0),
@@ -50,20 +50,20 @@ describe('calculateDeletions — lock/favorite-aware фильтрация реф
     expect(deletions[0].amount).toBe(3);
   });
 
-  test('favorite-флаг (бит 0) защищает: точка не попадает в deletions', () => {
-    // Постановка обновлена: и lock, и favorite защищают от удаления.
+  test('favorite-флаг (бит 0) удерживает: точка не попадает в deletions', () => {
+    // Постановка обновлена: и lock, и favorite удерживают от удаления.
     const items: IInventoryItem[] = [ref('s1', 'p1', 5, 0b01)];
     const deletions = calculateDeletions(items, FAST_LIMIT_2);
     expect(deletions).toHaveLength(0);
   });
 
-  test('favorite-точка с 2 стопками (одна с favorite, другая без) — обе защищены (per-point)', () => {
+  test('favorite-точка с 2 стопками (одна с favorite, другая без) — обе удержаны (per-point)', () => {
     const items: IInventoryItem[] = [ref('stack-a', 'p1', 3, 0b01), ref('stack-b', 'p1', 2, 0)];
     const deletions = calculateDeletions(items, FAST_LIMIT_2);
     expect(deletions).toHaveLength(0);
   });
 
-  test('lock + favorite (бит 0 и 1) — точка защищена', () => {
+  test('lock + favorite (бит 0 и 1) — точка удержана', () => {
     const items: IInventoryItem[] = [ref('s1', 'p1', 5, 0b11)];
     const deletions = calculateDeletions(items, FAST_LIMIT_2);
     expect(deletions).toHaveLength(0);
@@ -82,7 +82,7 @@ describe('calculateDeletions — lock/favorite-aware фильтрация реф
   });
 
   test('protect-фильтр работает БЕЗ legacy SVP-избранных (0.6.1+ кейс)', () => {
-    // Legacy список в логике защиты не участвует — полагаемся только на lock/favorite.
+    // Legacy список в логике удержания не участвует — полагаемся только на lock/favorite.
     const items: IInventoryItem[] = [
       ref('locked-stack', 'p-locked', 5, 0b10),
       ref('normal-stack', 'p-normal', 5, 0),
@@ -111,9 +111,9 @@ describe('calculateDeletions — lock/favorite-aware фильтрация реф
 });
 
 describe('calculateDeletions — условие запуска (lock/favorite-поддержка)', () => {
-  test('кэш без поля f во всех стопках: ключи не трогаются (0.6.0 / защита недоступна)', () => {
+  test('кэш без поля f во всех стопках: ключи не трогаются (0.6.0 / семантика lock/favorite недоступна)', () => {
     // Поле f отсутствует во всех записях — isProtectionFlagSupportAvailable=false.
-    // Удаление ключей блокируется, чтобы не задеть защищённые точки вслепую.
+    // Удаление ключей блокируется, чтобы не задеть заблокированные или избранные точки вслепую.
     const items: IInventoryItem[] = [ref('s1', 'p1', 5)];
     const deletions = calculateDeletions(items, FAST_LIMIT_2);
     expect(deletions).toHaveLength(0);
@@ -126,7 +126,7 @@ describe('calculateDeletions — условие запуска (lock/favorite-п
     expect(deletions[0].amount).toBe(3);
   });
 
-  test('кэш с f-полем: cleanup идёт, locked-точка защищена', () => {
+  test('кэш с f-полем: cleanup идёт, locked-точка удержана', () => {
     const items: IInventoryItem[] = [
       ref('s-locked', 'p-locked', 5, 0b10),
       ref('s-other', 'p-other', 5, 0),
@@ -136,7 +136,7 @@ describe('calculateDeletions — условие запуска (lock/favorite-п
     expect(deletions[0].amount).toBe(3);
   });
 
-  test('кэш с f-полем: cleanup идёт, favorite-точка защищена', () => {
+  test('кэш с f-полем: cleanup идёт, favorite-точка удержана', () => {
     const items: IInventoryItem[] = [
       ref('s-fav', 'p-fav', 5, 0b01),
       ref('s-other', 'p-other', 5, 0),

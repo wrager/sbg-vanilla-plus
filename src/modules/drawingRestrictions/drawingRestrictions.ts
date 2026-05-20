@@ -20,8 +20,8 @@ export const drawingRestrictions: IFeatureModule = {
     ru: 'Ограничения рисования',
   },
   description: {
-    en: 'Adds a "star" drawing mode and a distance filter for the drawing target list.',
-    ru: 'Добавляет режим рисования "звезда" и фильтр дальности целей рисования.',
+    en: 'Adds a "star" drawing mode and a distance filter',
+    ru: 'Добавляет режим рисования «звезда» и фильтр по дальности',
   },
   defaultEnabled: true,
   category: 'feature',
