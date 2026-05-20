@@ -378,20 +378,22 @@ describe('starCenterButton — попытка назначить locked-точк
     expect(toggle?.classList.contains('is-active')).toBe(false);
   });
 
-  test('locked-точка, которая уже является центром: toggle активен (для снятия)', () => {
-    // locked-центр - результат legacy install check race (или ручной правки
-    // localStorage). Кнопка остаётся активной, чтобы дать пользователю выход.
+  test('lock на текущий центр звезды - центр сбрасывается, кнопка disabled, toast', async () => {
     const popup = createPopupDom('p1');
     installStarCenterButton();
-    setStarCenter('p1');
-    setLockedPoints(['p1']);
-    // Триггер пересчёта updateButtons (через STAR_CENTER_CHANGED_EVENT,
-    // setLockedPoints сам по себе observer не дёргает).
-    document.dispatchEvent(new Event('svp:star-center-changed'));
+    setStarCenter('p1'); // p1 теперь центр, событие триггерит updateButtons
+    await flushMicrotasks();
+    expect(getToggle(popup)?.classList.contains('is-active')).toBe(true);
 
-    const toggle = getToggle(popup);
-    expect(toggle?.disabled).toBe(false);
-    expect(toggle?.classList.contains('is-active')).toBe(true);
+    setLockedPoints(['p1']);
+    document.dispatchEvent(new Event('svp:star-center-changed'));
+    await flushMicrotasks();
+
+    expect(getStarCenter()).toBeNull();
+    expect(getToggle(popup)?.disabled).toBe(true);
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      true,
+    );
   });
 
   test('lock поставлен на текущую открытую точку - кнопка сразу disabled', () => {

@@ -89,6 +89,21 @@ function updateButtons(popup: Element): void {
   const starCenterGuid = star?.guid ?? null;
   const isCurrentCenter = popupGuid !== null && popupGuid === starCenterGuid;
 
+  // Auto-clear: если текущий центр звезды стал locked во время сессии,
+  // снимаем центр с toast. Без этого режим звезды залипал бы на locked-точке
+  // (рисовать с неё нельзя, draw-count показывал бы 0 из любого другого
+  // попапа). После clearStarCenter STAR_CENTER_CHANGED_EVENT перевызовет
+  // updateButtons с обновлённым state (no center), вторая ветка ниже
+  // переведёт кнопку в disabled.
+  if (isCurrentCenter && popupGuid !== null) {
+    const lockedPoints = getLockedPointsFor();
+    if (lockedPoints.has(popupGuid)) {
+      clearStarCenter();
+      showCannotSetLockedCenterToast();
+      return;
+    }
+  }
+
   let toggle = findToggle(popup);
   if (popupGuid === null) {
     if (toggle) toggle.disabled = true;
@@ -100,8 +115,8 @@ function updateButtons(popup: Element): void {
       buttons.appendChild(toggle);
     }
     // Locked-точка (не текущий центр): кнопка disabled. Title объясняет
-    // причину. Если точка locked И уже центр - кнопка остаётся активной для
-    // снятия центра (звёздочный режим бесполезен, нужен выход).
+    // причину. Случай "locked И центр" обработан выше через clearStarCenter +
+    // re-render, сюда не доходит.
     const lockedPoints = getLockedPointsFor();
     const isLockedNonCenter = lockedPoints.has(popupGuid) && !isCurrentCenter;
     if (isLockedNonCenter) {
