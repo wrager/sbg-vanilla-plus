@@ -84,10 +84,7 @@ function createButton(
   return button;
 }
 
-function pickTitle(
-  popupGuid: string | null,
-  star: ReturnType<typeof getStarCenter>,
-): string {
+function pickTitle(popupGuid: string | null, star: ReturnType<typeof getStarCenter>): string {
   if (popupGuid === null) return '';
   const isCurrentCenter = popupGuid === star?.guid;
   if (isCurrentCenter && star.active) {

@@ -6,10 +6,7 @@ import { migrateLegacyStarCenter } from './starCenter';
 import { installSettingsUi, uninstallSettingsUi } from './settingsUi';
 import { installStarCenterButton, uninstallStarCenterButton } from './starCenterButton';
 import { installStarCenterHighlight, uninstallStarCenterHighlight } from './starCenterHighlight';
-import {
-  installStarCenterMapToggle,
-  uninstallStarCenterMapToggle,
-} from './starCenterMapToggle';
+import { installStarCenterMapToggle, uninstallStarCenterMapToggle } from './starCenterMapToggle';
 import styles from './styles.css?inline';
 
 const MODULE_ID = 'drawingRestrictions';

@@ -34,7 +34,9 @@ function parseStored(raw: string | null): IStarCenter | null {
         const titleValue = 'title' in parsed ? parsed.title : undefined;
         const title =
           typeof titleValue === 'string' && titleValue.length > 0 ? titleValue : undefined;
-        return title !== undefined ? { guid: guidValue, active, title } : { guid: guidValue, active };
+        return title !== undefined
+          ? { guid: guidValue, active, title }
+          : { guid: guidValue, active };
       }
     }
   } catch {

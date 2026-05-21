@@ -160,9 +160,9 @@ describe('starCenterButton — клики (трёхветочная toggle-ло�
     installStarCenterButton();
     getToggle(popup)?.click();
     await flushMicrotasks();
-    expect(
-      toastMessages().some((m) => m.includes('selected as star center for drawing')),
-    ).toBe(true);
+    expect(toastMessages().some((m) => m.includes('selected as star center for drawing'))).toBe(
+      true,
+    );
   });
 
   test('попап на активном центре → toggle off (guid сохраняется, active=false)', async () => {
@@ -196,9 +196,9 @@ describe('starCenterButton — клики (трёхветочная toggle-ло�
     await flushMicrotasks();
     expect(getStarCenter()).toEqual({ guid: 'p1', active: true });
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(true);
-    expect(
-      toastMessages().some((m) => m.includes('selected as star center for drawing')),
-    ).toBe(true);
+    expect(toastMessages().some((m) => m.includes('selected as star center for drawing'))).toBe(
+      true,
+    );
   });
 
   test('центр на другой точке + режим выключен → переназначает и включает', async () => {
@@ -263,7 +263,9 @@ describe('starCenterButton — имя точки в тостах (через poi
     installStarCenterButton();
     getToggle(popup)?.click();
     await flushMicrotasks();
-    expect(toastMessages().some((m) => m === 'Point "Alpha" selected as star center for drawing.')).toBe(true);
+    expect(
+      toastMessages().some((m) => m === 'Point "Alpha" selected as star center for drawing.'),
+    ).toBe(true);
   });
 
   test('назначение без известного имени - общий текст без кавычек', async () => {

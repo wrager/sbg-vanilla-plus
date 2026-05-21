@@ -131,7 +131,10 @@ describe('starCenter — legacy parser fallback (active=true по умолчан
   });
 
   test('JSON с title - читается с title', () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ guid: 'abc', active: true, title: 'Alpha' }));
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ guid: 'abc', active: true, title: 'Alpha' }),
+    );
     expect(getStarCenter()).toEqual({ guid: 'abc', active: true, title: 'Alpha' });
   });
 
@@ -219,17 +222,13 @@ describe('starCenter — migrateLegacyStarCenter', () => {
   test('legacy JSON без active переписывается в { guid, active: true }', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ guid: 'abc' }));
     migrateLegacyStarCenter();
-    expect(localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({ guid: 'abc', active: true }),
-    );
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(JSON.stringify({ guid: 'abc', active: true }));
   });
 
   test('legacy JSON с лишним name схлопывается до { guid, active: true }', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ guid: 'abc', name: 'Alpha' }));
     migrateLegacyStarCenter();
-    expect(localStorage.getItem(STORAGE_KEY)).toBe(
-      JSON.stringify({ guid: 'abc', active: true }),
-    );
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(JSON.stringify({ guid: 'abc', active: true }));
   });
 
   test('новый формат - no-op (idempotent)', () => {

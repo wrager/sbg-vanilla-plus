@@ -1,11 +1,7 @@
 import { registerOlControl } from '../../core/olControlStack';
 import { buildLockedPointGuids, readInventoryCache } from '../../core/inventoryCache';
 import { t } from '../../core/l10n';
-import {
-  STAR_CENTER_CHANGED_EVENT,
-  getStarCenter,
-  setStarCenterActive,
-} from './starCenter';
+import { STAR_CENTER_CHANGED_EVENT, getStarCenter, setStarCenterActive } from './starCenter';
 import { resolvePointTitle } from './pointTitle';
 import { STAR_ICON_SVG } from './starCenterIcon';
 import { refreshPopupIfStarFilterStateChanged } from './starCenterRefresh';

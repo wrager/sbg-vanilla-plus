@@ -9,10 +9,7 @@ import type { IStarCenter } from './starCenter';
  * (для попапа центра все линии звёздные, keepByStar отдаёт null). Используется
  * для сравнения состояний до/после изменения.
  */
-function effectiveStarGuidForPopup(
-  state: IStarCenter | null,
-  popupGuid: string,
-): string | null {
+function effectiveStarGuidForPopup(state: IStarCenter | null, popupGuid: string): string | null {
   if (state === null || !state.active) return null;
   if (state.guid === popupGuid) return null;
   return state.guid;

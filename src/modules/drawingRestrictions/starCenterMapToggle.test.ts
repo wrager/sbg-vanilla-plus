@@ -1,13 +1,5 @@
-import {
-  installStarCenterMapToggle,
-  uninstallStarCenterMapToggle,
-} from './starCenterMapToggle';
-import {
-  clearStarCenter,
-  getStarCenter,
-  setStarCenter,
-  setStarCenterActive,
-} from './starCenter';
+import { installStarCenterMapToggle, uninstallStarCenterMapToggle } from './starCenterMapToggle';
+import { clearStarCenter, getStarCenter, setStarCenter, setStarCenterActive } from './starCenter';
 import { resetOlControlStackForTest } from '../../core/olControlStack';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
@@ -361,7 +353,11 @@ describe('starCenterMapToggle — имя точки в тосте (через re
     setStarCenter('p1', 'Cached Alpha');
     installStarCenterMapToggle();
     getButton()?.click();
-    expect(resolvePointTitleMock).toHaveBeenCalledWith({ guid: 'p1', active: true, title: 'Cached Alpha' });
+    expect(resolvePointTitleMock).toHaveBeenCalledWith({
+      guid: 'p1',
+      active: true,
+      title: 'Cached Alpha',
+    });
   });
 });
 
