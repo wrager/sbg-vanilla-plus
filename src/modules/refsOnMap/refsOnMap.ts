@@ -46,6 +46,15 @@ const HIDDEN_SVP_LAYER_NAMES = ['svp-draw-tools'];
 // MID-viewer через MutationObserver в core/olControlStack, и новые кнопки
 // обязаны скрываться без подписки на DOM-мутации в этом модуле.
 const VIEWER_BODY_CLASS = 'svp-refs-on-map-viewer-open';
+// Длительность блокировки pointer-events на bottomStack после первого
+// выделения точки. Браузер определяет click.target по элементу под
+// курсором НА МОМЕНТ dispatch'а click event (а не pointerup), и за
+// микросекунды между OL pointerup-handler'ом и click event наш handleMapClick
+// успевает показать trash/cancel/radio в нижнем правом углу. Если тап был
+// в зоне будущих кнопок, click уходит на свежепоявившуюся кнопку. Окно
+// 400 мс покрывает tap-delay браузера (~300 мс) с запасом.
+const BOTTOM_STACK_COOLDOWN_MS = 400;
+const BOTTOM_STACK_COOLDOWN_CLASS = 'svp-refs-on-map-bottom-stack--cooldown';
 const TEAM_BATCH_SIZE = 5;
 const TEAM_BATCH_DELAY_MS = 100;
 const AMOUNT_ZOOM = 15;
@@ -1287,8 +1296,32 @@ function clearSelection(): void {
   updateSelectionUi();
 }
 
+// Таймер cooldown'а bottomStack. Хранится в module-state, чтобы повторный
+// клик в первые BOTTOM_STACK_COOLDOWN_MS не запускал параллельный таймер,
+// сдвигая окно: пользователь, тапнувший дважды подряд, получит окно
+// блокировки одной длины, а не суммарное.
+let bottomStackCooldownTimer: ReturnType<typeof setTimeout> | null = null;
+
+function applyBottomStackClickCooldown(): void {
+  if (!bottomStack) return;
+  bottomStack.classList.add(BOTTOM_STACK_COOLDOWN_CLASS);
+  if (bottomStackCooldownTimer !== null) clearTimeout(bottomStackCooldownTimer);
+  bottomStackCooldownTimer = setTimeout(() => {
+    bottomStackCooldownTimer = null;
+    bottomStack?.classList.remove(BOTTOM_STACK_COOLDOWN_CLASS);
+  }, BOTTOM_STACK_COOLDOWN_MS);
+}
+
+function clearBottomStackClickCooldown(): void {
+  if (bottomStackCooldownTimer !== null) {
+    clearTimeout(bottomStackCooldownTimer);
+    bottomStackCooldownTimer = null;
+  }
+  bottomStack?.classList.remove(BOTTOM_STACK_COOLDOWN_CLASS);
+}
+
 function handleMapClick(event: IOlMapEvent): void {
-  if (!olMap?.forEachFeatureAtPixel) return;
+  if (!olMap?.forEachFeatureAtPixel || !refsSource) return;
   // При перекрытии точек под пикселем клик ВЫБИРАЕТ все, никогда
   // не снимает. Раньше каждая фича toggle'илась независимо, и две
   // перекрывающихся точки переключались "в разные стороны". Снять
@@ -1298,6 +1331,12 @@ function handleMapClick(event: IOlMapEvent): void {
   // с team=undefined попадёт в unknownProtected (fail-safe), удаление её
   // защитит. При delete фильтра нет - team не нужен для payload.
   // Блокировка по teamsLoading ушла из selection в trashButton.
+  //
+  // wasEmptySelection отслеживается ДО селекции, чтобы понять, появятся
+  // ли кнопки в нижнем правом углу как следствие этого клика (переход
+  // 0 selected -> >0). Только в этот момент нужен cooldown - повторные
+  // клики в зону уже видимых кнопок не вызывают появления нового UI.
+  const wasEmptySelection = !refsSource.getFeatures().some(isFeatureSelected);
   const underPixel: IOlFeature[] = [];
   olMap.forEachFeatureAtPixel(
     event.pixel,
@@ -1316,7 +1355,10 @@ function handleMapClick(event: IOlMapEvent): void {
     requestTeamLoadForFeatureIfNeeded(feature);
     changed = true;
   }
-  if (changed) updateSelectionUi();
+  if (changed) {
+    updateSelectionUi();
+    if (wasEmptySelection) applyBottomStackClickCooldown();
+  }
 }
 
 // ── deletion UI ──────────────────────────────────────────────────────────────
@@ -2097,6 +2139,11 @@ function hideViewer(): void {
   // перечитает её через loadRefsOnMapSettings.
   hideProgress();
   resetTeamLoadState();
+  // Сбрасываем pending cooldown, если viewer закрыли до его срабатывания:
+  // bottomStack уйдёт в display:none, но без clear таймер задержался бы и
+  // снимал/добавлял класс на скрытом контейнере, что безвредно, но
+  // некорректно по семантике.
+  clearBottomStackClickCooldown();
   // teamCache очищается между сессиями viewer: точка могла быть перекапчурена
   // другой командой, пока viewer был закрыт. Повторный showViewer загрузит
   // команды заново через /inview-hook и active pull. Цена - повторные fetch

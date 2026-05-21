@@ -50,6 +50,16 @@ body.svp-refs-on-map-viewer-open .svp-ol-stack-item {
   max-width: calc(100vw - 16px);
 }
 
+/* Cooldown после первого выбора точки. Click.target определяется браузером
+ * на момент dispatch'а click event (не pointerup): между OL pointerup-
+ * handler'ом и click event наш handleMapClick синхронно показывает
+ * trash/cancel/radio в этой же зоне, и click уходит на свежепоявившуюся
+ * кнопку. pointer-events: none на короткое окно блокирует случайное
+ * нажатие сразу после появления; снимается через setTimeout. */
+.svp-refs-on-map-bottom-stack--cooldown {
+  pointer-events: none;
+}
+
 .svp-refs-on-map-trash {
   height: 38px;
   border: none;
