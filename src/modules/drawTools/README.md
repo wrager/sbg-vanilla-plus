@@ -18,6 +18,7 @@
   - закрытие toolbar (крест)
 - Отмена незавершённого рисования — клавиша `Escape` или повторное нажатие на инструмент рисования
 - Схемы сохраняются в localStorage и отображаются при загрузке страницы
+- При активном режиме линии или треугольника клик возле точки добавляет вершину рисунка и не открывает попап точки
 
 ## Формат данных
 
@@ -33,7 +34,8 @@
 - Сериализация: `iitcFormat.ts` (parse/stringify + type guard)
 - UI: floating OL-control под `.region-picker` + toolbar в `document.body`. Позиционирование control'а - чисто CSS (`top: 50%` + `transform: translateY(200%)`), без JS-вычислений; на узких viewport дублируются игровые `@media`-правила, чтобы кнопка совпадала с `.region-picker` button по размеру. MutationObserver на parent picker'а (без subtree) переподцепляет control'а к актуальному picker'у через `querySelector`, если игра пересоздаёт DOM
 - Иконки кнопок: свои inline-SVG из `drawToolsIcons.ts`, наследуют `currentColor` от темы
-- Cleanup в `disable()` снимает слой, интеракции, toolbar, OL-control, MutationObserver и стили
+- Блокировка открытия точки во время рисования: `map.forEachFeatureAtPixel` обёрнут при `enable()` так, чтобы для активных режимов `line`/`polygon` пропускать features слоя `points`. Игровой `map.on('click')` собирает попадания по `points` (refs/game/script.js:541) и при пустом наборе не вызывает `showInfo`; вне рисования и при `disable()` оригинал восстанавливается
+- Cleanup в `disable()` снимает слой, интеракции, toolbar, OL-control, MutationObserver, обёртку `forEachFeatureAtPixel` и стили
 
 ## Ограничения MVP
 

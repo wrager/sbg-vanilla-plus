@@ -107,6 +107,7 @@ let drawEndHandler: ((event: Record<string, unknown>) => void) | null = null;
 let modifyEndHandler: ((event: Record<string, unknown>) => void) | null = null;
 let enableToken = 0;
 let keydownHandler: ((event: KeyboardEvent) => void) | null = null;
+let savedForEachFeatureAtPixel: NonNullable<IOlMap['forEachFeatureAtPixel']> | null = null;
 
 function isNumberPair(value: unknown): value is number[] {
   return (
@@ -332,6 +333,36 @@ function removeDrawLayer(): void {
   }
   drawLayer = null;
   drawSource = null;
+}
+
+function installPointHitFilter(olMap: IOlMap): void {
+  if (savedForEachFeatureAtPixel || !olMap.forEachFeatureAtPixel) return;
+  // Игровой map.on('click') в refs/game/script.js:541 через forEachFeatureAtPixel
+  // собирает попадания по слою 'points' и вызывает showInfo(piv[0]) при
+  // непустом наборе. Пока активен режим рисования (line/polygon), клик возле
+  // точки должен добавлять вершину рисунка, а не открывать попап точки.
+  // Прячем features слоя 'points' из callback'а вызывающей стороны: piv
+  // остаётся пустым, попап не открывается.
+  const saved = olMap.forEachFeatureAtPixel.bind(olMap);
+  savedForEachFeatureAtPixel = saved;
+  olMap.forEachFeatureAtPixel = (pixel, callback, options) => {
+    saved(
+      pixel,
+      (feature, layer) => {
+        if (currentMode === 'line' || currentMode === 'polygon') {
+          if (layer.get('name') === 'points') return;
+        }
+        callback(feature, layer);
+      },
+      options,
+    );
+  };
+}
+
+function uninstallPointHitFilter(): void {
+  if (!savedForEachFeatureAtPixel) return;
+  if (map) map.forEachFeatureAtPixel = savedForEachFeatureAtPixel;
+  savedForEachFeatureAtPixel = null;
 }
 
 function updateModeButtons(): void {
@@ -1056,6 +1087,7 @@ function cleanup(): void {
   clearInteractions();
   unmountToolbar();
   unmountOlControl();
+  uninstallPointHitFilter();
   removeDrawLayer();
   removeStyles(MODULE_ID);
   map = null;
@@ -1088,6 +1120,7 @@ export const drawTools: IFeatureModule = {
 
       createDrawLayer(olMap);
       loadFromStorage();
+      installPointHitFilter(olMap);
       addEscCancelListener();
       addToolbarOutsideClickListener();
       updateModeButtons();
