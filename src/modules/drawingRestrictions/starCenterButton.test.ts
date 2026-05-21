@@ -4,7 +4,13 @@ import {
   installStarCenterButton,
   uninstallStarCenterButton,
 } from './starCenterButton';
-import { clearStarCenter, getStarCenter, getStarCenterGuid, setStarCenter } from './starCenter';
+import {
+  clearStarCenter,
+  getStarCenter,
+  getStarCenterGuid,
+  setStarCenter,
+  setStarCenterActive,
+} from './starCenter';
 import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
 import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 
@@ -96,19 +102,28 @@ describe('starCenterButton — базовая инъекция', () => {
   });
 });
 
-describe('starCenterButton — состояние', () => {
+describe('starCenterButton — is-active отражает active=true И popup на центре', () => {
   test('центра нет: toggle без is-active', () => {
     const popup = createPopupDom('p1');
     installStarCenterButton();
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(false);
   });
 
-  test('текущая точка = центр: toggle is-active', () => {
-    setStarCenter('p1');
+  test('текущая точка = центр, режим включён: toggle is-active', () => {
+    setStarCenter('p1'); // auto-active
     const popup = createPopupDom('p1');
     installStarCenterButton();
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(true);
     expect(getToggle(popup)?.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('текущая точка = центр, режим выключен: toggle без is-active', () => {
+    setStarCenter('p1');
+    setStarCenterActive(false);
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    expect(getToggle(popup)?.classList.contains('is-active')).toBe(false);
+    expect(getToggle(popup)?.getAttribute('aria-pressed')).toBe('false');
   });
 
   test('центр есть на другой точке: toggle без is-active', () => {
@@ -119,49 +134,70 @@ describe('starCenterButton — состояние', () => {
   });
 });
 
-describe('starCenterButton — клики toggle', () => {
-  test('центра нет → назначает текущую точку центром', async () => {
+describe('starCenterButton — клики (трёхветочная toggle-логика)', () => {
+  test('центра нет → назначает текущую точку центром и активирует режим', async () => {
     const popup = createPopupDom('p1');
     installStarCenterButton();
     getToggle(popup)?.click();
     await flushMicrotasks();
-    expect(getStarCenterGuid()).toBe('p1');
+    expect(getStarCenter()).toEqual({ guid: 'p1', active: true });
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(true);
   });
 
-  test('назначение показывает toast с формулировкой CUI', async () => {
+  test('назначение показывает toast "Point selected as star center"', async () => {
     const popup = createPopupDom('p1');
     installStarCenterButton();
     getToggle(popup)?.click();
     await flushMicrotasks();
-    expect(showToastMock).toHaveBeenCalled();
-    const messages = showToastMock.mock.calls.map((call: unknown[]) => {
-      const [first] = call;
-      return typeof first === 'string' ? first : '';
-    });
     expect(
-      messages.some((message) => message.includes('selected as star center for drawing')),
+      toastMessages().some((m) => m.includes('selected as star center for drawing')),
     ).toBe(true);
   });
 
-  test('это центр → снимает центр', async () => {
+  test('попап на активном центре → toggle off (guid сохраняется, active=false)', async () => {
     setStarCenter('p1');
     const popup = createPopupDom('p1');
     installStarCenterButton();
     getToggle(popup)?.click();
     await flushMicrotasks();
-    expect(getStarCenter()).toBeNull();
+    expect(getStarCenter()).toEqual({ guid: 'p1', active: false });
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(false);
+    expect(toastMessages().some((m) => m.includes('Star mode disabled'))).toBe(true);
   });
 
-  test('центр на другой точке → переназначает на текущую', async () => {
+  test('попап на выключенном центре → toggle on (active=true)', async () => {
+    setStarCenter('p1');
+    setStarCenterActive(false);
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(getStarCenter()).toEqual({ guid: 'p1', active: true });
+    expect(getToggle(popup)?.classList.contains('is-active')).toBe(true);
+    expect(toastMessages().some((m) => m.includes('Star mode enabled'))).toBe(true);
+  });
+
+  test('центр на другой точке → переназначает на текущую (auto-active)', async () => {
     setStarCenter('other');
     const popup = createPopupDom('p1');
     installStarCenterButton();
     getToggle(popup)?.click();
     await flushMicrotasks();
-    expect(getStarCenterGuid()).toBe('p1');
+    expect(getStarCenter()).toEqual({ guid: 'p1', active: true });
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(true);
+    expect(
+      toastMessages().some((m) => m.includes('selected as star center for drawing')),
+    ).toBe(true);
+  });
+
+  test('центр на другой точке + режим выключен → переназначает и включает', async () => {
+    setStarCenter('other');
+    setStarCenterActive(false);
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(getStarCenter()).toEqual({ guid: 'p1', active: true });
   });
 });
 
@@ -177,6 +213,17 @@ describe('starCenterButton — реактивность', () => {
     expect(getToggle(popup)?.classList.contains('is-active')).toBe(true);
   });
 
+  test('внешнее изменение active (setStarCenterActive) перерисовывает is-active', async () => {
+    setStarCenter('p1');
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    expect(getToggle(popup)?.classList.contains('is-active')).toBe(true);
+
+    setStarCenterActive(false);
+    await flushMicrotasks();
+    expect(getToggle(popup)?.classList.contains('is-active')).toBe(false);
+  });
+
   test('uninstall удаляет кнопку и отключает observer', async () => {
     const popup = createPopupDom('p1');
     installStarCenterButton();
@@ -189,36 +236,16 @@ describe('starCenterButton — реактивность', () => {
   });
 });
 
-describe('starCenterButton — назначение центра целиком синхронно', () => {
-  // После убирания имени точки из IStarCenter и тостов клик toggle полностью
-  // синхронен: ни getOlMap, ни getPointName, ни асинхронных race-чеков. LS
-  // содержит только guid; имя не подтягивается и не пишется.
-  test('LS после назначения содержит guid, без поля name', () => {
+describe('starCenterButton — формат LS после назначения', () => {
+  test('LS содержит guid + active=true, без поля name', () => {
     const popup = createPopupDom('p1');
     installStarCenterButton();
     getToggle(popup)?.click();
-    const star = getStarCenter();
-    expect(star?.guid).toBe('p1');
-    expect(star).not.toHaveProperty('name');
-  });
-
-  test('toast при назначении - общая формулировка без интерполяции имени', () => {
-    const popup = createPopupDom('p1');
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    const messages = showToastMock.mock.calls.map((call: unknown[]) => {
-      const [first] = call;
-      return typeof first === 'string' ? first : '';
-    });
-    expect(
-      messages.some((message) => message.includes('selected as star center for drawing')),
-    ).toBe(true);
-    // Имя в toast не появляется (нет кавычек интерполяции).
-    expect(messages.every((message) => !message.includes('"'))).toBe(true);
+    expect(getStarCenter()).toEqual({ guid: 'p1', active: true });
   });
 });
 
-describe('starCenterButton — переоткрытие попапа при переназначении центра', () => {
+describe('starCenterButton — переоткрытие попапа при изменении фильтрации', () => {
   beforeEach(() => {
     showInfoMock.mockClear();
     (window as unknown as { showInfo: typeof showInfoMock }).showInfo = showInfoMock;
@@ -228,7 +255,8 @@ describe('starCenterButton — переоткрытие попапа при пе
     delete (window as unknown as { showInfo?: typeof showInfoMock }).showInfo;
   });
 
-  // Основной сценарий: переназначение центра с точки A на текущий попап B.
+  // Переназначение с точки A на текущий попап B: для попапа B
+  // фильтр звезды менялся (effective был A, стал null) - refresh нужен.
   test('центр был на другой точке → клик toggle закрывает и переоткрывает попап через window.showInfo', async () => {
     setStarCenter('A');
     const popup = createPopupWithClose('B');
@@ -245,8 +273,8 @@ describe('starCenterButton — переоткрытие попапа при пе
     expect(showInfoMock).toHaveBeenCalledWith('B');
   });
 
-  // Назначение без предыдущего центра — counter уже был [N] (фильтр не работал),
-  // переоткрытие не нужно.
+  // Назначение без предыдущего центра — для попапа B фильтр и был null
+  // (центра не было), и стал null (попап нового центра). Refresh не нужен.
   test('центра не было → клик toggle НЕ переоткрывает попап', async () => {
     const popup = createPopupWithClose('B');
     const closeSpy = jest.fn();
@@ -261,9 +289,9 @@ describe('starCenterButton — переоткрытие попапа при пе
     expect(showInfoMock).not.toHaveBeenCalled();
   });
 
-  // Снятие центра — counter был [N] (попап центра), после снятия тоже [N],
-  // переоткрытие не нужно.
-  test('снятие центра через тот же попап — НЕ переоткрывает попап', async () => {
+  // Toggle off через попап центра: эффективный фильтр для этого попапа
+  // и был null (попап центра), и остался null (active=false). Refresh не нужен.
+  test('toggle off через попап того же центра — НЕ переоткрывает попап', async () => {
     setStarCenter('A');
     const popup = createPopupWithClose('A');
     const closeSpy = jest.fn();
@@ -273,31 +301,17 @@ describe('starCenterButton — переоткрытие попапа при пе
     getToggle(popup)?.click();
     await flushMicrotasks();
 
-    expect(getStarCenter()).toBeNull();
+    expect(getStarCenter()).toEqual({ guid: 'A', active: false });
     expect(closeSpy).not.toHaveBeenCalled();
     expect(showInfoMock).not.toHaveBeenCalled();
   });
 
-  // Graceful fallback: нет .popup-close → выход до click/showInfo, центр
-  // всё равно назначен.
-  test('нет .popup-close в DOM — не бросает, центр назначен, showInfo не вызван', async () => {
+  // Toggle on через попап выключенного центра: фильтр для попапа центра
+  // и был null, и остался null - refresh не нужен.
+  test('toggle on через попап того же выключенного центра — НЕ переоткрывает попап', async () => {
     setStarCenter('A');
-    const popup = createPopupDom('B'); // без .popup-close
-
-    installStarCenterButton();
-    getToggle(popup)?.click();
-    await flushMicrotasks();
-
-    expect(getStarCenterGuid()).toBe('B');
-    expect(showInfoMock).not.toHaveBeenCalled();
-  });
-
-  // window.showInfo недоступен (gameScriptPatcher не применился) — попап
-  // не закрывается (иначе пользователь потеряет контекст без переоткрытия).
-  test('window.showInfo недоступна — попап остаётся открытым, центр назначен', async () => {
-    delete (window as unknown as { showInfo?: typeof showInfoMock }).showInfo;
-    setStarCenter('A');
-    const popup = createPopupWithClose('B');
+    setStarCenterActive(false);
+    const popup = createPopupWithClose('A');
     const closeSpy = jest.fn();
     popup.querySelector('.popup-close')?.addEventListener('click', closeSpy);
 
@@ -305,24 +319,17 @@ describe('starCenterButton — переоткрытие попапа при пе
     getToggle(popup)?.click();
     await flushMicrotasks();
 
-    expect(getStarCenterGuid()).toBe('B');
+    expect(getStarCenter()).toEqual({ guid: 'A', active: true });
     expect(closeSpy).not.toHaveBeenCalled();
+    expect(showInfoMock).not.toHaveBeenCalled();
   });
 });
 
 describe('starCenterButton — попытка назначить locked-точку центром', () => {
-  // Click-only check: кнопка остаётся enabled, проверка locked делается в
-  // onToggleClick свежим чтением inventory-cache. Live-проверка в
-  // updateButtons была отменена в b7d1e73, чтобы не парсить inventory на
-  // каждом тике mutation observer.
-
-  test('safety-net в onToggleClick: lock после install (stale cache) - click не назначает + toast', async () => {
-    // Stale-cache scenario: пользователь открыл попап (cache = empty),
-    // установил lock на эту же точку, кнопка остаётся enabled до next open.
-    // Click срабатывает - safety-net пересчитывает inventory и блокирует.
+  test('safety-net: lock после install (stale cache) - click не назначает + toast', async () => {
     const popup = createPopupDom('p1');
-    installStarCenterButton(); // updateButtons: lockedPoints empty, cache = empty
-    setLockedPoints(['p1']); // lock после install, cache stale
+    installStarCenterButton();
+    setLockedPoints(['p1']);
     getToggle(popup)?.click();
     await flushMicrotasks();
 
@@ -336,7 +343,7 @@ describe('starCenterButton — попытка назначить locked-точк
     setStarCenter('A');
     const popup = createPopupDom('B');
     installStarCenterButton();
-    setLockedPoints(['B']); // lock после install
+    setLockedPoints(['B']);
     getToggle(popup)?.click();
     await flushMicrotasks();
 
@@ -346,31 +353,30 @@ describe('starCenterButton — попытка назначить locked-точк
     );
   });
 
-  test('клик в попапе locked-точки, который уже является центром, снимает центр как обычно', async () => {
-    // p1 стала locked после того, как была назначена центром и после
-    // installStarCenterButton (legacy check уже отработал при install и
-    // ничего не нашёл). Клик в попапе самой центральной точки снимает центр
-    // как обычно (star.guid === guid ветка в onToggleClick).
+  // Точка стала locked после того, как уже была центром (legacy install-time
+  // clear уже отработал на старте). Клик в попапе центра идёт по ветке
+  // toggle off, locked-check НЕ срабатывает (он применяется только в ветке
+  // назначения нового центра). Центр выключается, guid сохраняется.
+  test('клик в попапе locked-точки, которая является активным центром, выключает режим', async () => {
     const popup = createPopupDom('p1');
-    installStarCenterButton(); // legacy check: центра нет - no-op
-    setStarCenter('p1'); // назначаем центром после install
-    setLockedPoints(['p1']); // точка становится locked
+    installStarCenterButton();
+    setStarCenter('p1');
+    setLockedPoints(['p1']);
     getToggle(popup)?.click();
     await flushMicrotasks();
 
-    expect(getStarCenter()).toBeNull();
-    expect(toastMessages().some((m) => m.includes('Star center cleared'))).toBe(true);
+    expect(getStarCenter()).toEqual({ guid: 'p1', active: false });
+    expect(toastMessages().some((m) => m.includes('Star mode disabled'))).toBe(true);
     expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
       false,
     );
   });
 
-  test('locked-точка: toggle всегда enabled (click-only mode), click показывает toast', async () => {
+  test('locked-точка: toggle всегда enabled, click показывает toast', async () => {
     setLockedPoints(['p1']);
     const popup = createPopupDom('p1');
     installStarCenterButton();
 
-    // В click-only режиме кнопка не disabled: проверка происходит только при click.
     expect(getToggle(popup)?.disabled).toBe(false);
 
     getToggle(popup)?.click();
@@ -391,15 +397,11 @@ describe('starCenterButton — попытка назначить locked-точк
 
     expect(getStarCenterGuid()).toBe('p1');
     expect(toastMessages().some((m) => m.includes('selected as star center'))).toBe(true);
-    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
-      false,
-    );
   });
 
-  // Регрессия: при попытке переназначения центра с не-locked точки на locked
-  // попап не должен переоткрываться. Старый центр снимается, но обновлять
-  // список рисования в попапе locked-точки бессмысленно (рисовать с неё всё
-  // равно нельзя), а лишний close+showInfo проявлялся бы как мерцание попапа.
+  // Регрессия: при попытке назначения центра на locked-точку поп ап не
+  // переоткрывается. Старый центр не меняется, рисовать с locked всё равно
+  // нельзя — лишний close+showInfo проявлялся бы как мерцание попапа.
   describe('переоткрытие попапа в locked-ветке не происходит', () => {
     beforeEach(() => {
       showInfoMock.mockClear();
@@ -410,7 +412,7 @@ describe('starCenterButton — попытка назначить locked-точк
       delete (window as unknown as { showInfo?: typeof showInfoMock }).showInfo;
     });
 
-    test('центр на не-locked точке, click на locked-точке: центр остаётся, закрытие/showInfo не вызываются', async () => {
+    test('центр на не-locked точке, click на locked-точке: центр остаётся, closing/showInfo не вызываются', async () => {
       setStarCenter('A');
       setLockedPoints(['B']);
       const popup = createPopupWithClose('B');
@@ -426,7 +428,7 @@ describe('starCenterButton — попытка назначить locked-точк
       expect(showInfoMock).not.toHaveBeenCalled();
     });
 
-    test('первая попытка назначить locked при пустом центре: закрытие/showInfo не вызываются', async () => {
+    test('первая попытка назначить locked при пустом центре: closing/showInfo не вызываются', async () => {
       setLockedPoints(['p1']);
       const popup = createPopupWithClose('p1');
       const closeSpy = jest.fn();
@@ -475,11 +477,6 @@ describe('starCenterButton — legacy locked center при installStarCenterButt
   });
 
   test('lock встаёт на центр в текущей сессии - центр не снимается автоматически', () => {
-    // Инвариант README:16 "Если lock поставлен в текущей сессии, центр
-    // остаётся". Live auto-clear отменён в 208a964 ради производительности
-    // (mutation observer не парсит inventory на каждом тике). Снять центр
-    // можно только через клик или install-time legacy clear при следующем
-    // старте.
     setStarCenter('p1');
     createPopupDom('p2');
     installStarCenterButton();
@@ -491,10 +488,6 @@ describe('starCenterButton — legacy locked center при installStarCenterButt
 });
 
 describe('starCenterButton — фильтр self-trigger mutations (hasRelevantMutations)', () => {
-  // Регрессия beta.8: updateButtons менял classList на toggle, Chrome fires
-  // BUTTON.class mutation -> observer fires -> updateButtons -> снова mutation
-  // -> infinite loop, 100% CPU, зависание страницы.
-
   function createMutation(target: Element, type: 'attributes' | 'childList'): MutationRecord {
     return {
       type,
@@ -544,14 +537,10 @@ describe('starCenterButton — фильтр self-trigger mutations (hasRelevantM
 });
 
 describe('starCenterButton — идемпотентность async install', () => {
-  // Ветка через waitForElement: попап появляется ПОСЛЕ install (а не до).
-  // Без флага pendingInstall второй install прошёл бы guard (observer=null),
-  // оба колбэка отвалились бы по generation — кнопка не появилась бы вовсе.
   test('повторный install до резолва waitForElement — no-op через pendingInstall', async () => {
     installStarCenterButton();
     installStarCenterButton();
 
-    // Попап появляется только теперь. Оба waitForElement резолвятся асинхронно.
     const popup = createPopupDom('p1');
     await flushMicrotasks();
 

@@ -2,7 +2,8 @@ import {
   showCannotSetLockedCenterToast,
   showCenterAssignedToast,
   showCenterClearedBecauseLockedToast,
-  showCenterClearedToast,
+  showStarModeDisabledToast,
+  showStarModeEnabledToast,
 } from './starCenterToasts';
 
 const showToastMock = jest.fn();
@@ -34,11 +35,19 @@ describe('showCenterAssignedToast', () => {
   });
 });
 
-describe('showCenterClearedToast', () => {
-  test('общий текст без имени точки', () => {
-    showCenterClearedToast();
+describe('showStarModeEnabledToast', () => {
+  test('сообщает о включении режима', () => {
+    showStarModeEnabledToast();
     expect(showToastMock).toHaveBeenCalledTimes(1);
-    expect(lastMessage()).toBe('Star center cleared');
+    expect(lastMessage()).toBe('Star mode enabled');
+  });
+});
+
+describe('showStarModeDisabledToast', () => {
+  test('сообщает о выключении режима', () => {
+    showStarModeDisabledToast();
+    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(lastMessage()).toBe('Star mode disabled');
   });
 });
 

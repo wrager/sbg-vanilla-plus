@@ -1,5 +1,10 @@
 import { installStarCenterHighlight, uninstallStarCenterHighlight } from './starCenterHighlight';
-import { STAR_CENTER_CHANGED_EVENT, clearStarCenter, setStarCenter } from './starCenter';
+import {
+  STAR_CENTER_CHANGED_EVENT,
+  clearStarCenter,
+  setStarCenter,
+  setStarCenterActive,
+} from './starCenter';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource } from '../../core/olMap';
 
 // ── тестовые helpers ─────────────────────────────────────────────────────────
@@ -358,6 +363,26 @@ describe('refreshOverlay', () => {
     if (window.ol) delete window.ol.geom;
     setStarCenter('center');
     expect(getOverlayFeatures(map).length).toBe(0);
+  });
+
+  // active=false: overlay не отрисовывается, getActiveStarCenterGuid возвращает null.
+  test('центр назначен, но active=false - overlay не появляется', async () => {
+    const { map } = await setupInstalled([makeFeature('center', [100, 200])]);
+    setStarCenter('center');
+    expect(getOverlayFeatures(map).length).toBe(1);
+
+    setStarCenterActive(false);
+    expect(getOverlayFeatures(map).length).toBe(0);
+  });
+
+  test('toggle active обратно в true - overlay возвращается', async () => {
+    const { map } = await setupInstalled([makeFeature('center', [100, 200])]);
+    setStarCenter('center');
+    setStarCenterActive(false);
+    expect(getOverlayFeatures(map).length).toBe(0);
+
+    setStarCenterActive(true);
+    expect(getOverlayFeatures(map).length).toBe(1);
   });
 
   // Реакция на STAR_CENTER_CHANGED_EVENT (используется setStarCenter).

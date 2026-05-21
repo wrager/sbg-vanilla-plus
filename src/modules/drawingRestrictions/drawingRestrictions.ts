@@ -2,13 +2,14 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 import { injectStyles, removeStyles } from '../../core/dom';
 import { installDrawFilter, uninstallDrawFilter } from './drawFilter';
 import { refreshOpenPopup } from './refreshOpenPopup';
+import { migrateLegacyStarCenter } from './starCenter';
 import { installSettingsUi, uninstallSettingsUi } from './settingsUi';
 import { installStarCenterButton, uninstallStarCenterButton } from './starCenterButton';
-import {
-  installStarCenterClearControl,
-  uninstallStarCenterClearControl,
-} from './starCenterClearControl';
 import { installStarCenterHighlight, uninstallStarCenterHighlight } from './starCenterHighlight';
+import {
+  installStarCenterMapToggle,
+  uninstallStarCenterMapToggle,
+} from './starCenterMapToggle';
 import styles from './styles.css?inline';
 
 const MODULE_ID = 'drawingRestrictions';
@@ -29,11 +30,16 @@ export const drawingRestrictions: IFeatureModule = {
   init() {},
 
   enable() {
+    // Eager миграция legacy-формата starCenter ({guid} -> {guid, active:true})
+    // ДО install-функций: starCenterButton / starCenterMapToggle / highlight
+    // на первом updateButtons / applyState читают LS, должны увидеть уже
+    // унифицированный формат.
+    migrateLegacyStarCenter();
     injectStyles(styles, MODULE_ID);
     installDrawFilter();
     installSettingsUi();
     installStarCenterButton();
-    installStarCenterClearControl();
+    installStarCenterMapToggle();
     installStarCenterHighlight();
     // Runtime включение модуля при уже открытом попапе: игра получила список
     // целей без фильтра, possible_lines в closure'е stale. Без переоткрытия
@@ -46,7 +52,7 @@ export const drawingRestrictions: IFeatureModule = {
     uninstallDrawFilter();
     uninstallSettingsUi();
     uninstallStarCenterButton();
-    uninstallStarCenterClearControl();
+    uninstallStarCenterMapToggle();
     uninstallStarCenterHighlight();
     removeStyles(MODULE_ID);
   },

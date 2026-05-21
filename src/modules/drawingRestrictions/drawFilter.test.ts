@@ -1,6 +1,6 @@
 import { installDrawFilter, uninstallDrawFilter, uninstallDrawFilterForTest } from './drawFilter';
 import { saveDrawingRestrictionsSettings } from './settings';
-import { clearStarCenter, setStarCenter } from './starCenter';
+import { clearStarCenter, setStarCenter, setStarCenterActive } from './starCenter';
 
 const showToastMock = jest.fn();
 jest.mock('../../core/toast', () => ({
@@ -306,6 +306,23 @@ describe('drawFilter', () => {
     const response = await window.fetch('/api/draw');
     const body = (await response.json()) as { data: { p: string }[] };
     expect(body.data.map((entry) => entry.p)).toEqual(['center']);
+  });
+
+  test('звезда: режим выключен (active=false) - фильтр не применяется', async () => {
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 0 });
+    setStarCenter('center');
+    setStarCenterActive(false);
+    createPopup('other');
+    window.fetch = jest.fn().mockResolvedValue(
+      buildResponse({
+        data: [{ p: 'a' }, { p: 'b' }, { p: 'center' }],
+      }),
+    );
+    installDrawFilter();
+
+    const response = await window.fetch('/api/draw');
+    const body = (await response.json()) as { data: { p: string }[] };
+    expect(body.data.map((entry) => entry.p)).toEqual(['a', 'b', 'center']);
   });
 
   test('настройки перечитываются при каждом запросе', async () => {

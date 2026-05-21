@@ -6,14 +6,16 @@ import {
   clearStarCenter,
   getStarCenter,
   setStarCenter,
+  setStarCenterActive,
 } from './starCenter';
 import { STAR_ICON_SVG } from './starCenterIcon';
-import { refreshPopupIfStarFilterWasActive } from './starCenterRefresh';
+import { refreshPopupIfStarFilterStateChanged } from './starCenterRefresh';
 import {
   showCannotSetLockedCenterToast,
   showCenterAssignedToast,
   showCenterClearedBecauseLockedToast,
-  showCenterClearedToast,
+  showStarModeDisabledToast,
+  showStarModeEnabledToast,
 } from './starCenterToasts';
 
 export const TOGGLE_CLASS = 'svp-star-center-btn';
@@ -81,14 +83,38 @@ function createButton(
   return button;
 }
 
+function pickTitle(
+  popupGuid: string | null,
+  star: ReturnType<typeof getStarCenter>,
+): string {
+  if (popupGuid === null) return '';
+  const isCurrentCenter = popupGuid === star?.guid;
+  if (isCurrentCenter && star.active) {
+    return t({ en: 'Disable star mode', ru: 'Выключить режим звезды' });
+  }
+  if (isCurrentCenter && !star.active) {
+    return t({ en: 'Enable star mode', ru: 'Включить режим звезды' });
+  }
+  if (star !== null) {
+    return t({
+      en: 'Reassign star center to this point',
+      ru: 'Назначить эту точку центром звезды',
+    });
+  }
+  return t({ en: 'Set as star center', ru: 'Назначить центром звезды' });
+}
+
 function updateButtons(popup: Element): void {
   const buttons = popup.querySelector(BUTTONS_SELECTOR);
   if (!buttons) return;
 
   const popupGuid = getCurrentGuid(popup);
   const star = getStarCenter();
-  const starCenterGuid = star?.guid ?? null;
-  const isCurrentCenter = popupGuid !== null && popupGuid === starCenterGuid;
+  const isCurrentCenter = popupGuid !== null && popupGuid === star?.guid;
+  // is-active отражает фактическое применение фильтра к окружению: точка
+  // центральная И режим включён. На выключенном центре кнопка отображается
+  // тёмной - сигнал "это запомненный центр, фильтр сейчас выключен".
+  const showAsActive = isCurrentCenter && star.active;
 
   // Кнопка всегда enabled при открытом попапе. Проверки locked/enemy
   // перенесены в onToggleClick (click-only) - hot-path observer-callback не
@@ -110,48 +136,43 @@ function updateButtons(popup: Element): void {
       buttons.appendChild(toggle);
     }
     toggle.disabled = false;
-    toggle.classList.toggle('is-active', isCurrentCenter);
-    toggle.setAttribute('aria-pressed', isCurrentCenter ? 'true' : 'false');
-    toggle.title = isCurrentCenter
-      ? t({ en: 'Clear star center', ru: 'Снять центр звезды' })
-      : starCenterGuid !== null
-        ? t({ en: 'Reassign star center to this point', ru: 'Назначить эту точку центром звезды' })
-        : t({ en: 'Set as star center', ru: 'Назначить центром звезды' });
+    toggle.classList.toggle('is-active', showAsActive);
+    toggle.setAttribute('aria-pressed', showAsActive ? 'true' : 'false');
+    toggle.title = pickTitle(popupGuid, star);
   }
 }
 
 function onToggleClick(popup: Element): void {
   const guid = getCurrentGuid(popup);
   if (guid === null) return;
-  const star = getStarCenter();
-  const centerBefore = star?.guid ?? null;
-  if (star?.guid === guid) {
-    // Снятие центра через ту же точку, где он назначен.
-    // refreshPopupIfStarFilterWasActive увидит popupGuid === centerBefore и
-    // сделает no-op: для попапа центра keepByStar не применялся, count
-    // корректен сразу.
-    clearStarCenter();
-    showCenterClearedToast();
-    refreshPopupIfStarFilterWasActive(centerBefore);
+  const prev = getStarCenter();
+
+  // Ветка 1: попап на запомненной точке - toggle активности, guid сохраняется.
+  // Полное "забыть центр" из user-facing UX убрано: guid обновляется только
+  // при назначении новой точки. Старый guid живёт между сессиями и доступен
+  // для возврата через тот же toggle.
+  if (prev !== null && prev.guid === guid) {
+    const nextActive = !prev.active;
+    setStarCenterActive(nextActive);
+    if (nextActive) showStarModeEnabledToast();
+    else showStarModeDisabledToast();
+    refreshPopupIfStarFilterStateChanged(prev, { guid: prev.guid, active: nextActive });
     return;
   }
-  // Click-only check: locked точку нельзя сделать центром. Нативный замочек
-  // блокирует расходование ключей на линии, и из такого центра не вышло бы
-  // нарисовать ни одной линии звезды.
+
+  // Ветка 2: попап на новой точке - click-only check locked. Нативный
+  // замочек блокирует расходование ключей на линии, и из такого центра не
+  // вышло бы нарисовать ни одной линии звезды.
   const lockedPoints = readLockedPointGuids();
   if (lockedPoints.has(guid)) {
     showCannotSetLockedCenterToast();
     return;
   }
+
+  // Ветка 3: назначение нового центра - auto-active.
   setStarCenter(guid);
   showCenterAssignedToast();
-  // Назначение нового центра (centerBefore = null) - утилита no-op.
-  // Переназначение (centerBefore !== null && popupGuid !== centerBefore) -
-  // утилита закрывает попап и переоткрывает через window.showInfo, игра делает
-  // свежий /api/draw, drawFilter применяет новые правила (фильтр звезды
-  // отключён, т.к. currentPopup = новый center), счётчик и слайдер становятся
-  // корректными и синхронными.
-  refreshPopupIfStarFilterWasActive(centerBefore);
+  refreshPopupIfStarFilterStateChanged(prev, { guid, active: true });
 }
 
 /**

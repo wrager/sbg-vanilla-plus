@@ -1,6 +1,6 @@
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource } from '../../core/olMap';
 import { findLayerByName, getOlMap } from '../../core/olMap';
-import { STAR_CENTER_CHANGED_EVENT, getStarCenterGuid } from './starCenter';
+import { STAR_CENTER_CHANGED_EVENT, getActiveStarCenterGuid } from './starCenter';
 
 const POINTS_LAYER_NAME = 'points';
 
@@ -50,7 +50,11 @@ function findFeatureByGuid(source: IOlVectorSource, guid: string): IOlFeature | 
 function refreshOverlay(): void {
   if (!overlaySource || !pointsSource) return;
   overlaySource.clear();
-  const guid = getStarCenterGuid();
+  // getActiveStarCenterGuid возвращает null при !active - overlay скрывается
+  // вместе с фильтром. Запомненный, но выключенный центр не подсвечивается:
+  // жёлтое кольцо без работающего фильтра сбивает с толку, состояние
+  // "включён/выключен" пользователь видит через map-toggle.
+  const guid = getActiveStarCenterGuid();
   if (guid === null) return;
   const centerFeature = findFeatureByGuid(pointsSource, guid);
   if (!centerFeature) return;
@@ -120,7 +124,7 @@ export function installStarCenterHighlight(): void {
         const featureGuid = event?.feature?.getId?.();
         // Перерисовываем только если событие касается текущего центра звезды.
         // Любая другая feature не влияет на наш overlay.
-        if (featureGuid === getStarCenterGuid()) {
+        if (featureGuid === getActiveStarCenterGuid()) {
           refreshOverlay();
         }
       };

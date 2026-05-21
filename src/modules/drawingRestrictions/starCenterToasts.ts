@@ -15,9 +15,20 @@ export function showCenterAssignedToast(): void {
   );
 }
 
-/** Toast при снятии центра звезды (из попапа или через clear-control на карте). */
-export function showCenterClearedToast(): void {
-  showToast(t({ en: 'Star center cleared', ru: 'Центр звезды снят' }), 3000);
+/** Toast при включении режима через toggle (попап-кнопка или map-toggle). */
+export function showStarModeEnabledToast(): void {
+  showToast(
+    t({ en: 'Star mode enabled', ru: 'Режим звезды включён' }),
+    3000,
+  );
+}
+
+/** Toast при выключении режима через toggle (попап-кнопка или map-toggle). */
+export function showStarModeDisabledToast(): void {
+  showToast(
+    t({ en: 'Star mode disabled', ru: 'Режим звезды выключен' }),
+    3000,
+  );
 }
 
 /**

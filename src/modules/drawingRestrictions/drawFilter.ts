@@ -8,7 +8,7 @@ import {
   type IDrawEntry,
 } from './filterRules';
 import { loadDrawingRestrictionsSettings } from './settings';
-import { getStarCenterGuid } from './starCenter';
+import { getActiveStarCenterGuid } from './starCenter';
 
 const POPUP_SELECTOR = '.info.popup';
 
@@ -125,7 +125,9 @@ async function filterDrawResponse(
   popupGuidAtRequest: string | null,
 ): Promise<Response> {
   const settings = loadDrawingRestrictionsSettings();
-  const starCenterGuid = getStarCenterGuid();
+  // getActiveStarCenterGuid возвращает null при выключенном режиме -
+  // фильтр звезды не применяется к /api/draw, пользователь видит все цели.
+  const starCenterGuid = getActiveStarCenterGuid();
 
   const predicates = buildPredicates({
     settings,
