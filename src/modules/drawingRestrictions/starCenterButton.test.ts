@@ -21,6 +21,11 @@ jest.mock('../../core/toast', () => ({
   },
 }));
 
+const getPointTitleByGuidMock = jest.fn<string | null, [string]>();
+jest.mock('./pointTitle', () => ({
+  getPointTitleByGuid: (guid: string): string | null => getPointTitleByGuidMock(guid),
+}));
+
 /**
  * Кладёт в inventory-cache стопки ключей с lock-битом (`f & 0b10`) для
  * переданных точек. `buildLockedPointGuids` читает свежий кэш при каждом клике,
@@ -79,6 +84,8 @@ beforeEach(() => {
   localStorage.clear();
   clearStarCenter();
   showToastMock.mockClear();
+  getPointTitleByGuidMock.mockReset();
+  getPointTitleByGuidMock.mockReturnValue(null); // default: имя не известно
 });
 
 afterEach(() => {
@@ -242,6 +249,59 @@ describe('starCenterButton — формат LS после назначения',
     installStarCenterButton();
     getToggle(popup)?.click();
     expect(getStarCenter()).toEqual({ guid: 'p1', active: true });
+  });
+});
+
+describe('starCenterButton — имя точки в тостах (через pointTitle)', () => {
+  test('назначение нового центра: имя интерполируется в "..." (стиль CUI)', async () => {
+    getPointTitleByGuidMock.mockReturnValue('Alpha');
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(toastMessages().some((m) => m === 'Point "Alpha" selected as star center for drawing.')).toBe(true);
+  });
+
+  test('назначение без известного имени - общий текст без кавычек', async () => {
+    getPointTitleByGuidMock.mockReturnValue(null);
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(toastMessages().some((m) => m === 'Point selected as star center for drawing.')).toBe(
+      true,
+    );
+  });
+
+  test('toggle off в попапе центра: имя в "Star mode disabled: <name>"', async () => {
+    getPointTitleByGuidMock.mockReturnValue('Alpha');
+    setStarCenter('p1');
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(toastMessages().some((m) => m === 'Star mode disabled: Alpha')).toBe(true);
+  });
+
+  test('toggle on в попапе выключенного центра: имя в "Star mode enabled: <name>"', async () => {
+    getPointTitleByGuidMock.mockReturnValue('Alpha');
+    setStarCenter('p1');
+    setStarCenterActive(false);
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(toastMessages().some((m) => m === 'Star mode enabled: Alpha')).toBe(true);
+  });
+
+  test('toggle off без известного имени - общий текст без имени', async () => {
+    getPointTitleByGuidMock.mockReturnValue(null);
+    setStarCenter('p1');
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(toastMessages().some((m) => m === 'Star mode disabled')).toBe(true);
   });
 });
 

@@ -240,6 +240,18 @@ export function getOlMap(): Promise<IOlMap> {
   });
 }
 
+/**
+ * Синхронный аксессор к уже захваченной карте. Возвращает null, если карта
+ * ещё не захвачена (window.ol не подгружен или ol.Map ещё не сконструирован).
+ * Подходит для сценариев, где async API getOlMap избыточен: разовое чтение
+ * данных feature по GUID в синхронном callback'е (например, при формировании
+ * текста тоста), где задержка вызова на await getOlMap была бы видна
+ * пользователю как лаг.
+ */
+export function getCapturedOlMap(): IOlMap | null {
+  return captured;
+}
+
 function hookGetView(ol: IOlGlobal): void {
   hooked = true;
   const proto = ol.Map.prototype;

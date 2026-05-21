@@ -5,6 +5,7 @@ import {
   getStarCenter,
   setStarCenterActive,
 } from './starCenter';
+import { getPointTitleByGuid } from './pointTitle';
 import { STAR_ICON_SVG } from './starCenterIcon';
 import { refreshPopupIfStarFilterStateChanged } from './starCenterRefresh';
 import { showStarModeDisabledToast, showStarModeEnabledToast } from './starCenterToasts';
@@ -38,8 +39,14 @@ function onToggleClick(): void {
   if (prev === null) return; // visibility-guard, теоретически недостижимо
   const nextActive = !prev.active;
   setStarCenterActive(nextActive);
-  if (nextActive) showStarModeEnabledToast();
-  else showStarModeDisabledToast();
+  // Имя точки в тосте: пользователь нажимает map-кнопку, находясь, как
+  // правило, далеко от опорной точки и без открытого попапа - без имени
+  // не очевидно, какой центр он сейчас включил/выключил. Имя резолвится
+  // через points-layer; если карта ещё не захвачена / feature не загружен -
+  // toast покажет общую формулировку без имени.
+  const pointTitle = getPointTitleByGuid(prev.guid);
+  if (nextActive) showStarModeEnabledToast(pointTitle);
+  else showStarModeDisabledToast(pointTitle);
   // Открытый попап другой точки удерживает в closure'е игры старый список
   // целей: при toggle off фильтр перестаёт применяться, #draw-count остаётся
   // с одной звёздной целью, "Рисовать" проложит только её. При toggle on -

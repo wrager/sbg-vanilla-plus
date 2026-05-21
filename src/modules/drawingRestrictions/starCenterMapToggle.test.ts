@@ -10,9 +10,24 @@ import {
 } from './starCenter';
 import { resetOlControlStackForTest } from '../../core/olControlStack';
 
+const showToastMock = jest.fn();
 jest.mock('../../core/toast', () => ({
-  showToast: jest.fn(),
+  showToast: (...args: unknown[]) => {
+    showToastMock(...args);
+  },
 }));
+
+const getPointTitleByGuidMock = jest.fn<string | null, [string]>();
+jest.mock('./pointTitle', () => ({
+  getPointTitleByGuid: (guid: string): string | null => getPointTitleByGuidMock(guid),
+}));
+
+function toastMessages(): string[] {
+  return showToastMock.mock.calls.map((call: unknown[]) => {
+    const [first] = call;
+    return typeof first === 'string' ? first : '';
+  });
+}
 
 const CONTROL_CLASS = 'svp-star-center-map-toggle';
 const STACK_ITEM_CLASS = 'svp-ol-stack-item';
@@ -51,6 +66,9 @@ beforeEach(() => {
   localStorage.clear();
   clearStarCenter();
   localStorage.clear();
+  showToastMock.mockClear();
+  getPointTitleByGuidMock.mockReset();
+  getPointTitleByGuidMock.mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -292,6 +310,44 @@ describe('starCenterMapToggle — refresh попапа при изменении
     getButton()?.click();
 
     expect(showInfoMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('starCenterMapToggle — имя точки в тосте', () => {
+  test('toggle off с известным именем: "Star mode disabled: <name>"', () => {
+    getPointTitleByGuidMock.mockReturnValue('Alpha');
+    createMapWithRegionPicker();
+    setStarCenter('p1');
+    installStarCenterMapToggle();
+    getButton()?.click();
+    expect(toastMessages().some((m) => m === 'Star mode disabled: Alpha')).toBe(true);
+  });
+
+  test('toggle on с известным именем: "Star mode enabled: <name>"', () => {
+    getPointTitleByGuidMock.mockReturnValue('Alpha');
+    createMapWithRegionPicker();
+    setStarCenter('p1');
+    setStarCenterActive(false);
+    installStarCenterMapToggle();
+    getButton()?.click();
+    expect(toastMessages().some((m) => m === 'Star mode enabled: Alpha')).toBe(true);
+  });
+
+  test('toggle без известного имени - общий текст (fallback на pointTitle=null)', () => {
+    getPointTitleByGuidMock.mockReturnValue(null);
+    createMapWithRegionPicker();
+    setStarCenter('p1');
+    installStarCenterMapToggle();
+    getButton()?.click();
+    expect(toastMessages().some((m) => m === 'Star mode disabled')).toBe(true);
+  });
+
+  test('getPointTitleByGuid вызывается с актуальным guid центра', () => {
+    createMapWithRegionPicker();
+    setStarCenter('p1');
+    installStarCenterMapToggle();
+    getButton()?.click();
+    expect(getPointTitleByGuidMock).toHaveBeenCalledWith('p1');
   });
 });
 

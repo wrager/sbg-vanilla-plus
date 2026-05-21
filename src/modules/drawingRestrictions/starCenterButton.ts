@@ -8,6 +8,7 @@ import {
   setStarCenter,
   setStarCenterActive,
 } from './starCenter';
+import { getPointTitleByGuid } from './pointTitle';
 import { STAR_ICON_SVG } from './starCenterIcon';
 import { refreshPopupIfStarFilterStateChanged } from './starCenterRefresh';
 import {
@@ -154,8 +155,9 @@ function onToggleClick(popup: Element): void {
   if (prev !== null && prev.guid === guid) {
     const nextActive = !prev.active;
     setStarCenterActive(nextActive);
-    if (nextActive) showStarModeEnabledToast();
-    else showStarModeDisabledToast();
+    const pointTitle = getPointTitleByGuid(guid);
+    if (nextActive) showStarModeEnabledToast(pointTitle);
+    else showStarModeDisabledToast(pointTitle);
     refreshPopupIfStarFilterStateChanged(prev, { guid: prev.guid, active: nextActive });
     return;
   }
@@ -171,7 +173,7 @@ function onToggleClick(popup: Element): void {
 
   // Ветка 3: назначение нового центра - auto-active.
   setStarCenter(guid);
-  showCenterAssignedToast();
+  showCenterAssignedToast(getPointTitleByGuid(guid));
   refreshPopupIfStarFilterStateChanged(prev, { guid, active: true });
 }
 

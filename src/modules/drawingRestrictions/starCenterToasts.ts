@@ -2,33 +2,48 @@ import { t } from '../../core/l10n';
 import { showToast } from '../../core/toast';
 
 /**
- * Toast при назначении точки центром звезды. Формулировка повторяет CUI
- * (`onPointPopupOpened` в refs/cui/index.js) — узнаваемость для игроков, пришедших из CUI.
+ * Toast при назначении точки центром звезды. Формулировка с интерполяцией
+ * имени повторяет CUI (`onPointPopupOpened` в refs/cui/index.js) - игроки,
+ * пришедшие из CUI, узнают шаблон. Если имя точки получить не удалось
+ * (карта ещё не захвачена, feature не загружен) - fallback на общий текст
+ * без имени, чтобы не блокировать визуальное подтверждение действия.
  */
-export function showCenterAssignedToast(): void {
-  showToast(
-    t({
-      en: 'Point selected as star center for drawing.',
-      ru: 'Точка выбрана центром для рисования звезды.',
-    }),
-    3000,
-  );
+export function showCenterAssignedToast(pointTitle: string | null = null): void {
+  const message =
+    pointTitle !== null
+      ? t({
+          en: `Point "${pointTitle}" selected as star center for drawing.`,
+          ru: `Точка "${pointTitle}" выбрана центром для рисования звезды.`,
+        })
+      : t({
+          en: 'Point selected as star center for drawing.',
+          ru: 'Точка выбрана центром для рисования звезды.',
+        });
+  showToast(message, 3000);
 }
 
 /** Toast при включении режима через toggle (попап-кнопка или map-toggle). */
-export function showStarModeEnabledToast(): void {
-  showToast(
-    t({ en: 'Star mode enabled', ru: 'Режим звезды включён' }),
-    3000,
-  );
+export function showStarModeEnabledToast(pointTitle: string | null = null): void {
+  const message =
+    pointTitle !== null
+      ? t({
+          en: `Star mode enabled: ${pointTitle}`,
+          ru: `Режим звезды включён: ${pointTitle}`,
+        })
+      : t({ en: 'Star mode enabled', ru: 'Режим звезды включён' });
+  showToast(message, 3000);
 }
 
 /** Toast при выключении режима через toggle (попап-кнопка или map-toggle). */
-export function showStarModeDisabledToast(): void {
-  showToast(
-    t({ en: 'Star mode disabled', ru: 'Режим звезды выключен' }),
-    3000,
-  );
+export function showStarModeDisabledToast(pointTitle: string | null = null): void {
+  const message =
+    pointTitle !== null
+      ? t({
+          en: `Star mode disabled: ${pointTitle}`,
+          ru: `Режим звезды выключен: ${pointTitle}`,
+        })
+      : t({ en: 'Star mode disabled', ru: 'Режим звезды выключен' });
+  showToast(message, 3000);
 }
 
 /**
