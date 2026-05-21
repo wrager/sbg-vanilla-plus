@@ -9,6 +9,8 @@ import {
   setStarCenterActive,
 } from './starCenter';
 import { resetOlControlStackForTest } from '../../core/olControlStack';
+import { INVENTORY_CACHE_KEY } from '../../core/inventoryCache';
+import { ITEM_TYPE_REFERENCE } from '../../core/gameConstants';
 
 const showToastMock = jest.fn();
 jest.mock('../../core/toast', () => ({
@@ -28,6 +30,17 @@ function toastMessages(): string[] {
     const [first] = call;
     return typeof first === 'string' ? first : '';
   });
+}
+
+function setLockedPoints(pointGuids: string[]): void {
+  const cache = pointGuids.map((guid, index) => ({
+    g: `stack-${guid}-${index}`,
+    t: ITEM_TYPE_REFERENCE,
+    l: guid,
+    a: 1,
+    f: 0b10,
+  }));
+  localStorage.setItem(INVENTORY_CACHE_KEY, JSON.stringify(cache));
 }
 
 const CONTROL_CLASS = 'svp-star-center-map-toggle';
@@ -349,6 +362,44 @@ describe('starCenterMapToggle — имя точки в тосте (через re
     installStarCenterMapToggle();
     getButton()?.click();
     expect(resolvePointTitleMock).toHaveBeenCalledWith({ guid: 'p1', active: true, title: 'Cached Alpha' });
+  });
+});
+
+describe('starCenterMapToggle — locked-check при активации', () => {
+  test('toggle on на locked-точке-центре: блокируется + toast, state не меняется', () => {
+    createMapWithRegionPicker();
+    setStarCenter('p1');
+    setStarCenterActive(false);
+    setLockedPoints(['p1']);
+    installStarCenterMapToggle();
+    getButton()?.click();
+    expect(getStarCenter()).toEqual({ guid: 'p1', active: false });
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      true,
+    );
+  });
+
+  test('toggle off на locked-точке-центре: разрешён (выключение не противоречит замочку)', () => {
+    createMapWithRegionPicker();
+    setStarCenter('p1');
+    setLockedPoints(['p1']);
+    installStarCenterMapToggle();
+    getButton()?.click();
+    expect(getStarCenter()).toEqual({ guid: 'p1', active: false });
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      false,
+    );
+  });
+
+  test('toggle on на не-locked точке: работает как раньше', () => {
+    createMapWithRegionPicker();
+    setStarCenter('p1');
+    setStarCenterActive(false);
+    setLockedPoints(['other']);
+    installStarCenterMapToggle();
+    getButton()?.click();
+    expect(getStarCenter()).toEqual({ guid: 'p1', active: true });
+    expect(toastMessages().some((m) => m.includes('Star mode enabled'))).toBe(true);
   });
 });
 

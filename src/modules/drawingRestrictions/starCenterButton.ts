@@ -154,6 +154,20 @@ function onToggleClick(popup: Element): void {
   // для возврата через тот же toggle.
   if (prev !== null && prev.guid === guid) {
     const nextActive = !prev.active;
+    // Активация центра на locked-точке - тот же запрет, что при первом
+    // назначении: с замочком нельзя расходовать ключи, фильтр режима звезды
+    // был бы бесполезен. Сценарий: точка назначена центром без замочка,
+    // позже получила замочек (live или между сессиями без перезапуска модуля),
+    // пользователь снова кликает по звезде. Toggle off (деактивация) НЕ
+    // блокируется - выключение режима не противоречит замочку и иногда
+    // пользователю именно нужно выйти из не работающего фильтра.
+    if (nextActive) {
+      const lockedPoints = readLockedPointGuids();
+      if (lockedPoints.has(guid)) {
+        showCannotSetLockedCenterToast();
+        return;
+      }
+    }
     setStarCenterActive(nextActive);
     const pointTitle = resolvePointTitle(prev);
     if (nextActive) showStarModeEnabledToast(pointTitle);

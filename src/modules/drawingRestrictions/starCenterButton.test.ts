@@ -436,14 +436,13 @@ describe('starCenterButton — попытка назначить locked-точк
     );
   });
 
-  // Точка стала locked после того, как уже была центром (legacy install-time
-  // clear уже отработал на старте). Клик в попапе центра идёт по ветке
-  // toggle off, locked-check НЕ срабатывает (он применяется только в ветке
-  // назначения нового центра). Центр выключается, guid сохраняется.
-  test('клик в попапе locked-точки, которая является активным центром, выключает режим', async () => {
+  // Toggle off (выключение) разрешён даже на locked-точке: выключение фильтра
+  // не противоречит замочку, и пользователю иногда нужно выйти из режима,
+  // который перестал работать после установки замочка на центр.
+  test('toggle off в попапе locked-точки-центра выключает режим (запрет только на активацию)', async () => {
     const popup = createPopupDom('p1');
     installStarCenterButton();
-    setStarCenter('p1');
+    setStarCenter('p1'); // active=true
     setLockedPoints(['p1']);
     getToggle(popup)?.click();
     await flushMicrotasks();
@@ -453,6 +452,25 @@ describe('starCenterButton — попытка назначить locked-точк
     expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
       false,
     );
+  });
+
+  // Сценарий из багфикса: точка стала центром без замочка, потом получила
+  // замочек, потом выключена пользователем, потом снова активирована -
+  // активация должна блокироваться, даже если guid уже сохранён как центр.
+  test('toggle on в попапе locked-точки-центра блокируется, state не меняется', async () => {
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    setStarCenter('p1');
+    setStarCenterActive(false); // выключаем заранее
+    setLockedPoints(['p1']); // потом точка получает замочек
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+
+    expect(getStarCenter()).toEqual({ guid: 'p1', active: false });
+    expect(toastMessages().some((m) => m.includes("Locked point can't be a star center"))).toBe(
+      true,
+    );
+    expect(toastMessages().some((m) => m.includes('Star mode enabled'))).toBe(false);
   });
 
   test('locked-точка: toggle всегда enabled, click показывает toast', async () => {

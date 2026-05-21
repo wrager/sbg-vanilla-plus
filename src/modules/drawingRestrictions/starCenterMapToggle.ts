@@ -1,4 +1,5 @@
 import { registerOlControl } from '../../core/olControlStack';
+import { buildLockedPointGuids, readInventoryCache } from '../../core/inventoryCache';
 import { t } from '../../core/l10n';
 import {
   STAR_CENTER_CHANGED_EVENT,
@@ -8,7 +9,11 @@ import {
 import { resolvePointTitle } from './pointTitle';
 import { STAR_ICON_SVG } from './starCenterIcon';
 import { refreshPopupIfStarFilterStateChanged } from './starCenterRefresh';
-import { showStarModeDisabledToast, showStarModeEnabledToast } from './starCenterToasts';
+import {
+  showCannotSetLockedCenterToast,
+  showStarModeDisabledToast,
+  showStarModeEnabledToast,
+} from './starCenterToasts';
 
 const CONTROL_CLASS = 'svp-star-center-map-toggle';
 // drawTools регистрируется с priority=0 (первый ниже picker'а), наш control - следующий.
@@ -38,6 +43,18 @@ function onToggleClick(): void {
   const prev = getStarCenter();
   if (prev === null) return; // visibility-guard, теоретически недостижимо
   const nextActive = !prev.active;
+  // Активация на locked-точке запрещена так же, как при назначении нового
+  // центра через попап-кнопку: с замочком фильтр был бы бесполезен (рисовать
+  // нельзя). Сценарий: точка стала locked после назначения центром,
+  // пользователь нажимает map-toggle для повторного включения. Деактивация
+  // не блокируется.
+  if (nextActive) {
+    const lockedPoints = buildLockedPointGuids(readInventoryCache());
+    if (lockedPoints.has(prev.guid)) {
+      showCannotSetLockedCenterToast();
+      return;
+    }
+  }
   setStarCenterActive(nextActive);
   // Имя точки в тосте: пользователь нажимает map-кнопку, находясь, как
   // правило, далеко от опорной точки и без открытого попапа - live-источники
