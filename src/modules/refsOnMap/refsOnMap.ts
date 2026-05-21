@@ -36,6 +36,16 @@ import css from './styles.css?inline';
 const MODULE_ID = 'refsOnMap';
 const REFS_TAB_INDEX = '3';
 const GAME_LAYER_NAMES = ['points', 'lines', 'regions'];
+// Слои других SVP-модулей, которые viewer гасит вместе с игровыми, чтобы их
+// геометрия (линии/полигоны drawTools) не путалась с кружками ключей.
+const HIDDEN_SVP_LAYER_NAMES = ['svp-draw-tools'];
+// body-class, по которому CSS-правила в styles.css скрывают .ol-rotate,
+// .ol-scale-line, .region-picker и все .svp-ol-stack-item (кнопки в стеке
+// под region-picker от drawTools / drawingRestrictions). Через body-class,
+// а не через inline-style: количество .svp-ol-stack-item может меняться
+// MID-viewer через MutationObserver в core/olControlStack, и новые кнопки
+// обязаны скрываться без подписки на DOM-мутации в этом модуле.
+const VIEWER_BODY_CLASS = 'svp-refs-on-map-viewer-open';
 const TEAM_BATCH_SIZE = 5;
 const TEAM_BATCH_DELAY_MS = 100;
 const AMOUNT_ZOOM = 15;
@@ -1877,9 +1887,10 @@ function setGameLayersVisible(visible: boolean): void {
   if (!olMap) return;
   for (const layer of olMap.getLayers().getArray()) {
     const name = layer.get('name');
-    if (typeof name === 'string' && GAME_LAYER_NAMES.some((n) => name.startsWith(n))) {
-      layer.setVisible?.(visible);
-    }
+    if (typeof name !== 'string') continue;
+    const isGameLayer = GAME_LAYER_NAMES.some((n) => name.startsWith(n));
+    const isHiddenSvpLayer = HIDDEN_SVP_LAYER_NAMES.includes(name);
+    if (isGameLayer || isHiddenSvpLayer) layer.setVisible?.(visible);
   }
 }
 
@@ -1924,6 +1935,8 @@ function hideGameUi(): void {
 
   const layers = document.getElementById('layers');
   if (layers instanceof HTMLElement) layers.style.display = 'none';
+
+  document.body.classList.add(VIEWER_BODY_CLASS);
 }
 
 function restoreGameUi(): void {
@@ -1946,6 +1959,8 @@ function restoreGameUi(): void {
 
   const layers = document.getElementById('layers');
   if (layers instanceof HTMLElement) layers.style.display = '';
+
+  document.body.classList.remove(VIEWER_BODY_CLASS);
 }
 
 // ── viewer ───────────────────────────────────────────────────────────────────

@@ -7,6 +7,26 @@
   cursor: pointer;
 }
 
+/* Скрытие сторонних UI-элементов карты пока открыт viewer:
+ * - .ol-rotate, .ol-scale-line - встроенные контролы OL, в viewer не нужны;
+ *   rotation зафиксирован 0, scale-line мешает кнопкам корзины/отмены в
+ *   нижнем правом углу.
+ * - .region-picker - игровой переключатель регионов; в viewer переключение
+ *   региона не предусмотрено.
+ * - .svp-ol-stack-item - кнопки в стеке под region-picker от других SVP-
+ *   модулей (drawTools, drawingRestrictions starCenterMapToggle).
+ *
+ * Через body-class, а не inline-style: новые .svp-ol-stack-item могут
+ * добавляться MID-viewer через MutationObserver в core/olControlStack, и
+ * этим селектором они скроются автоматически. Специфичность (0,2,1)
+ * перебивает обычные игровые правила (0,1,0). */
+body.svp-refs-on-map-viewer-open .ol-rotate,
+body.svp-refs-on-map-viewer-open .ol-scale-line,
+body.svp-refs-on-map-viewer-open .region-picker,
+body.svp-refs-on-map-viewer-open .svp-ol-stack-item {
+  display: none;
+}
+
 .svp-refs-on-map-close {
   position: fixed;
   bottom: 8px;

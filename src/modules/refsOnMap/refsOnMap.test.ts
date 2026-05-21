@@ -717,6 +717,57 @@ describe('refsOnMap viewer', () => {
     expect(trash.style.display).toBe('none');
   });
 
+  test('viewer body-class ставится при открытии и снимается при закрытии', () => {
+    // body-class svp-refs-on-map-viewer-open включает CSS-правила, скрывающие
+    // .ol-rotate, .ol-scale-line, .region-picker и .svp-ol-stack-item на
+    // время работы viewer'а. Через class, а не inline-style, потому что
+    // .svp-ol-stack-item может появляться MID-viewer через MutationObserver
+    // в core/olControlStack - inline-style не покрыл бы future-кнопки.
+    setInventoryCache();
+    expect(document.body.classList.contains('svp-refs-on-map-viewer-open')).toBe(false);
+    clickShowButton();
+    expect(document.body.classList.contains('svp-refs-on-map-viewer-open')).toBe(true);
+    clickCloseButton();
+    expect(document.body.classList.contains('svp-refs-on-map-viewer-open')).toBe(false);
+  });
+
+  test('viewer скрывает игровые слои и svp-draw-tools', () => {
+    // Игровые слои points/lines/regions скрываются - наша карта точек
+    // подменяет визуал. svp-draw-tools (линии/полигоны drawTools) также
+    // скрываем, чтобы они не пересекались с кружками ключей.
+    const drawLayer = makeLayer('svp-draw-tools', makeSource());
+    map.getLayers().getArray().push(drawLayer);
+
+    setInventoryCache();
+    clickShowButton();
+
+    for (const layer of map.getLayers().getArray()) {
+      const name = layer.get('name');
+      if (
+        name === 'points' ||
+        name === 'lines' ||
+        name === 'regions' ||
+        name === 'svp-draw-tools'
+      ) {
+        expect((layer as IOlLayer & { _visible: boolean })._visible).toBe(false);
+      }
+    }
+
+    clickCloseButton();
+
+    for (const layer of map.getLayers().getArray()) {
+      const name = layer.get('name');
+      if (
+        name === 'points' ||
+        name === 'lines' ||
+        name === 'regions' ||
+        name === 'svp-draw-tools'
+      ) {
+        expect((layer as IOlLayer & { _visible: boolean })._visible).toBe(true);
+      }
+    }
+  });
+
   test('locked-note удалён: в DOM его нет', () => {
     setInventoryCache();
     clickShowButton();
