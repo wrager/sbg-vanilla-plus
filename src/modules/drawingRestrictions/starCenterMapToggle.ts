@@ -5,7 +5,7 @@ import {
   getStarCenter,
   setStarCenterActive,
 } from './starCenter';
-import { getPointTitleByGuid } from './pointTitle';
+import { resolvePointTitle } from './pointTitle';
 import { STAR_ICON_SVG } from './starCenterIcon';
 import { refreshPopupIfStarFilterStateChanged } from './starCenterRefresh';
 import { showStarModeDisabledToast, showStarModeEnabledToast } from './starCenterToasts';
@@ -40,11 +40,11 @@ function onToggleClick(): void {
   const nextActive = !prev.active;
   setStarCenterActive(nextActive);
   // Имя точки в тосте: пользователь нажимает map-кнопку, находясь, как
-  // правило, далеко от опорной точки и без открытого попапа - без имени
-  // не очевидно, какой центр он сейчас включил/выключил. Имя резолвится
-  // через points-layer; если карта ещё не захвачена / feature не загружен -
-  // toast покажет общую формулировку без имени.
-  const pointTitle = getPointTitleByGuid(prev.guid);
+  // правило, далеко от опорной точки и без открытого попапа - live-источники
+  // (DOM #i-title / feature.get title) обычно возвращают null. resolvePointTitle
+  // отдаёт cached title, сохранённый в storage при назначении центра. Если и
+  // его нет (legacy запись без title, миграция) - toast без имени.
+  const pointTitle = resolvePointTitle(prev);
   if (nextActive) showStarModeEnabledToast(pointTitle);
   else showStarModeDisabledToast(pointTitle);
   // Открытый попап другой точки удерживает в closure'е игры старый список

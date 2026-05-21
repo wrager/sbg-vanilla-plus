@@ -22,8 +22,10 @@ jest.mock('../../core/toast', () => ({
 }));
 
 const getPointTitleByGuidMock = jest.fn<string | null, [string]>();
+const resolvePointTitleMock = jest.fn<string | null, [unknown]>();
 jest.mock('./pointTitle', () => ({
   getPointTitleByGuid: (guid: string): string | null => getPointTitleByGuidMock(guid),
+  resolvePointTitle: (state: unknown): string | null => resolvePointTitleMock(state),
 }));
 
 /**
@@ -85,7 +87,9 @@ beforeEach(() => {
   clearStarCenter();
   showToastMock.mockClear();
   getPointTitleByGuidMock.mockReset();
-  getPointTitleByGuidMock.mockReturnValue(null); // default: имя не известно
+  resolvePointTitleMock.mockReset();
+  getPointTitleByGuidMock.mockReturnValue(null); // default: live имя не известно
+  resolvePointTitleMock.mockReturnValue(null); // default: cached тоже не известно
 });
 
 afterEach(() => {
@@ -273,8 +277,8 @@ describe('starCenterButton — имя точки в тостах (через poi
     );
   });
 
-  test('toggle off в попапе центра: имя в "Star mode disabled: <name>"', async () => {
-    getPointTitleByGuidMock.mockReturnValue('Alpha');
+  test('toggle off в попапе центра: имя через resolvePointTitle в "Star mode disabled: <name>"', async () => {
+    resolvePointTitleMock.mockReturnValue('Alpha');
     setStarCenter('p1');
     const popup = createPopupDom('p1');
     installStarCenterButton();
@@ -283,8 +287,8 @@ describe('starCenterButton — имя точки в тостах (через poi
     expect(toastMessages().some((m) => m === 'Star mode disabled: Alpha')).toBe(true);
   });
 
-  test('toggle on в попапе выключенного центра: имя в "Star mode enabled: <name>"', async () => {
-    getPointTitleByGuidMock.mockReturnValue('Alpha');
+  test('toggle on в попапе выключенного центра: имя через resolvePointTitle в "Star mode enabled: <name>"', async () => {
+    resolvePointTitleMock.mockReturnValue('Alpha');
     setStarCenter('p1');
     setStarCenterActive(false);
     const popup = createPopupDom('p1');
@@ -295,13 +299,32 @@ describe('starCenterButton — имя точки в тостах (через poi
   });
 
   test('toggle off без известного имени - общий текст без имени', async () => {
-    getPointTitleByGuidMock.mockReturnValue(null);
+    resolvePointTitleMock.mockReturnValue(null);
     setStarCenter('p1');
     const popup = createPopupDom('p1');
     installStarCenterButton();
     getToggle(popup)?.click();
     await flushMicrotasks();
     expect(toastMessages().some((m) => m === 'Star mode disabled')).toBe(true);
+  });
+
+  test('назначение нового центра передаёт live-title в setStarCenter (для последующего map-toggle)', async () => {
+    getPointTitleByGuidMock.mockReturnValue('Alpha');
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    // Cached title в storage - источник для map-toggle тостов, когда live недоступен.
+    expect(getStarCenter()).toEqual({ guid: 'p1', active: true, title: 'Alpha' });
+  });
+
+  test('назначение без live-title: title не сохраняется в storage', async () => {
+    getPointTitleByGuidMock.mockReturnValue(null);
+    const popup = createPopupDom('p1');
+    installStarCenterButton();
+    getToggle(popup)?.click();
+    await flushMicrotasks();
+    expect(getStarCenter()).toEqual({ guid: 'p1', active: true });
   });
 });
 

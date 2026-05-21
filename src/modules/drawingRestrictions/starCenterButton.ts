@@ -8,7 +8,7 @@ import {
   setStarCenter,
   setStarCenterActive,
 } from './starCenter';
-import { getPointTitleByGuid } from './pointTitle';
+import { getPointTitleByGuid, resolvePointTitle } from './pointTitle';
 import { STAR_ICON_SVG } from './starCenterIcon';
 import { refreshPopupIfStarFilterStateChanged } from './starCenterRefresh';
 import {
@@ -155,7 +155,7 @@ function onToggleClick(popup: Element): void {
   if (prev !== null && prev.guid === guid) {
     const nextActive = !prev.active;
     setStarCenterActive(nextActive);
-    const pointTitle = getPointTitleByGuid(guid);
+    const pointTitle = resolvePointTitle(prev);
     if (nextActive) showStarModeEnabledToast(pointTitle);
     else showStarModeDisabledToast(pointTitle);
     refreshPopupIfStarFilterStateChanged(prev, { guid: prev.guid, active: nextActive });
@@ -171,9 +171,13 @@ function onToggleClick(popup: Element): void {
     return;
   }
 
-  // Ветка 3: назначение нового центра - auto-active.
-  setStarCenter(guid);
-  showCenterAssignedToast(getPointTitleByGuid(guid));
+  // Ветка 3: назначение нового центра - auto-active. Live-имя снимается
+  // ДО setStarCenter (попап ещё открыт, #i-title заполнен) и сохраняется в
+  // storage - чтобы последующие тосты map-toggle вдали от точки и без
+  // открытого попапа всё равно показывали имя.
+  const liveTitle = getPointTitleByGuid(guid);
+  setStarCenter(guid, liveTitle ?? undefined);
+  showCenterAssignedToast(liveTitle);
   refreshPopupIfStarFilterStateChanged(prev, { guid, active: true });
 }
 

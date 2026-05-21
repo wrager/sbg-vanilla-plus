@@ -22,7 +22,7 @@ describe('starCenter — базовое чтение/запись', () => {
     expect(getActiveStarCenterGuid()).toBeNull();
   });
 
-  test('setStarCenter сохраняет guid и auto-выставляет active=true', () => {
+  test('setStarCenter без title: state без поля title', () => {
     const listener = jest.fn();
     document.addEventListener(STAR_CENTER_CHANGED_EVENT, listener);
     setStarCenter('abc');
@@ -31,6 +31,16 @@ describe('starCenter — базовое чтение/запись', () => {
     expect(getActiveStarCenterGuid()).toBe('abc');
     expect(listener).toHaveBeenCalledTimes(1);
     document.removeEventListener(STAR_CENTER_CHANGED_EVENT, listener);
+  });
+
+  test('setStarCenter с title: сохраняет title в state', () => {
+    setStarCenter('abc', 'Alpha');
+    expect(getStarCenter()).toEqual({ guid: 'abc', active: true, title: 'Alpha' });
+  });
+
+  test('setStarCenter с пустым title: title не сохраняется', () => {
+    setStarCenter('abc', '');
+    expect(getStarCenter()).toEqual({ guid: 'abc', active: true });
   });
 
   test('setStarCenter с пустой строкой игнорируется', () => {
@@ -80,6 +90,14 @@ describe('starCenter — setStarCenterActive (toggle без потери guid)',
     document.removeEventListener(STAR_CENTER_CHANGED_EVENT, listener);
   });
 
+  test('setStarCenterActive сохраняет cached title', () => {
+    setStarCenter('abc', 'Alpha');
+    setStarCenterActive(false);
+    expect(getStarCenter()).toEqual({ guid: 'abc', active: false, title: 'Alpha' });
+    setStarCenterActive(true);
+    expect(getStarCenter()).toEqual({ guid: 'abc', active: true, title: 'Alpha' });
+  });
+
   test('setStarCenterActive(true) возвращает фильтр в активное состояние', () => {
     setStarCenter('abc');
     setStarCenterActive(false);
@@ -110,6 +128,21 @@ describe('starCenter — legacy parser fallback (active=true по умолчан
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ guid: 'abc' }));
     expect(getStarCenter()).toEqual({ guid: 'abc', active: true });
     expect(getActiveStarCenterGuid()).toBe('abc');
+  });
+
+  test('JSON с title - читается с title', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ guid: 'abc', active: true, title: 'Alpha' }));
+    expect(getStarCenter()).toEqual({ guid: 'abc', active: true, title: 'Alpha' });
+  });
+
+  test('JSON с пустым title - title игнорируется', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ guid: 'abc', active: true, title: '' }));
+    expect(getStarCenter()).toEqual({ guid: 'abc', active: true });
+  });
+
+  test('JSON с title не-строкой - title игнорируется', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ guid: 'abc', active: true, title: 42 }));
+    expect(getStarCenter()).toEqual({ guid: 'abc', active: true });
   });
 
   test('JSON-формат с active=false - режим выключен', () => {

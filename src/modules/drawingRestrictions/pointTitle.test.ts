@@ -1,5 +1,6 @@
-import { getPointTitleByGuid } from './pointTitle';
+import { getPointTitleByGuid, resolvePointTitle } from './pointTitle';
 import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource } from '../../core/olMap';
+import type { IStarCenter } from './starCenter';
 
 const mapHolder: { current: IOlMap | null } = { current: null };
 const sourceHolder: { current: IOlVectorSource | null } = { current: null };
@@ -194,5 +195,30 @@ describe('getPointTitleByGuid — приоритет источников', () =
     mapHolder.current = makeMap();
     sourceHolder.current = makeSource([makeFeature('p1', 'From Feature')]);
     expect(getPointTitleByGuid('p1')).toBe('From Popup');
+  });
+});
+
+describe('resolvePointTitle — live -> cached -> null', () => {
+  const STATE_WITHOUT_TITLE: IStarCenter = { guid: 'p1', active: true };
+  const STATE_WITH_TITLE: IStarCenter = { guid: 'p1', active: true, title: 'Cached Alpha' };
+
+  test('live доступен - побеждает cached', () => {
+    createPopup('p1', 'Live Name');
+    expect(resolvePointTitle(STATE_WITH_TITLE)).toBe('Live Name');
+  });
+
+  test('live недоступен, есть cached - возвращает cached', () => {
+    // Ни попапа, ни карты - live даст null.
+    expect(resolvePointTitle(STATE_WITH_TITLE)).toBe('Cached Alpha');
+  });
+
+  test('live недоступен, cached тоже отсутствует - null', () => {
+    expect(resolvePointTitle(STATE_WITHOUT_TITLE)).toBeNull();
+  });
+
+  test('live из feature, нет cached - возвращает live', () => {
+    mapHolder.current = makeMap();
+    sourceHolder.current = makeSource([makeFeature('p1', 'From Feature')]);
+    expect(resolvePointTitle(STATE_WITHOUT_TITLE)).toBe('From Feature');
   });
 });

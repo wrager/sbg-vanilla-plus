@@ -4,6 +4,7 @@ import {
   type IOlFeature,
   type IOlVectorSource,
 } from '../../core/olMap';
+import type { IStarCenter } from './starCenter';
 
 const POINTS_LAYER_NAME = 'points';
 const POPUP_SELECTOR = '.info.popup';
@@ -72,4 +73,17 @@ export function getPointTitleByGuid(guid: string): string | null {
   const fromPopup = getPointTitleFromOpenPopup(guid);
   if (fromPopup !== null) return fromPopup;
   return getPointTitleFromOlFeature(guid);
+}
+
+/**
+ * Имя для тостов о центре звезды. Приоритет: live из getPointTitleByGuid,
+ * fallback на кешированный state.title (запомненный в storage при назначении
+ * центра). Закрывает кейс map-toggle вдали от опорной точки: live-источники
+ * возвращают null (попап не открыт на центре, feature вне viewport), но
+ * cached title даёт имя для тоста.
+ */
+export function resolvePointTitle(state: IStarCenter): string | null {
+  const live = getPointTitleByGuid(state.guid);
+  if (live !== null) return live;
+  return state.title ?? null;
 }

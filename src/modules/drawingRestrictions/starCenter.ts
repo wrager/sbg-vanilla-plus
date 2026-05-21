@@ -5,12 +5,21 @@ export const STAR_CENTER_CHANGED_EVENT = 'svp:star-center-changed';
 export interface IStarCenter {
   guid: string;
   active: boolean;
+  /**
+   * Имя точки на момент назначения центром. Кешируется, чтобы тосты map-toggle
+   * могли показать имя даже когда точка-центр вне текущего viewport и feature
+   * выгружен из points-layer (типовой сценарий: назначил центр в попапе,
+   * отъехал по карте, нажимаешь map-toggle). undefined, если на момент
+   * назначения имя получить не удалось - тогда тосты используют общий вариант
+   * без имени.
+   */
+  title?: string;
 }
 
 function parseStored(raw: string | null): IStarCenter | null {
   if (raw === null || raw.length === 0) return null;
   // Три формата:
-  // - JSON `{ guid, active }` - текущий.
+  // - JSON `{ guid, active, title? }` - текущий.
   // - JSON `{ guid }` (с возможным полем name от прошлых версий) - legacy,
   //   active по умолчанию true (центр был активен у пользователя на старой
   //   версии - режим продолжает работать после обновления).
@@ -22,7 +31,10 @@ function parseStored(raw: string | null): IStarCenter | null {
       if (typeof guidValue === 'string' && guidValue.length > 0) {
         const activeValue = 'active' in parsed ? parsed.active : undefined;
         const active = typeof activeValue === 'boolean' ? activeValue : true;
-        return { guid: guidValue, active };
+        const titleValue = 'title' in parsed ? parsed.title : undefined;
+        const title =
+          typeof titleValue === 'string' && titleValue.length > 0 ? titleValue : undefined;
+        return title !== undefined ? { guid: guidValue, active, title } : { guid: guidValue, active };
       }
     }
   } catch {
@@ -64,33 +76,46 @@ function writeStarCenter(state: IStarCenter): void {
  * Назначить новый центр. Всегда auto-активирует режим: назначение точки
  * центром в попапе - сильный intent пользователя начать рисовать звезду.
  * Сценарий "назначить, но оставить выключенным" не нужен и сбивал бы.
+ *
+ * title - текущее имя точки (например, из открытого попапа `#i-title` или
+ * из feature.get('title')). Кешируется в storage для последующих тостов
+ * map-toggle, когда live-источник недоступен. Если не передан - тосты
+ * будут показывать общий вариант без имени.
  */
-export function setStarCenter(guid: string): void {
+export function setStarCenter(guid: string, title?: string): void {
   if (typeof guid !== 'string' || guid.length === 0) return;
-  writeStarCenter({ guid, active: true });
+  const state: IStarCenter =
+    typeof title === 'string' && title.length > 0
+      ? { guid, active: true, title }
+      : { guid, active: true };
+  writeStarCenter(state);
   dispatchChange();
 }
 
 /**
- * Переключить активность режима без потери запомненного guid. Используется
- * map-toggle (включить/выключить из карты, не возвращаясь к опорной точке) и
- * попап-кнопкой (когда попап открыт на запомненной точке - переключает
- * режим). Если центра нет - no-op (нечего активировать).
+ * Переключить активность режима без потери запомненного guid и title.
+ * Используется map-toggle (включить/выключить из карты, не возвращаясь к
+ * опорной точке) и попап-кнопкой (когда попап открыт на запомненной точке -
+ * переключает режим). Если центра нет - no-op (нечего активировать).
  */
 export function setStarCenterActive(active: boolean): void {
   const star = getStarCenter();
   if (star === null) return;
   if (star.active === active) return;
-  writeStarCenter({ guid: star.guid, active });
+  const next: IStarCenter =
+    star.title !== undefined
+      ? { guid: star.guid, active, title: star.title }
+      : { guid: star.guid, active };
+  writeStarCenter(next);
   dispatchChange();
 }
 
 /**
  * Полное удаление центра. В user-facing UX не вызывается: guid обновляется
- * при назначении нового через попап, выключение делается через
- * setStarCenterActive. Остаётся для install-time auto-clear, когда точка
- * получила замочек между сессиями - там центр действительно нужно забыть
- * полностью, чтобы next-session не активировал режим автоматически.
+ * при назначении новой точки. Старый guid живёт между сессиями. Остаётся для
+ * install-time auto-clear, когда точка получила замочек между сессиями -
+ * там центр действительно нужно забыть полностью, чтобы next-session не
+ * активировал режим автоматически.
  */
 export function clearStarCenter(): void {
   localStorage.removeItem(STORAGE_KEY);
@@ -103,7 +128,9 @@ export function clearStarCenter(): void {
  * `{ guid, active: true }`. На новом формате - no-op (raw совпадает с
  * сериализацией parsed). Event не диспатчится: фильтрационное поведение не
  * меняется. Вызывается из drawingRestrictions.enable() первой, чтобы UI и
- * фильтр сразу читали унифицированный формат.
+ * фильтр сразу читали унифицированный формат. Title для legacy не появится:
+ * имя точки невозможно достоверно восстановить, поле остаётся undefined,
+ * тосты используют общий вариант пока пользователь не переназначит центр.
  */
 export function migrateLegacyStarCenter(): void {
   const raw = localStorage.getItem(STORAGE_KEY);

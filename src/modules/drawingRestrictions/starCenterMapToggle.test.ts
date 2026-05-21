@@ -17,9 +17,10 @@ jest.mock('../../core/toast', () => ({
   },
 }));
 
-const getPointTitleByGuidMock = jest.fn<string | null, [string]>();
+const resolvePointTitleMock = jest.fn<string | null, [unknown]>();
 jest.mock('./pointTitle', () => ({
-  getPointTitleByGuid: (guid: string): string | null => getPointTitleByGuidMock(guid),
+  getPointTitleByGuid: (): string | null => null,
+  resolvePointTitle: (state: unknown): string | null => resolvePointTitleMock(state),
 }));
 
 function toastMessages(): string[] {
@@ -67,8 +68,8 @@ beforeEach(() => {
   clearStarCenter();
   localStorage.clear();
   showToastMock.mockClear();
-  getPointTitleByGuidMock.mockReset();
-  getPointTitleByGuidMock.mockReturnValue(null);
+  resolvePointTitleMock.mockReset();
+  resolvePointTitleMock.mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -313,9 +314,9 @@ describe('starCenterMapToggle — refresh попапа при изменении
   });
 });
 
-describe('starCenterMapToggle — имя точки в тосте', () => {
+describe('starCenterMapToggle — имя точки в тосте (через resolvePointTitle)', () => {
   test('toggle off с известным именем: "Star mode disabled: <name>"', () => {
-    getPointTitleByGuidMock.mockReturnValue('Alpha');
+    resolvePointTitleMock.mockReturnValue('Alpha');
     createMapWithRegionPicker();
     setStarCenter('p1');
     installStarCenterMapToggle();
@@ -324,7 +325,7 @@ describe('starCenterMapToggle — имя точки в тосте', () => {
   });
 
   test('toggle on с известным именем: "Star mode enabled: <name>"', () => {
-    getPointTitleByGuidMock.mockReturnValue('Alpha');
+    resolvePointTitleMock.mockReturnValue('Alpha');
     createMapWithRegionPicker();
     setStarCenter('p1');
     setStarCenterActive(false);
@@ -333,8 +334,8 @@ describe('starCenterMapToggle — имя точки в тосте', () => {
     expect(toastMessages().some((m) => m === 'Star mode enabled: Alpha')).toBe(true);
   });
 
-  test('toggle без известного имени - общий текст (fallback на pointTitle=null)', () => {
-    getPointTitleByGuidMock.mockReturnValue(null);
+  test('toggle без известного имени - общий текст (fallback на resolvePointTitle=null)', () => {
+    resolvePointTitleMock.mockReturnValue(null);
     createMapWithRegionPicker();
     setStarCenter('p1');
     installStarCenterMapToggle();
@@ -342,12 +343,12 @@ describe('starCenterMapToggle — имя точки в тосте', () => {
     expect(toastMessages().some((m) => m === 'Star mode disabled')).toBe(true);
   });
 
-  test('getPointTitleByGuid вызывается с актуальным guid центра', () => {
+  test('resolvePointTitle получает актуальный snapshot центра', () => {
     createMapWithRegionPicker();
-    setStarCenter('p1');
+    setStarCenter('p1', 'Cached Alpha');
     installStarCenterMapToggle();
     getButton()?.click();
-    expect(getPointTitleByGuidMock).toHaveBeenCalledWith('p1');
+    expect(resolvePointTitleMock).toHaveBeenCalledWith({ guid: 'p1', active: true, title: 'Cached Alpha' });
   });
 });
 
