@@ -64,3 +64,35 @@ describe('drawingRestrictions — refresh открытого попапа при
     expect(showInfoMock).not.toHaveBeenCalled();
   });
 });
+
+describe('drawingRestrictions — eager миграция legacy starCenter при enable', () => {
+  const STORAGE_KEY = 'svp_drawingRestrictions_starCenter';
+
+  test('plain GUID переписывается в JSON { guid, active: true }', () => {
+    localStorage.setItem(STORAGE_KEY, 'legacy-guid');
+    void drawingRestrictions.enable();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({ guid: 'legacy-guid', active: true }),
+    );
+  });
+
+  test('JSON { guid } без active переписывается в { guid, active: true }', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ guid: 'legacy-guid' }));
+    void drawingRestrictions.enable();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(
+      JSON.stringify({ guid: 'legacy-guid', active: true }),
+    );
+  });
+
+  test('новый формат не трогается (idempotent)', () => {
+    const raw = JSON.stringify({ guid: 'g', active: false });
+    localStorage.setItem(STORAGE_KEY, raw);
+    void drawingRestrictions.enable();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
+  });
+
+  test('пустой LS - no-op', () => {
+    void drawingRestrictions.enable();
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+});

@@ -12,12 +12,17 @@
   color: #ffcc33;
 }
 
-/* clear-control (OL-control на карте под region-picker): позиционирование,
+/* map-toggle (OL-control на карте под region-picker): позиционирование,
    размеры button и SVG приходят из общего .svp-ol-stack-item стиля
    (см. src/core/olControlStack.ts). Здесь — только скрытие control'а, когда
-   центр звезды не назначен. */
-.svp-star-center-clear-control[hidden] {
+   центр звезды не назначен, и is-active окраска (жёлтая при включённом
+   режиме - тот же визуальный язык, что и у попап-кнопки). */
+.svp-star-center-map-toggle[hidden] {
   display: none;
+}
+
+.svp-star-center-map-toggle button.is-active {
+  color: #ffcc33;
 }
 
 /* Кнопка «Настроить» у модуля drawingRestrictions в панели настроек SVP */

@@ -37,7 +37,7 @@ const SNAP_THRESHOLD_PX = 100;
 const DEFAULT_COLOR = '#a24ac3';
 const CONTROL_BUTTON_ID = 'svp-draw-tools-menu-button';
 // Priority в стеке под .region-picker: drawTools первый ниже picker'а,
-// starCenter clear-control - следующий. См. src/core/olControlStack.ts.
+// starCenter map-toggle - следующий. См. src/core/olControlStack.ts.
 const OL_STACK_PRIORITY = 0;
 
 type ToolMode = 'none' | 'line' | 'polygon' | 'edit' | 'delete';

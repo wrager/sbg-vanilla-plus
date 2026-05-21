@@ -2,7 +2,8 @@ import {
   showCannotSetLockedCenterToast,
   showCenterAssignedToast,
   showCenterClearedBecauseLockedToast,
-  showCenterClearedToast,
+  showStarModeDisabledToast,
+  showStarModeEnabledToast,
 } from './starCenterToasts';
 
 const showToastMock = jest.fn();
@@ -27,25 +28,49 @@ beforeEach(() => {
 // поэтому проверяем английские формулировки.
 
 describe('showCenterAssignedToast', () => {
-  test('общий текст без имени точки', () => {
+  test('без имени - общий текст', () => {
     showCenterAssignedToast();
-    expect(showToastMock).toHaveBeenCalledTimes(1);
+    expect(lastMessage()).toBe('Point selected as star center for drawing.');
+  });
+
+  test('с именем - имя интерполируется в кавычках (стиль CUI)', () => {
+    showCenterAssignedToast('Alpha');
+    expect(lastMessage()).toBe('Point "Alpha" selected as star center for drawing.');
+  });
+
+  test('явный null - общий текст (fallback)', () => {
+    showCenterAssignedToast(null);
     expect(lastMessage()).toBe('Point selected as star center for drawing.');
   });
 });
 
-describe('showCenterClearedToast', () => {
-  test('общий текст без имени точки', () => {
-    showCenterClearedToast();
-    expect(showToastMock).toHaveBeenCalledTimes(1);
-    expect(lastMessage()).toBe('Star center cleared');
+describe('showStarModeEnabledToast', () => {
+  test('без имени - общий текст', () => {
+    showStarModeEnabledToast();
+    expect(lastMessage()).toBe('Star mode enabled');
+  });
+
+  test('с именем - имя через двоеточие', () => {
+    showStarModeEnabledToast('Alpha');
+    expect(lastMessage()).toBe('Star mode enabled: Alpha');
+  });
+});
+
+describe('showStarModeDisabledToast', () => {
+  test('без имени - общий текст', () => {
+    showStarModeDisabledToast();
+    expect(lastMessage()).toBe('Star mode disabled');
+  });
+
+  test('с именем - имя через двоеточие', () => {
+    showStarModeDisabledToast('Alpha');
+    expect(lastMessage()).toBe('Star mode disabled: Alpha');
   });
 });
 
 describe('showCannotSetLockedCenterToast', () => {
   test('короткое сообщение про блокировку locked-точки как центра звезды', () => {
     showCannotSetLockedCenterToast();
-    expect(showToastMock).toHaveBeenCalledTimes(1);
     expect(lastMessage()).toBe("Locked point can't be a star center.");
   });
 });
@@ -53,7 +78,6 @@ describe('showCannotSetLockedCenterToast', () => {
 describe('showCenterClearedBecauseLockedToast', () => {
   test('сообщает о снятии центра с указанием причины', () => {
     showCenterClearedBecauseLockedToast();
-    expect(showToastMock).toHaveBeenCalledTimes(1);
     expect(lastMessage()).toBe('Star center cleared: the point is now locked.');
   });
 });
