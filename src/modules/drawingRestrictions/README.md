@@ -7,13 +7,15 @@
 - **Ограничение по расстоянию** — числовое поле в метрах (0 = без лимита). Цели дальше порога скрываются из списка.
 - **Режим «звезда»** — одна точка фиксируется как центр звезды. Когда открыт попап самого центра, список рисования не фильтруется (все линии из центра — часть звезды). Когда открыт попап любой другой точки, в списке остаётся только центр звезды — нельзя случайно нарисовать «не звёздную» линию. Центр **дополнительно** обводится жёлтым кольцом на карте (стандартный вид точки сохраняется — иконка, цвет команды).
 
+  Режим хранится как `{ guid, active, title? }`: запомненный guid живёт между сессиями отдельно от активности фильтра, поэтому центр можно многократно включать/выключать без возврата к опорной точке. Cached `title` снимается с открытого попапа в момент назначения и используется тостами вдали от точки (когда live-источники имени недоступны).
+
   Управление:
-  - **Кнопка в попапе точки** (лучи из точки, в правом нижнем углу `.i-buttons`) — «назначить центром» / «снять центр» / «переназначить центр на эту точку» в зависимости от состояния
-  - **Кнопка-control на карте** (под стандартной `.region-picker`) — «сбросить центр звезды»; видна только когда центр назначен. При клике показывается toast
+  - **Кнопка в попапе точки** (лучи из точки, в правом нижнем углу `.i-buttons`) — четыре ветки в зависимости от состояния: «назначить центром звезды» на новой точке без центра / «переназначить эту точку центром» на новой точке при назначенном центре / «выключить режим звезды» в попапе центра при активном режиме / «включить режим звезды» в попапе центра при выключенном режиме.
+  - **Кнопка-control на карте** (под стандартной `.region-picker`) — toggle режима звезды без потери запомненного guid и возврата к опорной точке. Видна, когда центр запомнен (даже при выключенном режиме); `.is-active` отражает фактическую активность фильтра. Тосты «Star mode enabled/disabled» содержат имя точки-центра (live или cached).
 
-  Locked-точку центром звезды не назначить. Все её ключи заблокированы замочком и не расходуются на линии. Кнопка «назначить центром» в попапе locked-точки остаётся активной (live-проверка не делается, чтобы не парсить inventory-cache на каждом тике mutation observer), но клик показывает блок-toast «Точка с замочком не может быть центром звезды»; ранее назначенный центр остаётся прежним.
+  Locked-точку центром звезды не назначить и не повторно включить как центр. Все её ключи заблокированы замочком и не расходуются на линии. Кнопки в попапе и на карте остаются активными (live-проверка не делается, чтобы не парсить inventory-cache на каждом тике mutation observer), но клик-handler в обоих UI читает свежий inventory-cache при `nextActive=true` и показывает блок-toast «Locked point can't be a star center»; state не меняется. Деактивация активного центра-locked **не блокируется** — пользователю иногда нужно явно выйти из не работающего фильтра.
 
-  Legacy: если центр звезды был назначен на точку, которая стала locked между сессиями, при следующем старте скрипта центр снимается автоматически и показывается toast. Если lock поставлен в текущей сессии, центр остаётся — снять можно через попап центральной точки (кнопка станет «снять центр») или через кнопку на карте.
+  Legacy: если центр звезды был назначен на точку, которая стала locked между сессиями, при следующем старте скрипта центр снимается автоматически и показывается toast. Если lock поставлен в текущей сессии, центр остаётся активным до клика пользователя — авто-clear на live-смену lock не делается ради производительности (mutation observer не парсит inventory-cache на каждом тике).
 
 ## Toast-уведомления о скрытии
 
@@ -32,9 +34,10 @@
 - `drawingRestrictions.ts` — определение модуля. В `enable()` ставятся все перехватчики и observers.
 - `drawFilter.ts` — единственный перехватчик `GET /api/draw`. На `enable()` оборачивает `window.fetch`, на `disable()` восстанавливает оригинал. Двойная установка идемпотентна. При пустом массиве предикатов отдаёт оригинальный Response без парсинга JSON. После применения предикатов считает два counter'а (`star/distance`) и выбирает toast через `pickToastMessage` (bitmask-селектор на 4 ячейки).
 - `filterRules.ts` — чистые предикаты и counter'ы. `buildPredicates({ settings, starCenterGuid, currentPopupGuid })` возвращает активные правила, `applyPredicates()` — композиция AND. `countHiddenByStar` / `countHiddenByDistance` — для toast-breakdown.
-- `starCenter*` — компоненты режима звезды: `starCenter.ts` (хранилище + событие), `starCenterButton.ts` (кнопка в попапе с click-only проверкой locked + install-time legacy clear), `starCenterClearControl.ts` (OL-control на карте), `starCenterHighlight.ts` (overlay-слой с жёлтым кольцом), `starCenterIcon.ts` (SVG иконок), `starCenterToasts.ts` (toast-функции «центр назначен» / «центр снят» / «нельзя назначить locked-точку центром» / «центр снят: точка стала locked»), `starCenterRefresh.ts` (re-open попапа после смены центра, чтобы `#draw-count` обновился под актуальные правила).
+- `starCenter*` — компоненты режима звезды: `starCenter.ts` (хранилище `IStarCenter { guid, active, title? }`, eager миграция legacy формата, событие `svp:star-center-changed`), `starCenterButton.ts` (кнопка в попапе с трёхветочным toggle: назначить новый / переключить активность на текущем / переназначить; click-only проверка locked + install-time legacy clear), `starCenterMapToggle.ts` (OL-control на карте, toggle активности без потери guid; видим только когда центр запомнен), `starCenterHighlight.ts` (overlay-слой с жёлтым кольцом; скрывается при `!active`), `starCenterIcon.ts` (SVG иконки), `pointTitle.ts` (резолв имени точки: live из `#i-title` открытого попапа -> `feature.get('title')` из points-layer -> cached `state.title`), `starCenterToasts.ts` (toast-функции «центр назначен» с именем / «star mode enabled/disabled» с именем / «нельзя назначить locked-точку центром» / «центр снят: точка стала locked»), `starCenterRefresh.ts` (re-open попапа через сравнение `effectiveStarGuidForPopup` до/после изменения; покрывает попап на центре, где фильтр всегда null).
 - `refreshOpenPopup.ts` — закрывает и переоткрывает открытый попап через `window.showInfo`, заставляя игру сделать свежий `/api/draw` и пересчитать `#draw-count`. Используется при изменении настроек или enable модуля с открытым попапом, а также внутри `starCenterRefresh` при смене центра.
 - `starCenterButton.ts` и `starCenterHighlight.ts` используют флаг `pendingInstall` для защиты от race при async-установке через `waitForElement` / `getOlMap`.
+- `core/olMap.ts` экспортирует синхронный аксессор `getCapturedOlMap(): IOlMap | null` рядом с async `getOlMap()`. Нужен для формирования тостов в синхронных click-handler'ах map-toggle/попап-кнопки: `await getOlMap` дал бы видимый лаг между нажатием и тостом.
 
 ## Настройки
 
@@ -43,19 +46,20 @@
 
 ## Файловая структура
 
-| Файл                        | Назначение                                                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `drawingRestrictions.ts`    | Определение модуля: enable / disable                                                                          |
-| `settings.ts`               | `load` (чистый геттер), `save`                                                                                |
-| `settingsUi.ts`             | UI настроек: числовое поле макс. расстояния                                                                   |
-| `filterRules.ts`            | Чистые предикаты `IDrawEntry` + counter'ы для toast-breakdown                                                 |
-| `drawFilter.ts`             | Обёртка `window.fetch` для `GET /api/draw`, применяет предикаты, выбирает toast                               |
-| `starCenter.ts`             | Хранилище {guid} центра звезды в localStorage + событие `svp:star-center-changed`                             |
-| `starCenterIcon.ts`         | SVG иконок звезды (обычная и со слешем)                                                                       |
-| `starCenterButton.ts`       | Кнопка в попапе точки: назначить/снять/переназначить + блокировка locked-точки                                |
-| `starCenterClearControl.ts` | OL-control на карте (под `.region-picker`) — сбросить центр с toast                                           |
-| `starCenterHighlight.ts`    | Overlay-слой с жёлтым кольцом вокруг центра звезды (оригинальный вид точки сохраняется)                       |
-| `starCenterToasts.ts`       | Toast-функции для button и clear-control: назначен / снят / locked не назначается / install-time legacy clear |
-| `starCenterRefresh.ts`      | Wrapper над `refreshOpenPopup` с отсечкой по centerBeforeChange для пересчёта draw-count                      |
-| `refreshOpenPopup.ts`       | Закрывает и переоткрывает попап через `window.showInfo` для свежего `/api/draw`                               |
-| `styles.css`                | Стили кнопки «Настроить», кнопок звезды и модалки настроек                                                    |
+| Файл                     | Назначение                                                                                                                          |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `drawingRestrictions.ts` | Определение модуля: enable / disable                                                                                                |
+| `settings.ts`            | `load` (чистый геттер), `save`                                                                                                      |
+| `settingsUi.ts`          | UI настроек: числовое поле макс. расстояния                                                                                         |
+| `filterRules.ts`         | Чистые предикаты `IDrawEntry` + counter'ы для toast-breakdown                                                                       |
+| `drawFilter.ts`          | Обёртка `window.fetch` для `GET /api/draw`, применяет предикаты, выбирает toast                                                     |
+| `starCenter.ts`          | Хранилище `IStarCenter { guid, active, title? }` в localStorage + событие `svp:star-center-changed` + eager миграция legacy формата |
+| `starCenterIcon.ts`      | SVG иконки звезды (8 лучей; on/off отражается через CSS-класс `.is-active`)                                                         |
+| `pointTitle.ts`          | Резолв имени точки для тостов: live из `#i-title` попапа -> `feature.get('title')` points-layer -> cached `state.title`             |
+| `starCenterButton.ts`    | Кнопка в попапе точки: назначить новый центр / переключить активность на текущем / переназначить + блокировка locked-точки          |
+| `starCenterMapToggle.ts` | OL-control на карте (под `.region-picker`) — toggle активности режима без потери guid; видим только при запомненном центре          |
+| `starCenterHighlight.ts` | Overlay-слой с жёлтым кольцом вокруг центра звезды; скрывается при `!active`                                                        |
+| `starCenterToasts.ts`    | Toast-функции: центр назначен с именем / star mode enabled/disabled с именем / locked не назначается / install-time legacy clear    |
+| `starCenterRefresh.ts`   | Wrapper над `refreshOpenPopup` со сравнением `effectiveStarGuidForPopup(prev,next)` для пересчёта draw-count                        |
+| `refreshOpenPopup.ts`    | Закрывает и переоткрывает попап через `window.showInfo` для свежего `/api/draw`                                                     |
+| `styles.css`             | Стили кнопки «Настроить», кнопок звезды и модалки настроек                                                                          |
