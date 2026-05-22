@@ -34,8 +34,8 @@
 - Сериализация: `iitcFormat.ts` (parse/stringify + type guard)
 - UI: floating OL-control под `.region-picker` + toolbar в `document.body`. Позиционирование control'а - чисто CSS (`top: 50%` + `transform: translateY(200%)`), без JS-вычислений; на узких viewport дублируются игровые `@media`-правила, чтобы кнопка совпадала с `.region-picker` button по размеру. MutationObserver на parent picker'а (без subtree) переподцепляет control'а к актуальному picker'у через `querySelector`, если игра пересоздаёт DOM
 - Иконки кнопок: свои inline-SVG из `drawToolsIcons.ts`, наследуют `currentColor` от темы
-- Блокировка открытия точки во время рисования: `map.forEachFeatureAtPixel` обёрнут при `enable()` так, чтобы для активных режимов `line`/`polygon` пропускать features слоя `points`. Игровой `map.on('click')` собирает попадания по `points` (refs/game/script.js:541) и при пустом наборе не вызывает `showInfo`; вне рисования и при `disable()` оригинал восстанавливается
-- Cleanup в `disable()` снимает слой, интеракции, toolbar, OL-control, MutationObserver, обёртку `forEachFeatureAtPixel` и стили
+- Блокировка открытия точки во время рисования: модуль регистрирует перехватчик единой обёртки `forEachFeatureAtPixel` (`registerForEachFeatureAtPixelInterceptor` из `core/olMap.ts`); для активных режимов `line`/`polygon` перехватчик прячет features слоя `points`. Игровой `map.on('click')` собирает попадания по `points` (refs/game/script.js:538) и при пустом наборе не вызывает `showInfo` и не пересобирает `near_points`; вне рисования эффект самовосстанавливается. Единый реестр вместо собственной обёртки - чтобы не конфликтовать с `largerPointTapArea`, который патчит тот же метод
+- Cleanup в `disable()` снимает слой, интеракции, toolbar, OL-control, MutationObserver, перехватчик `forEachFeatureAtPixel` и стили
 
 ## Ограничения MVP
 

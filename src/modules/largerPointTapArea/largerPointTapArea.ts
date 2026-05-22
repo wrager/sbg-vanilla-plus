@@ -1,14 +1,10 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { getOlMap } from '../../core/olMap';
-import type { IOlFeature, IOlLayer, IOlMap } from '../../core/olMap';
+import { getOlMap, registerForEachFeatureAtPixelInterceptor } from '../../core/olMap';
 
 const MODULE_ID = 'largerPointTapArea';
 const HIT_TOLERANCE_PX = 15;
 
-type ForEachFeatureAtPixel = NonNullable<IOlMap['forEachFeatureAtPixel']>;
-
-let map: IOlMap | null = null;
-let originalMethod: ForEachFeatureAtPixel | null = null;
+let unregisterInterceptor: (() => void) | null = null;
 
 export const largerPointTapArea: IFeatureModule = {
   id: MODULE_ID,
@@ -24,30 +20,17 @@ export const largerPointTapArea: IFeatureModule = {
 
   enable() {
     return getOlMap().then((olMap) => {
-      if (originalMethod || !olMap.forEachFeatureAtPixel) return;
-
-      map = olMap;
-      originalMethod = olMap.forEachFeatureAtPixel.bind(olMap);
-      const saved = originalMethod;
-
-      olMap.forEachFeatureAtPixel = (
-        pixel: number[],
-        callback: (feature: IOlFeature, layer: IOlLayer) => void,
-        options?: { hitTolerance?: number; layerFilter?: (layer: IOlLayer) => boolean },
-      ) => {
-        saved(pixel, callback, {
-          ...options,
-          hitTolerance: HIT_TOLERANCE_PX,
-        });
-      };
+      if (unregisterInterceptor) return;
+      // Игра вызывает forEachFeatureAtPixel с дефолтным hitTolerance; повышаем
+      // его, чтобы точки было проще нажимать пальцем на мобильном.
+      unregisterInterceptor = registerForEachFeatureAtPixelInterceptor(olMap, {
+        transformOptions: (options) => ({ ...options, hitTolerance: HIT_TOLERANCE_PX }),
+      });
     });
   },
 
   disable() {
-    if (map && originalMethod && map.forEachFeatureAtPixel) {
-      map.forEachFeatureAtPixel = originalMethod;
-    }
-    originalMethod = null;
-    map = null;
+    unregisterInterceptor?.();
+    unregisterInterceptor = null;
   },
 };

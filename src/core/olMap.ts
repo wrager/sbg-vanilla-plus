@@ -104,6 +104,11 @@ export interface IOlMapEvent {
   originalEvent: Record<string, unknown>;
 }
 
+export interface IForEachFeatureAtPixelOptions {
+  hitTolerance?: number;
+  layerFilter?: (layer: IOlLayer) => boolean;
+}
+
 export interface IOlMap {
   getView(): IOlView;
   getSize(): number[] | undefined;
@@ -122,7 +127,7 @@ export interface IOlMap {
   forEachFeatureAtPixel?(
     pixel: number[],
     callback: (feature: IOlFeature, layer: IOlLayer) => void,
-    options?: { hitTolerance?: number; layerFilter?: (layer: IOlLayer) => boolean },
+    options?: IForEachFeatureAtPixelOptions,
   ): void;
 }
 
@@ -224,6 +229,96 @@ export function findLayerByName(map: IOlMap, name: string): IOlLayer | null {
     if (layer.get('name') === name) return layer;
   }
   return null;
+}
+
+/**
+ * Перехватчик единой обёртки `map.forEachFeatureAtPixel`. Может преобразовать
+ * `options` перед вызовом нативного метода и/или скрыть отдельные попадания от
+ * callback'а вызывающей стороны.
+ */
+export interface IForEachFeatureAtPixelInterceptor {
+  /** Преобразует `options` перед передачей в нативный метод (hitTolerance, layerFilter). */
+  transformOptions?(
+    options: IForEachFeatureAtPixelOptions | undefined,
+  ): IForEachFeatureAtPixelOptions | undefined;
+  /**
+   * Возвращает `false`, чтобы скрыть попадание `(feature, layer)` от callback'а
+   * вызывающей стороны. `layer` по контракту OpenLayers может быть `null`
+   * (unmanaged-слои, sketch-оверлеи интеракций Draw/Modify).
+   */
+  filterHit?(feature: IOlFeature, layer: IOlLayer | null): boolean;
+}
+
+type ForEachFeatureAtPixel = NonNullable<IOlMap['forEachFeatureAtPixel']>;
+
+const forEachFeatureInterceptors: IForEachFeatureAtPixelInterceptor[] = [];
+let interceptedMap: IOlMap | null = null;
+let nativeForEachFeatureAtPixel: ForEachFeatureAtPixel | null = null;
+
+function installForEachFeatureAtPixelWrapper(map: IOlMap): void {
+  if (!map.forEachFeatureAtPixel) return;
+  const callNative = map.forEachFeatureAtPixel.bind(map);
+  nativeForEachFeatureAtPixel = callNative;
+  interceptedMap = map;
+  map.forEachFeatureAtPixel = (pixel, callback, options) => {
+    let effectiveOptions = options;
+    for (const interceptor of forEachFeatureInterceptors) {
+      if (interceptor.transformOptions) {
+        effectiveOptions = interceptor.transformOptions(effectiveOptions);
+      }
+    }
+    callNative(
+      pixel,
+      (feature, layer) => {
+        for (const interceptor of forEachFeatureInterceptors) {
+          if (interceptor.filterHit && !interceptor.filterHit(feature, layer)) return;
+        }
+        callback(feature, layer);
+      },
+      effectiveOptions,
+    );
+  };
+}
+
+function uninstallForEachFeatureAtPixelWrapper(): void {
+  if (interceptedMap && nativeForEachFeatureAtPixel) {
+    interceptedMap.forEachFeatureAtPixel = nativeForEachFeatureAtPixel;
+  }
+  interceptedMap = null;
+  nativeForEachFeatureAtPixel = null;
+}
+
+/**
+ * Регистрирует перехватчик единой обёртки `map.forEachFeatureAtPixel`.
+ *
+ * Несколько модулей (`largerPointTapArea`, `drawTools`) меняют поведение
+ * `forEachFeatureAtPixel`. Независимые обёртки по схеме save/restore не
+ * композируются: `disable()` одного модуля безусловно затирает обёртку
+ * другого. Поэтому метод оборачивается ровно один раз - при регистрации
+ * первого перехватчика; каждый следующий лишь добавляется в реестр.
+ * `unregister` убирает только свой перехватчик; когда реестр пустеет,
+ * восстанавливается нативный метод. Тот же приём - `olControlStack`.
+ *
+ * Если у карты нет `forEachFeatureAtPixel`, перехватчик не регистрируется и
+ * `unregister` - no-op.
+ */
+export function registerForEachFeatureAtPixelInterceptor(
+  map: IOlMap,
+  interceptor: IForEachFeatureAtPixelInterceptor,
+): () => void {
+  if (!map.forEachFeatureAtPixel) return () => {};
+  if (forEachFeatureInterceptors.length === 0) {
+    installForEachFeatureAtPixelWrapper(map);
+  }
+  forEachFeatureInterceptors.push(interceptor);
+  return () => {
+    const index = forEachFeatureInterceptors.indexOf(interceptor);
+    if (index === -1) return;
+    forEachFeatureInterceptors.splice(index, 1);
+    if (forEachFeatureInterceptors.length === 0) {
+      uninstallForEachFeatureAtPixelWrapper();
+    }
+  };
 }
 
 let captured: IOlMap | null = null;

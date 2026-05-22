@@ -4,7 +4,11 @@ import { isRecord } from '../../core/isRecord';
 import { t } from '../../core/l10n';
 import { registerOlControl } from '../../core/olControlStack';
 import { showToast } from '../../core/toast';
-import { findLayerByName, getOlMap } from '../../core/olMap';
+import {
+  findLayerByName,
+  getOlMap,
+  registerForEachFeatureAtPixelInterceptor,
+} from '../../core/olMap';
 import type {
   IOlFeature,
   IOlInteraction,
@@ -107,7 +111,7 @@ let drawEndHandler: ((event: Record<string, unknown>) => void) | null = null;
 let modifyEndHandler: ((event: Record<string, unknown>) => void) | null = null;
 let enableToken = 0;
 let keydownHandler: ((event: KeyboardEvent) => void) | null = null;
-let savedForEachFeatureAtPixel: NonNullable<IOlMap['forEachFeatureAtPixel']> | null = null;
+let unregisterPointHitFilter: (() => void) | null = null;
 
 function isNumberPair(value: unknown): value is number[] {
   return (
@@ -336,33 +340,27 @@ function removeDrawLayer(): void {
 }
 
 function installPointHitFilter(olMap: IOlMap): void {
-  if (savedForEachFeatureAtPixel || !olMap.forEachFeatureAtPixel) return;
-  // Игровой map.on('click') в refs/game/script.js:541 через forEachFeatureAtPixel
-  // собирает попадания по слою 'points' и вызывает showInfo(piv[0]) при
-  // непустом наборе. Пока активен режим рисования (line/polygon), клик возле
-  // точки должен добавлять вершину рисунка, а не открывать попап точки.
-  // Прячем features слоя 'points' из callback'а вызывающей стороны: piv
-  // остаётся пустым, попап не открывается.
-  const saved = olMap.forEachFeatureAtPixel.bind(olMap);
-  savedForEachFeatureAtPixel = saved;
-  olMap.forEachFeatureAtPixel = (pixel, callback, options) => {
-    saved(
-      pixel,
-      (feature, layer) => {
-        if (currentMode === 'line' || currentMode === 'polygon') {
-          if (layer.get('name') === 'points') return;
-        }
-        callback(feature, layer);
-      },
-      options,
-    );
-  };
+  if (unregisterPointHitFilter) return;
+  // Игровой map.on('click') (refs/game/script.js:538) через forEachFeatureAtPixel
+  // собирает попадания по слою 'points' в массив piv. При непустом piv игра
+  // не только вызывает showInfo(piv[0]), но и пересобирает near_points - набор
+  // соседних точек для нативного свайпа между попапами (script.js:552-560).
+  // Пока активен режим рисования (line/polygon), клик возле точки должен
+  // добавлять вершину рисунка, а не открывать попап. filterHit прячет features
+  // слоя 'points' от callback'а вызывающей стороны: piv остаётся пустым -
+  // попап не открывается и near_points не обновляется. Оба эффекта
+  // самовосстанавливаются по выходе из режима рисования.
+  unregisterPointHitFilter = registerForEachFeatureAtPixelInterceptor(olMap, {
+    filterHit: (_feature, layer) => {
+      const drawing = currentMode === 'line' || currentMode === 'polygon';
+      return !(drawing && layer?.get('name') === 'points');
+    },
+  });
 }
 
 function uninstallPointHitFilter(): void {
-  if (!savedForEachFeatureAtPixel) return;
-  if (map) map.forEachFeatureAtPixel = savedForEachFeatureAtPixel;
-  savedForEachFeatureAtPixel = null;
+  unregisterPointHitFilter?.();
+  unregisterPointHitFilter = null;
 }
 
 function updateModeButtons(): void {

@@ -1,9 +1,10 @@
 import { largerPointTapArea } from './largerPointTapArea';
 import type { IOlMap } from '../../core/olMap';
 
-jest.mock('../../core/olMap', () => ({
-  getOlMap: jest.fn(),
-}));
+jest.mock('../../core/olMap', () => {
+  const actual = jest.requireActual<typeof import('../../core/olMap')>('../../core/olMap');
+  return { ...actual, getOlMap: jest.fn() };
+});
 
 import { getOlMap } from '../../core/olMap';
 
@@ -82,7 +83,7 @@ describe('largerPointTapArea enable/disable', () => {
     const callback = jest.fn();
     mockMap.forEachFeatureAtPixel([100, 200], callback);
 
-    expect(forEachOriginal).toHaveBeenCalledWith([100, 200], callback, {
+    expect(forEachOriginal).toHaveBeenCalledWith([100, 200], expect.any(Function), {
       hitTolerance: 15,
     });
   });
@@ -94,7 +95,7 @@ describe('largerPointTapArea enable/disable', () => {
     const layerFilter = jest.fn();
     mockMap.forEachFeatureAtPixel([10, 20], callback, { layerFilter });
 
-    expect(forEachOriginal).toHaveBeenCalledWith([10, 20], callback, {
+    expect(forEachOriginal).toHaveBeenCalledWith([10, 20], expect.any(Function), {
       layerFilter,
       hitTolerance: 15,
     });
@@ -106,7 +107,7 @@ describe('largerPointTapArea enable/disable', () => {
     const callback = jest.fn();
     mockMap.forEachFeatureAtPixel([10, 20], callback, { hitTolerance: 0 });
 
-    expect(forEachOriginal).toHaveBeenCalledWith([10, 20], callback, {
+    expect(forEachOriginal).toHaveBeenCalledWith([10, 20], expect.any(Function), {
       hitTolerance: 15,
     });
   });
