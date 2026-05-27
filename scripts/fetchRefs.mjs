@@ -421,7 +421,7 @@ async function main() {
         ' * How to get:',
         ' * 1. Open https://sbg-game.ru/app/ in browser',
         ' * 2. Open DevTools → Console',
-        " * 3. Run: copy([...document.styleSheets].flatMap(s => { try { return [...s.cssRules] } catch { return [] } }).filter(r => r.selectorText === ':root').map(r => r.cssText).join('\\n'))",
+        " * 3. Run: console.log([...document.styleSheets].flatMap(s => { try { return [...s.cssRules] } catch { return [] } }).filter(r => r.selectorText?.startsWith(':root')).map(r => r.cssText).join('\\n'))",
         ' * 4. Replace this file contents with the result',
         ' */',
         '',
