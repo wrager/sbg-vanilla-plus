@@ -13,7 +13,7 @@ import { isInventoryReference, MARK_FLAG_BITS, type MarkFlag } from './inventory
  * клиента должно пройти не меньше 1500мс, иначе сервер возвращает
  * `result: false` (отказ замаскированный под toggle-off). Эмпирически
  * проверено: 30 sequential-запросов с интервалом 1500мс прошли с 100%
- * успехом. Используется всеми клиентами marks-эндпоинта.
+ * успехом. Используется в `favoritesMigration.runMigration` между POST-ами.
  */
 export const MARKS_RATE_LIMIT_MS = 1500;
 
