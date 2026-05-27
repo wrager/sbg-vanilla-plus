@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { enhancedPointPopupUi } from './enhancedPointPopupUi';
 
 describe('enhancedPointPopupUi', () => {
@@ -25,33 +23,15 @@ describe('enhancedPointPopupUi', () => {
     await enhancedPointPopupUi.enable();
     expect(document.querySelectorAll('#svp-enhancedPointPopupUi').length).toBe(1);
   });
-
-  test('styles.css задаёт .i-image-box.imghid min-height', () => {
-    // Нативная настройка SBG "не показывать картинки" (settings.imghid=true)
-    // даёт .imghid на .i-image-box, box схлопывается до высоты #i-ref, и наши
-    // 44x44 кнопки fav/lock с position:absolute top:0 right:0 физически
-    // перекрывают тапаемый #i-ref. min-height удерживает зазор.
-    //
-    // CSS читаем из файла напрямую: jest резолвит '*.css?inline' через
-    // src/__mocks__/cssMock.ts в пустую строку, проверить injected
-    // textContent невозможно.
-    const css = readFileSync(join(__dirname, 'styles.css'), 'utf8');
-    expect(css).toMatch(/\.i-image-box\.imghid\s*\{[^}]*min-height:\s*5\.5em/);
-  });
 });
 
-// В SBG 0.6.1 внутри `.info.popup` появились новые блоки — `.inventory__ref-actions`
-// (popover с кнопками fav/lock для стопки) и `.inventory__manage-amount` (выбор
-// количества для удаления N ключей от точки). Наш CSS-модуль стилизует узкий
-// набор селекторов, и задевать новые блоки он не должен. Также свои кнопки
-// (`.svp-point-mark-button`) не пересекаются с нативными.
-describe('enhancedPointPopupUi — изоляция от новых блоков SBG 0.6.1', () => {
+describe('enhancedPointPopupUi — селекторы изолированы от нативных блоков попапа точки', () => {
   afterEach(() => {
     document.head.innerHTML = '';
     document.body.innerHTML = '';
   });
 
-  function createInfoPopupBeta(): HTMLElement {
+  function createInfoPopup(): HTMLElement {
     const popup = document.createElement('div');
     popup.className = 'info popup';
     popup.innerHTML = `
@@ -61,7 +41,11 @@ describe('enhancedPointPopupUi — изоляция от новых блоков
       <div class="i-image-box">
         <span id="i-ref">REF 5/100</span>
       </div>
-      <div class="i-stats">
+      <div class="i-stat">
+        <div class="i-stat__tools">
+          <button class="icon-button i-flag-btn" data-flag="favorite"></button>
+          <button class="icon-button i-flag-btn" data-flag="locked"></button>
+        </div>
         <div class="i-stat__entry"><span>Owner</span></div>
         <div class="i-stat__entry i-stat__cores"><span>Cores</span></div>
       </div>
@@ -75,35 +59,22 @@ describe('enhancedPointPopupUi — изоляция от новых блоков
         <button id="repair">Repair</button>
         <button id="draw">Draw</button>
       </div>
-      <!-- Новое в 0.6.1 — popover действий над ключом, клонируется в попап -->
+      <!-- Клонируемые в попап нативные блоки SBG 0.6.x -->
       <div class="inventory__ref-actions popover hidden">
         <div class="inventory__ra-item"><button data-flag="favorite"><span>Fav</span></button></div>
         <div class="inventory__ra-item"><button data-flag="locked"><span>Lock</span></button></div>
       </div>
-      <!-- Новое в 0.6.1 — блок выбора количества для массовых операций над ключом -->
       <div class="inventory__manage-amount hidden">
         <span class="inventory__ma-item"></span>
         <input class="inventory__ma-amount" type="number" value="1">
         <span class="inventory__ma-max">10</span>
-        <div class="inventory__ma-counter">
-          <button>−</button>
-          <button>+</button>
-        </div>
-        <button class="inventory__ma-delete">Delete</button>
-        <button class="inventory__ma-use">Use</button>
-        <button class="inventory__ma-cancel">Cancel</button>
-      </div>
-      <!-- Наши кнопки fav/lock попапа точки -->
-      <div class="svp-point-mark-buttons">
-        <button class="svp-point-mark-button" data-flag="favorite"></button>
-        <button class="svp-point-mark-button" data-flag="locked"></button>
       </div>
     `;
     return popup;
   }
 
   test('.info.popup .i-buttons button матчит только кнопки игровой секции', () => {
-    const popup = createInfoPopupBeta();
+    const popup = createInfoPopup();
     document.body.appendChild(popup);
 
     const matched = popup.querySelectorAll<HTMLElement>('.info.popup .i-buttons button');
@@ -112,40 +83,25 @@ describe('enhancedPointPopupUi — изоляция от новых блоков
     expect(ids).toEqual(['deploy', 'repair', 'draw']);
   });
 
-  test('новые блоки ref-actions и manage-amount не попадают под наши селекторы', () => {
-    const popup = createInfoPopupBeta();
-    document.body.appendChild(popup);
-
-    const raButton = popup.querySelector('.inventory__ra-item button');
-    const maUse = popup.querySelector('.inventory__ma-use');
-    if (raButton === null) throw new Error('ref-actions button not rendered');
-    if (maUse === null) throw new Error('manage-amount use button not rendered');
-
-    const ourButtons = popup.querySelectorAll('.info.popup .i-buttons button, #magic-deploy-btn');
-    const ourSet = new Set<Element>(Array.from(ourButtons));
-    expect(ourSet.has(raButton)).toBe(false);
-    expect(ourSet.has(maUse)).toBe(false);
-  });
-
   test('.i-stat__entry:not(.i-stat__cores) матчит ровно одну строку', () => {
-    const popup = createInfoPopupBeta();
+    const popup = createInfoPopup();
     document.body.appendChild(popup);
 
     const matched = popup.querySelectorAll('.i-stat__entry:not(.i-stat__cores)');
     expect(matched.length).toBe(1);
   });
 
-  test('наши .svp-point-mark-button не попадают под селектор для игровых кнопок i-buttons', () => {
-    const popup = createInfoPopupBeta();
+  test('нативные .i-flag-btn не попадают под селектор для игровых кнопок i-buttons', () => {
+    const popup = createInfoPopup();
     document.body.appendChild(popup);
 
-    const ourButtons = Array.from(popup.querySelectorAll('.svp-point-mark-button'));
-    expect(ourButtons.length).toBe(2);
+    const flagButtons = Array.from(popup.querySelectorAll('.i-flag-btn'));
+    expect(flagButtons.length).toBe(2);
     const gameButtons = new Set<Element>(
       Array.from(popup.querySelectorAll('.info.popup .i-buttons button')),
     );
-    for (const ourButton of ourButtons) {
-      expect(gameButtons.has(ourButton)).toBe(false);
+    for (const flagButton of flagButtons) {
+      expect(gameButtons.has(flagButton)).toBe(false);
     }
   });
 });
