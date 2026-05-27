@@ -105,3 +105,46 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
     }
   });
 });
+
+describe('enhancedPointPopupUi — подкраска активных fav/lock через :has()', () => {
+  afterEach(() => {
+    document.head.innerHTML = '';
+    document.body.innerHTML = '';
+  });
+
+  function createFlagBtn(flag: 'favorite' | 'locked', iconId: string): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.className = 'icon-button i-flag-btn';
+    btn.dataset.flag = flag;
+    btn.innerHTML = `<svg viewBox="0 0 576 576" height="24"><use href="#${iconId}"></use></svg>`;
+    return btn;
+  }
+
+  // Игра переключает иконку через href у <use>: filled-варианты ('fas-star',
+  // 'fas-lock') = активное состояние, outline ('fa-star', 'fas-lock-open') =
+  // неактивное. Если селектор сломается, активная подсветка пропадёт молча.
+
+  test('активная звезда матчится по :has(use[href="#fas-star"]) и не задевает outline', () => {
+    const filled = createFlagBtn('favorite', 'fas-star');
+    const outline = createFlagBtn('favorite', 'fa-star');
+    document.body.append(filled, outline);
+
+    const matched = document.querySelectorAll(
+      '.i-flag-btn[data-flag="favorite"]:has(use[href="#fas-star"])',
+    );
+    expect(matched.length).toBe(1);
+    expect(matched[0]).toBe(filled);
+  });
+
+  test('активный замок матчится по :has(use[href="#fas-lock"]) и не задевает open', () => {
+    const locked = createFlagBtn('locked', 'fas-lock');
+    const open = createFlagBtn('locked', 'fas-lock-open');
+    document.body.append(locked, open);
+
+    const matched = document.querySelectorAll(
+      '.i-flag-btn[data-flag="locked"]:has(use[href="#fas-lock"])',
+    );
+    expect(matched.length).toBe(1);
+    expect(matched[0]).toBe(locked);
+  });
+});

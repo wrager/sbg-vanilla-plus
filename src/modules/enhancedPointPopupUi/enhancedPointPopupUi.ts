@@ -8,8 +8,8 @@ export const enhancedPointPopupUi: IFeatureModule = {
   id: MODULE_ID,
   name: { en: 'Enhanced Point Popup UI', ru: 'Улучшенный UI попапа точки' },
   description: {
-    en: 'Larger game buttons, smaller metadata text',
-    ru: 'Крупные игровые кнопки, мелкий текст метаданных',
+    en: 'Larger game buttons, smaller metadata text, colored active favorite/lock',
+    ru: 'Крупные игровые кнопки, мелкий текст метаданных, подкраска активной звезды и замка',
   },
   defaultEnabled: true,
   category: 'ui',

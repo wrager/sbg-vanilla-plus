@@ -12,3 +12,18 @@
 .cores-list__level {
   font-size: 1rem;
 }
+
+/* Активные нативные кнопки fav/lock в попапе точки.
+   Игра переключает иконку через href у <use> (filled vs outline),
+   но цвет не меняет: и активная, и неактивная остаются стандартного
+   серого. :has() ловит filled-вариант и подкрашивает заливку SVG
+   теми же цветами, что были у удалённой подсистемы pointMarkButtons:
+   var(--level-1) - золото для звезды, var(--ol-brand-color) - синий
+   для замка. CSS-fill перебивает любой fill в spritesheet/use-атрибуте. */
+.i-flag-btn[data-flag='favorite']:has(use[href='#fas-star']) svg {
+  fill: var(--level-1, #ffcc33);
+}
+
+.i-flag-btn[data-flag='locked']:has(use[href='#fas-lock']) svg {
+  fill: var(--ol-brand-color, #88ccff);
+}
