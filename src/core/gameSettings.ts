@@ -17,8 +17,11 @@ import { isRecord } from './isRecord';
 
 const SETTINGS_KEY = 'settings';
 
-/** Тема игры: 'auto' - по системной теме браузера. */
-export type GameTheme = 'auto' | 'light' | 'dark';
+/** Значение `settings.theme`, при котором игра берёт тему из системной. */
+const AUTO_THEME = 'auto';
+
+/** Значение `settings.theme`, с которым игра сравнивает все остальные темы. */
+const DARK_THEME = 'dark';
 
 /**
  * Читаемые SVP настройки игры с типами их значений.
@@ -27,78 +30,89 @@ export type GameTheme = 'auto' | 'light' | 'dark';
  * (ветка `'settings'` в `getLocalStorageDefault`) пришлось бы сверять с игрой
  * при каждом её обновлении, а поле сюда дешевле добавить по факту появления
  * потребителя.
- * Тип значения не обязан быть строкой: у игры больше половины настроек -
- * boolean и number (`imghid`, `selfpos`, `opacity`, `useadu`), для них
+ * Тип значения не обязан быть строкой: у игры есть настройки-числа и
+ * настройки-флаги (`imghid`, `selfpos`, `opacity`, `useadu`), для них
  * добавляется свой guard в GAME_SETTING_GUARDS.
+ * Тема объявлена строкой, а не набором известных значений: игра сравнивает
+ * её с `'auto'` и `'dark'`, но посторонним значением не давится, и сузить
+ * тип - значит трактовать неизвестную тему иначе, чем сама игра.
  */
 interface IGameSettings {
   /** Язык интерфейса: 'sys' - по системной локали, иначе код языка i18next. */
   lang: string;
-  theme: GameTheme;
+  /** Тема: 'auto' - по системной, остальные сравниваются с 'dark'. */
+  theme: string;
 }
 
 export type GameSettingKey = keyof IGameSettings;
 
+/**
+ * Дефолты игры, которыми она пользуется при отсутствующем ключе
+ * (`getLocalStorageDefault`).
+ */
 const GAME_SETTINGS_DEFAULTS: IGameSettings = {
   lang: 'sys',
-  theme: 'auto',
+  theme: AUTO_THEME,
 };
 
-const GAME_THEMES: readonly GameTheme[] = ['auto', 'light', 'dark'];
-
 /**
- * Проверка значения из storage на соответствие типу настройки. Значение,
- * не прошедшее проверку, заменяется дефолтом игры: игрок правил ключ руками
- * или игра сменила набор допустимых значений.
+ * Проверка значения из storage на соответствие типу настройки. Не прошедшее
+ * проверку значение неотличимо для нас от отсутствующего: вернуть его как
+ * есть мешает тип, а подставлять вместо него дефолт игра бы не стала.
  */
 const GAME_SETTING_GUARDS: {
   [K in GameSettingKey]: (value: unknown) => value is IGameSettings[K];
 } = {
   lang: (value): value is string => typeof value === 'string',
-  theme: (value): value is GameTheme => GAME_THEMES.some((theme) => theme === value),
+  theme: (value): value is string => typeof value === 'string',
 };
 
 /**
- * Значение игровой настройки. Возвращает дефолт игры, если ключа нет, его
- * содержимое не разбирается как объект, поле отсутствует или его значение не
- * подходит типу настройки.
+ * Значение игровой настройки, повторяющее то, что по этому полю видит сама
+ * игра.
  *
- * Дефолт по отдельному полю - наш выбор, а не поведение игры: игровой
- * `getSettings` подставляет дефолт на весь объект, а по отсутствующему полю
- * отдаёт undefined (для `lang` это уводит i18next в `fallbackLng`). Штатным
- * путём такого объекта не бывает - `changeSettings` пишет его целиком, - но он
- * появится, когда игра добавит новое поле в дефолты: у существующих игроков
- * этого поля в ключе не окажется. Дефолт по полю даст потребителю то же
- * значение, что игрок видит в игре, вместо отсутствующего; сама игра местами
- * делает так же (`data.efmode ?? 'full'`, `data.opacity || 2`).
+ * Дефолт подставляется на весь объект и только когда его неоткуда взять:
+ * ключа нет, содержимое не разбирается как объект или `localStorage`
+ * недоступен. Так делает игровой `getJson`, на котором стоит `getSettings`.
+ *
+ * Разобранный объект отдаётся как есть, без подстановки по отдельному полю:
+ * игровой `getSettings` читает его напрямую и по отсутствующему полю отдаёт
+ * undefined. Подстановка дефолта здесь означала бы для `lang` системную
+ * локаль там, где игра уходит в `fallbackLng` своего i18next, а для `theme` -
+ * системную тему там, где игра рисует светлую.
  */
-export function readGameSetting<K extends GameSettingKey>(key: K): IGameSettings[K] {
+export function readGameSetting<K extends GameSettingKey>(key: K): IGameSettings[K] | undefined {
+  let parsed: unknown;
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw !== null) {
-      const parsed: unknown = JSON.parse(raw);
-      if (isRecord(parsed)) {
-        const value = parsed[key];
-        if (GAME_SETTING_GUARDS[key](value)) return value;
-      }
-    }
+    if (raw === null) return GAME_SETTINGS_DEFAULTS[key];
+    parsed = JSON.parse(raw);
   } catch {
     // Невалидный JSON или недоступный localStorage (private mode) - дефолт.
+    return GAME_SETTINGS_DEFAULTS[key];
   }
-  return GAME_SETTINGS_DEFAULTS[key];
+  // Игровой getJson подставляет дефолт ровно на null: разобранное значение
+  // любого другого вида идёт в чтение поля как есть, и у не-объекта поле
+  // просто не находится.
+  if (parsed === null) return GAME_SETTINGS_DEFAULTS[key];
+  if (!isRecord(parsed)) return undefined;
+
+  const value = parsed[key];
+  return GAME_SETTING_GUARDS[key](value) ? value : undefined;
 }
 
 /**
  * Тёмная ли тема у игрока на самом деле. Повторяет формулу игры: `'auto'`
- * (дефолт) разворачивается через `prefers-color-scheme`, остальные значения
- * сравниваются с `'dark'` напрямую (`is_dark` при инициализации и в
- * обработчике смены темы игрового скрипта).
+ * (дефолт) разворачивается через `prefers-color-scheme`, а любое другое
+ * значение, включая отсутствующее и постороннее, сравнивается с `'dark'`
+ * напрямую (`is_dark` при инициализации и в обработчике смены темы игрового
+ * скрипта).
  *
- * Сравнение настройки с `'dark'` без этого шага светлит интерфейс игроку с
- * дефолтной темой и тёмной системной.
+ * Сравнение настройки с `'dark'` без разворота `'auto'` светлит интерфейс
+ * игроку с дефолтной темой и тёмной системной.
  */
 export function isGameDarkTheme(): boolean {
   const theme = readGameSetting('theme');
-  if (theme === 'auto') return matchMedia('(prefers-color-scheme: dark)').matches;
-  return theme === 'dark';
+  if (theme === AUTO_THEME) return matchMedia('(prefers-color-scheme: dark)').matches;
+  return theme === DARK_THEME;
 }

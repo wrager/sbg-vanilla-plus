@@ -10,6 +10,13 @@ export interface ILocalizedString {
 /** Значение `settings.lang`, при котором игра берёт язык из системной локали. */
 const SYSTEM_LANG = 'sys';
 
+/**
+ * Локаль SVP по языку игры. Системная локаль читается только при явном
+ * `'sys'` и при отсутствующем ключе настроек, где `'sys'` - дефолт игры.
+ * Ключ без поля `lang` даёт undefined: игра в этом случае берёт не системную
+ * локаль, а `fallbackLng` своего i18next, и английский здесь ближе к тому,
+ * что видит игрок, чем язык браузера.
+ */
 export function getGameLocale(): ILocale {
   try {
     const lang = readGameSetting('lang');

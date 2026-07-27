@@ -54,34 +54,42 @@ describe('readGameSetting', () => {
     expect(readGameSetting('theme')).toBe('auto');
   });
 
-  test('поля нет в объекте: отдаёт дефолт игры для этого поля', () => {
+  // Дефолт подставляется на весь объект, а не по полю: игровой getSettings
+  // читает разобранный объект напрямую и по отсутствующему полю отдаёт
+  // undefined. Объекта без поля штатным путём не бывает - changeSettings
+  // пишет его целиком, - но он появится, когда игра добавит новое поле в
+  // дефолты: у существующих игроков этого поля в ключе не окажется.
+  test('поля нет в объекте: отдаёт undefined, а не дефолт игры', () => {
     localStorage.setItem('settings', JSON.stringify({ theme: 'light' }));
-    expect(readGameSetting('lang')).toBe('sys');
+    expect(readGameSetting('lang')).toBeUndefined();
     expect(readGameSetting('theme')).toBe('light');
   });
 
-  // Набор значений темы фиксирован игрой ('auto' / 'light' / 'dark'), поэтому
-  // постороннее значение (правка ключа руками, смена набора в игре) для нас
-  // равносильно отсутствию настройки.
-  test('тема вне набора значений игры: отдаёт дефолт игры', () => {
+  // Набор значений темы задаёт игра, но своим значением она не ограничена:
+  // сравнение с 'dark' в игре работает для любой строки. Подмена постороннего
+  // значения дефолтом 'auto' увела бы нас в системную тему там, где игра
+  // рисует светлую.
+  test('тема вне набора значений игры: отдаёт значение как есть', () => {
     localStorage.setItem('settings', JSON.stringify({ theme: 'drak' }));
-    expect(readGameSetting('theme')).toBe('auto');
+    expect(readGameSetting('theme')).toBe('drak');
   });
 
-  test('поле лежит не строкой: отдаёт дефолт игры', () => {
+  test('поле лежит не строкой: отдаёт undefined', () => {
     localStorage.setItem('settings', JSON.stringify({ lang: 42, theme: null }));
-    expect(readGameSetting('lang')).toBe('sys');
-    expect(readGameSetting('theme')).toBe('auto');
+    expect(readGameSetting('lang')).toBeUndefined();
+    expect(readGameSetting('theme')).toBeUndefined();
   });
 
-  test('в settings лежит массив: отдаёт дефолты игры', () => {
+  // Игровой getJson подставляет дефолт только на null, поэтому массив и
+  // строка доходят до чтения поля и дают undefined, а не дефолты.
+  test('в settings лежит массив: отдаёт undefined', () => {
     localStorage.setItem('settings', JSON.stringify(['ru']));
-    expect(readGameSetting('lang')).toBe('sys');
+    expect(readGameSetting('lang')).toBeUndefined();
   });
 
-  test('в settings лежит строка: отдаёт дефолты игры', () => {
+  test('в settings лежит строка: отдаёт undefined', () => {
     localStorage.setItem('settings', JSON.stringify('ru'));
-    expect(readGameSetting('lang')).toBe('sys');
+    expect(readGameSetting('lang')).toBeUndefined();
   });
 
   test('в settings лежит null: отдаёт дефолты игры', () => {
@@ -132,6 +140,22 @@ describe('isGameDarkTheme', () => {
 
   test('явная тема light: светлая независимо от системной', () => {
     localStorage.setItem('settings', JSON.stringify({ theme: 'light' }));
+    stubPrefersColorSchemeDark(true);
+    expect(isGameDarkTheme()).toBe(false);
+  });
+
+  // Формула игры сравнивает с 'dark' любое значение, кроме 'auto', поэтому
+  // посторонняя тема даёт светлый интерфейс, а не системный.
+  test('тема вне набора значений игры и тёмная системная: светлая', () => {
+    localStorage.setItem('settings', JSON.stringify({ theme: 'sepia' }));
+    stubPrefersColorSchemeDark(true);
+    expect(isGameDarkTheme()).toBe(false);
+  });
+
+  // Ключ есть, поля theme в нём нет: игровой getSettings отдаёт undefined,
+  // сравнение с 'auto' и 'dark' не проходит, интерфейс светлый.
+  test('поля theme нет в ключе и тёмная системная: светлая', () => {
+    localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
     stubPrefersColorSchemeDark(true);
     expect(isGameDarkTheme()).toBe(false);
   });

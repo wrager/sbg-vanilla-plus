@@ -90,10 +90,13 @@ describe('l10n', () => {
       expect(getGameLocale()).toBe('ru');
     });
 
-    test('settings without lang field: falls back to the game default lang "sys"', () => {
+    // Ключ есть, поля lang в нём нет: игра в этом случае не берёт системную
+    // локаль, а уходит в fallbackLng своего i18next. Системную локаль читаем
+    // только при явном 'sys' и при отсутствующем ключе.
+    test('settings without lang field: returns "en" even on a Russian browser', () => {
       localStorage.setItem('settings', JSON.stringify({ theme: 'dark' }));
       setBrowserLanguage('ru-RU');
-      expect(getGameLocale()).toBe('ru');
+      expect(getGameLocale()).toBe('en');
     });
 
     // Дефолт игры 'sys' приводит к чтению navigator.language всех, кто не
