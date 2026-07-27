@@ -1,0 +1,57 @@
+import { readGameSetting } from './gameSettings';
+
+describe('readGameSetting', () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  test('возвращает значение поля, когда ключ settings есть', () => {
+    localStorage.setItem('settings', JSON.stringify({ lang: 'ru', theme: 'dark' }));
+    expect(readGameSetting('lang')).toBe('ru');
+    expect(readGameSetting('theme')).toBe('dark');
+  });
+
+  // SBG 0.7.0 создаёт ключ только при первом изменении настройки, поэтому его
+  // отсутствие означает "игра работает по своим дефолтам", а не "настроек нет".
+  test('ключа settings нет: отдаёт дефолты игры', () => {
+    expect(readGameSetting('lang')).toBe('sys');
+    expect(readGameSetting('theme')).toBe('auto');
+  });
+
+  test('невалидный JSON: отдаёт дефолты игры', () => {
+    localStorage.setItem('settings', 'not-json');
+    expect(readGameSetting('lang')).toBe('sys');
+    expect(readGameSetting('theme')).toBe('auto');
+  });
+
+  test('поля нет в объекте: отдаёт дефолт игры для этого поля', () => {
+    localStorage.setItem('settings', JSON.stringify({ theme: 'light' }));
+    expect(readGameSetting('lang')).toBe('sys');
+    expect(readGameSetting('theme')).toBe('light');
+  });
+
+  test('поле лежит не строкой: отдаёт дефолт игры', () => {
+    localStorage.setItem('settings', JSON.stringify({ lang: 42, theme: null }));
+    expect(readGameSetting('lang')).toBe('sys');
+    expect(readGameSetting('theme')).toBe('auto');
+  });
+
+  test('settings не объект: отдаёт дефолты игры', () => {
+    localStorage.setItem('settings', JSON.stringify(['ru']));
+    expect(readGameSetting('lang')).toBe('sys');
+
+    localStorage.setItem('settings', JSON.stringify('ru'));
+    expect(readGameSetting('lang')).toBe('sys');
+
+    localStorage.setItem('settings', JSON.stringify(null));
+    expect(readGameSetting('lang')).toBe('sys');
+  });
+
+  test('читает свежее значение при каждом вызове', () => {
+    localStorage.setItem('settings', JSON.stringify({ lang: 'en' }));
+    expect(readGameSetting('lang')).toBe('en');
+
+    localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
+    expect(readGameSetting('lang')).toBe('ru');
+  });
+});

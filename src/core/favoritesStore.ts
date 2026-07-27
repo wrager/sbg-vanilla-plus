@@ -12,6 +12,7 @@
 // читает CUI как таймер остывания точки; наш модуль его не использует, но
 // сохраняет при импорте чтобы CUI не терял прогресс.
 
+import { readGameSetting } from './gameSettings';
 import { t } from './l10n';
 
 const DB_NAME = 'CUI';
@@ -119,17 +120,10 @@ function initializeCuiDb(database: IDBDatabase, transaction: IDBTransaction): vo
   ensureStore('tiles');
   ensureStore(STORE_NAME, { keyPath: 'guid' });
 
-  let isDarkMode = false;
-  try {
-    const settings: unknown = JSON.parse(localStorage.getItem('settings') ?? '{}');
-    isDarkMode =
-      typeof settings === 'object' &&
-      settings !== null &&
-      'theme' in settings &&
-      settings.theme === 'dark';
-  } catch {
-    // Невалидный JSON — используем светлую тему по умолчанию.
-  }
+  // Тема игры 'auto' (дефолт) сюда не транслируется: CUI-конфиг сеется один раз
+  // при создании базы, а инвертированная подложка нужна только при явно
+  // выбранной тёмной теме.
+  const isDarkMode = readGameSetting('theme') === 'dark';
 
   // Дефолтная конфигурация CUI v26.4.1 (refs/cui/index.js defaultConfig).
   const defaultConfig: Record<string, unknown> = {
