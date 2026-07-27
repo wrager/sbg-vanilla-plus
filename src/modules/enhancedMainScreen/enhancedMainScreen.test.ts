@@ -4,10 +4,10 @@ import { enhancedMainScreen } from './enhancedMainScreen';
 const MAIN_SCREEN_HTML = `
 <div class="topleft-container">
   <div class="self-info">
-    <div class="self-info__entry"><span data-i18n="self-info.name">Имя</span>: <span id="self-info__name" class="profile-link" style="color: var(--team-2);" data-name="wrager">wrager</span> <span id="self-info__explv" data-i18n="self-info.lv">(Ур-10)</span></div>
+    <div class="self-info__entry"><span data-i18n="self-info.name">Имя</span>: <span id="self-info__name" class="profile-link" style="color: var(--team-2);" data-name="wrager">wrager</span> <span id="self-info__explv" data-i18n="self-info.lv" data-i18n-options='{"x":"1"}'>(Ур-10)</span></div>
     <div class="self-info__entry"><span data-i18n="self-info.xp">Опыт</span>: <span id="self-info__exp">16 914 849</span> <span data-i18n="units.pts-xp">очк.</span> <span class="xp-diff" data-i18n="self-info.xp-diff" data-i18n-options='{"count":0}'>+0 очк.</span></div>
     <div class="self-info__entry"><span data-i18n="self-info.inventory">Инвентарь</span>: <span id="self-info__inv">2812</span> / <span id="self-info__inv-lim">3000</span></div>
-    <div class="self-info__entry hidden" style="display: none"><span data-i18n="self-info.position">Координаты</span>: <span id="self-info__coord">56.63270, 47.89760</span></div>
+    <div class="self-info__entry hidden"><span data-i18n="self-info.position">Координаты</span>: <span id="self-info__coord">56.63270, 47.89760</span></div>
   </div>
   <div class="game-menu">
     <button id="ops" data-i18n="menu.ops">OPS</button>
@@ -380,15 +380,17 @@ describe('enhancedMainScreen', () => {
     expect(selfInfo?.children.length).toBe(4); // четыре исходных .self-info__entry
   });
 
-  // Запись координат игра держит скрытой, пока в её настройках выключен selfpos.
-  // Модуль скрывает все записи на enable, поэтому на disable обязан вернуть
-  // именно исходный display, а не пустую строку - иначе координаты всплывут.
-  test('keeps the position entry hidden after disable', async () => {
+  // Видимостью записи координат владеет игра, и делает она это классом hidden,
+  // а не инлайновым стилем: модуль обязан вернуть на disable пустой display и
+  // не подменять собой игровое переключение selfpos.
+  test('leaves the position entry visibility to the game class after disable', async () => {
     await enhancedMainScreen.enable();
     await flushPromises();
     await enhancedMainScreen.disable();
 
-    expect(getEntryFor('self-info__coord')?.style.display).toBe('none');
+    const entry = getEntryFor('self-info__coord');
+    expect(entry?.style.display).toBe('');
+    expect(entry?.classList.contains('hidden')).toBe(true);
   });
 
   // Прибавка опыта живёт внутри записи опыта: модуль переносит в компактную
