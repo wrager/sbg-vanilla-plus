@@ -7,6 +7,27 @@ if (typeof globalThis.structuredClone !== 'function') {
   };
 }
 
+// jsdom не реализует matchMedia. Заглушка отвечает "запрос не совпадает" -
+// это дефолт светлой системной темы для isGameDarkTheme. Тесты, которым нужен
+// prefers-color-scheme: dark, подменяют matches у возвращённого объекта.
+if (typeof globalThis.matchMedia !== 'function') {
+  class MockMediaQueryList {
+    matches = false;
+    onchange: unknown = null;
+    constructor(readonly media: string) {}
+    addListener(): void {}
+    removeListener(): void {}
+    addEventListener(): void {}
+    removeEventListener(): void {}
+    dispatchEvent(): boolean {
+      return false;
+    }
+  }
+
+  (globalThis as { matchMedia: unknown }).matchMedia = (query: string): MockMediaQueryList =>
+    new MockMediaQueryList(query);
+}
+
 // jsdom 20/jest-environment-jsdom@29 не имеет Response/Headers. Минимальная реализация
 // для тестов fetch-перехватчиков (lastRefProtection и т.п.).
 if (typeof globalThis.Response === 'undefined') {

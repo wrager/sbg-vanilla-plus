@@ -13,6 +13,41 @@ import {
   SEAL_KEY,
 } from './favoritesStore';
 
+/** Подменяет ответ prefers-color-scheme на время теста. */
+function stubPrefersColorSchemeDark(matches: boolean): void {
+  const nativeMatchMedia = window.matchMedia.bind(window);
+  jest.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
+    const list = nativeMatchMedia(query);
+    Object.defineProperty(list, 'matches', { value: matches, configurable: true });
+    return list;
+  });
+}
+
+/** Читает фильтры карты из сида CUI-конфига, созданного при открытии базы. */
+async function readCuiMapFilters(): Promise<unknown> {
+  const request = indexedDB.open('CUI');
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    request.onsuccess = (): void => {
+      resolve(request.result);
+    };
+    request.onerror = (): void => {
+      reject(request.error ?? new Error('open failed'));
+    };
+  });
+
+  const read = db.transaction('config', 'readonly').objectStore('config').get('mapFilters');
+  const value = await new Promise<unknown>((resolve, reject) => {
+    read.onsuccess = (): void => {
+      resolve(read.result);
+    };
+    read.onerror = (): void => {
+      reject(read.error ?? new Error('config read failed'));
+    };
+  });
+  db.close();
+  return value;
+}
+
 // Сбрасываем и кеш, и саму БД между тестами.
 async function resetIdb(): Promise<void> {
   resetForTests();
@@ -66,6 +101,11 @@ beforeEach(async () => {
   await resetIdb();
 });
 
+afterEach(() => {
+  localStorage.clear();
+  jest.restoreAllMocks();
+});
+
 describe('favoritesStore', () => {
   test('loadFavorites на пустой БД не падает и даёт пустой кеш', async () => {
     await loadFavorites();
@@ -93,6 +133,48 @@ describe('favoritesStore', () => {
     expect(db.objectStoreNames.contains('tiles')).toBe(true);
     expect(db.objectStoreNames.contains('favorites')).toBe(true);
     db.close();
+  });
+
+  // Фильтры подложки в сиде CUI-конфига идут от темы, которую игрок видит в
+  // игре. Значения сида раньше не читал ни один тест: readGameSetting можно
+  // было сломать насмерть, и этот файл остался бы зелёным.
+  test('явная тёмная тема: сид mapFilters инвертирует подложку', async () => {
+    localStorage.setItem('settings', JSON.stringify({ theme: 'dark' }));
+
+    await loadFavorites();
+
+    expect(await readCuiMapFilters()).toMatchObject({
+      invert: 1,
+      grayscale: 1,
+      brightness: 0.75,
+    });
+  });
+
+  test('светлая тема: сид mapFilters оставляет подложку как есть', async () => {
+    localStorage.setItem('settings', JSON.stringify({ theme: 'light' }));
+
+    await loadFavorites();
+
+    expect(await readCuiMapFilters()).toMatchObject({
+      invert: 0,
+      grayscale: 0,
+      brightness: 1,
+    });
+  });
+
+  // Дефолт темы в игре - 'auto', и у игрока с тёмной системной темой игра
+  // тёмная: сид обязан развернуть 'auto' так же, как это делает игра.
+  test('тема auto и тёмная системная: сид mapFilters инвертирует подложку', async () => {
+    localStorage.setItem('settings', JSON.stringify({ theme: 'auto' }));
+    stubPrefersColorSchemeDark(true);
+
+    await loadFavorites();
+
+    expect(await readCuiMapFilters()).toMatchObject({
+      invert: 1,
+      grayscale: 1,
+      brightness: 0.75,
+    });
   });
 
   test('loadFavorites читает существующие записи в memory cache', async () => {

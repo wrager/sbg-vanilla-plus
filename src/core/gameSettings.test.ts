@@ -1,4 +1,14 @@
-import { readGameSetting } from './gameSettings';
+import { isGameDarkTheme, readGameSetting } from './gameSettings';
+
+/** Подменяет ответ prefers-color-scheme на время теста. */
+function stubPrefersColorSchemeDark(matches: boolean): void {
+  const nativeMatchMedia = window.matchMedia.bind(window);
+  jest.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
+    const list = nativeMatchMedia(query);
+    Object.defineProperty(list, 'matches', { value: matches, configurable: true });
+    return list;
+  });
+}
 
 describe('readGameSetting', () => {
   afterEach(() => {
@@ -85,5 +95,44 @@ describe('readGameSetting', () => {
 
     localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
     expect(readGameSetting('lang')).toBe('ru');
+  });
+});
+
+describe('isGameDarkTheme', () => {
+  afterEach(() => {
+    localStorage.clear();
+    jest.restoreAllMocks();
+  });
+
+  // Игра разворачивает 'auto' через prefers-color-scheme, а дефолт темы -
+  // именно 'auto', поэтому у игрока с тёмной системной темой игра тёмная,
+  // хотя в настройках 'dark' не выбран.
+  test('тема auto и тёмная системная: тёмная', () => {
+    localStorage.setItem('settings', JSON.stringify({ theme: 'auto' }));
+    stubPrefersColorSchemeDark(true);
+    expect(isGameDarkTheme()).toBe(true);
+  });
+
+  test('тема auto и светлая системная: светлая', () => {
+    localStorage.setItem('settings', JSON.stringify({ theme: 'auto' }));
+    stubPrefersColorSchemeDark(false);
+    expect(isGameDarkTheme()).toBe(false);
+  });
+
+  test('ключа settings нет и системная тёмная: тёмная (дефолт игры auto)', () => {
+    stubPrefersColorSchemeDark(true);
+    expect(isGameDarkTheme()).toBe(true);
+  });
+
+  test('явная тема dark: тёмная независимо от системной', () => {
+    localStorage.setItem('settings', JSON.stringify({ theme: 'dark' }));
+    stubPrefersColorSchemeDark(false);
+    expect(isGameDarkTheme()).toBe(true);
+  });
+
+  test('явная тема light: светлая независимо от системной', () => {
+    localStorage.setItem('settings', JSON.stringify({ theme: 'light' }));
+    stubPrefersColorSchemeDark(true);
+    expect(isGameDarkTheme()).toBe(false);
   });
 });

@@ -86,3 +86,18 @@ export function readGameSetting<K extends GameSettingKey>(key: K): IGameSettings
   }
   return GAME_SETTINGS_DEFAULTS[key];
 }
+
+/**
+ * Тёмная ли тема у игрока на самом деле. Повторяет формулу игры: `'auto'`
+ * (дефолт) разворачивается через `prefers-color-scheme`, остальные значения
+ * сравниваются с `'dark'` напрямую (`is_dark` при инициализации и в
+ * обработчике смены темы игрового скрипта).
+ *
+ * Сравнение настройки с `'dark'` без этого шага светлит интерфейс игроку с
+ * дефолтной темой и тёмной системной.
+ */
+export function isGameDarkTheme(): boolean {
+  const theme = readGameSetting('theme');
+  if (theme === 'auto') return matchMedia('(prefers-color-scheme: dark)').matches;
+  return theme === 'dark';
+}
