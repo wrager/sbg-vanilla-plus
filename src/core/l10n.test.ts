@@ -1,13 +1,34 @@
 import { getGameLocale, t } from './l10n';
 
+/** Подменяет navigator.language на время теста. Возвращает функцию восстановления. */
+function setBrowserLanguage(language: string): () => void {
+  const original = navigator.language;
+  Object.defineProperty(navigator, 'language', { value: language, configurable: true });
+  return () => {
+    Object.defineProperty(navigator, 'language', { value: original, configurable: true });
+  };
+}
+
 describe('l10n', () => {
   afterEach(() => {
     localStorage.clear();
   });
 
   describe('getGameLocale', () => {
-    test('returns "en" when no settings in localStorage', () => {
+    // SBG 0.7.0 больше не создаёт ключ settings при первом запуске: у игрока,
+    // ни разу не менявшего настройки, ключа нет, а игра показывает интерфейс
+    // по системной локали (дефолт lang: 'sys'). Раньше мы в этом случае
+    // отдавали 'en', и русский игрок видел англоязычный SVP поверх русской игры.
+    test('no settings in localStorage: falls back to the game default lang "sys" (ru browser)', () => {
+      const restore = setBrowserLanguage('ru-RU');
+      expect(getGameLocale()).toBe('ru');
+      restore();
+    });
+
+    test('no settings in localStorage: falls back to the game default lang "sys" (en browser)', () => {
+      const restore = setBrowserLanguage('en-US');
       expect(getGameLocale()).toBe('en');
+      restore();
     });
 
     test('returns "ru" when game language is ru', () => {
@@ -27,23 +48,37 @@ describe('l10n', () => {
 
     test('returns "ru" when lang is "sys" and browser locale is Russian', () => {
       localStorage.setItem('settings', JSON.stringify({ lang: 'sys' }));
-      const originalLanguage = navigator.language;
-      Object.defineProperty(navigator, 'language', { value: 'ru-RU', configurable: true });
+      const restore = setBrowserLanguage('ru-RU');
       expect(getGameLocale()).toBe('ru');
-      Object.defineProperty(navigator, 'language', { value: originalLanguage, configurable: true });
+      restore();
     });
 
     test('returns "en" when lang is "sys" and browser locale is not Russian', () => {
       localStorage.setItem('settings', JSON.stringify({ lang: 'sys' }));
-      const originalLanguage = navigator.language;
-      Object.defineProperty(navigator, 'language', { value: 'en-US', configurable: true });
+      const restore = setBrowserLanguage('en-US');
       expect(getGameLocale()).toBe('en');
-      Object.defineProperty(navigator, 'language', { value: originalLanguage, configurable: true });
+      restore();
     });
 
-    test('returns "en" when settings is invalid JSON', () => {
+    test('invalid JSON in settings: falls back to the game default lang "sys"', () => {
       localStorage.setItem('settings', 'not-json');
+      const restore = setBrowserLanguage('ru-RU');
+      expect(getGameLocale()).toBe('ru');
+      restore();
+    });
+
+    test('settings without lang field: falls back to the game default lang "sys"', () => {
+      localStorage.setItem('settings', JSON.stringify({ theme: 'dark' }));
+      const restore = setBrowserLanguage('ru-RU');
+      expect(getGameLocale()).toBe('ru');
+      restore();
+    });
+
+    test('explicit non-Russian lang wins over Russian browser locale', () => {
+      localStorage.setItem('settings', JSON.stringify({ lang: 'en' }));
+      const restore = setBrowserLanguage('ru-RU');
       expect(getGameLocale()).toBe('en');
+      restore();
     });
   });
 
