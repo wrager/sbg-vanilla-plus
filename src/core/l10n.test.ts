@@ -9,6 +9,20 @@ function setBrowserLanguage(language: string): () => void {
   };
 }
 
+/** Делает чтение navigator.language бросающим. Возвращает функцию восстановления. */
+function breakBrowserLanguage(): () => void {
+  const original = navigator.language;
+  Object.defineProperty(navigator, 'language', {
+    get: (): string => {
+      throw new Error('navigator.language is unavailable');
+    },
+    configurable: true,
+  });
+  return () => {
+    Object.defineProperty(navigator, 'language', { value: original, configurable: true });
+  };
+}
+
 describe('l10n', () => {
   afterEach(() => {
     localStorage.clear();
@@ -71,6 +85,16 @@ describe('l10n', () => {
       localStorage.setItem('settings', JSON.stringify({ theme: 'dark' }));
       const restore = setBrowserLanguage('ru-RU');
       expect(getGameLocale()).toBe('ru');
+      restore();
+    });
+
+    // Дефолт игры 'sys' приводит к чтению navigator.language всех, кто не
+    // менял язык в настройках, поэтому отказ чтения не должен ронять t():
+    // на ней держатся имена модулей, тосты и панель настроек.
+    test('reading navigator.language throws: falls back to "en"', () => {
+      localStorage.setItem('settings', JSON.stringify({ lang: 'sys' }));
+      const restore = breakBrowserLanguage();
+      expect(getGameLocale()).toBe('en');
       restore();
     });
 
