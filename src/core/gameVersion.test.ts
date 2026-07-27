@@ -206,7 +206,7 @@ describe('isSbgAtLeast', () => {
     expect(isSbgAtLeast('0.6.1')).toBe(true);
   });
 
-  test('будущая 0.6.2 >= 0.6.1 (правила 0.6.1 применяются и дальше)', () => {
+  test('0.6.2 >= 0.6.1 (правила порога применяются и к более новым версиям)', () => {
     setDetectedVersionForTest('0.6.2');
     expect(isSbgAtLeast('0.6.1')).toBe(true);
   });
@@ -237,7 +237,7 @@ describe('isSbgGreaterThan', () => {
     expect(isSbgGreaterThan('0.6.0')).toBe(true);
   });
 
-  test('будущая 0.6.2 > 0.6.0 → true', () => {
+  test('0.6.2 > 0.6.0 → true', () => {
     setDetectedVersionForTest('0.6.2');
     expect(isSbgGreaterThan('0.6.0')).toBe(true);
   });

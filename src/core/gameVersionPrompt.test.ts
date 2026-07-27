@@ -24,6 +24,13 @@ describe('ensureSbgVersionSupported', () => {
     confirmSpy.mockRestore();
   });
 
+  // Инвариант UNSUPPORTED_VERSION проверяется, а не объявляется комментарием:
+  // попади версия в список (несколько элементов, опечатка) - кейсы с confirm
+  // тихо переехали бы на совместимую ветку и остались зелёными.
+  test('UNSUPPORTED_VERSION отсутствует в списке совместимых', () => {
+    expect(SBG_COMPATIBLE_VERSIONS).not.toContain(UNSUPPORTED_VERSION);
+  });
+
   test('версия не определена — считаем совместимой, confirm не показываем', () => {
     setDetectedVersionForTest(null);
     expect(ensureSbgVersionSupported()).toBe(true);
