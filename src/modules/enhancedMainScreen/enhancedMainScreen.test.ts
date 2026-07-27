@@ -5,8 +5,9 @@ const MAIN_SCREEN_HTML = `
 <div class="topleft-container">
   <div class="self-info">
     <div class="self-info__entry"><span data-i18n="self-info.name">Имя</span>: <span id="self-info__name" class="profile-link" style="color: var(--team-2);" data-name="wrager">wrager</span> <span id="self-info__explv" data-i18n="self-info.lv">(Ур-10)</span></div>
-    <div class="self-info__entry"><span data-i18n="self-info.xp">Опыт</span>: <span id="self-info__exp">16 914 849</span> <span data-i18n="units.pts-xp">очк.</span></div>
+    <div class="self-info__entry"><span data-i18n="self-info.xp">Опыт</span>: <span id="self-info__exp">16 914 849</span> <span data-i18n="units.pts-xp">очк.</span> <span class="xp-diff" data-i18n="self-info.xp-diff" data-i18n-options='{"count":0}'>+0 очк.</span></div>
     <div class="self-info__entry"><span data-i18n="self-info.inventory">Инвентарь</span>: <span id="self-info__inv">2812</span> / <span id="self-info__inv-lim">3000</span></div>
+    <div class="self-info__entry hidden" style="display: none"><span data-i18n="self-info.position">Координаты</span>: <span id="self-info__coord">56.63270, 47.89760</span></div>
   </div>
   <div class="game-menu">
     <button id="ops" data-i18n="menu.ops">OPS</button>
@@ -376,7 +377,30 @@ describe('enhancedMainScreen', () => {
     expect(explvSpan?.parentElement).toBe(nameSpan?.parentElement);
 
     const selfInfo = document.querySelector('.self-info');
-    expect(selfInfo?.children.length).toBe(3); // три исходных .self-info__entry
+    expect(selfInfo?.children.length).toBe(4); // четыре исходных .self-info__entry
+  });
+
+  // Запись координат игра держит скрытой, пока в её настройках выключен selfpos.
+  // Модуль скрывает все записи на enable, поэтому на disable обязан вернуть
+  // именно исходный display, а не пустую строку - иначе координаты всплывут.
+  test('keeps the position entry hidden after disable', async () => {
+    await enhancedMainScreen.enable();
+    await flushPromises();
+    await enhancedMainScreen.disable();
+
+    expect(getEntryFor('self-info__coord')?.style.display).toBe('none');
+  });
+
+  // Прибавка опыта живёт внутри записи опыта: модуль переносит в компактную
+  // строку только сам счётчик, а .xp-diff остаётся в скрытой записи.
+  test('leaves the xp-diff span inside its original entry', async () => {
+    await enhancedMainScreen.enable();
+    await flushPromises();
+
+    const xpDiff = document.querySelector('.xp-diff');
+    const entry = xpDiff?.closest('.self-info__entry');
+    expect(entry).not.toBeNull();
+    expect(entry instanceof HTMLElement && entry.style.display).toBe('none');
   });
 
   test('stops stripping level prefix after disable (observer disconnected)', async () => {
