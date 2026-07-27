@@ -8,7 +8,8 @@ let browserLanguageStubbed = false;
 
 /**
  * Подменяет navigator.language на время теста. Значение кладётся собственным
- * property на navigator - штатный language это геттер на Navigator.prototype.
+ * property на navigator, поверх языка, зафиксированного на Navigator.prototype
+ * в jestPolyfills.
  */
 function stubBrowserLanguage(descriptor: PropertyDescriptor): void {
   Object.defineProperty(navigator, 'language', { ...descriptor, configurable: true });
@@ -28,7 +29,7 @@ function breakBrowserLanguage(): void {
   });
 }
 
-/** Снимает подмену: собственное property удаляется, остаётся штатный геттер. */
+/** Снимает подмену: собственное property удаляется, остаётся язык из jestPolyfills. */
 function restoreBrowserLanguage(): void {
   if (!browserLanguageStubbed) return;
   Reflect.deleteProperty(navigator, 'language');

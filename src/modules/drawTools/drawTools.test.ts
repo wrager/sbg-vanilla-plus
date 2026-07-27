@@ -739,7 +739,7 @@ describe('drawTools module', () => {
       expect(toast?.textContent).toContain('items[0]');
 
       promptSpy.mockRestore();
-      localStorage.removeItem('settings');
+      localStorage.setItem('settings', JSON.stringify({ lang: 'en' }));
     });
   });
 

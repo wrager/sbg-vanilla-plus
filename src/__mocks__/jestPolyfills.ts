@@ -7,6 +7,15 @@ if (typeof globalThis.structuredClone !== 'function') {
   };
 }
 
+// Язык браузера в тестах фиксирован. С дефолтом игры lang: 'sys' локаль SVP
+// берётся из navigator.language, поэтому все suite'ы, ожидающие английские
+// строки и не ставящие settings, зависят от него. Без фиксации ожидания держал
+// бы дефолт jsdom, а не решение проекта.
+Object.defineProperty(Navigator.prototype, 'language', {
+  value: 'en-US',
+  configurable: true,
+});
+
 // jsdom не реализует matchMedia. Заглушка отвечает "запрос не совпадает" -
 // это дефолт светлой системной темы для isGameDarkTheme. Тесты, которым нужен
 // prefers-color-scheme: dark, подменяют matches у возвращённого объекта.

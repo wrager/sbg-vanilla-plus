@@ -766,7 +766,7 @@ describe('formatDeletionSummary', () => {
       { guid: 'r1', type: 3, level: null, amount: 2 },
     ];
     expect(formatDeletionSummary(deletions)).toBe('Я5 ×10, К3 ×3, Кл ×2');
-    localStorage.removeItem('settings');
+    localStorage.setItem('settings', JSON.stringify({ lang: 'en' }));
   });
 });
 
