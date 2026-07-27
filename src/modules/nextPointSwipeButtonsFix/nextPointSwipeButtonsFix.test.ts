@@ -24,14 +24,27 @@ describe('nextPointSwipeButtonsFix metadata', () => {
 describe('nextPointSwipeButtonsFix enable/disable', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    // Структура попапа по refs/game/dom/body.html (SBG 0.7.0): #i-navigate
+    // живёт в ряду иконок .i-stat__tools, а в меню инструментов на его месте
+    // стоит #i-report.
     document.body.innerHTML = `
       <div class="info popup">
+        <ul class="info-tools popover hidden">
+          <li class="info-tools__item"><button id="i-share">Поделиться</button></li>
+          <li class="info-tools__item"><button id="i-copy-pos">Копир. коорд.</button></li>
+          <li class="info-tools__item"><button id="i-report">Пожаловаться</button></li>
+        </ul>
         <div class="i-stat">
+          <div class="i-stat__tools">
+            <button class="icon-button i-flag-btn" data-flag="favorite"></button>
+            <button class="icon-button i-flag-btn" data-flag="locked"></button>
+            <button class="icon-button" id="i-navigate"></button>
+            <button class="icon-button" id="i-tools"></button>
+          </div>
           <div class="i-buttons">
             <button id="draw"><span id="draw-count">[0]</span></button>
             <button id="discover">Изучить</button>
             <button id="repair">Починить</button>
-            <button id="i-navigate">Навигация</button>
           </div>
           <button id="deploy">Проставить</button>
         </div>
@@ -81,8 +94,10 @@ describe('nextPointSwipeButtonsFix enable/disable', () => {
     expectClickPolyfill('#draw');
     expectClickPolyfill('#discover');
     expectClickPolyfill('#repair');
-    expectClickPolyfill('#i-navigate');
     expectClickPolyfill('#deploy');
+    expectClickPolyfill('#i-navigate');
+    expectClickPolyfill('#i-tools');
+    expectClickPolyfill('#i-report');
   });
 
   test('observer ставит fallback на динамически добавленные кнопки', async () => {

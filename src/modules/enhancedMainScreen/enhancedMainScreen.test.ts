@@ -19,7 +19,14 @@ const MAIN_SCREEN_HTML = `
 <div class="bottom-container">
   <button id="toggle-follow-btn">СЛ</button>
   <button id="attack-menu">Атака</button>
-  <button id="notifs-menu">Отбивки</button>
+  <button id="notifs-menu" data-active data-direct data-alerts>
+    <span id="nm-overview">
+      <span class="nm-pings"><svg viewBox="0 0 512 512" width="8"><use href="#fas-user"></use></svg><span id="nm-pings-count">0</span></span>
+      <span class="nm-direct"><svg viewBox="0 0 512 512" width="8"><use href="#fas-at"></use></svg><span id="nm-direct-count">3</span></span>
+      <span class="nm-alerts"><svg viewBox="0 0 512 512" width="8"><use href="#fas-bell"></use></svg><span id="nm-alerts-count">2746</span></span>
+    </span>
+    <span data-i18n="menu.notifs">Пейджер</span>
+  </button>
 </div>`;
 
 function flushPromises(): Promise<void> {
