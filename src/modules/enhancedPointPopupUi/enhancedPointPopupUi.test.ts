@@ -5,6 +5,7 @@ import { enhancedPointPopupUi } from './enhancedPointPopupUi';
 /** Селекторы, чью изоляцию от нативных блоков стережёт этот файл. */
 const ACTION_BUTTONS_SELECTOR = '.info.popup .i-buttons button';
 const META_ENTRY_SELECTOR = '.i-stat__entry:not(.i-stat__cores)';
+const CORES_LEVEL_SELECTOR = '.cores-list__level';
 
 describe('enhancedPointPopupUi', () => {
   afterEach(async () => {
@@ -49,8 +50,12 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
       </div>
       <div class="i-stat">
         <div class="i-stat__tools">
-          <button class="icon-button i-flag-btn" data-flag="favorite"></button>
-          <button class="icon-button i-flag-btn" data-flag="locked"></button>
+          <button class="icon-button i-flag-btn" data-flag="favorite">
+            <svg viewBox="0 0 576 576" height="24"><use href="#fa-star"></use></svg>
+          </button>
+          <button class="icon-button i-flag-btn" data-flag="locked">
+            <svg viewBox="0 0 576 576" height="24"><use href="#fas-lock-open"></use></svg>
+          </button>
           <button class="icon-button" id="i-navigate"></button>
           <button class="icon-button" id="i-tools"></button>
         </div>
@@ -71,17 +76,59 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
           <button id="repair">Repair</button>
           <button id="draw">Draw</button>
         </div>
+        <div class="deploy-slider-wrp">
+          <div class="splide" id="deploy-slider">
+            <div class="splide__track">
+              <ul class="splide__list" id="cores-list">
+                <li class="splide__slide" data-guid="core-1" data-level="1">
+                  <span class="cores-list__level">C I</span>
+                  <span class="cores-list__amount">x4</span>
+                </li>
+                <li class="splide__slide" data-guid="core-2" data-level="8">
+                  <span class="cores-list__level">C VIII</span>
+                  <span class="cores-list__amount">x1</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div class="deploy-slider-error"></div>
+        </div>
       </div>
-      <!-- Клонируемые в попап нативные блоки SBG 0.6.x -->
-      <div class="inventory__ref-actions popover hidden">
-        <div class="inventory__ra-item"><button data-flag="favorite"><span>Fav</span></button></div>
-        <div class="inventory__ra-item"><button data-flag="locked"><span>Lock</span></button></div>
-      </div>
+    `;
+    return popup;
+  }
+
+  /**
+   * Попап инвентаря: живёт рядом с попапом точки, а не внутри него. Кнопки
+   * действий над ключом игра только позиционирует поверх попапа через Popper,
+   * в дерево попапа точки не переносит.
+   */
+  function createInventoryPopup(): HTMLElement {
+    const popup = document.createElement('div');
+    popup.className = 'inventory popup pp-center pp-mfull hidden';
+    popup.innerHTML = `
       <div class="inventory__manage-amount hidden">
-        <span class="inventory__ma-item"></span>
-        <input class="inventory__ma-amount" type="number" value="1">
-        <span class="inventory__ma-max">10</span>
+        <div class="inventory__ma-item"></div>
+        <div class="inventory__ma-counter">
+          <button data-type="minus">-</button>
+          <label><input type="number" class="inventory__ma-amount" min="1" value="1" required> / <span class="inventory__ma-max">1</span></label>
+          <button data-type="plus">+</button>
+        </div>
       </div>
+      <ul class="inventory__ref-actions popover hidden">
+        <li class="inventory__ra-item"><button data-flag="favorite">
+          <span></span>
+          <svg viewBox="0 0 576 576" height="1em"><use href="#fas-star"></use></svg>
+        </button></li>
+        <li class="inventory__ra-item"><button data-flag="locked">
+          <span></span>
+          <svg viewBox="0 0 576 576" height="1em"><use href="#fas-lock-open"></use></svg>
+        </button></li>
+        <li class="inventory__ra-item"><button id="inventory__ra-manage">
+          <span></span>
+          <svg viewBox="0 0 512 512" height="1em"><use href="#fas-trash-can"></use></svg>
+        </button></li>
+      </ul>
     `;
     return popup;
   }
@@ -122,14 +169,43 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
     expect(popup.querySelectorAll('.i-stat__entry.i-stat__cores').length).toBe(1);
   });
 
+  // Подпись уровня ядра живёт в слайдере деплоя, который лежит в том же
+  // .i-stat, что и строки метаданных: мелкий шрифт строк не должен доставаться
+  // подписи, ради чего правило .cores-list__level и заведено.
+  test('.cores-list__level не пересекается с селектором строк метаданных', () => {
+    const popup = createInfoPopup();
+    document.body.appendChild(popup);
+
+    const levels = Array.from(popup.querySelectorAll(CORES_LEVEL_SELECTOR));
+    expect(levels.length).toBe(2);
+
+    const metaEntries = new Set<Element>(Array.from(popup.querySelectorAll(META_ENTRY_SELECTOR)));
+    for (const level of levels) {
+      expect(metaEntries.has(level)).toBe(false);
+    }
+  });
+
   // Ассерты выше проверяют селекторы по копии в константах. Без этой сверки
   // сужение селектора в самой таблице стилей прошло бы молча: разметка бы
   // соответствовала игре, тесты остались бы зелёными, а кнопки потеряли размер.
+  // Сверяются разобранные браузером селекторы, а не текст файла: группировка
+  // через запятую и переносы prettier не должны ломать проверку.
   test('проверяемые селекторы стоят в styles.css модуля', () => {
-    const css = readFileSync(join(__dirname, 'styles.css'), 'utf8');
+    const style = document.createElement('style');
+    style.textContent = readFileSync(join(__dirname, 'styles.css'), 'utf8');
+    document.head.appendChild(style);
 
-    expect(css).toContain(`${ACTION_BUTTONS_SELECTOR} {`);
-    expect(css).toContain(`${META_ENTRY_SELECTOR} {`);
+    const sheet = style.sheet;
+    if (!sheet) throw new Error('styles.css не разобрался в CSSOM');
+    const selectors = new Set(
+      Array.from(sheet.cssRules)
+        .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+        .flatMap((rule) => rule.selectorText.split(',').map((selector) => selector.trim())),
+    );
+
+    expect(selectors).toContain(ACTION_BUTTONS_SELECTOR);
+    expect(selectors).toContain(META_ENTRY_SELECTOR);
+    expect(selectors).toContain(CORES_LEVEL_SELECTOR);
   });
 
   test('нативные .i-flag-btn не попадают под селектор для игровых кнопок i-buttons', () => {
@@ -144,6 +220,29 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
     for (const flagButton of flagButtons) {
       expect(gameButtons.has(flagButton)).toBe(false);
     }
+  });
+
+  // Кнопки действий над ключом лежат в попапе инвентаря и попадают под наши
+  // селекторы только если те потеряют привязку к .info.popup.
+  test('кнопки попапа инвентаря не попадают под селекторы попапа точки', () => {
+    document.body.append(createInfoPopup(), createInventoryPopup());
+
+    const inventoryButtons = Array.from(document.querySelectorAll('.inventory.popup button'));
+    expect(inventoryButtons.length).toBeGreaterThan(0);
+
+    const pointPopupButtons = new Set<Element>(
+      Array.from(document.querySelectorAll(ACTION_BUTTONS_SELECTOR)),
+    );
+    for (const button of inventoryButtons) {
+      expect(pointPopupButtons.has(button)).toBe(false);
+    }
+
+    // Активная звезда в списке действий над ключом не должна подсвечиваться
+    // правилом для флаговых кнопок попапа точки.
+    expect(
+      document.querySelectorAll('.i-flag-btn[data-flag="favorite"]:has(use[href="#fas-star"])')
+        .length,
+    ).toBe(0);
   });
 });
 
