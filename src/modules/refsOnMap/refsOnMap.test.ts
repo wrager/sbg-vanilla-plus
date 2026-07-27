@@ -140,7 +140,7 @@ function makeMap(
 
 function setupInventoryDom(): void {
   document.body.innerHTML = `
-    <div class="inventory">
+    <div class="inventory popup pp-center pp-mfull hidden">
       <div class="tabs inventory__tabs" data-anchor=".inventory__content">
         <span class="tabs__tab inventory__tab active" data-tab="1">Cores</span>
         <span class="tabs__tab inventory__tab" data-tab="3">Keys</span>
@@ -642,8 +642,9 @@ describe('refsOnMap viewer', () => {
   });
 
   test('keeps inventory hidden when it was hidden before opening viewer', () => {
-    // Если до showViewer инвентарь уже был .hidden (странный сценарий, но
-    // допустимый), restoreGameUi должен сохранить это состояние.
+    // Закрытый инвентарь - его исходное состояние в разметке игры, и попасть
+    // в showViewer можно не только из открытого: restoreGameUi обязан не
+    // открывать то, чего игрок не открывал.
     const inventory = document.querySelector('.inventory') as HTMLElement;
     inventory.classList.add('hidden');
 
