@@ -1,6 +1,7 @@
 import {
   compareVersions,
   getDetectedVersion,
+  SBG_COMPATIBLE_VERSIONS,
   initGameVersionDetection,
   installGameVersionCapture,
   isModuleConflictingWithCurrentGame,
@@ -174,6 +175,15 @@ describe('getDetectedVersion без init', () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation();
     expect(getDetectedVersion()).toBeNull();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('initGameVersionDetection'));
+  });
+});
+
+describe('SBG_COMPATIBLE_VERSIONS', () => {
+  // Список попадает в описание userscript и в текст confirm как есть, поэтому
+  // первой читается версия, под которую скрипт делается сейчас.
+  test('версии перечислены от новой к старой', () => {
+    const sorted = [...SBG_COMPATIBLE_VERSIONS].sort((a, b) => compareVersions(b, a));
+    expect([...SBG_COMPATIBLE_VERSIONS]).toEqual(sorted);
   });
 });
 
