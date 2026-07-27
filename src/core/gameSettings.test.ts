@@ -3,6 +3,7 @@ import { readGameSetting } from './gameSettings';
 describe('readGameSetting', () => {
   afterEach(() => {
     localStorage.clear();
+    jest.restoreAllMocks();
   });
 
   test('возвращает значение поля, когда ключ settings есть', () => {
@@ -20,6 +21,25 @@ describe('readGameSetting', () => {
 
   test('невалидный JSON: отдаёт дефолты игры', () => {
     localStorage.setItem('settings', 'not-json');
+    expect(readGameSetting('lang')).toBe('sys');
+    expect(readGameSetting('theme')).toBe('auto');
+  });
+
+  // Значение ключа - пустая строка: JSON.parse('') кидает исключение, и мы
+  // приходим к дефолту через catch.
+  test('в ключе settings пустая строка: отдаёт дефолты игры', () => {
+    localStorage.setItem('settings', '');
+    expect(readGameSetting('lang')).toBe('sys');
+    expect(readGameSetting('theme')).toBe('auto');
+  });
+
+  // В Chrome с отключёнными cookies обращение к localStorage кидает
+  // SecurityError; для нас это то же, что игра со своими дефолтами.
+  test('localStorage недоступен: отдаёт дефолты игры', () => {
+    jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('SecurityError: access to localStorage is denied');
+    });
+
     expect(readGameSetting('lang')).toBe('sys');
     expect(readGameSetting('theme')).toBe('auto');
   });
