@@ -11,6 +11,9 @@ if (typeof globalThis.structuredClone !== 'function') {
 // берётся из navigator.language, поэтому все suite'ы, ожидающие английские
 // строки и не ставящие settings, зависят от него. Без фиксации ожидания держал
 // бы дефолт jsdom, а не решение проекта.
+// Свойство остаётся нередактируемым, как и нативное: тип navigator.language
+// объявлен readonly, поэтому присваивание всё равно не компилируется, а
+// подмена в тестах идёт через defineProperty поверх (configurable: true).
 Object.defineProperty(Navigator.prototype, 'language', {
   value: 'en-US',
   configurable: true,
@@ -18,7 +21,9 @@ Object.defineProperty(Navigator.prototype, 'language', {
 
 // jsdom не реализует matchMedia. Заглушка отвечает "запрос не совпадает" -
 // это дефолт светлой системной темы для isGameDarkTheme. Тесты, которым нужен
-// prefers-color-scheme: dark, подменяют matches у возвращённого объекта.
+// prefers-color-scheme: dark, подменяют саму matchMedia через jest.spyOn:
+// объект ответа создаётся на каждый вызов, поэтому править matches у уже
+// возвращённого смысла не имеет.
 if (typeof globalThis.matchMedia !== 'function') {
   class MockMediaQueryList {
     matches = false;
@@ -33,8 +38,11 @@ if (typeof globalThis.matchMedia !== 'function') {
     }
   }
 
-  (globalThis as { matchMedia: unknown }).matchMedia = (query: string): MockMediaQueryList =>
-    new MockMediaQueryList(query);
+  Object.defineProperty(globalThis, 'matchMedia', {
+    value: (query: string): MockMediaQueryList => new MockMediaQueryList(query),
+    writable: true,
+    configurable: true,
+  });
 }
 
 // jsdom 20/jest-environment-jsdom@29 не имеет Response/Headers. Минимальная реализация
