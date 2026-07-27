@@ -30,6 +30,14 @@ describe('readGameSetting', () => {
     expect(readGameSetting('theme')).toBe('light');
   });
 
+  // Набор значений темы фиксирован игрой ('auto' / 'light' / 'dark'), поэтому
+  // постороннее значение (правка ключа руками, смена набора в игре) для нас
+  // равносильно отсутствию настройки.
+  test('тема вне набора значений игры: отдаёт дефолт игры', () => {
+    localStorage.setItem('settings', JSON.stringify({ theme: 'drak' }));
+    expect(readGameSetting('theme')).toBe('auto');
+  });
+
   test('поле лежит не строкой: отдаёт дефолт игры', () => {
     localStorage.setItem('settings', JSON.stringify({ lang: 42, theme: null }));
     expect(readGameSetting('lang')).toBe('sys');

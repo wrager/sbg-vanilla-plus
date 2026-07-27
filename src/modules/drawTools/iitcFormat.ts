@@ -1,3 +1,5 @@
+import { isRecord } from '../../core/isRecord';
+
 export interface IIitcLatLng {
   lat: number;
   lng: number;
@@ -37,10 +39,6 @@ export class IitcParseError extends Error {
     super(`${reason} at ${path}`);
     this.name = 'IitcParseError';
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function isLatLng(value: unknown): value is IIitcLatLng {

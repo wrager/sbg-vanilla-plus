@@ -13,31 +13,54 @@
  * "английский язык", а в другом - "светлая тема".
  */
 
+import { isRecord } from './isRecord';
+
 const SETTINGS_KEY = 'settings';
 
+/** Тема игры: 'auto' - по системной теме браузера. */
+export type GameTheme = 'auto' | 'light' | 'dark';
+
 /**
- * Дефолты игры для настроек, которые читает SVP.
+ * Читаемые SVP настройки игры с типами их значений.
  *
  * Дублируется только читаемое SVP подмножество: полный объект настроек игры
  * (refs/game/script.js:3699) пришлось бы сверять с игрой при каждом её
  * обновлении, а поле сюда дешевле добавить по факту появления потребителя.
+ * Тип значения не обязан быть строкой: у игры больше половины настроек -
+ * boolean и number (`imghid`, `selfpos`, `opacity`, `useadu`), для них
+ * добавляется свой guard в GAME_SETTING_GUARDS.
  */
-const GAME_SETTINGS_DEFAULTS = {
-  /** Язык интерфейса: 'sys' - по системной локали, иначе код языка. */
-  lang: 'sys',
-  /** Тема: 'auto' - по системной, иначе 'light' / 'dark'. */
-  theme: 'auto',
-} as const;
-
-export type GameSettingKey = keyof typeof GAME_SETTINGS_DEFAULTS;
-
-function isStringKeyedObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+interface IGameSettings {
+  /** Язык интерфейса: 'sys' - по системной локали, иначе код языка i18next. */
+  lang: string;
+  theme: GameTheme;
 }
+
+export type GameSettingKey = keyof IGameSettings;
+
+const GAME_SETTINGS_DEFAULTS: IGameSettings = {
+  lang: 'sys',
+  theme: 'auto',
+};
+
+const GAME_THEMES: readonly GameTheme[] = ['auto', 'light', 'dark'];
+
+/**
+ * Проверка значения из storage на соответствие типу настройки. Значение,
+ * не прошедшее проверку, заменяется дефолтом игры: игрок правил ключ руками
+ * или игра сменила набор допустимых значений.
+ */
+const GAME_SETTING_GUARDS: {
+  [K in GameSettingKey]: (value: unknown) => value is IGameSettings[K];
+} = {
+  lang: (value): value is string => typeof value === 'string',
+  theme: (value): value is GameTheme => GAME_THEMES.some((theme) => theme === value),
+};
 
 /**
  * Значение игровой настройки. Возвращает дефолт игры, если ключа нет, его
- * содержимое не разбирается как объект, поле отсутствует или лежит не строкой.
+ * содержимое не разбирается как объект, поле отсутствует или его значение не
+ * подходит типу настройки.
  *
  * Дефолт по отдельному полю - наш выбор, а не поведение игры: игровой
  * `getSettings` подставляет дефолт на весь объект, а по отсутствующему полю
@@ -48,14 +71,14 @@ function isStringKeyedObject(value: unknown): value is Record<string, unknown> {
  * значение, что игрок видит в игре, вместо отсутствующего; сама игра местами
  * делает так же (`data.efmode ?? 'full'`, `data.opacity || 2`).
  */
-export function readGameSetting(key: GameSettingKey): string {
+export function readGameSetting<K extends GameSettingKey>(key: K): IGameSettings[K] {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw !== null) {
       const parsed: unknown = JSON.parse(raw);
-      if (isStringKeyedObject(parsed)) {
+      if (isRecord(parsed)) {
         const value = parsed[key];
-        if (typeof value === 'string') return value;
+        if (GAME_SETTING_GUARDS[key](value)) return value;
       }
     }
   } catch {
