@@ -159,4 +159,14 @@ describe('isGameDarkTheme', () => {
     stubPrefersColorSchemeDark(true);
     expect(isGameDarkTheme()).toBe(false);
   });
+
+  // Функцию зовут из обработчика апгрейда базы избранного: исключение оттуда
+  // убило бы транзакцию вместе с загрузкой избранного.
+  test('отказ matchMedia: светлая, без исключения наружу', () => {
+    jest.spyOn(window, 'matchMedia').mockImplementation(() => {
+      throw new Error('SecurityError: matchMedia is not available');
+    });
+
+    expect(isGameDarkTheme()).toBe(false);
+  });
 });

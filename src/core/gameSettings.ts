@@ -113,6 +113,20 @@ export function readGameSetting<K extends GameSettingKey>(key: K): IGameSettings
  */
 export function isGameDarkTheme(): boolean {
   const theme = readGameSetting('theme');
-  if (theme === AUTO_THEME) return matchMedia('(prefers-color-scheme: dark)').matches;
+  if (theme === AUTO_THEME) return prefersDarkColorScheme();
   return theme === DARK_THEME;
+}
+
+/**
+ * Системная тема тёмная. Отказ `matchMedia` считается светлой темой: функцию
+ * зовут из обработчика апгрейда базы избранного, где исключение убило бы
+ * транзакцию вместе с загрузкой избранного, а чтение настроек до появления
+ * этой ветки бросить не могло.
+ */
+function prefersDarkColorScheme(): boolean {
+  try {
+    return matchMedia('(prefers-color-scheme: dark)').matches;
+  } catch {
+    return false;
+  }
 }
