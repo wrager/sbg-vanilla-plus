@@ -714,6 +714,12 @@ describe('calculateDeletions', () => {
 // --- formatDeletionSummary ---
 
 describe('formatDeletionSummary', () => {
+  // Язык игры снимается здесь, а не в конце кейса: упавший ассерт пропустил бы
+  // восстановление, и русская локаль утекла бы в соседние тесты файла.
+  afterEach(() => {
+    localStorage.removeItem('settings');
+  });
+
   test('returns empty string for no deletions', () => {
     expect(formatDeletionSummary([])).toBe('');
   });
@@ -766,7 +772,6 @@ describe('formatDeletionSummary', () => {
       { guid: 'r1', type: 3, level: null, amount: 2 },
     ];
     expect(formatDeletionSummary(deletions)).toBe('Я5 ×10, К3 ×3, Кл ×2');
-    localStorage.setItem('settings', JSON.stringify({ lang: 'en' }));
   });
 });
 

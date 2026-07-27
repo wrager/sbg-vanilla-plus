@@ -606,6 +606,12 @@ describe('drawTools module', () => {
   });
 
   describe('paste import error toasts', () => {
+    // Язык игры снимается здесь, а не в конце кейса: упавший ассерт пропустил
+    // бы восстановление, и русская локаль утекла бы в соседние тесты файла.
+    afterEach(() => {
+      localStorage.removeItem('settings');
+    });
+
     function clickPaste(): void {
       const pasteButton = document.querySelectorAll<HTMLButtonElement>(
         '.svp-draw-tools-tool-button',
@@ -739,7 +745,6 @@ describe('drawTools module', () => {
       expect(toast?.textContent).toContain('items[0]');
 
       promptSpy.mockRestore();
-      localStorage.setItem('settings', JSON.stringify({ lang: 'en' }));
     });
   });
 
