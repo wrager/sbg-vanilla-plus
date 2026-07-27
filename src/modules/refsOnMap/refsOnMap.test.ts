@@ -141,9 +141,9 @@ function makeMap(
 function setupInventoryDom(): void {
   document.body.innerHTML = `
     <div class="inventory">
-      <div class="inventory__tabs">
-        <span class="inventory__tab active" data-tab="1">Cores</span>
-        <span class="inventory__tab" data-tab="3">Keys</span>
+      <div class="tabs inventory__tabs" data-anchor=".inventory__content">
+        <span class="tabs__tab inventory__tab active" data-tab="1">Cores</span>
+        <span class="tabs__tab inventory__tab" data-tab="3">Keys</span>
       </div>
       <div class="inventory__controls">
         <div><button id="inventory-sort">Sort</button></div>

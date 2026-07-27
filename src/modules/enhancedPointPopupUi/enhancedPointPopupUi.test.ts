@@ -1,4 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { enhancedPointPopupUi } from './enhancedPointPopupUi';
+
+/** Селекторы, чью изоляцию от нативных блоков стережёт этот файл. */
+const ACTION_BUTTONS_SELECTOR = '.info.popup .i-buttons button';
+const META_ENTRY_SELECTOR = '.i-stat__entry:not(.i-stat__cores)';
 
 describe('enhancedPointPopupUi', () => {
   afterEach(async () => {
@@ -45,19 +51,26 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
         <div class="i-stat__tools">
           <button class="icon-button i-flag-btn" data-flag="favorite"></button>
           <button class="icon-button i-flag-btn" data-flag="locked"></button>
+          <button class="icon-button" id="i-navigate"></button>
+          <button class="icon-button" id="i-tools"></button>
         </div>
+        <div class="i-stat__entry"><span>Distance</span></div>
         <div class="i-stat__entry"><span>Owner</span></div>
+        <div class="i-stat__entry"><span>Lines</span></div>
+        <div class="i-stat__entry"><span>Regions</span></div>
         <div class="i-stat__entry i-stat__cores"><span>Cores</span></div>
-      </div>
-      <div class="discover i-multi-button">
-        <button class="discover-mod" data-wish="2"></button>
-        <button id="discover"><span>Discover</span></button>
-        <button class="discover-mod" data-wish="3"></button>
-      </div>
-      <div class="i-buttons">
-        <button id="deploy">Deploy</button>
-        <button id="repair">Repair</button>
-        <button id="draw">Draw</button>
+        <div class="i-buttons">
+          <div class="discover i-multi-button">
+            <button class="discover-mod" data-wish="2"></button>
+            <button id="discover"><span>Discover</span></button>
+            <button class="discover-mod" data-wish="3"></button>
+          </div>
+          <div class="deploy i-multi-button" data-magic="NaN">
+            <button id="deploy">Deploy</button>
+          </div>
+          <button id="repair">Repair</button>
+          <button id="draw">Draw</button>
+        </div>
       </div>
       <!-- Клонируемые в попап нативные блоки SBG 0.6.x -->
       <div class="inventory__ref-actions popover hidden">
@@ -73,22 +86,50 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
     return popup;
   }
 
-  test('.info.popup .i-buttons button матчит только кнопки игровой секции', () => {
+  // min-height: 72px обязан достаться всем кнопкам действий, включая вложенные
+  // в обёртки .i-multi-button: сузь кто-нибудь селектор до прямых потомков, и
+  // discover с deploy молча потеряли бы размер.
+  test('.info.popup .i-buttons button матчит все кнопки действий, включая вложенные в i-multi-button', () => {
     const popup = createInfoPopup();
     document.body.appendChild(popup);
 
-    const matched = popup.querySelectorAll<HTMLElement>('.info.popup .i-buttons button');
-    expect(matched.length).toBe(3);
-    const ids = Array.from(matched).map((el) => el.id);
-    expect(ids).toEqual(['deploy', 'repair', 'draw']);
+    const matched = Array.from(popup.querySelectorAll<HTMLElement>(ACTION_BUTTONS_SELECTOR));
+    expect(matched.length).toBe(6);
+
+    const matchedSet = new Set<Element>(matched);
+    for (const selector of [
+      '.discover-mod[data-wish="2"]',
+      '#discover',
+      '.discover-mod[data-wish="3"]',
+      '#deploy',
+      '#repair',
+      '#draw',
+    ]) {
+      const button = popup.querySelector(selector);
+      if (!button) throw new Error(`${selector} отсутствует в фикстуре`);
+      expect(matchedSet.has(button)).toBe(true);
+    }
   });
 
-  test('.i-stat__entry:not(.i-stat__cores) матчит ровно одну строку', () => {
+  test('.i-stat__entry:not(.i-stat__cores) матчит все строки метаданных, кроме ячейки ядер', () => {
     const popup = createInfoPopup();
     document.body.appendChild(popup);
 
-    const matched = popup.querySelectorAll('.i-stat__entry:not(.i-stat__cores)');
-    expect(matched.length).toBe(1);
+    // В попапе игры четыре строки метаданных (дистанция, владелец, линии,
+    // регионы) плюс отдельная ячейка ядер, которой мелкий шрифт не нужен.
+    const matched = popup.querySelectorAll(META_ENTRY_SELECTOR);
+    expect(matched.length).toBe(4);
+    expect(popup.querySelectorAll('.i-stat__entry.i-stat__cores').length).toBe(1);
+  });
+
+  // Ассерты выше проверяют селекторы по копии в константах. Без этой сверки
+  // сужение селектора в самой таблице стилей прошло бы молча: разметка бы
+  // соответствовала игре, тесты остались бы зелёными, а кнопки потеряли размер.
+  test('проверяемые селекторы стоят в styles.css модуля', () => {
+    const css = readFileSync(join(__dirname, 'styles.css'), 'utf8');
+
+    expect(css).toContain(`${ACTION_BUTTONS_SELECTOR} {`);
+    expect(css).toContain(`${META_ENTRY_SELECTOR} {`);
   });
 
   test('нативные .i-flag-btn не попадают под селектор для игровых кнопок i-buttons', () => {
@@ -98,7 +139,7 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
     const flagButtons = Array.from(popup.querySelectorAll('.i-flag-btn'));
     expect(flagButtons.length).toBe(2);
     const gameButtons = new Set<Element>(
-      Array.from(popup.querySelectorAll('.info.popup .i-buttons button')),
+      Array.from(popup.querySelectorAll(ACTION_BUTTONS_SELECTOR)),
     );
     for (const flagButton of flagButtons) {
       expect(gameButtons.has(flagButton)).toBe(false);
