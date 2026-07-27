@@ -44,13 +44,17 @@ describe('readGameSetting', () => {
     expect(readGameSetting('theme')).toBe('auto');
   });
 
-  test('settings не объект: отдаёт дефолты игры', () => {
+  test('в settings лежит массив: отдаёт дефолты игры', () => {
     localStorage.setItem('settings', JSON.stringify(['ru']));
     expect(readGameSetting('lang')).toBe('sys');
+  });
 
+  test('в settings лежит строка: отдаёт дефолты игры', () => {
     localStorage.setItem('settings', JSON.stringify('ru'));
     expect(readGameSetting('lang')).toBe('sys');
+  });
 
+  test('в settings лежит null: отдаёт дефолты игры', () => {
     localStorage.setItem('settings', JSON.stringify(null));
     expect(readGameSetting('lang')).toBe('sys');
   });
