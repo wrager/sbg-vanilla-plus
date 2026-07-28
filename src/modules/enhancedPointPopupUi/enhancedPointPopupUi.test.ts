@@ -2,10 +2,19 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { enhancedPointPopupUi } from './enhancedPointPopupUi';
 
-/** Селекторы, чью изоляцию от нативных блоков стережёт этот файл. */
+/**
+ * Селекторы, чью изоляцию от нативных блоков стережёт этот файл. Записаны так
+ * же, как в styles.css модуля, включая кавычки: тест ниже сверяет каждый с
+ * разобранной таблицей стилей, и правка правила без правки константы красит
+ * сверку.
+ */
 const ACTION_BUTTONS_SELECTOR = '.info.popup .i-buttons button';
 const META_ENTRY_SELECTOR = '.i-stat__entry:not(.i-stat__cores)';
 const CORES_LEVEL_SELECTOR = '.cores-list__level';
+const ACTIVE_FAVORITE_TINT_SELECTOR =
+  ".i-flag-btn[data-flag='favorite']:has(use[href='#fas-star']) svg";
+const ACTIVE_LOCKED_TINT_SELECTOR =
+  ".i-flag-btn[data-flag='locked']:has(use[href='#fas-lock']) svg";
 
 describe('enhancedPointPopupUi', () => {
   afterEach(async () => {
@@ -206,6 +215,8 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
     expect(selectors).toContain(ACTION_BUTTONS_SELECTOR);
     expect(selectors).toContain(META_ENTRY_SELECTOR);
     expect(selectors).toContain(CORES_LEVEL_SELECTOR);
+    expect(selectors).toContain(ACTIVE_FAVORITE_TINT_SELECTOR);
+    expect(selectors).toContain(ACTIVE_LOCKED_TINT_SELECTOR);
   });
 
   test('нативные .i-flag-btn не попадают под селектор для игровых кнопок i-buttons', () => {
@@ -237,12 +248,16 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
       expect(pointPopupButtons.has(button)).toBe(false);
     }
 
-    // Активная звезда в списке действий над ключом не должна подсвечиваться
-    // правилом для флаговых кнопок попапа точки.
-    expect(
-      document.querySelectorAll('.i-flag-btn[data-flag="favorite"]:has(use[href="#fas-star"])')
-        .length,
-    ).toBe(0);
+    // Кнопка избранного в списке действий над ключом несёт ту же активную
+    // звезду, что и кнопка попапа точки, а от подкраски её удерживает один
+    // только класс .i-flag-btn в правиле.
+    const inventoryStarIcon = document.querySelector(
+      '.inventory__ra-item button[data-flag="favorite"]:has(use[href="#fas-star"]) svg',
+    );
+    if (!inventoryStarIcon) throw new Error('активная звезда отсутствует в фикстуре инвентаря');
+
+    const tinted = Array.from(document.querySelectorAll(ACTIVE_FAVORITE_TINT_SELECTOR));
+    expect(tinted).not.toContain(inventoryStarIcon);
   });
 });
 
@@ -264,27 +279,28 @@ describe('enhancedPointPopupUi — подкраска активных fav/lock 
   // 'fas-lock') = активное состояние, outline ('fa-star', 'fas-lock-open') =
   // неактивное. Если селектор сломается, активная подсветка пропадёт молча.
 
-  test('активная звезда матчится по :has(use[href="#fas-star"]) и не задевает outline', () => {
+  /** Иконка кнопки - именно её заливку красит правило подкраски. */
+  function readIcon(button: HTMLButtonElement): Element {
+    const icon = button.querySelector('svg');
+    if (!icon) throw new Error('svg отсутствует в фикстуре кнопки');
+    return icon;
+  }
+
+  test('подкрашивается иконка активной звезды и не задевается outline', () => {
     const filled = createFlagBtn('favorite', 'fas-star');
     const outline = createFlagBtn('favorite', 'fa-star');
     document.body.append(filled, outline);
 
-    const matched = document.querySelectorAll(
-      '.i-flag-btn[data-flag="favorite"]:has(use[href="#fas-star"])',
-    );
-    expect(matched.length).toBe(1);
-    expect(matched[0]).toBe(filled);
+    const tinted = Array.from(document.querySelectorAll(ACTIVE_FAVORITE_TINT_SELECTOR));
+    expect(tinted).toEqual([readIcon(filled)]);
   });
 
-  test('активный замок матчится по :has(use[href="#fas-lock"]) и не задевает open', () => {
+  test('подкрашивается иконка активного замка и не задевается open', () => {
     const locked = createFlagBtn('locked', 'fas-lock');
     const open = createFlagBtn('locked', 'fas-lock-open');
     document.body.append(locked, open);
 
-    const matched = document.querySelectorAll(
-      '.i-flag-btn[data-flag="locked"]:has(use[href="#fas-lock"])',
-    );
-    expect(matched.length).toBe(1);
-    expect(matched[0]).toBe(locked);
+    const tinted = Array.from(document.querySelectorAll(ACTIVE_LOCKED_TINT_SELECTOR));
+    expect(tinted).toEqual([readIcon(locked)]);
   });
 });
