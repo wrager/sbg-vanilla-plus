@@ -27,7 +27,7 @@
 - Для инвентаря используй централизованные сущности: `src/core/inventoryTypes.ts`, `src/core/inventoryCache.ts`, `src/core/gameConstants.ts`.
 - Для OL Map используй `src/core/olMap.ts` (`getOlMap`, `findLayerByName`, `createDragPanControl`) вместо локальных хаков.
 - Для цветов темы используй `src/core/themeColors.ts` и CSS custom properties (не хардкодь цвета).
-- Для игровых настроек (`localStorage['settings']`) используй `src/core/gameSettings.ts`: `readGameSetting(key)` и `isGameDarkTheme()`. Свой парсер со своим фолбэком не пиши — ключа у игрока может не быть, и дефолты игры знает только этот модуль.
+- Для игровых настроек (`localStorage['settings']`) используй `src/core/gameSettings.ts`: `readGameSetting(key)`, `isGameDarkTheme()` и `isGameCartoDbBaselayer()`. Свой парсер со своим фолбэком не пиши — ключа у игрока может не быть, и дефолты игры знает только этот модуль.
 - В UI-компоновке переноси (reparent) оригинальные интерактивные DOM-узлы, не заменяй их текстовыми копиями.
 
 ## Тесты и качество
