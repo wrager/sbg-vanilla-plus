@@ -33,9 +33,10 @@ const CARTO_DB_BASE = 'cdb';
  * (ветка `'settings'` в `getLocalStorageDefault`) пришлось бы сверять с игрой
  * при каждом её обновлении, а поле сюда дешевле добавить по факту появления
  * потребителя.
- * Тип значения не обязан быть строкой: у игры есть настройки-числа и
- * настройки-флаги (`imghid`, `selfpos`, `opacity`, `useadu`), для них
- * добавляется свой guard в GAME_SETTING_GUARDS.
+ * Все читаемые сейчас настройки строковые, поэтому и проверка значения из
+ * storage одна на всех. У игры есть настройки-числа и настройки-флаги
+ * (`imghid`, `selfpos`, `opacity`, `useadu`): первое такое поле здесь
+ * потребует развести проверку по ключу.
  * Тема объявлена строкой, а не набором известных значений: игра сравнивает
  * её с `'auto'` и `'dark'`, но посторонним значением не давится, и сузить
  * тип - значит трактовать неизвестную тему иначе, чем сама игра.
@@ -59,19 +60,6 @@ const GAME_SETTINGS_DEFAULTS: IGameSettings = {
   lang: 'sys',
   theme: AUTO_THEME,
   base: CARTO_DB_BASE,
-};
-
-/**
- * Проверка значения из storage на соответствие типу настройки. Не прошедшее
- * проверку значение неотличимо для нас от отсутствующего: вернуть его как
- * есть мешает тип, а подставлять вместо него дефолт игра бы не стала.
- */
-const GAME_SETTING_GUARDS: {
-  [K in GameSettingKey]: (value: unknown) => value is IGameSettings[K];
-} = {
-  lang: (value): value is string => typeof value === 'string',
-  theme: (value): value is string => typeof value === 'string',
-  base: (value): value is string => typeof value === 'string',
 };
 
 /**
@@ -109,8 +97,10 @@ export function readGameSetting<K extends GameSettingKey>(key: K): IGameSettings
   if (parsed === null) return GAME_SETTINGS_DEFAULTS[key];
   if (!isRecord(parsed)) return undefined;
 
+  // Значение не того типа неотличимо для нас от отсутствующего: вернуть его
+  // как есть мешает тип, а подставлять вместо него дефолт игра бы не стала.
   const value = parsed[key];
-  return GAME_SETTING_GUARDS[key](value) ? value : undefined;
+  return typeof value === 'string' ? value : undefined;
 }
 
 /**
