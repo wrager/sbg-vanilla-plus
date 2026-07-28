@@ -23,7 +23,9 @@ const GAME_SCRIPT_PATTERN = /^script@/;
 
 // Патчи: [поисковая строка, замена]. Каждый патч — одна замена.
 const PATCHES: [search: string, replacement: string][] = [
-  // Экспозиция showInfo на window для прямого открытия попапа (refs/game/script.js:1687)
+  // Экспозиция showInfo на window для прямого открытия попапа (функция showInfo
+  // в игровом скрипте; якорем стоит `class Bitfield` - объявление в том же
+  // scope, поднятое выше showInfo)
   ['class Bitfield', 'window.showInfo = showInfo; class Bitfield'],
 ];
 

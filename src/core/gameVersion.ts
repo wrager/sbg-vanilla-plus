@@ -10,13 +10,13 @@
 export const SBG_COMPATIBLE_VERSIONS: readonly string[] = ['0.7.0', '0.6.2'];
 
 // Сервер SBG ставит заголовок `x-sbg-version` на ответы обычных игровых
-// запросов к /api/*. Игра сама берёт версию именно так: в
-// refs/game/script.js:363 после fetch /api/self выполняется
-// `VERSION = request.headers.get('x-sbg-version')`. CUI
-// (refs/cui/index.js:1494-1501, функция getSelfData делает
-// `fetch('/api/self')` и читает заголовок из ответа) и EUI
-// (refs/eui/src/informer/index.js:8-11, тот же паттерн с /api/self)
-// поступают так же.
+// запросов к /api/*. Игра сама берёт версию именно так: в блоке загрузки
+// после `apiQuery('self')` выполняется
+// `VERSION = request.headers.get('x-sbg-version')` - переменная `request` там
+// держит ответ fetch, не запрос. CUI (функция `getSelfData` в
+// refs/cui/index.js делает `fetch('/api/self')` и читает тот же заголовок) и
+// EUI (функция `Informer` в refs/eui/src/informer/index.js, тот же паттерн с
+// /api/self) поступают так же.
 //
 // Мы НЕ делаем отдельного запроса за версией: перехватываем window.fetch
 // в document-start (до загрузки игрового скрипта) и на первом ответе с
