@@ -1,3 +1,4 @@
+import { stubPrefersColorSchemeDark } from '../__mocks__/jestPolyfills';
 import {
   exportFavoritesToJson,
   loadFavorites,
@@ -12,16 +13,6 @@ import {
   LOCK_MIGRATION_DONE_KEY,
   SEAL_KEY,
 } from './favoritesStore';
-
-/** Подменяет ответ prefers-color-scheme на время теста. */
-function stubPrefersColorSchemeDark(matches: boolean): void {
-  const nativeMatchMedia = window.matchMedia.bind(window);
-  jest.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
-    const list = nativeMatchMedia(query);
-    Object.defineProperty(list, 'matches', { value: matches, configurable: true });
-    return list;
-  });
-}
 
 /** Читает фильтры карты из сида CUI-конфига, созданного при открытии базы. */
 async function readCuiMapFilters(): Promise<unknown> {

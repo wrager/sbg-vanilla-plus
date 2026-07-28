@@ -19,11 +19,25 @@ Object.defineProperty(Navigator.prototype, 'language', {
   configurable: true,
 });
 
+/**
+ * Подменяет ответ prefers-color-scheme на время теста. Снимается общим
+ * `jest.restoreAllMocks()`.
+ *
+ * Подменяется сама matchMedia, а не поле matches у ранее возвращённого
+ * объекта: заглушка ниже создаёт объект ответа на каждый вызов, и правка
+ * готового на следующий вызов не влияет.
+ */
+export function stubPrefersColorSchemeDark(matches: boolean): void {
+  const nativeMatchMedia = window.matchMedia.bind(window);
+  jest.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
+    const list = nativeMatchMedia(query);
+    Object.defineProperty(list, 'matches', { value: matches, configurable: true });
+    return list;
+  });
+}
+
 // jsdom не реализует matchMedia. Заглушка отвечает "запрос не совпадает" -
-// это дефолт светлой системной темы для isGameDarkTheme. Тесты, которым нужен
-// prefers-color-scheme: dark, подменяют саму matchMedia через jest.spyOn:
-// объект ответа создаётся на каждый вызов, поэтому править matches у уже
-// возвращённого смысла не имеет.
+// это дефолт светлой системной темы для isGameDarkTheme.
 if (typeof globalThis.matchMedia !== 'function') {
   class MockMediaQueryList {
     matches = false;

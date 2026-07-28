@@ -1,14 +1,5 @@
+import { stubPrefersColorSchemeDark } from '../__mocks__/jestPolyfills';
 import { isGameCartoDbBaselayer, isGameDarkTheme, readGameSetting } from './gameSettings';
-
-/** Подменяет ответ prefers-color-scheme на время теста. */
-function stubPrefersColorSchemeDark(matches: boolean): void {
-  const nativeMatchMedia = window.matchMedia.bind(window);
-  jest.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
-    const list = nativeMatchMedia(query);
-    Object.defineProperty(list, 'matches', { value: matches, configurable: true });
-    return list;
-  });
-}
 
 describe('readGameSetting', () => {
   afterEach(() => {

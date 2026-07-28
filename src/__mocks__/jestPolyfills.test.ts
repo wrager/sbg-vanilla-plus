@@ -1,3 +1,5 @@
+import { stubPrefersColorSchemeDark } from './jestPolyfills';
+
 // Полифиллы подключены через setupFiles, поэтому здесь проверяется не импорт,
 // а то состояние окружения, на которое опираются остальные suite'ы.
 describe('jestPolyfills', () => {
@@ -23,17 +25,13 @@ describe('jestPolyfills', () => {
 
   // Подменяется сама функция: объект ответа создаётся на каждый вызов, поэтому
   // правка matches у ранее возвращённого на следующий вызов не влияет.
-  test('matchMedia подменяется через spyOn целиком', () => {
-    const nativeMatchMedia = window.matchMedia.bind(window);
-    const stubbed = jest.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
-      const list = nativeMatchMedia(query);
-      Object.defineProperty(list, 'matches', { value: true, configurable: true });
-      return list;
-    });
+  test('stubPrefersColorSchemeDark подменяет ответ заглушки', () => {
+    stubPrefersColorSchemeDark(true);
     try {
       expect(matchMedia('(prefers-color-scheme: dark)').matches).toBe(true);
     } finally {
-      stubbed.mockRestore();
+      jest.restoreAllMocks();
     }
+    expect(matchMedia('(prefers-color-scheme: dark)').matches).toBe(false);
   });
 });
