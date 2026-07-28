@@ -18,8 +18,9 @@ const MAIN_SCREEN_HTML = `
   <div class="effects"></div>
 </div>
 <div class="bottom-container">
-  <button id="toggle-follow-btn">СЛ</button>
-  <button id="attack-menu">Атака</button>
+  <input type="checkbox" id="toggle-follow" class="hidden" />
+  <button id="toggle-follow-btn" data-i18n="menu.follow">СЛ</button>
+  <button id="attack-menu" data-i18n="menu.attack">Атака</button>
   <button id="notifs-menu" data-active data-direct data-alerts>
     <span id="nm-overview">
       <span class="nm-pings"><svg viewBox="0 0 512 512" width="8"><use href="#fas-user"></use></svg><span id="nm-pings-count">0</span></span>
@@ -28,6 +29,7 @@ const MAIN_SCREEN_HTML = `
     </span>
     <span data-i18n="menu.notifs">Пейджер</span>
   </button>
+  <button id="reload"><svg viewBox="0 0 512 512" height="1em"><use href="#fas-arrow-rotate-right"></use></svg></button>
 </div>`;
 
 function flushPromises(): Promise<void> {
@@ -403,6 +405,23 @@ describe('enhancedMainScreen', () => {
     const entry = xpDiff?.closest('.self-info__entry');
     expect(entry).not.toBeNull();
     expect(entry instanceof HTMLElement && entry.style.display).toBe('none');
+  });
+
+  // Модуль перестраивает только верхнюю панель, нижний ряд остаётся игровым:
+  // высота #attack-menu в styles.css задана в пунктах и держится на соседях,
+  // которых расставляет игра. Реструктурируй модуль этот ряд - фиксированная
+  // высота поехала бы вместе с ним.
+  test('leaves the bottom container markup untouched', async () => {
+    const bottomContainer = document.querySelector('.bottom-container');
+    if (!bottomContainer) throw new Error('.bottom-container not found');
+    const markupBeforeEnable = bottomContainer.innerHTML;
+
+    await enhancedMainScreen.enable();
+    await flushPromises();
+    expect(bottomContainer.innerHTML).toBe(markupBeforeEnable);
+
+    await enhancedMainScreen.disable();
+    expect(bottomContainer.innerHTML).toBe(markupBeforeEnable);
   });
 
   test('stops stripping level prefix after disable (observer disconnected)', async () => {
