@@ -181,7 +181,7 @@ src/
 │   ├── toast.ts             # Тост-уведомления поверх игры
 │   ├── bugReport.ts         # Формирование баг-репортов
 │   ├── l10n.ts              # Локализация (en/ru)
-│   ├── gameSettings.ts      # Чтение игровых настроек (lang, theme)
+│   ├── gameSettings.ts      # Чтение игровых настроек (lang, theme, base)
 │   └── settings/
 │       ├── types.ts         # ISvpSettings
 │       ├── defaults.ts      # Дефолтные настройки
