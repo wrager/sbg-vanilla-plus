@@ -51,9 +51,9 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
     const popup = document.createElement('div');
     popup.className = 'info popup';
     popup.innerHTML = `
-      <div class="i-header">
-        <span class="i-title">Test point</span>
-      </div>
+      <h3 class="i-header popup-header">
+        <span id="i-title">Test point</span>
+      </h3>
       <div class="i-image-box">
         <span id="i-ref">REF 5/100</span>
       </div>
@@ -73,18 +73,6 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
         <div class="i-stat__entry"><span>Lines</span></div>
         <div class="i-stat__entry"><span>Regions</span></div>
         <div class="i-stat__entry i-stat__cores"><span>Cores</span></div>
-        <div class="i-buttons">
-          <div class="discover i-multi-button">
-            <button class="discover-mod" data-wish="2"></button>
-            <button id="discover"><span>Discover</span></button>
-            <button class="discover-mod" data-wish="3"></button>
-          </div>
-          <div class="deploy i-multi-button" data-magic="NaN">
-            <button id="deploy">Deploy</button>
-          </div>
-          <button id="repair">Repair</button>
-          <button id="draw">Draw</button>
-        </div>
         <div class="deploy-slider-wrp">
           <div class="splide" id="deploy-slider">
             <div class="splide__track">
@@ -102,7 +90,20 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
           </div>
           <div class="deploy-slider-error"></div>
         </div>
+        <div class="i-buttons">
+          <div class="discover i-multi-button">
+            <button class="discover-mod" data-wish="2" disabled></button>
+            <button id="discover" disabled><span>Discover</span></button>
+            <button class="discover-mod" data-wish="3" disabled></button>
+          </div>
+          <div class="deploy i-multi-button" data-magic="NaN">
+            <button id="deploy" data-state="deploy" disabled>Deploy</button>
+          </div>
+          <button id="repair" disabled>Repair</button>
+          <button id="draw" disabled>Draw</button>
+        </div>
       </div>
+      <button class="popup-close">[x]</button>
     `;
     return popup;
   }
