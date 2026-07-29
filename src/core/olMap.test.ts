@@ -513,6 +513,45 @@ describe('registerForEachFeatureAtPixelInterceptor', () => {
     expect(native).toHaveBeenLastCalledWith([1, 1], callback);
   });
 
+  test('unregistering the last interceptor restores the prototype method', async () => {
+    // Игровая карта держит forEachFeatureAtPixel на прототипе ol.Map. Если
+    // снятие обёртки кладёт на экземпляр bound-копию, метод навсегда остаётся
+    // собственным свойством и перестаёт видеть замену на прототипе.
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const prototypeMethod = jest.fn();
+    const map: IOlMap = Object.create({
+      forEachFeatureAtPixel: prototypeMethod,
+    }) as IOlMap;
+    Object.assign(map, {
+      getView: createFakeView,
+      getSize: () => [800, 600],
+      getLayers: () => ({ getArray: () => [] }),
+      getInteractions: () => ({ getArray: () => [] }),
+      addLayer: jest.fn(),
+      removeLayer: jest.fn(),
+      updateSize: jest.fn(),
+    });
+
+    const unregister = registerForEachFeatureAtPixelInterceptor(map, {});
+    unregister();
+
+    expect(Object.prototype.hasOwnProperty.call(map, 'forEachFeatureAtPixel')).toBe(false);
+    const callback = jest.fn();
+    map.forEachFeatureAtPixel?.([2, 2], callback);
+    expect(prototypeMethod).toHaveBeenLastCalledWith([2, 2], callback);
+  });
+
+  test('unregistering restores an own method patched by someone else', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const foreignPatch = map.forEachFeatureAtPixel;
+
+    const unregister = registerForEachFeatureAtPixelInterceptor(map, {});
+    unregister();
+
+    expect(map.forEachFeatureAtPixel).toBe(foreignPatch);
+  });
+
   test('returns the native result to the caller', async () => {
     const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
     const map = createForEachMap();

@@ -255,16 +255,21 @@ export interface IForEachFeatureAtPixelInterceptor {
   filterHit?(feature: IOlFeature, layer: IOlLayer | null): boolean;
 }
 
-type ForEachFeatureAtPixel = NonNullable<IOlMap['forEachFeatureAtPixel']>;
-
 const forEachFeatureInterceptors: IForEachFeatureAtPixelInterceptor[] = [];
 let interceptedMap: IOlMap | null = null;
-let nativeForEachFeatureAtPixel: ForEachFeatureAtPixel | null = null;
+/*
+ * Дескриптор `forEachFeatureAtPixel` на самом экземпляре карты до установки
+ * обёртки; undefined, если метод приходил с прототипа ol.Map. Различие важно
+ * при снятии: прототипный метод возвращается удалением собственного свойства,
+ * иначе экземпляр навсегда остаётся с собственной копией и перестаёт видеть
+ * замену на прототипе.
+ */
+let ownForEachFeatureDescriptor: PropertyDescriptor | undefined;
 
 function installForEachFeatureAtPixelWrapper(map: IOlMap): void {
   if (!map.forEachFeatureAtPixel) return;
   const callNative = map.forEachFeatureAtPixel.bind(map);
-  nativeForEachFeatureAtPixel = callNative;
+  ownForEachFeatureDescriptor = Object.getOwnPropertyDescriptor(map, 'forEachFeatureAtPixel');
   interceptedMap = map;
   map.forEachFeatureAtPixel = (pixel, callback, options) => {
     let effectiveOptions = options;
@@ -290,11 +295,15 @@ function installForEachFeatureAtPixelWrapper(map: IOlMap): void {
 }
 
 function uninstallForEachFeatureAtPixelWrapper(): void {
-  if (interceptedMap && nativeForEachFeatureAtPixel) {
-    interceptedMap.forEachFeatureAtPixel = nativeForEachFeatureAtPixel;
+  if (interceptedMap) {
+    if (ownForEachFeatureDescriptor) {
+      Object.defineProperty(interceptedMap, 'forEachFeatureAtPixel', ownForEachFeatureDescriptor);
+    } else {
+      delete interceptedMap.forEachFeatureAtPixel;
+    }
   }
   interceptedMap = null;
-  nativeForEachFeatureAtPixel = null;
+  ownForEachFeatureDescriptor = undefined;
 }
 
 /**
