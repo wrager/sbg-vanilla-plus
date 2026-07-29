@@ -34,4 +34,13 @@ describe('jestPolyfills', () => {
     }
     expect(matchMedia('(prefers-color-scheme: dark)').matches).toBe(false);
   });
+
+  test('stubPrefersColorSchemeDark не трогает ответ на посторонний запрос', () => {
+    stubPrefersColorSchemeDark(true);
+    try {
+      expect(matchMedia('(orientation: portrait)').matches).toBe(false);
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
 });

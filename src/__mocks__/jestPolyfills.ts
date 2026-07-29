@@ -19,6 +19,8 @@ Object.defineProperty(Navigator.prototype, 'language', {
   configurable: true,
 });
 
+const PREFERS_DARK_QUERY = '(prefers-color-scheme: dark)';
+
 /**
  * Подменяет ответ prefers-color-scheme на время теста. Снимается общим
  * `jest.restoreAllMocks()`.
@@ -26,12 +28,18 @@ Object.defineProperty(Navigator.prototype, 'language', {
  * Подменяется сама matchMedia, а не поле matches у ранее возвращённого
  * объекта: заглушка ниже создаёт объект ответа на каждый вызов, и правка
  * готового на следующий вызов не влияет.
+ *
+ * Ответ правится только у своего запроса: подмена `matches` у всех подряд
+ * заодно переключала бы ориентацию, ширину и прочие условия, о которых тест не
+ * просил.
  */
 export function stubPrefersColorSchemeDark(matches: boolean): void {
   const nativeMatchMedia = window.matchMedia.bind(window);
   jest.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
     const list = nativeMatchMedia(query);
-    Object.defineProperty(list, 'matches', { value: matches, configurable: true });
+    if (query === PREFERS_DARK_QUERY) {
+      Object.defineProperty(list, 'matches', { value: matches, configurable: true });
+    }
     return list;
   });
 }
