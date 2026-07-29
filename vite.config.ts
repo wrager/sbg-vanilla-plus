@@ -12,7 +12,12 @@ export default defineConfig(({ command }) => {
   const isDev = command === 'serve';
 
   const name = 'SBG Vanilla+';
-  const description = `UI/UX enhancements for SBG (SBG v${SBG_COMPATIBLE_VERSIONS.join(' / ')})`;
+  // Префикс версии - у каждой: со списком из двух и более записей `v` перед
+  // первой читается как часть номера только для неё.
+  const supportedVersions = SBG_COMPATIBLE_VERSIONS.map((sbgVersion) => `v${sbgVersion}`).join(
+    ' / ',
+  );
+  const description = `UI/UX enhancements for SBG ${supportedVersions}`;
 
   return {
     define: {

@@ -7,6 +7,66 @@ if (typeof globalThis.structuredClone !== 'function') {
   };
 }
 
+// Язык браузера в тестах фиксирован. С дефолтом игры lang: 'sys' локаль SVP
+// берётся из navigator.language, поэтому все suite'ы, ожидающие английские
+// строки и не ставящие settings, зависят от него. Без фиксации ожидания держал
+// бы дефолт jsdom, а не решение проекта.
+// Свойство остаётся нередактируемым, как и нативное: тип navigator.language
+// объявлен readonly, поэтому присваивание всё равно не компилируется, а
+// подмена в тестах идёт через defineProperty поверх (configurable: true).
+Object.defineProperty(Navigator.prototype, 'language', {
+  value: 'en-US',
+  configurable: true,
+});
+
+const PREFERS_DARK_QUERY = '(prefers-color-scheme: dark)';
+
+/**
+ * Подменяет ответ prefers-color-scheme на время теста. Снимается общим
+ * `jest.restoreAllMocks()`.
+ *
+ * Подменяется сама matchMedia, а не поле matches у ранее возвращённого
+ * объекта: заглушка ниже создаёт объект ответа на каждый вызов, и правка
+ * готового на следующий вызов не влияет.
+ *
+ * Ответ правится только у своего запроса: подмена `matches` у всех подряд
+ * заодно переключала бы ориентацию, ширину и прочие условия, о которых тест не
+ * просил.
+ */
+export function stubPrefersColorSchemeDark(matches: boolean): void {
+  const nativeMatchMedia = window.matchMedia.bind(window);
+  jest.spyOn(window, 'matchMedia').mockImplementation((query: string) => {
+    const list = nativeMatchMedia(query);
+    if (query === PREFERS_DARK_QUERY) {
+      Object.defineProperty(list, 'matches', { value: matches, configurable: true });
+    }
+    return list;
+  });
+}
+
+// jsdom не реализует matchMedia. Заглушка отвечает "запрос не совпадает" -
+// это дефолт светлой системной темы для isGameDarkTheme.
+if (typeof globalThis.matchMedia !== 'function') {
+  class MockMediaQueryList {
+    matches = false;
+    onchange: unknown = null;
+    constructor(readonly media: string) {}
+    addListener(): void {}
+    removeListener(): void {}
+    addEventListener(): void {}
+    removeEventListener(): void {}
+    dispatchEvent(): boolean {
+      return false;
+    }
+  }
+
+  Object.defineProperty(globalThis, 'matchMedia', {
+    value: (query: string): MockMediaQueryList => new MockMediaQueryList(query),
+    writable: true,
+    configurable: true,
+  });
+}
+
 // jsdom 20/jest-environment-jsdom@29 не имеет Response/Headers. Минимальная реализация
 // для тестов fetch-перехватчиков (lastRefProtection и т.п.).
 if (typeof globalThis.Response === 'undefined') {

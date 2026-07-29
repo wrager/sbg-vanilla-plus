@@ -1,3 +1,5 @@
+import { readGameSetting } from './gameSettings';
+
 export type ILocale = 'en' | 'ru';
 
 export interface ILocalizedString {
@@ -5,18 +7,26 @@ export interface ILocalizedString {
   ru: string;
 }
 
+/** Значение `settings.lang`, при котором игра берёт язык из системной локали. */
+const SYSTEM_LANG = 'sys';
+
+/**
+ * Локаль SVP по языку игры. Системная локаль читается только при явном
+ * `'sys'` и при отсутствующем ключе настроек, где `'sys'` - дефолт игры.
+ * Ключ без поля `lang` даёт undefined: игра в этом случае берёт не системную
+ * локаль, а `fallbackLng` своего i18next, и английский здесь ближе к тому,
+ * что видит игрок, чем язык браузера.
+ */
 export function getGameLocale(): ILocale {
   try {
-    const raw = localStorage.getItem('settings');
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw);
-      if (typeof parsed === 'object' && parsed !== null && 'lang' in parsed) {
-        if (parsed.lang === 'ru') return 'ru';
-        if (parsed.lang === 'sys' && navigator.language.startsWith('ru')) return 'ru';
-      }
-    }
+    const lang = readGameSetting('lang');
+    if (lang === 'ru') return 'ru';
+    if (lang === SYSTEM_LANG && navigator.language.startsWith('ru')) return 'ru';
   } catch {
-    // ignore parse errors
+    // Отказ чтения системной локали - английский. Дефолт игры 'sys' приводит
+    // сюда всех, кто не менял язык в настройках, а t() зовётся при рендере
+    // имён модулей, тостов и панели настроек: исключение положило бы весь
+    // интерфейс SVP.
   }
   return 'en';
 }

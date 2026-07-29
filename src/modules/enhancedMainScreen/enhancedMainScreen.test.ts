@@ -4,9 +4,10 @@ import { enhancedMainScreen } from './enhancedMainScreen';
 const MAIN_SCREEN_HTML = `
 <div class="topleft-container">
   <div class="self-info">
-    <div class="self-info__entry"><span data-i18n="self-info.name">Имя</span>: <span id="self-info__name" class="profile-link" style="color: var(--team-2);" data-name="wrager">wrager</span> <span id="self-info__explv" data-i18n="self-info.lv">(Ур-10)</span></div>
-    <div class="self-info__entry"><span data-i18n="self-info.xp">Опыт</span>: <span id="self-info__exp">16 914 849</span> <span data-i18n="units.pts-xp">очк.</span></div>
+    <div class="self-info__entry"><span data-i18n="self-info.name">Имя</span>: <span id="self-info__name" class="profile-link" style="color: var(--team-2);" data-name="wrager">wrager</span> <span id="self-info__explv" data-i18n="self-info.lv" data-i18n-options='{"x":"1"}'>(Ур-10)</span></div>
+    <div class="self-info__entry"><span data-i18n="self-info.xp">Опыт</span>: <span id="self-info__exp">16 914 849</span> <span data-i18n="units.pts-xp">очк.</span> <span class="xp-diff" data-i18n="self-info.xp-diff" data-i18n-options='{"count":0}'>+0 очк.</span></div>
     <div class="self-info__entry"><span data-i18n="self-info.inventory">Инвентарь</span>: <span id="self-info__inv">2812</span> / <span id="self-info__inv-lim">3000</span></div>
+    <div class="self-info__entry hidden"><span data-i18n="self-info.position">Координаты</span>: <span id="self-info__coord">56.63270, 47.89760</span></div>
   </div>
   <div class="game-menu">
     <button id="ops" data-i18n="menu.ops">OPS</button>
@@ -17,9 +18,18 @@ const MAIN_SCREEN_HTML = `
   <div class="effects"></div>
 </div>
 <div class="bottom-container">
-  <button id="toggle-follow-btn">СЛ</button>
-  <button id="attack-menu">Атака</button>
-  <button id="notifs-menu">Отбивки</button>
+  <input type="checkbox" id="toggle-follow" class="hidden" />
+  <button id="toggle-follow-btn" data-i18n="menu.follow">СЛ</button>
+  <button id="attack-menu" data-i18n="menu.attack">Атака</button>
+  <button id="notifs-menu" data-active data-direct data-alerts>
+    <span id="nm-overview">
+      <span class="nm-pings"><svg viewBox="0 0 512 512" width="8"><use href="#fas-user"></use></svg><span id="nm-pings-count">0</span></span>
+      <span class="nm-direct"><svg viewBox="0 0 512 512" width="8"><use href="#fas-at"></use></svg><span id="nm-direct-count">3</span></span>
+      <span class="nm-alerts"><svg viewBox="0 0 512 512" width="8"><use href="#fas-bell"></use></svg><span id="nm-alerts-count">2746</span></span>
+    </span>
+    <span data-i18n="menu.notifs">Пейджер</span>
+  </button>
+  <button id="reload"><svg viewBox="0 0 512 512" height="1em"><use href="#fas-arrow-rotate-right"></use></svg></button>
 </div>`;
 
 function flushPromises(): Promise<void> {
@@ -369,7 +379,49 @@ describe('enhancedMainScreen', () => {
     expect(explvSpan?.parentElement).toBe(nameSpan?.parentElement);
 
     const selfInfo = document.querySelector('.self-info');
-    expect(selfInfo?.children.length).toBe(3); // три исходных .self-info__entry
+    expect(selfInfo?.children.length).toBe(4); // четыре исходных .self-info__entry
+  });
+
+  // Видимостью записи координат владеет игра, и делает она это классом hidden,
+  // а не инлайновым стилем: модуль обязан вернуть на disable пустой display и
+  // не подменять собой игровое переключение selfpos.
+  test('leaves the position entry visibility to the game class after disable', async () => {
+    await enhancedMainScreen.enable();
+    await flushPromises();
+    await enhancedMainScreen.disable();
+
+    const entry = getEntryFor('self-info__coord');
+    expect(entry?.style.display).toBe('');
+    expect(entry?.classList.contains('hidden')).toBe(true);
+  });
+
+  // Прибавка опыта живёт внутри записи опыта: модуль переносит в компактную
+  // строку только сам счётчик, а .xp-diff остаётся в скрытой записи.
+  test('leaves the xp-diff span inside its original entry', async () => {
+    await enhancedMainScreen.enable();
+    await flushPromises();
+
+    const xpDiff = document.querySelector('.xp-diff');
+    const entry = xpDiff?.closest('.self-info__entry');
+    expect(entry).not.toBeNull();
+    expect(entry instanceof HTMLElement && entry.style.display).toBe('none');
+  });
+
+  // Модуль перестраивает только верхнюю панель, нижний ряд остаётся игровым:
+  // высота #attack-menu в styles.css задана в пунктах и держится на соседях,
+  // которых расставляет игра. Реструктурируй модуль этот ряд - фиксированная
+  // высота поехала бы вместе с ним.
+  test('leaves the bottom container markup untouched', async () => {
+    const bottomContainer = document.querySelector('.bottom-container');
+    if (!bottomContainer) throw new Error('.bottom-container not found');
+    const markupBeforeEnable = bottomContainer.innerHTML;
+
+    await enhancedMainScreen.enable();
+    await flushPromises();
+    expect(bottomContainer.innerHTML).toBe(markupBeforeEnable);
+
+    await enhancedMainScreen.disable();
+    expect(bottomContainer.innerHTML).toBe(markupBeforeEnable);
   });
 
   test('stops stripping level prefix after disable (observer disconnected)', async () => {

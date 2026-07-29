@@ -1,6 +1,7 @@
 import {
   compareVersions,
   getDetectedVersion,
+  SBG_COMPATIBLE_VERSIONS,
   initGameVersionDetection,
   installGameVersionCapture,
   isModuleConflictingWithCurrentGame,
@@ -177,6 +178,15 @@ describe('getDetectedVersion без init', () => {
   });
 });
 
+describe('SBG_COMPATIBLE_VERSIONS', () => {
+  // Список попадает в описание userscript и в текст confirm как есть, поэтому
+  // первой читается версия, под которую скрипт делается сейчас.
+  test('версии перечислены от новой к старой', () => {
+    const sorted = [...SBG_COMPATIBLE_VERSIONS].sort((a, b) => compareVersions(b, a));
+    expect([...SBG_COMPATIBLE_VERSIONS]).toEqual(sorted);
+  });
+});
+
 describe('compareVersions', () => {
   test('равные версии', () => {
     expect(compareVersions('0.6.1', '0.6.1')).toBe(0);
@@ -206,7 +216,7 @@ describe('isSbgAtLeast', () => {
     expect(isSbgAtLeast('0.6.1')).toBe(true);
   });
 
-  test('будущая 0.6.2 >= 0.6.1 (правила 0.6.1 применяются и дальше)', () => {
+  test('0.6.2 >= 0.6.1 (правила порога применяются и к более новым версиям)', () => {
     setDetectedVersionForTest('0.6.2');
     expect(isSbgAtLeast('0.6.1')).toBe(true);
   });
@@ -237,7 +247,7 @@ describe('isSbgGreaterThan', () => {
     expect(isSbgGreaterThan('0.6.0')).toBe(true);
   });
 
-  test('будущая 0.6.2 > 0.6.0 → true', () => {
+  test('0.6.2 > 0.6.0 → true', () => {
     setDetectedVersionForTest('0.6.2');
     expect(isSbgGreaterThan('0.6.0')).toBe(true);
   });

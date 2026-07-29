@@ -6,6 +6,11 @@ import {
 import { ensureSbgVersionSupported } from './gameVersionPrompt';
 import { isDisabled } from './killswitch';
 
+// Заведомо отсутствует в SBG_COMPATIBLE_VERSIONS при любой целевой версии игры.
+// Раньше здесь стояла конкретная «будущая» версия, и тесты падали в тот момент,
+// когда скрипт переводили на неё.
+const UNSUPPORTED_VERSION = '999.0.0';
+
 describe('ensureSbgVersionSupported', () => {
   let confirmSpy: jest.SpyInstance;
 
@@ -17,6 +22,13 @@ describe('ensureSbgVersionSupported', () => {
   afterEach(() => {
     resetDetectedVersionForTest();
     confirmSpy.mockRestore();
+  });
+
+  // Инвариант UNSUPPORTED_VERSION проверяется, а не объявляется комментарием:
+  // попади версия в список (несколько элементов, опечатка) - кейсы с confirm
+  // тихо переехали бы на совместимую ветку и остались зелёными.
+  test('UNSUPPORTED_VERSION отсутствует в списке совместимых', () => {
+    expect(SBG_COMPATIBLE_VERSIONS).not.toContain(UNSUPPORTED_VERSION);
   });
 
   test('версия не определена — считаем совместимой, confirm не показываем', () => {
@@ -34,14 +46,14 @@ describe('ensureSbgVersionSupported', () => {
   });
 
   test('несовместимая версия + OK → запускаем скрипт', () => {
-    setDetectedVersionForTest('0.7.0');
+    setDetectedVersionForTest(UNSUPPORTED_VERSION);
     confirmSpy.mockReturnValue(true);
     expect(ensureSbgVersionSupported()).toBe(true);
     expect(confirmSpy).toHaveBeenCalledTimes(1);
   });
 
   test('несовместимая версия + Cancel → возвращаем false, kill switch НЕ ставится', () => {
-    setDetectedVersionForTest('0.7.0');
+    setDetectedVersionForTest(UNSUPPORTED_VERSION);
     confirmSpy.mockReturnValue(false);
     expect(ensureSbgVersionSupported()).toBe(false);
     expect(confirmSpy).toHaveBeenCalledTimes(1);
@@ -52,17 +64,17 @@ describe('ensureSbgVersionSupported', () => {
   });
 
   test('confirm-сообщение называет обнаруженную и поддерживаемые версии', () => {
-    setDetectedVersionForTest('0.7.0');
+    setDetectedVersionForTest(UNSUPPORTED_VERSION);
     confirmSpy.mockReturnValue(true);
     ensureSbgVersionSupported();
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('0.7.0'));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining(UNSUPPORTED_VERSION));
     for (const v of SBG_COMPATIBLE_VERSIONS) {
       expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining(v));
     }
   });
 
   test('выбор не запоминается — confirm показывается при каждом вызове', () => {
-    setDetectedVersionForTest('0.7.0');
+    setDetectedVersionForTest(UNSUPPORTED_VERSION);
     confirmSpy.mockReturnValue(false);
     ensureSbgVersionSupported();
     ensureSbgVersionSupported();

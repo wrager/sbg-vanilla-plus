@@ -15,16 +15,24 @@ function setupPopupDom(): HTMLElement {
     <div class="info popup">
       <button class="popup-close">x</button>
       <div class="i-stat">
-        <span class="content-text">Owner info</span>
+        <div class="i-stat__entry">
+          <span>Owner</span>: <span id="i-stat__owner" class="profile-link">n/a</span>
+        </div>
         <div class="deploy-slider-wrp">
           <div class="splide" id="deploy-slider">
-            <ul class="splide__list" id="cores-list">
-              <li class="splide__slide">core1</li>
-            </ul>
+            <div class="splide__track">
+              <ul class="splide__list" id="cores-list">
+                <li class="splide__slide" data-guid="core-1" data-level="1">
+                  <span class="cores-list__level">C I</span>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
         <div class="i-buttons">
-          <button id="discover">Discover</button>
+          <div class="discover i-multi-button">
+            <button id="discover" disabled><span>Discover</span></button>
+          </div>
         </div>
       </div>
     </div>
@@ -55,7 +63,7 @@ describe('isWithinCoresSlider', () => {
   });
 
   test('false для контента попапа вне слайдера', () => {
-    expect(isWithinCoresSlider(document.querySelector('.content-text'))).toBe(false);
+    expect(isWithinCoresSlider(document.querySelector('#i-stat__owner'))).toBe(false);
   });
 
   test('false для null/не-Element', () => {
@@ -77,7 +85,7 @@ describe('swipeToClosePopup интеграция с core/popupSwipe', () => {
 
     // direction='up' зарегистрирован: touchstart + туч движение вверх -> tracking, swiping.
     setPopupForTest(popup);
-    const target = popup.querySelector('.content-text') as HTMLElement;
+    const target = popup.querySelector('#i-stat__owner') as HTMLElement;
     dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
     expect(getStateForTest().state).toBe('tracking');
     dispatchTouchMoveForTest({ clientX: 100, clientY: 500 - DIRECTION_THRESHOLD - 1, target }, 50);
@@ -97,7 +105,7 @@ describe('swipeToClosePopup интеграция с core/popupSwipe', () => {
 
     // После disable swipe вверх не должен трогать handler (decide/finalize не вызовутся).
     setPopupForTest(popup);
-    const target = popup.querySelector('.content-text') as HTMLElement;
+    const target = popup.querySelector('#i-stat__owner') as HTMLElement;
     dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
     // Нет registered direction -> idle.
     expect(getStateForTest().state).toBe('idle');
@@ -112,7 +120,7 @@ describe('swipeToClosePopup интеграция с core/popupSwipe', () => {
     await swipeToClosePopup.enable();
     setPopupForTest(popup);
 
-    const target = popup.querySelector('.content-text') as HTMLElement;
+    const target = popup.querySelector('#i-stat__owner') as HTMLElement;
     dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
     dispatchTouchMoveForTest(
       { clientX: 100, clientY: 500 - (DISMISS_THRESHOLD + 20), target },
@@ -152,7 +160,7 @@ describe('swipeToClosePopup интеграция с core/popupSwipe', () => {
     await swipeToClosePopup.enable();
     setPopupForTest(popup);
 
-    const target = popup.querySelector('.content-text') as HTMLElement;
+    const target = popup.querySelector('#i-stat__owner') as HTMLElement;
     dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
     dispatchTouchMoveForTest(
       { clientX: 100, clientY: 500 - (DISMISS_THRESHOLD + 20), target },
@@ -169,7 +177,7 @@ describe('swipeToClosePopup интеграция с core/popupSwipe', () => {
     await swipeToClosePopup.enable();
     setPopupForTest(popup);
 
-    const target = popup.querySelector('.content-text') as HTMLElement;
+    const target = popup.querySelector('#i-stat__owner') as HTMLElement;
     dispatchTouchStartForTest({ clientX: 100, clientY: 500, target }, 0);
     // dx=100, dy=15 - dx доминирует, direction='right' не зарегистрирован -> idle.
     dispatchTouchMoveForTest({ clientX: 200, clientY: 515, target }, 50);
