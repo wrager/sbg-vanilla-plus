@@ -159,6 +159,7 @@ src/
 │   ├── killswitch.ts        # Отключение скрипта
 │   ├── moduleRegistry.ts    # Интерфейс и lifecycle модулей
 │   ├── dom.ts               # DOM-утилиты ($, $$, waitForElement, injectStyles)
+│   ├── isRecord.ts          # Guard объекта со строковыми ключами для разбора JSON
 │   ├── clickSynthesis.ts    # Click-polyfill для touch-кнопок после DOM-burst
 │   ├── olMap.ts             # OL Map capture + утилиты (findLayerByName, DragPan)
 │   ├── gameConstants.ts     # Константы игры (типы предметов)

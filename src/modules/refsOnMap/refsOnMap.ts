@@ -1,5 +1,6 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { $, injectStyles, removeStyles } from '../../core/dom';
+import { isRecord } from '../../core/isRecord';
 import { t } from '../../core/l10n';
 import { getOlMap } from '../../core/olMap';
 import type { IOlFeature, IOlMap, IOlLayer, IOlMapEvent, IOlVectorSource } from '../../core/olMap';
@@ -102,7 +103,7 @@ interface IPointApiResponse {
 }
 
 function isPointApiResponse(value: unknown): value is IPointApiResponse {
-  return typeof value === 'object' && value !== null;
+  return isRecord(value);
 }
 
 /**
@@ -119,7 +120,7 @@ interface IInviewResponse {
 }
 
 function isInviewResponse(value: unknown): value is IInviewResponse {
-  return typeof value === 'object' && value !== null;
+  return isRecord(value);
 }
 
 /**
@@ -181,7 +182,7 @@ interface IDeleteApiResponse {
 }
 
 function isDeleteApiResponse(value: unknown): value is IDeleteApiResponse {
-  return typeof value === 'object' && value !== null;
+  return isRecord(value);
 }
 
 async function deleteRefsFromServer(items: Record<string, number>): Promise<IDeleteApiResponse> {

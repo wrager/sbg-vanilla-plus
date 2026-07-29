@@ -1,5 +1,6 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { injectStyles, removeStyles } from '../../core/dom';
+import { isRecord } from '../../core/isRecord';
 import { t } from '../../core/l10n';
 import { registerOlControl } from '../../core/olControlStack';
 import { showToast } from '../../core/toast';
@@ -106,10 +107,6 @@ let drawEndHandler: ((event: Record<string, unknown>) => void) | null = null;
 let modifyEndHandler: ((event: Record<string, unknown>) => void) | null = null;
 let enableToken = 0;
 let keydownHandler: ((event: KeyboardEvent) => void) | null = null;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
 
 function isNumberPair(value: unknown): value is number[] {
   return (
