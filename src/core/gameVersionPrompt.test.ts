@@ -16,12 +16,18 @@ describe('ensureSbgVersionSupported', () => {
 
   beforeEach(() => {
     sessionStorage.clear();
+    localStorage.clear();
     confirmSpy = jest.spyOn(window, 'confirm').mockImplementation(() => true);
   });
 
   afterEach(() => {
     resetDetectedVersionForTest();
     confirmSpy.mockRestore();
+    // Подмена языка браузера снимается здесь, а не последней строкой теста:
+    // упавший ассерт пропустил бы восстановление, и подменённое значение
+    // потекло бы в остальные тесты файла. Собственное property удаляется
+    // безусловно, под ним остаётся язык из jestPolyfills.
+    Reflect.deleteProperty(navigator, 'language');
   });
 
   // Инвариант UNSUPPORTED_VERSION проверяется, а не объявляется комментарием:
@@ -71,6 +77,31 @@ describe('ensureSbgVersionSupported', () => {
     for (const v of SBG_COMPATIBLE_VERSIONS) {
       expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining(v));
     }
+  });
+
+  // Диалог показывается до запуска модулей, но локализация от версии игры не
+  // зависит: иначе игрок с английской игрой получал бы русский текст поверх неё.
+  test('confirm-сообщение по-русски при языке игры ru', () => {
+    localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
+    setDetectedVersionForTest(UNSUPPORTED_VERSION);
+
+    ensureSbgVersionSupported();
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('не тестировался'));
+  });
+
+  // Язык браузера подменён на русский, чтобы английский в сообщении означал
+  // именно настройку игры: с языком браузера из jestPolyfills (en-US) тест был
+  // бы зелёным и без ключа settings, то есть не отличал бы английскую игру от
+  // отсутствующих настроек.
+  test('confirm-сообщение по-английски при языке игры en', () => {
+    Object.defineProperty(navigator, 'language', { value: 'ru-RU', configurable: true });
+    localStorage.setItem('settings', JSON.stringify({ lang: 'en' }));
+    setDetectedVersionForTest(UNSUPPORTED_VERSION);
+
+    ensureSbgVersionSupported();
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('has not been tested'));
   });
 
   test('выбор не запоминается — confirm показывается при каждом вызове', () => {
