@@ -12,7 +12,7 @@
 // читает CUI как таймер остывания точки; наш модуль его не использует, но
 // сохраняет при импорте чтобы CUI не терял прогресс.
 
-import { isGameDarkTheme } from './gameSettings';
+import { isGameCartoDbBaselayer, isGameDarkTheme } from './gameSettings';
 import { t } from './l10n';
 
 const DB_NAME = 'CUI';
@@ -130,6 +130,15 @@ function initializeCuiDb(database: IDBDatabase, transaction: IDBTransaction): vo
   // рисует игра. Мы идём от темы игры - от неё же зависит, какие тайлы игра
   // грузит, а фильтры накладываются именно на них.
   const isDarkMode = isGameDarkTheme();
+  // Тёмный вариант тайлов CartoDB игра при тёмной теме грузит сама, и инверсия
+  // поверх них выбеливает карту. У CUI в invert стоит то же выражение
+  // (`!isCdbMap`), но считается оно иначе: CUI читает базу как
+  // `JSON.parse(localStorage.getItem('settings'))?.base == 'cdb'`, и при
+  // отсутствующем ключе получает "не CartoDB", а мы - дефолт игры 'cdb'.
+  // Расходится ровно чистый профиль 0.7.0, где ключа ещё нет: CUI своим
+  // defaultConfig поставил бы там инверсию поверх тёмных тайлов, которые игра
+  // грузит сама.
+  const isCartoDbBaselayer = isGameCartoDbBaselayer();
 
   // Дефолтная конфигурация CUI v26.4.1 (refs/cui/index.js defaultConfig).
   const defaultConfig: Record<string, unknown> = {
@@ -140,7 +149,7 @@ function initializeCuiDb(database: IDBDatabase, transaction: IDBTransaction): vo
     },
     autoSelect: { deploy: 'max', upgrade: 'min', attack: 'latest' },
     mapFilters: {
-      invert: isDarkMode ? 1 : 0,
+      invert: isDarkMode && !isCartoDbBaselayer ? 1 : 0,
       hueRotate: 0,
       brightness: isDarkMode ? 0.75 : 1,
       grayscale: isDarkMode ? 1 : 0,

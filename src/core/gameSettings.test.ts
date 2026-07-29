@@ -1,5 +1,5 @@
 import { stubPrefersColorSchemeDark } from '../__mocks__/jestPolyfills';
-import { isGameDarkTheme, readGameSetting } from './gameSettings';
+import { isGameCartoDbBaselayer, isGameDarkTheme, readGameSetting } from './gameSettings';
 
 describe('readGameSetting', () => {
   afterEach(() => {
@@ -18,6 +18,7 @@ describe('readGameSetting', () => {
   test('ключа settings нет: отдаёт дефолты игры', () => {
     expect(readGameSetting('lang')).toBe('sys');
     expect(readGameSetting('theme')).toBe('auto');
+    expect(readGameSetting('base')).toBe('cdb');
   });
 
   test('невалидный JSON: отдаёт дефолты игры', () => {
@@ -159,5 +160,34 @@ describe('isGameDarkTheme', () => {
     });
 
     expect(isGameDarkTheme()).toBe(false);
+  });
+});
+
+describe('isGameCartoDbBaselayer', () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  test('явная база cdb: CartoDB', () => {
+    localStorage.setItem('settings', JSON.stringify({ base: 'cdb' }));
+    expect(isGameCartoDbBaselayer()).toBe(true);
+  });
+
+  // Дефолт базы в игре - 'cdb', и у игрока, ни разу не заходившего в
+  // настройки, ключа нет: подложка при этом всё равно CartoDB.
+  test('ключа settings нет: CartoDB (дефолт игры)', () => {
+    expect(isGameCartoDbBaselayer()).toBe(true);
+  });
+
+  test('явная база osm: не CartoDB', () => {
+    localStorage.setItem('settings', JSON.stringify({ base: 'osm' }));
+    expect(isGameCartoDbBaselayer()).toBe(false);
+  });
+
+  // Ключ есть, поля base в нём нет: игра берёт 'osm' (getSettings('base') ||
+  // 'osm'), а не свой дефолт 'cdb'.
+  test('поля base нет в ключе: не CartoDB', () => {
+    localStorage.setItem('settings', JSON.stringify({ theme: 'dark' }));
+    expect(isGameCartoDbBaselayer()).toBe(false);
   });
 });
