@@ -16,13 +16,13 @@ describe('ensureSbgVersionSupported', () => {
 
   beforeEach(() => {
     sessionStorage.clear();
+    localStorage.clear();
     confirmSpy = jest.spyOn(window, 'confirm').mockImplementation(() => true);
   });
 
   afterEach(() => {
     resetDetectedVersionForTest();
     confirmSpy.mockRestore();
-    localStorage.clear();
   });
 
   // Инвариант UNSUPPORTED_VERSION проверяется, а не объявляется комментарием:
