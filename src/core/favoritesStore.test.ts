@@ -168,36 +168,10 @@ describe('favoritesStore', () => {
     });
   });
 
-  // Тёмные тайлы CartoDB игра при тёмной теме грузит сама, и инверсия поверх
-  // них выбеливает карту. Дефолты 0.7.0 - как раз этот случай: тема 'auto',
-  // база 'cdb', ключа settings у игрока нет.
-  test('дефолты игры и тёмная системная: сид mapFilters не инвертирует подложку', async () => {
+  // Ключа settings у игрока может не быть вовсе: тема тогда берётся из дефолта
+  // игры 'auto' и разворачивается той же системной темой.
+  test('ключа settings нет и тёмная системная: сид mapFilters инвертирует подложку', async () => {
     stubPrefersColorSchemeDark(true);
-
-    await loadFavorites();
-
-    expect(await readCuiMapFilters()).toMatchObject({
-      invert: 0,
-      grayscale: 1,
-      brightness: 0.75,
-    });
-  });
-
-  test('явная тёмная тема на базе CartoDB: сид mapFilters не инвертирует подложку', async () => {
-    localStorage.setItem('settings', JSON.stringify({ theme: 'dark', base: 'cdb' }));
-
-    await loadFavorites();
-
-    expect(await readCuiMapFilters()).toMatchObject({
-      invert: 0,
-      grayscale: 1,
-      brightness: 0.75,
-    });
-  });
-
-  // На светлых тайлах OSM инверсия и есть способ получить тёмную карту.
-  test('явная тёмная тема на базе OSM: сид mapFilters инвертирует подложку', async () => {
-    localStorage.setItem('settings', JSON.stringify({ theme: 'dark', base: 'osm' }));
 
     await loadFavorites();
 

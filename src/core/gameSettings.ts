@@ -23,9 +23,6 @@ const AUTO_THEME = 'auto';
 /** Значение `settings.theme`, с которым игра сравнивает все остальные темы. */
 const DARK_THEME = 'dark';
 
-/** Значение `settings.base`, при котором игра грузит тайлы CartoDB. */
-const CARTO_DB_BASE = 'cdb';
-
 /**
  * Читаемые SVP настройки игры с типами их значений.
  *
@@ -46,8 +43,6 @@ interface IGameSettings {
   lang: string;
   /** Тема: 'auto' - по системной, остальные сравниваются с 'dark'. */
   theme: string;
-  /** Базовая карта: 'cdb' - тайлы CartoDB, 'osm', 'goo', остальные - пустая. */
-  base: string;
 }
 
 export type GameSettingKey = keyof IGameSettings;
@@ -59,7 +54,6 @@ export type GameSettingKey = keyof IGameSettings;
 const GAME_SETTINGS_DEFAULTS: IGameSettings = {
   lang: 'sys',
   theme: AUTO_THEME,
-  base: CARTO_DB_BASE,
 };
 
 /**
@@ -117,18 +111,6 @@ export function isGameDarkTheme(): boolean {
   const theme = readGameSetting('theme');
   if (theme === AUTO_THEME) return prefersDarkColorScheme();
   return theme === DARK_THEME;
-}
-
-/**
- * Подложка карты у игрока - тайлы CartoDB. Только у них игра при тёмной теме
- * берёт тёмный вариант (`dark_all` в `setBaselayer`), остальные базы остаются
- * светлыми при любой теме.
- *
- * Отсутствующее в ключе поле не заменяется дефолтом: игра в этом случае берёт
- * `'osm'` (`getSettings('base') || 'osm'`), а не свой дефолт `'cdb'`.
- */
-export function isGameCartoDbBaselayer(): boolean {
-  return readGameSetting('base') === CARTO_DB_BASE;
 }
 
 /**
