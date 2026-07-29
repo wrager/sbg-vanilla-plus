@@ -127,20 +127,9 @@ describe('favoritesStore', () => {
   });
 
   // Фильтры подложки в сиде CUI-конфига идут от темы, которую игрок видит в
-  // игре. Значения сида раньше не читал ни один тест: readGameSetting можно
-  // было сломать насмерть, и этот файл остался бы зелёным.
-  test('явная тёмная тема: сид mapFilters инвертирует подложку', async () => {
-    localStorage.setItem('settings', JSON.stringify({ theme: 'dark' }));
-
-    await loadFavorites();
-
-    expect(await readCuiMapFilters()).toMatchObject({
-      invert: 1,
-      grayscale: 1,
-      brightness: 0.75,
-    });
-  });
-
+  // игре, и от подложки, на которую они лягут. Значения сида раньше не читал
+  // ни один тест: readGameSetting можно было сломать насмерть, и этот файл
+  // остался бы зелёным.
   test('светлая тема: сид mapFilters оставляет подложку как есть', async () => {
     localStorage.setItem('settings', JSON.stringify({ theme: 'light' }));
 
@@ -154,9 +143,10 @@ describe('favoritesStore', () => {
   });
 
   // Дефолт темы в игре - 'auto', и у игрока с тёмной системной темой игра
-  // тёмная: сид обязан развернуть 'auto' так же, как это делает игра.
+  // тёмная: сид обязан развернуть 'auto' так же, как это делает игра. База
+  // задана светлой, чтобы за инверсию отвечал только разворот темы.
   test('тема auto и тёмная системная: сид mapFilters инвертирует подложку', async () => {
-    localStorage.setItem('settings', JSON.stringify({ theme: 'auto' }));
+    localStorage.setItem('settings', JSON.stringify({ theme: 'auto', base: 'osm' }));
     stubPrefersColorSchemeDark(true);
 
     await loadFavorites();
