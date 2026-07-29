@@ -162,12 +162,25 @@ describe('nextPointSwipeAnimation metadata', () => {
 
 describe('canStartHorizontalSwipe', () => {
   beforeEach(() => {
+    // Слайдер ядер по разметке игры: .splide лежит в .deploy-slider-wrp, а
+    // подпись уровня - в li.splide__slide, кнопок внутри слайдера у игры нет.
     document.body.innerHTML = `
       <div class="info popup">
         <div class="i-stat">
-          <button id="repair">Repair</button>
-          <div class="splide" id="cores">
-            <button class="splide__slide-btn">Core1</button>
+          <div class="deploy-slider-wrp">
+            <div class="splide" id="deploy-slider">
+              <div class="splide__track">
+                <ul class="splide__list" id="cores-list">
+                  <li class="splide__slide" data-guid="core-1" data-level="1">
+                    <span class="cores-list__level">C I</span>
+                    <span class="cores-list__amount">x4</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="i-buttons">
+            <button id="repair" disabled>Repair</button>
           </div>
         </div>
       </div>
@@ -188,7 +201,7 @@ describe('canStartHorizontalSwipe', () => {
 
   test('исключает touch внутри .splide', () => {
     expect(canStartForTest(document.querySelector('.splide'))).toBe(false);
-    expect(canStartForTest(document.querySelector('.splide__slide-btn'))).toBe(false);
+    expect(canStartForTest(document.querySelector('.cores-list__level'))).toBe(false);
   });
 
   test('пропускает не-Element targets', () => {
