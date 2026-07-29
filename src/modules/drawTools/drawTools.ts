@@ -344,10 +344,10 @@ function removeDrawLayer(): void {
 
 function installPointHitFilter(olMap: IOlMap): void {
   if (unregisterPointHitFilter) return;
-  // Игровой map.on('click') (refs/game/script.js:538) через forEachFeatureAtPixel
+  // Игровой map.on('click') (refs/game/script.js:536) через forEachFeatureAtPixel
   // собирает попадания по слою 'points' в массив piv. При непустом piv игра
   // не только вызывает showInfo(piv[0]), но и пересобирает near_points - набор
-  // соседних точек для нативного свайпа между попапами (script.js:552-560).
+  // соседних точек для нативного свайпа между попапами (script.js:553-561).
   // Пока выбран любой инструмент, клик по карте принадлежит инструменту:
   // line и polygon ставят вершину, delete снимает линию, edit тащит вершину
   // (мелкий сдвиг вершины возле точки игра засчитала бы за клик по ней).

@@ -28,7 +28,7 @@ let playerSource: IOlVectorSource | null = null;
 const rangeVisited = new Set<string | number>();
 // Снапшот near_points игры: id точек, бывших в радиусе игрока на момент
 // последнего тапа по точке на карте. Игра поддерживает свой near_points через
-// map.singleclick handler (refs/game/script.js:540-560), наш модуль ведёт
+// map.singleclick handler (refs/game/script.js:536-563), наш модуль ведёт
 // собственный параллельный снимок, чтобы decideSwipe (в режиме без
 // improvedNextPointSwipe) точно предсказывал, переключит ли native handler точку
 // при свайпе. Live-вычисление через findFeaturesInRange расходилось бы с
@@ -56,10 +56,10 @@ function getPlayerCoords(): number[] | null {
 }
 
 /**
- * Реплика игрового map.singleclick-handler (refs/game/script.js:540-560):
+ * Реплика игрового map.singleclick-handler (refs/game/script.js:536-563):
  * если клик пришёл по фиче слоя `points`, обновляем снапшот точек в радиусе
  * игрока. Игра использует это значение в своём horizontal-swipe handler
- * (refs/game/script.js:741-751) - переключает на следующую точку только если
+ * (refs/game/script.js:737-748) - переключает на следующую точку только если
  * `near_points.length > 1`. Воспроизводим то же поведение, чтобы предиктор
  * dismiss-анимации в decideSwipe (когда improvedNextPointSwipe выключен) был
  * синхронен с тем, что фактически сделает native handler.
@@ -67,7 +67,7 @@ function getPlayerCoords(): number[] | null {
 function onMapSingleClick(event: IOlMapEvent): void {
   if (!map || !pointsSource) return;
   if (typeof map.forEachFeatureAtPixel !== 'function') return;
-  // Игра в singleclick собирает попадания в массив `piv` (refs/game/script.js:540)
+  // Игра в singleclick собирает попадания в массив `piv` (refs/game/script.js:539)
   // и проверяет .length > 0; повторяем тот же паттерн.
   const hits: IOlFeature[] = [];
   map.forEachFeatureAtPixel(event.pixel, (feature, layer) => {
@@ -114,7 +114,7 @@ function canStartHorizontalSwipe(event: TouchEvent): boolean {
  *    ожидая чисто нативного поведения. Предсказываем native-условие
  *    `near_points.length > 1` через свой `nearPointsSnapshot`, который
  *    обновляется в `onMapSingleClick`-handler-е по той же логике, что и
- *    игровой near_points (refs/game/script.js:540-560). >= 2 точек в снапшоте -
+ *    игровой near_points (refs/game/script.js:536-563). >= 2 точек в снапшоте -
  *    dismiss без pendingNextGuid: native showInfo сработает синхронно в
  *    touchend, наш finalize ничего не делает. Иначе - return.
  */

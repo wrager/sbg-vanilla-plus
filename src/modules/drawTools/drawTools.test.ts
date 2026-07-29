@@ -1380,12 +1380,12 @@ describe('drawTools module', () => {
 
   describe('point hit filter during drawing', () => {
     /*
-     * Сценарий: пока активен режим рисования (line / polygon), клик возле
-     * точки должен добавлять вершину рисунка, а не открывать попап точки.
-     * Игровой map.on('click') (refs/game/script.js:541) собирает попадания
+     * Сценарий: пока выбран инструмент, клик по карте принадлежит ему, а не
+     * игре, и попап точки открываться не должен.
+     * Игровой map.on('click') (refs/game/script.js:536) собирает попадания
      * по слою 'points' через forEachFeatureAtPixel и вызывает showInfo при
      * непустом наборе. Модуль оборачивает forEachFeatureAtPixel так, чтобы
-     * для активных line / polygon features слоя 'points' не доходили до
+     * в любом режиме, кроме none, features слоя 'points' не доходили до
      * callback'а вызывающей стороны.
      */
     function makeLayerStub(name: string): IOlLayer {
