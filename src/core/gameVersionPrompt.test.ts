@@ -23,6 +23,11 @@ describe('ensureSbgVersionSupported', () => {
   afterEach(() => {
     resetDetectedVersionForTest();
     confirmSpy.mockRestore();
+    // Подмена языка браузера снимается здесь, а не последней строкой теста:
+    // упавший ассерт пропустил бы восстановление, и подменённое значение
+    // потекло бы в остальные тесты файла. Собственное property удаляется
+    // безусловно, под ним остаётся язык из jestPolyfills.
+    Reflect.deleteProperty(navigator, 'language');
   });
 
   // Инвариант UNSUPPORTED_VERSION проверяется, а не объявляется комментарием:
@@ -85,7 +90,12 @@ describe('ensureSbgVersionSupported', () => {
     expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('не тестировался'));
   });
 
+  // Язык браузера подменён на русский, чтобы английский в сообщении означал
+  // именно настройку игры: с языком браузера из jestPolyfills (en-US) тест был
+  // бы зелёным и без ключа settings, то есть не отличал бы английскую игру от
+  // отсутствующих настроек.
   test('confirm-сообщение по-английски при языке игры en', () => {
+    Object.defineProperty(navigator, 'language', { value: 'ru-RU', configurable: true });
     localStorage.setItem('settings', JSON.stringify({ lang: 'en' }));
     setDetectedVersionForTest(UNSUPPORTED_VERSION);
 
