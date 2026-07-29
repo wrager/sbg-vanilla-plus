@@ -1591,7 +1591,7 @@ describe('drawTools module', () => {
       expect(externalCb).toHaveBeenCalledWith(sketchFeature, null);
     });
 
-    test('collapsing the toolbar leaves the active mode', async () => {
+    test('collapsing the toolbar exits the active mode', async () => {
       // Свёрнутый тулбар не показывает выбранный инструмент, и кнопка на карте
       // тоже не отражает режим. Сохранённый фильтр точек выглядел бы для
       // игрока как "точки перестали открываться" без единой подсказки почему.
