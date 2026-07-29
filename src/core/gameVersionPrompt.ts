@@ -1,5 +1,4 @@
 import { getDetectedVersion, SBG_COMPATIBLE_VERSIONS } from './gameVersion';
-import { t } from './l10n';
 
 /**
  * Проверяет, что детектированная версия игры входит в список поддерживаемых.
@@ -20,17 +19,9 @@ export function ensureSbgVersionSupported(): boolean {
   if (SBG_COMPATIBLE_VERSIONS.includes(detected)) return true;
 
   const supported = SBG_COMPATIBLE_VERSIONS.join(', ');
-  // Единственный экран, который SVP показывает до запуска, локализуется так же,
-  // как остальной интерфейс: getGameLocale читает только localStorage и
-  // navigator, от версии игры не зависит и на этом этапе полностью работает.
-  const message = t({
-    ru:
-      `SBG Vanilla+ не тестировался на версии игры ${detected} (поддерживаются: ${supported}).\n\n` +
-      `ОК — включить скрипт, Отмена — продолжить без скрипта.`,
-    en:
-      `SBG Vanilla+ has not been tested with game version ${detected} (supported: ${supported}).\n\n` +
-      `OK — run the script, Cancel — continue without it.`,
-  });
+  const message =
+    `SBG Vanilla+ не тестировался на версии игры ${detected} (поддерживаются: ${supported}).\n\n` +
+    `ОК — включить скрипт, Отмена — продолжить без скрипта.`;
 
   return confirm(message);
 }
