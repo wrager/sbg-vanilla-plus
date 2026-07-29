@@ -3,6 +3,12 @@
  *
  * Основной потребитель - разбор JSON из localStorage и игровых ответов, где
  * `JSON.parse` отдаёт unknown, а дальше нужен доступ по имени поля.
+ *
+ * Массив, `Date`, `Map` и любой экземпляр класса guard проходят: проверка -
+ * ровно `typeof === 'object'` плюс отсев `null`. Вопрос, на который guard
+ * отвечает, - "можно ли читать это по строковому ключу", а не "это plain
+ * object"; отличать нужное значение от постороннего дальше обязан сам
+ * потребитель, по конкретным полям.
  */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
