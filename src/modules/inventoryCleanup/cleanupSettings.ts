@@ -1,5 +1,3 @@
-import { isRecord } from '../../core/isRecord';
-
 export type ReferencesMode = 'off' | 'fast' | 'slow';
 
 export interface ICleanupLimits {
@@ -49,6 +47,10 @@ export function defaultCleanupSettings(): ICleanupSettings {
     },
     minFreeSlots: 100,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function isLevelLimits(value: unknown): value is Record<number, number> {

@@ -9,8 +9,6 @@
  * чтении невалидного или старого значения применяется дефолт.
  */
 
-import { isRecord } from '../../core/isRecord';
-
 const STORAGE_KEY = 'svp_refsOnMap';
 
 /**
@@ -32,6 +30,10 @@ export function defaultRefsOnMapSettings(): IRefsOnMapSettings {
 
 function isOwnTeamMode(value: unknown): value is OwnTeamMode {
   return value === 'delete' || value === 'keep' || value === 'keepOne';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 export function loadRefsOnMapSettings(): IRefsOnMapSettings {

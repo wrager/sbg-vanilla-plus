@@ -4,7 +4,6 @@ import {
   ITEM_TYPE_REFERENCE,
   ITEM_TYPE_BROOM,
 } from './gameConstants';
-import { isRecord } from './isRecord';
 
 export interface IInventoryCore {
   g: string;
@@ -68,6 +67,10 @@ export type IInventoryItem =
   | IInventoryCatalyser
   | IInventoryReference
   | IInventoryBroom;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
 
 export function isInventoryCore(value: unknown): value is IInventoryCore {
   return (

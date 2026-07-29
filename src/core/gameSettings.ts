@@ -13,8 +13,6 @@
  * "английский язык", а в другом - "светлая тема".
  */
 
-import { isRecord } from './isRecord';
-
 const SETTINGS_KEY = 'settings';
 
 /** Значение `settings.theme`, при котором игра берёт тему из системной. */
@@ -75,6 +73,10 @@ const GAME_SETTINGS_DEFAULTS: IGameSettings = {
  * локаль там, где игра уходит в `fallbackLng` своего i18next, а для `theme` -
  * системную тему там, где игра рисует светлую.
  */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 export function readGameSetting<K extends GameSettingKey>(key: K): IGameSettings[K] | undefined {
   let parsed: unknown;
   try {
