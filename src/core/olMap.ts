@@ -250,7 +250,11 @@ export function findLayerByName(map: IOlMap, name: string): IOlLayer | null {
  * callback'а вызывающей стороны.
  */
 export interface IForEachFeatureAtPixelInterceptor {
-  /** Преобразует `options` перед передачей в нативный метод (hitTolerance, layerFilter). */
+  /**
+   * Преобразует `options` перед передачей в нативный метод (hitTolerance, layerFilter).
+   * Перехватчики применяются цепочкой в порядке регистрации: каждый следующий
+   * получает результат предыдущего, а не исходные `options` вызывающей стороны.
+   */
   transformOptions?(
     options: IForEachFeatureAtPixelOptions | undefined,
   ): IForEachFeatureAtPixelOptions | undefined;

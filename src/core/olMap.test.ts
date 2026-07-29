@@ -422,6 +422,28 @@ describe('registerForEachFeatureAtPixelInterceptor', () => {
     });
   });
 
+  test('chains transformOptions in registration order', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const native = map.forEachFeatureAtPixel;
+
+    registerForEachFeatureAtPixelInterceptor(map, {
+      transformOptions: (options) => ({ ...options, hitTolerance: 15 }),
+    });
+    registerForEachFeatureAtPixelInterceptor(map, {
+      transformOptions: (options) => ({
+        ...options,
+        hitTolerance: (options?.hitTolerance ?? 0) + 1,
+      }),
+    });
+
+    map.forEachFeatureAtPixel([0, 0], jest.fn());
+
+    // 16, а не 1: второй перехватчик получил результат первого, а не исходные
+    // options вызывающей стороны.
+    expect(native).toHaveBeenLastCalledWith([0, 0], expect.any(Function), { hitTolerance: 16 });
+  });
+
   test('passes caller options through untouched when nothing transforms them', async () => {
     const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
     const map = createForEachMap();
