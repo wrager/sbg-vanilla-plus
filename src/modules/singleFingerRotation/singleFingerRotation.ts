@@ -78,15 +78,24 @@ function applyPendingRotation(): void {
   }
 }
 
-function flushPendingRotation(): void {
+function cancelScheduledRotationFrame(): void {
   if (frameRequestId !== null) {
     cancelAnimationFrame(frameRequestId);
     frameRequestId = null;
   }
+}
+
+function flushPendingRotation(): void {
+  cancelScheduledRotationFrame();
   if (pendingDelta !== 0) {
     applyRotation(pendingDelta);
     pendingDelta = 0;
   }
+}
+
+function discardPendingRotation(): void {
+  cancelScheduledRotationFrame();
+  pendingDelta = 0;
 }
 
 function scheduleRotationFrame(): void {
@@ -95,21 +104,20 @@ function scheduleRotationFrame(): void {
   }
 }
 
-function resetGesture(): void {
-  flushPendingRotation();
+function releaseGesture(): void {
   latestPoint = null;
   dragPanControl?.restore();
 }
 
+function resetGesture(): void {
+  flushPendingRotation();
+  releaseGesture();
+}
+
 /** Обрывает жест, отбрасывая накопленный поворот вместо его применения. */
 function abortGesture(): void {
-  if (frameRequestId !== null) {
-    cancelAnimationFrame(frameRequestId);
-    frameRequestId = null;
-  }
-  pendingDelta = 0;
-  latestPoint = null;
-  dragPanControl?.restore();
+  discardPendingRotation();
+  releaseGesture();
 }
 
 function activateRotationFromPoint(x: number, y: number): void {
