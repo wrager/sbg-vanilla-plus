@@ -101,14 +101,17 @@ describe('largerPointTapArea enable/disable', () => {
     });
   });
 
-  test('overrides caller hitTolerance with module value', async () => {
+  test('keeps hitTolerance the caller set explicitly', async () => {
+    // Явный hitTolerance - осознанный выбор вызывающей стороны: у drawTools
+    // это радиус попадания по своей линии в режиме удаления. Модуль повышает
+    // только дефолт игры, чужие значения не трогает.
     await largerPointTapArea.enable();
 
     const callback = jest.fn();
-    mockMap.forEachFeatureAtPixel([10, 20], callback, { hitTolerance: 0 });
+    mockMap.forEachFeatureAtPixel([10, 20], callback, { hitTolerance: 6 });
 
     expect(forEachOriginal).toHaveBeenCalledWith([10, 20], expect.any(Function), {
-      hitTolerance: 15,
+      hitTolerance: 6,
     });
   });
 

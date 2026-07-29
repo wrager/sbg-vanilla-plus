@@ -26,10 +26,15 @@ export const largerPointTapArea: IFeatureModule = {
     return getOlMap().then((olMap) => {
       if (myToken !== enableToken) return;
       if (unregisterInterceptor) return;
-      // Игра вызывает forEachFeatureAtPixel с дефолтным hitTolerance; повышаем
-      // его, чтобы точки было проще нажимать пальцем на мобильном.
+      // Игровой обработчик клика по карте не задаёт hitTolerance и получает
+      // дефолтные 0 пикселей; повышаем его, чтобы точки было проще нажимать
+      // пальцем на мобильном. Заданный явно радиус остаётся: это осознанный
+      // выбор вызывающей стороны, а не игровой дефолт.
       unregisterInterceptor = registerForEachFeatureAtPixelInterceptor(olMap, {
-        transformOptions: (options) => ({ ...options, hitTolerance: HIT_TOLERANCE_PX }),
+        transformOptions: (options) => ({
+          ...options,
+          hitTolerance: options?.hitTolerance ?? HIT_TOLERANCE_PX,
+        }),
       });
     });
   },
