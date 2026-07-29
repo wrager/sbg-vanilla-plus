@@ -1488,6 +1488,34 @@ describe('drawTools module', () => {
       expect(externalCb).toHaveBeenCalledWith(drawFeature, drawLayer);
     });
 
+    test('collapsing the toolbar leaves the active mode', async () => {
+      // Свёрнутый тулбар не показывает выбранный инструмент, и кнопка на карте
+      // тоже не отражает режим. Сохранённый фильтр точек выглядел бы для
+      // игрока как "точки перестали открываться" без единой подсказки почему.
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const pointsLayer = makeLayerStub('points');
+      const pointFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer) => void) => {
+          cb(pointFeature, pointsLayer);
+        },
+      );
+
+      await drawTools.enable();
+      const menuButton = document.getElementById('svp-draw-tools-menu-button');
+      menuButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      clickToolButton(0);
+      menuButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(document.querySelector('.svp-draw-tools-toolbar-open')).toBeNull();
+      expect(document.querySelectorAll('.svp-draw-tools-tool-active')).toHaveLength(0);
+      expect(externalCb).toHaveBeenCalledWith(pointFeature, pointsLayer);
+    });
+
     test('leaving line mode (toggle off) re-enables point hits for the caller', async () => {
       if (!currentMap) throw new Error('Map was not captured');
       const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;

@@ -885,7 +885,13 @@ function setToolbarOpen(open: boolean): void {
 
 function toggleToolbar(): void {
   if (!toolbar) return;
-  setToolbarOpen(!toolbar.classList.contains('svp-draw-tools-toolbar-open'));
+  const open = !toolbar.classList.contains('svp-draw-tools-toolbar-open');
+  setToolbarOpen(open);
+  // Свёрнутый тулбар не показывает выбранный инструмент, а кнопка на карте
+  // не отражает режим. Оставленный активным инструмент выглядел бы для игрока
+  // как "точки перестали открываться" без подсказки почему, поэтому закрытие
+  // тулбара выходит из режима - так же, как крест и клик мимо тулбара.
+  if (!open) setMode('none');
 }
 
 function applySvgIcon(button: HTMLElement, svgString: string): void {
