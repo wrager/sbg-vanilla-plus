@@ -22,6 +22,7 @@ describe('ensureSbgVersionSupported', () => {
   afterEach(() => {
     resetDetectedVersionForTest();
     confirmSpy.mockRestore();
+    localStorage.clear();
   });
 
   // Инвариант UNSUPPORTED_VERSION проверяется, а не объявляется комментарием:
@@ -71,6 +72,26 @@ describe('ensureSbgVersionSupported', () => {
     for (const v of SBG_COMPATIBLE_VERSIONS) {
       expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining(v));
     }
+  });
+
+  // Диалог показывается до запуска модулей, но локализация от версии игры не
+  // зависит: иначе игрок с английской игрой получал бы русский текст поверх неё.
+  test('confirm-сообщение по-русски при языке игры ru', () => {
+    localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
+    setDetectedVersionForTest(UNSUPPORTED_VERSION);
+
+    ensureSbgVersionSupported();
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('не тестировался'));
+  });
+
+  test('confirm-сообщение по-английски при языке игры en', () => {
+    localStorage.setItem('settings', JSON.stringify({ lang: 'en' }));
+    setDetectedVersionForTest(UNSUPPORTED_VERSION);
+
+    ensureSbgVersionSupported();
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('has not been tested'));
   });
 
   test('выбор не запоминается — confirm показывается при каждом вызове', () => {
