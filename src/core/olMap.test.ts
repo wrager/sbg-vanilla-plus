@@ -1,4 +1,4 @@
-import type { IOlInteraction, IOlLayer, IOlMap, IOlView } from './olMap';
+import type { IOlFeature, IOlInteraction, IOlLayer, IOlMap, IOlView } from './olMap';
 import { createDragPanControl, findLayerByName } from './olMap';
 
 function createFakeView(): IOlView {
@@ -358,5 +358,350 @@ describe('createDragPanControl', () => {
     controlA.disable();
     controlB.restore(); // B hasn't disabled anything — no effect
     expect(dragPan.active).toBe(false);
+  });
+});
+
+// ── registerForEachFeatureAtPixelInterceptor ─────────────────────────────────
+
+describe('registerForEachFeatureAtPixelInterceptor', () => {
+  function createForEachMap(): IOlMap & { forEachFeatureAtPixel: jest.Mock } {
+    return {
+      getView: createFakeView,
+      getSize: () => [800, 600],
+      getLayers: () => ({ getArray: () => [] }),
+      getInteractions: () => ({ getArray: () => [] }),
+      addLayer: jest.fn(),
+      removeLayer: jest.fn(),
+      updateSize: jest.fn(),
+      forEachFeatureAtPixel: jest.fn(),
+    };
+  }
+
+  function makeLayer(name: string): IOlLayer {
+    return {
+      get: (key: string) => (key === 'name' ? name : undefined),
+      getSource: () => null,
+    };
+  }
+
+  function makeFeature(): IOlFeature {
+    return {
+      getGeometry: () => ({ getCoordinates: () => [0, 0] }),
+      getId: () => undefined,
+      setId: () => {},
+      setStyle: () => {},
+    };
+  }
+
+  test('wraps the method on first registration', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const native = map.forEachFeatureAtPixel;
+
+    registerForEachFeatureAtPixelInterceptor(map, {});
+
+    expect(map.forEachFeatureAtPixel).not.toBe(native);
+  });
+
+  test('forwards transformed options to the native method', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const native = map.forEachFeatureAtPixel;
+
+    registerForEachFeatureAtPixelInterceptor(map, {
+      transformOptions: (options) => ({ ...options, hitTolerance: 15 }),
+    });
+
+    const callback = jest.fn();
+    const layerFilter = jest.fn();
+    map.forEachFeatureAtPixel([3, 4], callback, { layerFilter });
+
+    expect(native).toHaveBeenCalledWith([3, 4], expect.any(Function), {
+      layerFilter,
+      hitTolerance: 15,
+    });
+  });
+
+  test('chains transformOptions in registration order', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const native = map.forEachFeatureAtPixel;
+
+    registerForEachFeatureAtPixelInterceptor(map, {
+      transformOptions: (options) => ({ ...options, hitTolerance: 15 }),
+    });
+    registerForEachFeatureAtPixelInterceptor(map, {
+      transformOptions: (options) => ({
+        ...options,
+        hitTolerance: (options?.hitTolerance ?? 0) + 1,
+      }),
+    });
+
+    map.forEachFeatureAtPixel([0, 0], jest.fn());
+
+    // 16, а не 1: второй перехватчик получил результат первого, а не исходные
+    // options вызывающей стороны.
+    expect(native).toHaveBeenLastCalledWith([0, 0], expect.any(Function), { hitTolerance: 16 });
+  });
+
+  test('passes caller options through untouched when nothing transforms them', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const native = map.forEachFeatureAtPixel;
+
+    registerForEachFeatureAtPixelInterceptor(map, { filterHit: () => true });
+
+    const callback = jest.fn();
+    const options = { hitTolerance: 7 };
+    map.forEachFeatureAtPixel([5, 6], callback, options);
+
+    expect(native).toHaveBeenCalledWith([5, 6], expect.any(Function), options);
+  });
+
+  test('filterHit hides a hit from the caller callback', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const pointFeature = makeFeature();
+    const regionFeature = makeFeature();
+    const pointsLayer = makeLayer('points');
+    const regionsLayer = makeLayer('regions');
+    map.forEachFeatureAtPixel.mockImplementation(
+      (_pixel: number[], cb: (feature: IOlFeature, layer: IOlLayer) => void) => {
+        cb(pointFeature, pointsLayer);
+        cb(regionFeature, regionsLayer);
+      },
+    );
+
+    registerForEachFeatureAtPixelInterceptor(map, {
+      filterHit: (_feature, layer) => layer?.get('name') !== 'points',
+    });
+
+    const callerCallback = jest.fn();
+    map.forEachFeatureAtPixel([0, 0], callerCallback);
+
+    expect(callerCallback).toHaveBeenCalledTimes(1);
+    expect(callerCallback).toHaveBeenCalledWith(regionFeature, regionsLayer);
+  });
+
+  test('two interceptors coexist; unregistering one keeps the other active', async () => {
+    // Воспроизводит конфликт largerPointTapArea + drawTools: выключение одного
+    // модуля вживую не должно убивать обёртку другого.
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const native = map.forEachFeatureAtPixel;
+    const pointFeature = makeFeature();
+    const pointsLayer = makeLayer('points');
+    native.mockImplementation(
+      (_pixel: number[], cb: (feature: IOlFeature, layer: IOlLayer) => void) => {
+        cb(pointFeature, pointsLayer);
+      },
+    );
+
+    // Перехватчик A - как largerPointTapArea (правит options).
+    const unregisterA = registerForEachFeatureAtPixelInterceptor(map, {
+      transformOptions: (options) => ({ ...options, hitTolerance: 15 }),
+    });
+    // Перехватчик B - как drawTools (фильтрует попадания).
+    registerForEachFeatureAtPixelInterceptor(map, {
+      filterHit: (_feature, layer) => layer?.get('name') !== 'points',
+    });
+
+    // Снятие A не должно убивать фильтр B.
+    unregisterA();
+
+    const callerCallback = jest.fn();
+    map.forEachFeatureAtPixel([0, 0], callerCallback);
+
+    expect(callerCallback).not.toHaveBeenCalled();
+    // A снят - hitTolerance больше не навязывается.
+    expect(native).toHaveBeenLastCalledWith([0, 0], expect.any(Function), undefined);
+  });
+
+  test('keeps the wrapper installed until the last interceptor unregisters', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const native = map.forEachFeatureAtPixel;
+
+    const unregisterA = registerForEachFeatureAtPixelInterceptor(map, {});
+    const unregisterB = registerForEachFeatureAtPixelInterceptor(map, {});
+    const wrapper = map.forEachFeatureAtPixel;
+
+    unregisterA();
+    expect(map.forEachFeatureAtPixel).toBe(wrapper);
+
+    unregisterB();
+    const callback = jest.fn();
+    map.forEachFeatureAtPixel([1, 1], callback);
+    expect(native).toHaveBeenLastCalledWith([1, 1], callback);
+  });
+
+  test('refuses to register an interceptor for a different map', async () => {
+    // Обёртка живёт на карте первого зарегистрировавшегося. Молча принять
+    // перехватчик для другой карты значит применять его к чужим вызовам.
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const firstMap = createForEachMap();
+    const secondMap = createForEachMap();
+    const firstNative = firstMap.forEachFeatureAtPixel;
+    const secondNative = secondMap.forEachFeatureAtPixel;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    registerForEachFeatureAtPixelInterceptor(firstMap, {});
+    const unregisterSecond = registerForEachFeatureAtPixelInterceptor(secondMap, {
+      filterHit: () => false,
+    });
+
+    expect(secondMap.forEachFeatureAtPixel).toBe(secondNative);
+    expect(warn).toHaveBeenCalled();
+
+    const callback = jest.fn();
+    const feature = makeFeature();
+    const layer = makeLayer('points');
+    firstNative.mockImplementation(
+      (_pixel: number[], cb: (feature: IOlFeature, layer: IOlLayer) => unknown) => {
+        cb(feature, layer);
+      },
+    );
+    firstMap.forEachFeatureAtPixel([0, 0], callback);
+
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(() => {
+      unregisterSecond();
+    }).not.toThrow();
+    warn.mockRestore();
+  });
+
+  test('unregistering the last interceptor restores the prototype method', async () => {
+    // Игровая карта держит forEachFeatureAtPixel на прототипе ol.Map. Если
+    // снятие обёртки кладёт на экземпляр bound-копию, метод навсегда остаётся
+    // собственным свойством и перестаёт видеть замену на прототипе.
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const prototypeMethod = jest.fn();
+    const map: IOlMap = Object.create({
+      forEachFeatureAtPixel: prototypeMethod,
+    }) as IOlMap;
+    Object.assign(map, {
+      getView: createFakeView,
+      getSize: () => [800, 600],
+      getLayers: () => ({ getArray: () => [] }),
+      getInteractions: () => ({ getArray: () => [] }),
+      addLayer: jest.fn(),
+      removeLayer: jest.fn(),
+      updateSize: jest.fn(),
+    });
+
+    const unregister = registerForEachFeatureAtPixelInterceptor(map, {});
+    unregister();
+
+    expect(Object.prototype.hasOwnProperty.call(map, 'forEachFeatureAtPixel')).toBe(false);
+    const callback = jest.fn();
+    map.forEachFeatureAtPixel?.([2, 2], callback);
+    expect(prototypeMethod).toHaveBeenLastCalledWith([2, 2], callback);
+  });
+
+  test('unregistering restores an own method patched by someone else', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const foreignPatch = map.forEachFeatureAtPixel;
+
+    const unregister = registerForEachFeatureAtPixelInterceptor(map, {});
+    unregister();
+
+    expect(map.forEachFeatureAtPixel).toBe(foreignPatch);
+  });
+
+  test('unregistering keeps a patch that landed on top of the wrapper', async () => {
+    // Метод могли переписать уже после нашей установки: другой userscript,
+    // сама игра при пересоздании карты. Восстановление сохранённого дескриптора
+    // стёрло бы этот патч - ровно то, ради чего реестр и заводился.
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+
+    const unregister = registerForEachFeatureAtPixelInterceptor(map, {});
+    const foreignPatch = jest.fn();
+    map.forEachFeatureAtPixel = foreignPatch;
+    unregister();
+
+    expect(map.forEachFeatureAtPixel).toBe(foreignPatch);
+  });
+
+  test('returns the native result to the caller', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    map.forEachFeatureAtPixel.mockReturnValue('native result');
+
+    registerForEachFeatureAtPixelInterceptor(map, {});
+
+    expect(map.forEachFeatureAtPixel([0, 0], () => undefined)).toBe('native result');
+  });
+
+  test('forwards the caller callback result to the native method', async () => {
+    // OL прекращает обход на первом truthy-результате callback'а; обёртка
+    // обязана вернуть его нативному методу, иначе ранний выход ломается.
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const firstFeature = makeFeature();
+    const secondFeature = makeFeature();
+    const layer = makeLayer('points');
+    const visited: IOlFeature[] = [];
+    map.forEachFeatureAtPixel.mockImplementation(
+      (_pixel: number[], cb: (feature: IOlFeature, layer: IOlLayer) => unknown) => {
+        for (const feature of [firstFeature, secondFeature]) {
+          visited.push(feature);
+          const result = cb(feature, layer);
+          if (result) return result;
+        }
+        return undefined;
+      },
+    );
+
+    registerForEachFeatureAtPixelInterceptor(map, {});
+
+    const result = map.forEachFeatureAtPixel([0, 0], (feature) => feature);
+
+    expect(result).toBe(firstFeature);
+    expect(visited).toEqual([firstFeature]);
+  });
+
+  test('passes the hit geometry through to the caller callback', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const feature = makeFeature();
+    const layer = makeLayer('points');
+    const geometry = { getCoordinates: () => [1, 2] };
+    map.forEachFeatureAtPixel.mockImplementation(
+      (
+        _pixel: number[],
+        cb: (feature: IOlFeature, layer: IOlLayer, geometry?: unknown) => unknown,
+      ) => {
+        cb(feature, layer, geometry);
+      },
+    );
+
+    registerForEachFeatureAtPixelInterceptor(map, {});
+
+    const callback = jest.fn();
+    map.forEachFeatureAtPixel([0, 0], callback);
+
+    expect(callback).toHaveBeenCalledWith(feature, layer, geometry);
+  });
+
+  test('returns a no-op unregister when the map has no forEachFeatureAtPixel', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map: IOlMap = {
+      getView: createFakeView,
+      getSize: () => [800, 600],
+      getLayers: () => ({ getArray: () => [] }),
+      getInteractions: () => ({ getArray: () => [] }),
+      addLayer: jest.fn(),
+      removeLayer: jest.fn(),
+      updateSize: jest.fn(),
+    };
+
+    const unregister = registerForEachFeatureAtPixelInterceptor(map, {});
+
+    expect(map.forEachFeatureAtPixel).toBeUndefined();
+    expect(() => {
+      unregister();
+    }).not.toThrow();
   });
 });

@@ -1,6 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import type { IDragPanControl, IOlMap, IOlView } from '../../core/olMap';
 import { createDragPanControl, getOlMap } from '../../core/olMap';
+import { isMapGestureLocked } from '../../core/mapGestureLock';
 import { $ } from '../../core/dom';
 
 const MODULE_ID = 'singleFingerRotation';
@@ -77,15 +78,24 @@ function applyPendingRotation(): void {
   }
 }
 
-function flushPendingRotation(): void {
+function cancelScheduledRotationFrame(): void {
   if (frameRequestId !== null) {
     cancelAnimationFrame(frameRequestId);
     frameRequestId = null;
   }
+}
+
+function flushPendingRotation(): void {
+  cancelScheduledRotationFrame();
   if (pendingDelta !== 0) {
     applyRotation(pendingDelta);
     pendingDelta = 0;
   }
+}
+
+function discardPendingRotation(): void {
+  cancelScheduledRotationFrame();
+  pendingDelta = 0;
 }
 
 function scheduleRotationFrame(): void {
@@ -94,10 +104,20 @@ function scheduleRotationFrame(): void {
   }
 }
 
-function resetGesture(): void {
-  flushPendingRotation();
+function releaseGesture(): void {
   latestPoint = null;
   dragPanControl?.restore();
+}
+
+function resetGesture(): void {
+  flushPendingRotation();
+  releaseGesture();
+}
+
+/** Обрывает жест, отбрасывая накопленный поворот вместо его применения. */
+function abortGesture(): void {
+  discardPendingRotation();
+  releaseGesture();
 }
 
 function activateRotationFromPoint(x: number, y: number): void {
@@ -112,6 +132,9 @@ function onTouchStart(event: TouchEvent): void {
     return;
   }
   if (!isFollowActive()) return;
+  // Жест уже принадлежит другому модулю (drawTools тащит вершину схемы) -
+  // поворачивать карту тем же движением пальца нельзя.
+  if (isMapGestureLocked()) return;
   if (!(event.target instanceof HTMLCanvasElement)) return;
 
   const touch = event.targetTouches[0];
@@ -143,6 +166,14 @@ function onTouchMove(event: TouchEvent): void {
   }
 
   if (!latestPoint) return;
+
+  // OL шлёт modifystart на первом перетаскивании, то есть уже после нашего
+  // touchstart: захват появляется в середине жеста, и накопленный поворот
+  // отбрасывается, а не применяется к карте.
+  if (isMapGestureLocked()) {
+    abortGesture();
+    return;
+  }
 
   event.preventDefault();
 

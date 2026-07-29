@@ -17,7 +17,9 @@
   - полная очистка с confirm (корзина)
   - закрытие toolbar (крест)
 - Отмена незавершённого рисования — клавиша `Escape` или повторное нажатие на инструмент рисования
+- Закрытие toolbar (крест, кнопка на карте или клик мимо панели) снимает выбранный инструмент
 - Схемы сохраняются в localStorage и отображаются при загрузке страницы
+- Пока выбран любой инструмент (линия, треугольник, правка, удаление), клик по карте принадлежит инструменту и не открывает попап точки. Попап снова открывается, как только инструмент отжат
 
 ## Формат данных
 
@@ -33,7 +35,9 @@
 - Сериализация: `iitcFormat.ts` (parse/stringify + type guard)
 - UI: floating OL-control под `.region-picker` + toolbar в `document.body`. Позиционирование control'а - чисто CSS (`top: 50%` + `transform: translateY(200%)`), без JS-вычислений; на узких viewport дублируются игровые `@media`-правила, чтобы кнопка совпадала с `.region-picker` button по размеру. MutationObserver на parent picker'а (без subtree) переподцепляет control'а к актуальному picker'у через `querySelector`, если игра пересоздаёт DOM
 - Иконки кнопок: свои inline-SVG из `drawToolsIcons.ts`, наследуют `currentColor` от темы
-- Cleanup в `disable()` снимает слой, интеракции, toolbar, OL-control, MutationObserver и стили
+- Блокировка открытия точки при выбранном инструменте: модуль регистрирует перехватчик единой обёртки `forEachFeatureAtPixel` (`registerForEachFeatureAtPixelInterceptor` из `core/olMap.ts`); для любого режима, кроме `none`, перехватчик прячет features слоя `points`. Игровой `map.on('click')` собирает попадания по `points` (refs/game/script.js:536) и при пустом наборе не вызывает `showInfo` и не пересобирает `near_points`; в режиме `none` эффект самовосстанавливается. Вместе с точками прячутся попадания без слоя: sketch-оверлеи интеракций Draw и Modify живут через `layer.setMap()`, OL отдаёт такое попадание с `layer === null` (refs/ol/ol.js:7691), а игровой обработчик читает имя слоя безусловно и падает с `TypeError`. Единый реестр вместо собственной обёртки - чтобы не конфликтовать с `largerPointTapArea`, который патчит тот же метод
+- Перетаскивание вершины в режиме правки захватывает жест карты через `lockMapGesture()` из `core/mapGestureLock.ts` (между `modifystart` и `modifyend`), чтобы `singleFingerRotation` не поворачивал карту тем же движением пальца. Выход из режима и `disable()` посреди перетаскивания снимают захват сами: `modifyend` в этом случае уже не придёт
+- Cleanup в `disable()` снимает слой, интеракции, toolbar, OL-control, MutationObserver, перехватчик `forEachFeatureAtPixel`, захват жеста и стили
 
 ## Ограничения MVP
 

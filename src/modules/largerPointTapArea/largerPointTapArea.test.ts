@@ -1,9 +1,10 @@
 import { largerPointTapArea } from './largerPointTapArea';
 import type { IOlMap } from '../../core/olMap';
 
-jest.mock('../../core/olMap', () => ({
-  getOlMap: jest.fn(),
-}));
+jest.mock('../../core/olMap', () => {
+  const actual = jest.requireActual<typeof import('../../core/olMap')>('../../core/olMap');
+  return { ...actual, getOlMap: jest.fn() };
+});
 
 import { getOlMap } from '../../core/olMap';
 
@@ -82,7 +83,7 @@ describe('largerPointTapArea enable/disable', () => {
     const callback = jest.fn();
     mockMap.forEachFeatureAtPixel([100, 200], callback);
 
-    expect(forEachOriginal).toHaveBeenCalledWith([100, 200], callback, {
+    expect(forEachOriginal).toHaveBeenCalledWith([100, 200], expect.any(Function), {
       hitTolerance: 15,
     });
   });
@@ -94,20 +95,23 @@ describe('largerPointTapArea enable/disable', () => {
     const layerFilter = jest.fn();
     mockMap.forEachFeatureAtPixel([10, 20], callback, { layerFilter });
 
-    expect(forEachOriginal).toHaveBeenCalledWith([10, 20], callback, {
+    expect(forEachOriginal).toHaveBeenCalledWith([10, 20], expect.any(Function), {
       layerFilter,
       hitTolerance: 15,
     });
   });
 
-  test('overrides caller hitTolerance with module value', async () => {
+  test('keeps hitTolerance the caller set explicitly', async () => {
+    // Явный hitTolerance - осознанный выбор вызывающей стороны: у drawTools
+    // это радиус попадания по своей линии в режиме удаления. Модуль повышает
+    // только дефолт игры, чужие значения не трогает.
     await largerPointTapArea.enable();
 
     const callback = jest.fn();
-    mockMap.forEachFeatureAtPixel([10, 20], callback, { hitTolerance: 0 });
+    mockMap.forEachFeatureAtPixel([10, 20], callback, { hitTolerance: 6 });
 
-    expect(forEachOriginal).toHaveBeenCalledWith([10, 20], callback, {
-      hitTolerance: 15,
+    expect(forEachOriginal).toHaveBeenCalledWith([10, 20], expect.any(Function), {
+      hitTolerance: 6,
     });
   });
 
@@ -132,6 +136,28 @@ describe('largerPointTapArea enable/disable', () => {
     await largerPointTapArea.enable();
 
     expect(mockMap.forEachFeatureAtPixel).toBe(patchedMethod);
+  });
+
+  test('disable before the map is captured cancels the pending enable', async () => {
+    // Модуль включён по умолчанию, поэтому enable стартует до захвата карты.
+    // Выключение в настройках в этот момент не должно оставлять перехватчик,
+    // который встанет позже и снять его будет некому.
+    let resolveMap: (map: IOlMap) => void = () => {};
+    mockGetOlMap.mockReturnValue(
+      new Promise<IOlMap>((resolve) => {
+        resolveMap = resolve;
+      }),
+    );
+
+    const enabling = largerPointTapArea.enable();
+    await largerPointTapArea.disable();
+    resolveMap(mockMap as unknown as IOlMap);
+    await enabling;
+
+    const callback = jest.fn();
+    mockMap.forEachFeatureAtPixel([1, 2], callback);
+
+    expect(forEachOriginal).toHaveBeenCalledWith([1, 2], callback);
   });
 
   test('disable is safe when not enabled', async () => {

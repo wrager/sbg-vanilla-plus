@@ -33,7 +33,9 @@ interface IFeatureModule {
 
 **Панель настроек** — кнопка ⚙ открывает полноэкранную панель. Модули сгруппированы по категориям: Интерфейс, Карта, Фичи, Багфиксы. Категория `'utility'` остаётся в типе `IFeatureModule.category` на будущее, но в текущем релизе модулей этой категории нет.
 
-**OL Map capture** — `src/core/olMap.ts`: перехват `ol.Map.prototype.getView()` через Proxy для захвата экземпляра карты (игра хранит `map` в локальной переменной). Если `window.ol` ещё не загружен — перехват через `Object.defineProperty`. Предоставляет `getOlMap(): Promise<IOlMap>`, утилиты `findDragPanInteractions()`, `findLayerByName()`, `createDragPanControl()`.
+**OL Map capture** — `src/core/olMap.ts`: перехват `ol.Map.prototype.getView()` через Proxy для захвата экземпляра карты (игра хранит `map` в локальной переменной). Если `window.ol` ещё не загружен — перехват через `Object.defineProperty`. Предоставляет `getOlMap(): Promise<IOlMap>`, утилиты `findDragPanInteractions()`, `findLayerByName()`, `createDragPanControl()` и реестр `registerForEachFeatureAtPixelInterceptor()` (единая обёртка `forEachFeatureAtPixel` с перехватчиками, чтобы `largerPointTapArea` и `drawTools` не конфликтовали независимыми патчами одного метода).
+
+**Захват жеста на карте** — `src/core/mapGestureLock.ts`: `lockMapGesture()` / `isMapGestureLocked()`. Модуль, который сам обрабатывает перетаскивание по карте, берёт захват на время жеста; модуль, который превращает перетаскивание в собственное действие, при активном захвате не вмешивается. Сейчас `drawTools` захватывает жест между `modifystart` и `modifyend` интеракции Modify, а `singleFingerRotation` в это время не поворачивает карту. Реестр в core вместо прямой связи модулей: ни один не знает про другой, порядок включения в настройках роли не играет, а счётчик владельцев (вместо булева флага) переживает несколько одновременных захватов.
 
 **Локализация** — `src/core/l10n.ts`: `ILocalizedString = { en, ru }`, функция `t()` выбирает текст по языку игры. Язык берётся из настройки `lang`; её дефолтное значение `'sys'` означает системную локаль, поэтому русский игрок на чистом профиле видит SVP по-русски, а не по-английски. Отказ `navigator.language` даёт `'en'`: `t()` зовётся при рендере имён модулей, тостов и панели настроек, и исключение положило бы весь интерфейс SVP. Отказ чтения настроек сюда не ведёт — `readGameSetting` сама перехватывает и недоступный `localStorage`, и битый JSON, и отдаёт дефолт `'sys'`, с которым русский браузер даёт `'ru'`.
 
@@ -164,6 +166,7 @@ src/
 │   ├── isRecord.ts          # Guard объекта со строковыми ключами для разбора JSON
 │   ├── clickSynthesis.ts    # Click-polyfill для touch-кнопок после DOM-burst
 │   ├── olMap.ts             # OL Map capture + утилиты (findLayerByName, DragPan)
+│   ├── mapGestureLock.ts    # Захват жеста на карте (перетаскивание вершины против поворота)
 │   ├── gameConstants.ts     # Константы игры (типы предметов)
 │   ├── inventoryTypes.ts    # Типы предметов инвентаря + type guards
 │   ├── inventoryCache.ts    # Чтение inventory-cache + helper'ы агрегации заблокированных и избранных точек по lock/favorite

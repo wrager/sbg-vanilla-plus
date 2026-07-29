@@ -112,6 +112,21 @@ function makeMapWithoutPointHit(layers: IOlLayer[]): IOlMap {
   };
 }
 
+function makeMapWithUnmanagedHit(layers: IOlLayer[]): IOlMap {
+  return {
+    ...makeMap(layers),
+    // Попадание в слой, добавленный через layer.setMap(): OL отдаёт такой слой
+    // callback'у как null (refs/ol/ol.js:7691). Так выглядят sketch-оверлеи
+    // интеракций Draw и Modify, которые создаёт drawTools.
+    forEachFeatureAtPixel: (
+      _pixel: number[],
+      callback: (feature: IOlFeature, layer: IOlLayer | null) => unknown,
+    ) => {
+      callback(makeFeature('sketch', [10, 10]), null);
+    },
+  };
+}
+
 // ── Mocks ───────────────────────────────────────────────────────────────────
 
 jest.mock('../../core/olMap', () => ({
@@ -303,6 +318,20 @@ describe('nextPointSwipeAnimation behaviour', () => {
     );
     await nextPointSwipeAnimation.enable();
     fireSingleClick();
+    expect(decideForTest()).toBe('return');
+  });
+
+  test('попадание в unmanaged-оверлей не роняет обработчик и не обновляет снапшот', async () => {
+    // При выбранном инструменте drawTools под пикселем оказывается sketch-фича
+    // интеракции Draw или Modify, и OL передаёт её со слоем null. Обработчик
+    // читает имя слоя - без guard это TypeError на каждом таком клике.
+    mockGetOlMap.mockResolvedValue(
+      makeMapWithUnmanagedHit([makeLayer('points', pointsSrc), makeLayer('player', playerSrc)]),
+    );
+    await nextPointSwipeAnimation.enable();
+    expect(() => {
+      fireSingleClick();
+    }).not.toThrow();
     expect(decideForTest()).toBe('return');
   });
 

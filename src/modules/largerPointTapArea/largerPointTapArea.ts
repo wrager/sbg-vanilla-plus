@@ -1,14 +1,13 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
-import { getOlMap } from '../../core/olMap';
-import type { IOlFeature, IOlLayer, IOlMap } from '../../core/olMap';
+import { getOlMap, registerForEachFeatureAtPixelInterceptor } from '../../core/olMap';
 
 const MODULE_ID = 'largerPointTapArea';
 const HIT_TOLERANCE_PX = 15;
 
-type ForEachFeatureAtPixel = NonNullable<IOlMap['forEachFeatureAtPixel']>;
-
-let map: IOlMap | null = null;
-let originalMethod: ForEachFeatureAtPixel | null = null;
+let unregisterInterceptor: (() => void) | null = null;
+// Модуль включён по умолчанию, поэтому enable ждёт захвата карты. Токен
+// отменяет регистрацию перехватчика, если модуль выключили за время ожидания.
+let enableToken = 0;
 
 export const largerPointTapArea: IFeatureModule = {
   id: MODULE_ID,
@@ -23,31 +22,26 @@ export const largerPointTapArea: IFeatureModule = {
   init() {},
 
   enable() {
+    const myToken = ++enableToken;
     return getOlMap().then((olMap) => {
-      if (originalMethod || !olMap.forEachFeatureAtPixel) return;
-
-      map = olMap;
-      originalMethod = olMap.forEachFeatureAtPixel.bind(olMap);
-      const saved = originalMethod;
-
-      olMap.forEachFeatureAtPixel = (
-        pixel: number[],
-        callback: (feature: IOlFeature, layer: IOlLayer) => void,
-        options?: { hitTolerance?: number; layerFilter?: (layer: IOlLayer) => boolean },
-      ) => {
-        saved(pixel, callback, {
+      if (myToken !== enableToken) return;
+      if (unregisterInterceptor) return;
+      // Игровой обработчик клика по карте не задаёт hitTolerance и получает
+      // дефолтные 0 пикселей; повышаем его, чтобы точки было проще нажимать
+      // пальцем на мобильном. Заданный явно радиус остаётся: это осознанный
+      // выбор вызывающей стороны, а не игровой дефолт.
+      unregisterInterceptor = registerForEachFeatureAtPixelInterceptor(olMap, {
+        transformOptions: (options) => ({
           ...options,
-          hitTolerance: HIT_TOLERANCE_PX,
-        });
-      };
+          hitTolerance: options?.hitTolerance ?? HIT_TOLERANCE_PX,
+        }),
+      });
     });
   },
 
   disable() {
-    if (map && originalMethod && map.forEachFeatureAtPixel) {
-      map.forEachFeatureAtPixel = originalMethod;
-    }
-    originalMethod = null;
-    map = null;
+    enableToken++;
+    unregisterInterceptor?.();
+    unregisterInterceptor = null;
   },
 };

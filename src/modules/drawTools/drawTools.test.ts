@@ -16,6 +16,7 @@ jest.mock('../../core/olMap', () => {
 });
 
 import { getOlMap } from '../../core/olMap';
+import { isMapGestureLocked } from '../../core/mapGestureLock';
 import { drawTools } from './drawTools';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
@@ -987,6 +988,12 @@ describe('drawTools module', () => {
         ]),
       );
 
+      if (!currentMap) throw new Error('Map was not captured');
+      // Берём оригинальный mock ДО enable: enable оборачивает свойство
+      // map.forEachFeatureAtPixel фильтром для режимов line/polygon, и
+      // mockImplementation на patched-функции не сработает.
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+
       await drawTools.enable();
       if (!capturedDrawSource) throw new Error('Draw source was not captured');
       expect(capturedDrawSource.getFeatures()).toHaveLength(1);
@@ -998,7 +1005,6 @@ describe('drawTools module', () => {
       )[3];
       deleteButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-      if (!currentMap) throw new Error('Map was not captured');
       const mapOn = currentMap.on as unknown as jest.Mock;
       const mapOnCalls = mapOn.mock.calls as Array<
         [string, (event: Record<string, unknown>) => void]
@@ -1008,12 +1014,19 @@ describe('drawTools module', () => {
       const clickHandler = clickCall?.[1];
       if (!clickHandler) throw new Error('click handler was not registered');
 
-      // forEachFeatureAtPixel должен передать клик-обработчику нашу фичу
-      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
-      forEachMock.mockImplementation((pixel: number[], callback: (f: IOlFeature) => void) => {
-        void pixel;
-        callback(feature);
-      });
+      // forEachFeatureAtPixel должен передать клик-обработчику нашу фичу.
+      // Слой передаётся вторым аргументом, как это делает OL: попадания без
+      // слоя перехватчик модуля прячет как чужие sketch-оверлеи.
+      const drawLayerStub: IOlLayer = {
+        get: (key: string) => (key === 'name' ? 'svp-draw-tools' : undefined),
+        getSource: () => makeVectorSource(),
+      };
+      forEachMock.mockImplementation(
+        (pixel: number[], callback: (f: IOlFeature, l: IOlLayer) => void) => {
+          void pixel;
+          callback(feature, drawLayerStub);
+        },
+      );
 
       clickHandler({ pixel: [50, 50], originalEvent: {}, type: 'click' });
 
@@ -1317,6 +1330,315 @@ describe('drawTools module', () => {
       void drawTools.disable();
 
       expect(document.querySelector('.svp-draw-tools-copy-modal-overlay')).toBeNull();
+    });
+  });
+
+  describe('map gesture lock during vertex drag', () => {
+    /*
+     * Пока пользователь тащит вершину, жест принадлежит Modify. Без захвата
+     * singleFingerRotation принимает то же движение пальца за поворот карты,
+     * и карта крутится под редактируемой линией.
+     */
+    function getModifyHandler(type: string): () => void {
+      if (!lastModifyInteraction) throw new Error('Modify interaction was not captured');
+      const calls = lastModifyInteraction.on.mock.calls as Array<[string, () => void]>;
+      const call = calls.find((item) => item[0] === type);
+      if (!call) throw new Error(`Modify handler ${type} was not registered`);
+      return call[1];
+    }
+
+    function startEditMode(): void {
+      const editButton = document.querySelectorAll<HTMLButtonElement>(
+        '.svp-draw-tools-tool-button',
+      )[2];
+      editButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+
+    test('vertex drag locks the map gesture until it ends', async () => {
+      await drawTools.enable();
+      startEditMode();
+
+      getModifyHandler('modifystart')();
+      expect(isMapGestureLocked()).toBe(true);
+
+      getModifyHandler('modifyend')();
+      expect(isMapGestureLocked()).toBe(false);
+    });
+
+    test('leaving edit mode mid-drag releases the lock', async () => {
+      await drawTools.enable();
+      startEditMode();
+      getModifyHandler('modifystart')();
+
+      startEditMode();
+
+      expect(isMapGestureLocked()).toBe(false);
+    });
+
+    test('disable mid-drag releases the lock', async () => {
+      await drawTools.enable();
+      startEditMode();
+      getModifyHandler('modifystart')();
+
+      await drawTools.disable();
+
+      expect(isMapGestureLocked()).toBe(false);
+    });
+  });
+
+  describe('point hit filter during drawing', () => {
+    /*
+     * Сценарий: пока выбран инструмент, клик по карте принадлежит ему, а не
+     * игре, и попап точки открываться не должен.
+     * Игровой map.on('click') (refs/game/script.js:536) собирает попадания
+     * по слою 'points' через forEachFeatureAtPixel и вызывает showInfo при
+     * непустом наборе. Модуль оборачивает forEachFeatureAtPixel так, чтобы
+     * в любом режиме, кроме none, features слоя 'points' не доходили до
+     * callback'а вызывающей стороны.
+     */
+    function makeLayerStub(name: string): IOlLayer {
+      return {
+        get: (key: string) => (key === 'name' ? name : undefined),
+        getSource: () => makeVectorSource(),
+      };
+    }
+
+    function clickToolButton(index: number): void {
+      const buttons = document.querySelectorAll<HTMLButtonElement>('.svp-draw-tools-tool-button');
+      buttons[index].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+
+    test('enable wraps map.forEachFeatureAtPixel; disable returns control to the original', async () => {
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const patched = currentMap.forEachFeatureAtPixel;
+
+      await drawTools.enable();
+      expect(currentMap.forEachFeatureAtPixel).not.toBe(patched);
+
+      // После disable вызов map.forEachFeatureAtPixel должен идти напрямую в
+      // исходный mock без фильтрации features по currentMode.
+      await drawTools.disable();
+      const callerCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([0, 0], callerCb);
+      expect(forEachMock).toHaveBeenLastCalledWith([0, 0], callerCb);
+    });
+
+    test('line mode hides points-layer features from the caller callback', async () => {
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const pointsLayer = makeLayerStub('points');
+      const regionsLayer = makeLayerStub('regions');
+      const pointFeature = new FakeFeature();
+      const regionFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer) => void) => {
+          cb(pointFeature, pointsLayer);
+          cb(regionFeature, regionsLayer);
+        },
+      );
+
+      await drawTools.enable();
+      clickToolButton(0);
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(externalCb).toHaveBeenCalledTimes(1);
+      expect(externalCb).toHaveBeenCalledWith(regionFeature, regionsLayer);
+    });
+
+    test('polygon mode hides points-layer features from the caller callback', async () => {
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const pointsLayer = makeLayerStub('points');
+      const pointFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer) => void) => {
+          cb(pointFeature, pointsLayer);
+        },
+      );
+
+      await drawTools.enable();
+      clickToolButton(1);
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(externalCb).not.toHaveBeenCalled();
+    });
+
+    test('without active drawing mode points-layer features reach the caller callback', async () => {
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const pointsLayer = makeLayerStub('points');
+      const pointFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer) => void) => {
+          cb(pointFeature, pointsLayer);
+        },
+      );
+
+      await drawTools.enable();
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(externalCb).toHaveBeenCalledTimes(1);
+      expect(externalCb).toHaveBeenCalledWith(pointFeature, pointsLayer);
+    });
+
+    test('edit mode hides points-layer features from the caller callback', async () => {
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const pointsLayer = makeLayerStub('points');
+      const pointFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer) => void) => {
+          cb(pointFeature, pointsLayer);
+        },
+      );
+
+      await drawTools.enable();
+      clickToolButton(2);
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(externalCb).not.toHaveBeenCalled();
+    });
+
+    test('delete mode hides points-layer features from the caller callback', async () => {
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const pointsLayer = makeLayerStub('points');
+      const pointFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer) => void) => {
+          cb(pointFeature, pointsLayer);
+        },
+      );
+
+      await drawTools.enable();
+      clickToolButton(3);
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(externalCb).not.toHaveBeenCalled();
+    });
+
+    test('delete mode still sees features of the draw layer', async () => {
+      // Фильтр прячет только слой точек: собственный обработчик удаления
+      // должен по-прежнему находить линии схемы.
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const drawLayer = makeLayerStub('svp-draw-tools');
+      const drawFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer) => void) => {
+          cb(drawFeature, drawLayer);
+        },
+      );
+
+      await drawTools.enable();
+      clickToolButton(3);
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(externalCb).toHaveBeenCalledWith(drawFeature, drawLayer);
+    });
+
+    test('line mode hides a hit that arrives without a layer', async () => {
+      // Draw держит sketch-оверлей unmanaged, и OL отдаёт попадание в него с
+      // layer === null. Игровой обработчик читает имя слоя безусловно, а
+      // рисуемая линия лежит там же, куда игрок целится инструментом.
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const sketchFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer | null) => void) => {
+          cb(sketchFeature, null);
+        },
+      );
+
+      await drawTools.enable();
+      clickToolButton(0);
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(externalCb).not.toHaveBeenCalled();
+    });
+
+    test('without active mode a hit without a layer reaches the caller callback', async () => {
+      // В режиме none модуль не трогает игровое поведение вообще.
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const sketchFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer | null) => void) => {
+          cb(sketchFeature, null);
+        },
+      );
+
+      await drawTools.enable();
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(externalCb).toHaveBeenCalledWith(sketchFeature, null);
+    });
+
+    test('collapsing the toolbar exits the active mode', async () => {
+      // Свёрнутый тулбар не показывает выбранный инструмент, и кнопка на карте
+      // тоже не отражает режим. Сохранённый фильтр точек выглядел бы для
+      // игрока как "точки перестали открываться" без единой подсказки почему.
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const pointsLayer = makeLayerStub('points');
+      const pointFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer) => void) => {
+          cb(pointFeature, pointsLayer);
+        },
+      );
+
+      await drawTools.enable();
+      const menuButton = document.getElementById('svp-draw-tools-menu-button');
+      menuButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      clickToolButton(0);
+      menuButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(document.querySelector('.svp-draw-tools-toolbar-open')).toBeNull();
+      expect(document.querySelectorAll('.svp-draw-tools-tool-active')).toHaveLength(0);
+      expect(externalCb).toHaveBeenCalledWith(pointFeature, pointsLayer);
+    });
+
+    test('leaving line mode (toggle off) re-enables point hits for the caller', async () => {
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const pointsLayer = makeLayerStub('points');
+      const pointFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer) => void) => {
+          cb(pointFeature, pointsLayer);
+        },
+      );
+
+      await drawTools.enable();
+      clickToolButton(0);
+      clickToolButton(0);
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(externalCb).toHaveBeenCalledTimes(1);
+      expect(externalCb).toHaveBeenCalledWith(pointFeature, pointsLayer);
     });
   });
 });

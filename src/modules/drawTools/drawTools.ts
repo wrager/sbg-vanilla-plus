@@ -2,9 +2,14 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 import { injectStyles, removeStyles } from '../../core/dom';
 import { isRecord } from '../../core/isRecord';
 import { t } from '../../core/l10n';
+import { lockMapGesture } from '../../core/mapGestureLock';
 import { registerOlControl } from '../../core/olControlStack';
 import { showToast } from '../../core/toast';
-import { findLayerByName, getOlMap } from '../../core/olMap';
+import {
+  findLayerByName,
+  getOlMap,
+  registerForEachFeatureAtPixelInterceptor,
+} from '../../core/olMap';
 import type {
   IOlFeature,
   IOlInteraction,
@@ -104,9 +109,12 @@ let drawInteraction: IObservableInteraction | null = null;
 let modifyInteraction: IObservableInteraction | null = null;
 let deleteClickHandler: ((event: IOlMapEvent) => void) | null = null;
 let drawEndHandler: ((event: Record<string, unknown>) => void) | null = null;
+let modifyStartHandler: ((event: Record<string, unknown>) => void) | null = null;
 let modifyEndHandler: ((event: Record<string, unknown>) => void) | null = null;
+let releaseMapGesture: (() => void) | null = null;
 let enableToken = 0;
 let keydownHandler: ((event: KeyboardEvent) => void) | null = null;
+let unregisterPointHitFilter: (() => void) | null = null;
 
 function isNumberPair(value: unknown): value is number[] {
   return (
@@ -334,6 +342,41 @@ function removeDrawLayer(): void {
   drawSource = null;
 }
 
+function installPointHitFilter(olMap: IOlMap): void {
+  if (unregisterPointHitFilter) return;
+  // Игровой map.on('click') (refs/game/script.js:536) через forEachFeatureAtPixel
+  // собирает попадания по слою 'points' в массив piv. При непустом piv игра
+  // не только вызывает showInfo(piv[0]), но и пересобирает near_points - набор
+  // соседних точек для нативного свайпа между попапами (script.js:553-561).
+  // Пока выбран любой инструмент, клик по карте принадлежит инструменту:
+  // line и polygon ставят вершину, delete снимает линию, edit тащит вершину
+  // (мелкий сдвиг вершины возле точки игра засчитала бы за клик по ней).
+  // filterHit прячет features слоя 'points' от callback'а вызывающей стороны:
+  // piv остаётся пустым - попап не открывается и near_points не обновляется.
+  // Оба эффекта самовосстанавливаются по выходе из режима.
+  //
+  // Вместе с точками прячутся и попадания без слоя. Интеракции Draw и Modify
+  // держат свои sketch-оверлеи через layer.setMap(), то есть unmanaged, и OL
+  // отдаёт такое попадание с layer === null (refs/ol/ol.js:7691). Игровой
+  // обработчик читает имя слоя безусловно (script.js:540) и падает с
+  // TypeError, а рисуемая линия и подсвеченная вершина лежат ровно там, куда
+  // игрок целится инструментом.
+  unregisterPointHitFilter = registerForEachFeatureAtPixelInterceptor(olMap, {
+    filterHit: (_feature, layer) => {
+      if (currentMode === 'none') return true;
+      // Отсутствующий слой - попадание в unmanaged-оверлей; вызывающая сторона
+      // может и вовсе не принять второй аргумент, поэтому проверка на truthy.
+      if (!layer) return false;
+      return layer.get('name') !== 'points';
+    },
+  });
+}
+
+function uninstallPointHitFilter(): void {
+  unregisterPointHitFilter?.();
+  unregisterPointHitFilter = null;
+}
+
 function updateModeButtons(): void {
   const defs: Array<[ToolMode, HTMLButtonElement | null]> = [
     ['line', lineButton],
@@ -374,18 +417,30 @@ function clearInteractions(): void {
   }
 
   if (modifyInteraction) {
+    if (modifyStartHandler) {
+      modifyInteraction.un?.('modifystart', modifyStartHandler);
+    }
     if (modifyEndHandler) {
       modifyInteraction.un?.('modifyend', modifyEndHandler);
     }
     map.removeInteraction?.(modifyInteraction);
     modifyInteraction = null;
+    modifyStartHandler = null;
     modifyEndHandler = null;
+    // Выход из режима правки посреди перетаскивания вершины оставил бы жест
+    // захваченным навсегда: modifyend уже не придёт.
+    releaseVertexDragGesture();
   }
 
   if (deleteClickHandler) {
     map.un?.('click', deleteClickHandler);
     deleteClickHandler = null;
   }
+}
+
+function releaseVertexDragGesture(): void {
+  releaseMapGesture?.();
+  releaseMapGesture = null;
 }
 
 function setMode(mode: ToolMode, force = false): void {
@@ -435,9 +490,17 @@ function setMode(mode: ToolMode, force = false): void {
       source: drawSource,
       insertVertexCondition: () => false,
     }) as IObservableInteraction;
+    // Пока Modify тащит вершину, жест принадлежит ему: без захвата
+    // singleFingerRotation примет то же движение пальца за поворот карты и
+    // будет крутить её под редактируемой линией.
+    modifyStartHandler = () => {
+      releaseMapGesture ??= lockMapGesture();
+    };
     modifyEndHandler = () => {
+      releaseVertexDragGesture();
       saveDrawItems();
     };
+    modifyInteraction.on?.('modifystart', modifyStartHandler);
     modifyInteraction.on?.('modifyend', modifyEndHandler);
     map.addInteraction?.(modifyInteraction);
     return;
@@ -858,7 +921,13 @@ function setToolbarOpen(open: boolean): void {
 
 function toggleToolbar(): void {
   if (!toolbar) return;
-  setToolbarOpen(!toolbar.classList.contains('svp-draw-tools-toolbar-open'));
+  const open = !toolbar.classList.contains('svp-draw-tools-toolbar-open');
+  setToolbarOpen(open);
+  // Свёрнутый тулбар не показывает выбранный инструмент, а кнопка на карте
+  // не отражает режим. Оставленный активным инструмент выглядел бы для игрока
+  // как "точки перестали открываться" без подсказки почему, поэтому закрытие
+  // тулбара выходит из режима - так же, как крест и клик мимо тулбара.
+  if (!open) setMode('none');
 }
 
 function applySvgIcon(button: HTMLElement, svgString: string): void {
@@ -1056,6 +1125,7 @@ function cleanup(): void {
   clearInteractions();
   unmountToolbar();
   unmountOlControl();
+  uninstallPointHitFilter();
   removeDrawLayer();
   removeStyles(MODULE_ID);
   map = null;
@@ -1088,6 +1158,7 @@ export const drawTools: IFeatureModule = {
 
       createDrawLayer(olMap);
       loadFromStorage();
+      installPointHitFilter(olMap);
       addEscCancelListener();
       addToolbarOutsideClickListener();
       updateModeButtons();

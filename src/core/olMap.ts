@@ -104,6 +104,11 @@ export interface IOlMapEvent {
   originalEvent: Record<string, unknown>;
 }
 
+export interface IForEachFeatureAtPixelOptions {
+  hitTolerance?: number;
+  layerFilter?: (layer: IOlLayer) => boolean;
+}
+
 export interface IOlMap {
   getView(): IOlView;
   getSize(): number[] | undefined;
@@ -119,11 +124,24 @@ export interface IOlMap {
   dispatchEvent?(event: IOlMapEvent): void;
   on?(type: string, listener: (event: IOlMapEvent) => void): void;
   un?(type: string, listener: (event: IOlMapEvent) => void): void;
+  /*
+   * Контракт OpenLayers (refs/ol/ol.js:7876-7882, 7691): callback получает
+   * третьим аргументом геометрию попадания, его truthy-результат прекращает
+   * обход и возвращается наружу как результат самого forEachFeatureAtPixel.
+   * На этом построены `hasFeatureAtPixel` и интеракции Select / Translate.
+   *
+   * Второй аргумент - `null` для unmanaged-слоёв: слой, добавленный через
+   * `layer.setMap(map)` вместо `map.addLayer()`, попадает в layerStatesArray
+   * с `managed: false` (refs/ol/ol.js:4792), а callback получает его как
+   * `null` (refs/ol/ol.js:7691). Так живут sketch-оверлеи интеракций Draw и
+   * Modify, которые создаёт drawTools. `layerFilter` в options при этом
+   * получает сам слой, а не `null`.
+   */
   forEachFeatureAtPixel?(
     pixel: number[],
-    callback: (feature: IOlFeature, layer: IOlLayer) => void,
-    options?: { hitTolerance?: number; layerFilter?: (layer: IOlLayer) => boolean },
-  ): void;
+    callback: (feature: IOlFeature, layer: IOlLayer | null, geometry?: unknown) => unknown,
+    options?: IForEachFeatureAtPixelOptions,
+  ): unknown;
 }
 
 interface IOlGlobal {
@@ -224,6 +242,128 @@ export function findLayerByName(map: IOlMap, name: string): IOlLayer | null {
     if (layer.get('name') === name) return layer;
   }
   return null;
+}
+
+/**
+ * Перехватчик единой обёртки `map.forEachFeatureAtPixel`. Может преобразовать
+ * `options` перед вызовом нативного метода и/или скрыть отдельные попадания от
+ * callback'а вызывающей стороны.
+ */
+export interface IForEachFeatureAtPixelInterceptor {
+  /**
+   * Преобразует `options` перед передачей в нативный метод (hitTolerance, layerFilter).
+   * Перехватчики применяются цепочкой в порядке регистрации: каждый следующий
+   * получает результат предыдущего, а не исходные `options` вызывающей стороны.
+   */
+  transformOptions?(
+    options: IForEachFeatureAtPixelOptions | undefined,
+  ): IForEachFeatureAtPixelOptions | undefined;
+  /**
+   * Возвращает `false`, чтобы скрыть попадание `(feature, layer)` от callback'а
+   * вызывающей стороны. `layer` по контракту OpenLayers может быть `null`
+   * (unmanaged-слои, sketch-оверлеи интеракций Draw/Modify).
+   */
+  filterHit?(feature: IOlFeature, layer: IOlLayer | null): boolean;
+}
+
+const forEachFeatureInterceptors: IForEachFeatureAtPixelInterceptor[] = [];
+let interceptedMap: IOlMap | null = null;
+/*
+ * Дескриптор `forEachFeatureAtPixel` на самом экземпляре карты до установки
+ * обёртки; undefined, если метод приходил с прототипа ol.Map. Различие важно
+ * при снятии: прототипный метод возвращается удалением собственного свойства,
+ * иначе экземпляр навсегда остаётся с собственной копией и перестаёт видеть
+ * замену на прототипе.
+ */
+let ownForEachFeatureDescriptor: PropertyDescriptor | undefined;
+/*
+ * Сама поставленная обёртка. Снятие сверяется с ней: за время жизни реестра
+ * метод мог переписать кто-то ещё, и восстановление сохранённого дескриптора
+ * стёрло бы чужой патч - ровно та беда, ради которой реестр и заводился.
+ */
+let installedForEachFeatureWrapper: IOlMap['forEachFeatureAtPixel'] = undefined;
+
+function installForEachFeatureAtPixelWrapper(map: IOlMap): void {
+  if (!map.forEachFeatureAtPixel) return;
+  const callNative = map.forEachFeatureAtPixel.bind(map);
+  ownForEachFeatureDescriptor = Object.getOwnPropertyDescriptor(map, 'forEachFeatureAtPixel');
+  interceptedMap = map;
+  installedForEachFeatureWrapper = (pixel, callback, options) => {
+    let effectiveOptions = options;
+    for (const interceptor of forEachFeatureInterceptors) {
+      if (interceptor.transformOptions) {
+        effectiveOptions = interceptor.transformOptions(effectiveOptions);
+      }
+    }
+    // Результат callback'а идёт обратно в нативный метод (truthy прекращает
+    // обход), результат нативного метода - вызывающей стороне. Скрытое
+    // перехватчиком попадание отдаёт undefined, чтобы обход продолжился.
+    return callNative(
+      pixel,
+      (feature, layer, ...rest) => {
+        for (const interceptor of forEachFeatureInterceptors) {
+          if (interceptor.filterHit && !interceptor.filterHit(feature, layer)) return undefined;
+        }
+        return callback(feature, layer, ...rest);
+      },
+      effectiveOptions,
+    );
+  };
+  map.forEachFeatureAtPixel = installedForEachFeatureWrapper;
+}
+
+function uninstallForEachFeatureAtPixelWrapper(): void {
+  if (interceptedMap && interceptedMap.forEachFeatureAtPixel === installedForEachFeatureWrapper) {
+    if (ownForEachFeatureDescriptor) {
+      Object.defineProperty(interceptedMap, 'forEachFeatureAtPixel', ownForEachFeatureDescriptor);
+    } else {
+      delete interceptedMap.forEachFeatureAtPixel;
+    }
+  }
+  interceptedMap = null;
+  ownForEachFeatureDescriptor = undefined;
+  installedForEachFeatureWrapper = undefined;
+}
+
+/**
+ * Регистрирует перехватчик единой обёртки `map.forEachFeatureAtPixel`.
+ *
+ * Несколько модулей (`largerPointTapArea`, `drawTools`) меняют поведение
+ * `forEachFeatureAtPixel`. Независимые обёртки по схеме save/restore не
+ * композируются: `disable()` одного модуля безусловно затирает обёртку
+ * другого. Поэтому метод оборачивается ровно один раз - при регистрации
+ * первого перехватчика; каждый следующий лишь добавляется в реестр.
+ * `unregister` убирает только свой перехватчик; когда реестр пустеет,
+ * восстанавливается нативный метод. Тот же приём - `olControlStack`.
+ *
+ * Если у карты нет `forEachFeatureAtPixel`, перехватчик не регистрируется и
+ * `unregister` - no-op. То же самое для карты, отличной от той, на которой уже
+ * стоит обёртка: перехватчики реестра применяются к вызовам одной карты, и
+ * принять чужой перехватчик значило бы применять его к чужим вызовам. В SBG
+ * карта одна на страницу (`getOlMap` захватывает единственный экземпляр),
+ * поэтому ветка сигнализирует об ошибке вызывающей стороны.
+ */
+export function registerForEachFeatureAtPixelInterceptor(
+  map: IOlMap,
+  interceptor: IForEachFeatureAtPixelInterceptor,
+): () => void {
+  if (!map.forEachFeatureAtPixel) return () => {};
+  if (interceptedMap && interceptedMap !== map) {
+    console.warn('[SVP] forEachFeatureAtPixel: перехватчик для другой карты не зарегистрирован');
+    return () => {};
+  }
+  if (forEachFeatureInterceptors.length === 0) {
+    installForEachFeatureAtPixelWrapper(map);
+  }
+  forEachFeatureInterceptors.push(interceptor);
+  return () => {
+    const index = forEachFeatureInterceptors.indexOf(interceptor);
+    if (index === -1) return;
+    forEachFeatureInterceptors.splice(index, 1);
+    if (forEachFeatureInterceptors.length === 0) {
+      uninstallForEachFeatureAtPixelWrapper();
+    }
+  };
 }
 
 let captured: IOlMap | null = null;

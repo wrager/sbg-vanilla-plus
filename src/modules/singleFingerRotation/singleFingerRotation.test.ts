@@ -32,6 +32,7 @@ jest.mock('../../core/olMap', () => {
 
 import { singleFingerRotation } from './singleFingerRotation';
 import { getOlMap } from '../../core/olMap';
+import { lockMapGesture } from '../../core/mapGestureLock';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 
@@ -173,6 +174,48 @@ test('does not rotate when FW is off', () => {
   dispatchTouch('touchmove', { clientX: 500, clientY: 300 });
 
   expect(realSetRotation).not.toHaveBeenCalled();
+});
+
+test('does not rotate while another module holds the map gesture', () => {
+  // drawTools держит захват, пока Modify тащит вершину: то же движение пальца
+  // не должно одновременно крутить карту.
+  const release = lockMapGesture();
+
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+  dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+  flushAnimationFrame();
+
+  expect(realSetRotation).not.toHaveBeenCalled();
+  expect(dragPan.getActive()).toBe(true);
+
+  release();
+});
+
+test('drops the gesture when the lock appears mid-drag', () => {
+  // Modify шлёт modifystart на первом перетаскивании, то есть уже после
+  // нашего touchstart; накопленный поворот к карте применяться не должен.
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+  const release = lockMapGesture();
+  dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+  flushAnimationFrame();
+
+  expect(realSetRotation).not.toHaveBeenCalled();
+  expect(dragPan.getActive()).toBe(true);
+
+  release();
+});
+
+test('rotates again once the lock is released', () => {
+  const release = lockMapGesture();
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+  dispatchTouch('touchend');
+  release();
+
+  dispatchTouch('touchstart', { clientX: 400, clientY: 100 });
+  dispatchTouch('touchmove', { clientX: 700, clientY: 300 });
+  flushAnimationFrame();
+
+  expect(realSetRotation).toHaveBeenCalled();
 });
 
 test('does not rotate for non-canvas targets', () => {
