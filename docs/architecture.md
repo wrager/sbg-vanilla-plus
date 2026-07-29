@@ -71,6 +71,8 @@ interface IFeatureModule {
 
 **SBG Flavor** — `src/core/sbgFlavor.ts`: перехватывает глобальный `fetch` и добавляет заголовок `x-sbg-flavor: VanillaPlus/{version}` ко всем запросам. Если другие скрипты уже установили этот заголовок, значение дополняется через пробел. Формат как у User-Agent. Запрошено разработчиком игры для статистики.
 
+**Flavor на загрузочном экране** — `src/core/loadingScreenFlavor.ts`: дописывает `VanillaPlus/{version}` к версии игры в `.loading-screen__version`, получается `Stock/0.7.0 VanillaPlus/{version}`. Игра пишет туда свой flavor через `textContent` на шаге загрузки `self` (refs/game/script.js:139) — позже нашего старта и с полной перезаписью содержимого, поэтому метка добавляется псевдоэлементом `::after` через инъекцию стиля: она переживает запись игры и не требует ни наблюдения за элементом, ни гонки за порядок записи. Значение flavor общее с заголовком `x-sbg-flavor` (`SVP_FLAVOR` в `sbgFlavor.ts`).
+
 **Game Script Patcher** — `src/core/gameScriptPatcher.ts`: перехватывает загрузку основного скрипта игры (ES module) и применяет патчи перед инъекцией. Механизм: override `Element.prototype.append` → перехват `<script type="module" src="script@...">` → fetch → text patch → inline module inject. Override одноразовый — снимается сразу после перехвата. При ошибке загружается оригинальный скрипт без патчей. Текущие патчи: экспозиция `window.showInfo` для прямого открытия попапа точки. Подавление нативного горизонтального свайпа на `.info` (раньше было text-патчем) перенесено в модуль `improvedNextPointSwipe` через runtime-override `Hammer.Manager.prototype.emit` - менее инвазивно, не требует обновления поисковой строки при минорных правках script.js игры.
 
 ## Глобальные runtime-override и их жизненный цикл
@@ -176,6 +178,7 @@ src/
 │   ├── gameVersionPrompt.ts # Confirm-диалог при несовместимой версии игры
 │   ├── gameScriptPatcher.ts # Перехват и патчинг загрузки скрипта игры
 │   ├── sbgFlavor.ts         # Заголовок x-sbg-flavor
+│   ├── loadingScreenFlavor.ts # Flavor скрипта на загрузочном экране игры
 │   ├── host.ts              # Определение хоста (SBG Scout)
 │   ├── errorLog.ts          # Перехват и хранение ошибок
 │   ├── toast.ts             # Тост-уведомления поверх игры

@@ -5,6 +5,7 @@ import { initErrorLog } from './core/errorLog';
 import { initGameVersionDetection, installGameVersionCapture } from './core/gameVersion';
 import { ensureSbgVersionSupported } from './core/gameVersionPrompt';
 import { initOlMapCapture } from './core/olMap';
+import { showLoadingScreenFlavor } from './core/loadingScreenFlavor';
 import { installSbgFlavor } from './core/sbgFlavor';
 import { betterRefPopoverClosing } from './modules/betterRefPopoverClosing/betterRefPopoverClosing';
 import { enhancedMainScreen } from './modules/enhancedMainScreen/enhancedMainScreen';
@@ -55,6 +56,7 @@ if (!isDisabled()) {
     // от работы скрипта на этой версии.
     if (!ensureSbgVersionSupported()) return;
     installSbgFlavor();
+    showLoadingScreenFlavor();
     bootstrap([
       // ui
       enhancedMainScreen,
