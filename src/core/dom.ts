@@ -80,7 +80,15 @@ export function injectStyles(css: string, id: string): void {
   const style = document.createElement('style');
   style.id = `svp-${id}`;
   style.textContent = css;
-  document.head.appendChild(style);
+  /*
+   * Скрипт стартует на document-start, когда head ещё не распарсен: стили,
+   * которые нужны до готовности DOM, кладём в documentElement. Браузер
+   * применяет <style> и вне head, а при разборе head элемент остаётся на
+   * месте - переносить его потом не нужно. Спрашиваем head через
+   * querySelector, потому что document.head типизирован как всегда
+   * существующий и его отсутствие типам не видно.
+   */
+  ($('head') ?? document.documentElement).appendChild(style);
 }
 
 export function removeStyles(id: string): void {

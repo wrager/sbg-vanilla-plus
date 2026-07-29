@@ -24,6 +24,18 @@ describe('dom', () => {
     expect(styles[0].textContent).toBe('body { color: blue; }');
   });
 
+  test('injectStyles falls back to documentElement when head is not parsed yet', () => {
+    const head = document.head;
+    head.remove();
+
+    injectStyles('body { color: red; }', 'test');
+
+    const style = document.getElementById('svp-test');
+    expect(style?.parentElement).toBe(document.documentElement);
+
+    document.documentElement.prepend(head);
+  });
+
   test('removeStyles removes the style element', () => {
     injectStyles('body { color: red; }', 'test');
     removeStyles('test');
