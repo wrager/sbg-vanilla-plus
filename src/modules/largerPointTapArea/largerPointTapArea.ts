@@ -5,6 +5,9 @@ const MODULE_ID = 'largerPointTapArea';
 const HIT_TOLERANCE_PX = 15;
 
 let unregisterInterceptor: (() => void) | null = null;
+// Модуль включён по умолчанию, поэтому enable ждёт захвата карты. Токен
+// отменяет регистрацию перехватчика, если модуль выключили за время ожидания.
+let enableToken = 0;
 
 export const largerPointTapArea: IFeatureModule = {
   id: MODULE_ID,
@@ -19,7 +22,9 @@ export const largerPointTapArea: IFeatureModule = {
   init() {},
 
   enable() {
+    const myToken = ++enableToken;
     return getOlMap().then((olMap) => {
+      if (myToken !== enableToken) return;
       if (unregisterInterceptor) return;
       // Игра вызывает forEachFeatureAtPixel с дефолтным hitTolerance; повышаем
       // его, чтобы точки было проще нажимать пальцем на мобильном.
@@ -30,6 +35,7 @@ export const largerPointTapArea: IFeatureModule = {
   },
 
   disable() {
+    enableToken++;
     unregisterInterceptor?.();
     unregisterInterceptor = null;
   },

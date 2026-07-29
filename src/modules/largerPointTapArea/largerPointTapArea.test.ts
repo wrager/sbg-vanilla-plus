@@ -135,6 +135,28 @@ describe('largerPointTapArea enable/disable', () => {
     expect(mockMap.forEachFeatureAtPixel).toBe(patchedMethod);
   });
 
+  test('disable before the map is captured cancels the pending enable', async () => {
+    // Модуль включён по умолчанию, поэтому enable стартует до захвата карты.
+    // Выключение в настройках в этот момент не должно оставлять перехватчик,
+    // который встанет позже и снять его будет некому.
+    let resolveMap: (map: IOlMap) => void = () => {};
+    mockGetOlMap.mockReturnValue(
+      new Promise<IOlMap>((resolve) => {
+        resolveMap = resolve;
+      }),
+    );
+
+    const enabling = largerPointTapArea.enable();
+    await largerPointTapArea.disable();
+    resolveMap(mockMap as unknown as IOlMap);
+    await enabling;
+
+    const callback = jest.fn();
+    mockMap.forEachFeatureAtPixel([1, 2], callback);
+
+    expect(forEachOriginal).toHaveBeenCalledWith([1, 2], callback);
+  });
+
   test('disable is safe when not enabled', async () => {
     await largerPointTapArea.disable();
   });
