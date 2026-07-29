@@ -24,12 +24,12 @@ export function ensureSbgVersionSupported(): boolean {
   // как остальной интерфейс: getGameLocale читает только localStorage и
   // navigator, от версии игры не зависит и на этом этапе полностью работает.
   const message = t({
-    ru:
-      `SBG Vanilla+ не тестировался на версии игры ${detected} (поддерживаются: ${supported}).\n\n` +
-      `ОК — включить скрипт, Отмена — продолжить без скрипта.`,
     en:
       `SBG Vanilla+ has not been tested with game version ${detected} (supported: ${supported}).\n\n` +
       `OK — run the script, Cancel — continue without it.`,
+    ru:
+      `SBG Vanilla+ не тестировался на версии игры ${detected} (поддерживаются: ${supported}).\n\n` +
+      `ОК — включить скрипт, Отмена — продолжить без скрипта.`,
   });
 
   return confirm(message);
