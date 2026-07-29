@@ -5,7 +5,7 @@ import { initErrorLog } from './core/errorLog';
 import { initGameVersionDetection, installGameVersionCapture } from './core/gameVersion';
 import { ensureSbgVersionSupported } from './core/gameVersionPrompt';
 import { initOlMapCapture } from './core/olMap';
-import { showLoadingScreenFlavor } from './core/loadingScreenFlavor';
+import { hideLoadingScreenFlavor, showLoadingScreenFlavor } from './core/loadingScreenFlavor';
 import { installSbgFlavor } from './core/sbgFlavor';
 import { betterRefPopoverClosing } from './modules/betterRefPopoverClosing/betterRefPopoverClosing';
 import { enhancedMainScreen } from './modules/enhancedMainScreen/enhancedMainScreen';
@@ -38,9 +38,13 @@ if (!isDisabled()) {
   // - olMapCapture: defineProperty на window.ol до загрузки OL-скрипта
   // - gameVersionCapture: monkey-patch window.fetch до первого /api/*
   //   запроса игры, чтобы поймать заголовок x-sbg-version в ответе
+  // - loadingScreenFlavor: стиль с нашей версией до того как игра запишет
+  //   свою в .loading-screen__version (это происходит раньше первого /api/*
+  //   ответа, то есть раньше, чем завершится детект версии)
   installGameScriptPatcher();
   initOlMapCapture();
   installGameVersionCapture();
+  showLoadingScreenFlavor();
 
   // bootstrap() создаёт DOM-элементы (settings panel), для чего нужен document.head.
   // При document-start head ещё не существует — откладываем до DOMContentLoaded.
@@ -53,10 +57,13 @@ if (!isDisabled()) {
     // Если версия не поддерживается этой сборкой — confirm. При отмене
     // bootstrap не запускаем И flavor-заголовок не выставляем: мы не
     // должны модифицировать запросы к серверу, если пользователь отказался
-    // от работы скрипта на этой версии.
-    if (!ensureSbgVersionSupported()) return;
+    // от работы скрипта на этой версии. Метку на загрузочном экране, уже
+    // показанную к этому моменту, по той же причине убираем.
+    if (!ensureSbgVersionSupported()) {
+      hideLoadingScreenFlavor();
+      return;
+    }
     installSbgFlavor();
-    showLoadingScreenFlavor();
     bootstrap([
       // ui
       enhancedMainScreen,
