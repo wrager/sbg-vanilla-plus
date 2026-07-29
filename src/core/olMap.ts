@@ -124,11 +124,17 @@ export interface IOlMap {
   dispatchEvent?(event: IOlMapEvent): void;
   on?(type: string, listener: (event: IOlMapEvent) => void): void;
   un?(type: string, listener: (event: IOlMapEvent) => void): void;
+  /*
+   * Контракт OpenLayers (refs/ol/ol.js:7876-7882, 7691): callback получает
+   * третьим аргументом геометрию попадания, его truthy-результат прекращает
+   * обход и возвращается наружу как результат самого forEachFeatureAtPixel.
+   * На этом построены `hasFeatureAtPixel` и интеракции Select / Translate.
+   */
   forEachFeatureAtPixel?(
     pixel: number[],
-    callback: (feature: IOlFeature, layer: IOlLayer) => void,
+    callback: (feature: IOlFeature, layer: IOlLayer, geometry?: unknown) => unknown,
     options?: IForEachFeatureAtPixelOptions,
-  ): void;
+  ): unknown;
 }
 
 interface IOlGlobal {
@@ -267,13 +273,16 @@ function installForEachFeatureAtPixelWrapper(map: IOlMap): void {
         effectiveOptions = interceptor.transformOptions(effectiveOptions);
       }
     }
-    callNative(
+    // Результат callback'а идёт обратно в нативный метод (truthy прекращает
+    // обход), результат нативного метода - вызывающей стороне. Скрытое
+    // перехватчиком попадание отдаёт undefined, чтобы обход продолжился.
+    return callNative(
       pixel,
-      (feature, layer) => {
+      (feature, layer, ...rest) => {
         for (const interceptor of forEachFeatureInterceptors) {
-          if (interceptor.filterHit && !interceptor.filterHit(feature, layer)) return;
+          if (interceptor.filterHit && !interceptor.filterHit(feature, layer)) return undefined;
         }
-        callback(feature, layer);
+        return callback(feature, layer, ...rest);
       },
       effectiveOptions,
     );

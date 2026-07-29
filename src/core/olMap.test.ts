@@ -513,6 +513,67 @@ describe('registerForEachFeatureAtPixelInterceptor', () => {
     expect(native).toHaveBeenLastCalledWith([1, 1], callback);
   });
 
+  test('returns the native result to the caller', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    map.forEachFeatureAtPixel.mockReturnValue('native result');
+
+    registerForEachFeatureAtPixelInterceptor(map, {});
+
+    expect(map.forEachFeatureAtPixel([0, 0], () => undefined)).toBe('native result');
+  });
+
+  test('forwards the caller callback result to the native method', async () => {
+    // OL прекращает обход на первом truthy-результате callback'а; обёртка
+    // обязана вернуть его нативному методу, иначе ранний выход ломается.
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const firstFeature = makeFeature();
+    const secondFeature = makeFeature();
+    const layer = makeLayer('points');
+    const visited: IOlFeature[] = [];
+    map.forEachFeatureAtPixel.mockImplementation(
+      (_pixel: number[], cb: (feature: IOlFeature, layer: IOlLayer) => unknown) => {
+        for (const feature of [firstFeature, secondFeature]) {
+          visited.push(feature);
+          const result = cb(feature, layer);
+          if (result) return result;
+        }
+        return undefined;
+      },
+    );
+
+    registerForEachFeatureAtPixelInterceptor(map, {});
+
+    const result = map.forEachFeatureAtPixel([0, 0], (feature) => feature);
+
+    expect(result).toBe(firstFeature);
+    expect(visited).toEqual([firstFeature]);
+  });
+
+  test('passes the hit geometry through to the caller callback', async () => {
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+    const feature = makeFeature();
+    const layer = makeLayer('points');
+    const geometry = { getCoordinates: () => [1, 2] };
+    map.forEachFeatureAtPixel.mockImplementation(
+      (
+        _pixel: number[],
+        cb: (feature: IOlFeature, layer: IOlLayer, geometry?: unknown) => unknown,
+      ) => {
+        cb(feature, layer, geometry);
+      },
+    );
+
+    registerForEachFeatureAtPixelInterceptor(map, {});
+
+    const callback = jest.fn();
+    map.forEachFeatureAtPixel([0, 0], callback);
+
+    expect(callback).toHaveBeenCalledWith(feature, layer, geometry);
+  });
+
   test('returns a no-op unregister when the map has no forEachFeatureAtPixel', async () => {
     const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
     const map: IOlMap = {
