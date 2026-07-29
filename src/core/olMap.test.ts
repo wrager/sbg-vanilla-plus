@@ -587,6 +587,21 @@ describe('registerForEachFeatureAtPixelInterceptor', () => {
     expect(map.forEachFeatureAtPixel).toBe(foreignPatch);
   });
 
+  test('unregistering keeps a patch that landed on top of the wrapper', async () => {
+    // Метод могли переписать уже после нашей установки: другой userscript,
+    // сама игра при пересоздании карты. Восстановление сохранённого дескриптора
+    // стёрло бы этот патч - ровно то, ради чего реестр и заводился.
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const map = createForEachMap();
+
+    const unregister = registerForEachFeatureAtPixelInterceptor(map, {});
+    const foreignPatch = jest.fn();
+    map.forEachFeatureAtPixel = foreignPatch;
+    unregister();
+
+    expect(map.forEachFeatureAtPixel).toBe(foreignPatch);
+  });
+
   test('returns the native result to the caller', async () => {
     const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
     const map = createForEachMap();

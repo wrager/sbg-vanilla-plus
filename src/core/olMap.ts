@@ -272,13 +272,19 @@ let interceptedMap: IOlMap | null = null;
  * замену на прототипе.
  */
 let ownForEachFeatureDescriptor: PropertyDescriptor | undefined;
+/*
+ * Сама поставленная обёртка. Снятие сверяется с ней: за время жизни реестра
+ * метод мог переписать кто-то ещё, и восстановление сохранённого дескриптора
+ * стёрло бы чужой патч - ровно та беда, ради которой реестр и заводился.
+ */
+let installedForEachFeatureWrapper: IOlMap['forEachFeatureAtPixel'] = undefined;
 
 function installForEachFeatureAtPixelWrapper(map: IOlMap): void {
   if (!map.forEachFeatureAtPixel) return;
   const callNative = map.forEachFeatureAtPixel.bind(map);
   ownForEachFeatureDescriptor = Object.getOwnPropertyDescriptor(map, 'forEachFeatureAtPixel');
   interceptedMap = map;
-  map.forEachFeatureAtPixel = (pixel, callback, options) => {
+  installedForEachFeatureWrapper = (pixel, callback, options) => {
     let effectiveOptions = options;
     for (const interceptor of forEachFeatureInterceptors) {
       if (interceptor.transformOptions) {
@@ -299,10 +305,11 @@ function installForEachFeatureAtPixelWrapper(map: IOlMap): void {
       effectiveOptions,
     );
   };
+  map.forEachFeatureAtPixel = installedForEachFeatureWrapper;
 }
 
 function uninstallForEachFeatureAtPixelWrapper(): void {
-  if (interceptedMap) {
+  if (interceptedMap && interceptedMap.forEachFeatureAtPixel === installedForEachFeatureWrapper) {
     if (ownForEachFeatureDescriptor) {
       Object.defineProperty(interceptedMap, 'forEachFeatureAtPixel', ownForEachFeatureDescriptor);
     } else {
@@ -311,6 +318,7 @@ function uninstallForEachFeatureAtPixelWrapper(): void {
   }
   interceptedMap = null;
   ownForEachFeatureDescriptor = undefined;
+  installedForEachFeatureWrapper = undefined;
 }
 
 /**
