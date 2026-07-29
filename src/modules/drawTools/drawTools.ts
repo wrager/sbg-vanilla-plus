@@ -2,6 +2,7 @@ import type { IFeatureModule } from '../../core/moduleRegistry';
 import { injectStyles, removeStyles } from '../../core/dom';
 import { isRecord } from '../../core/isRecord';
 import { t } from '../../core/l10n';
+import { lockMapGesture } from '../../core/mapGestureLock';
 import { registerOlControl } from '../../core/olControlStack';
 import { showToast } from '../../core/toast';
 import {
@@ -108,7 +109,9 @@ let drawInteraction: IObservableInteraction | null = null;
 let modifyInteraction: IObservableInteraction | null = null;
 let deleteClickHandler: ((event: IOlMapEvent) => void) | null = null;
 let drawEndHandler: ((event: Record<string, unknown>) => void) | null = null;
+let modifyStartHandler: ((event: Record<string, unknown>) => void) | null = null;
 let modifyEndHandler: ((event: Record<string, unknown>) => void) | null = null;
+let releaseMapGesture: (() => void) | null = null;
 let enableToken = 0;
 let keydownHandler: ((event: KeyboardEvent) => void) | null = null;
 let unregisterPointHitFilter: (() => void) | null = null;
@@ -401,18 +404,30 @@ function clearInteractions(): void {
   }
 
   if (modifyInteraction) {
+    if (modifyStartHandler) {
+      modifyInteraction.un?.('modifystart', modifyStartHandler);
+    }
     if (modifyEndHandler) {
       modifyInteraction.un?.('modifyend', modifyEndHandler);
     }
     map.removeInteraction?.(modifyInteraction);
     modifyInteraction = null;
+    modifyStartHandler = null;
     modifyEndHandler = null;
+    // Выход из режима правки посреди перетаскивания вершины оставил бы жест
+    // захваченным навсегда: modifyend уже не придёт.
+    releaseVertexDragGesture();
   }
 
   if (deleteClickHandler) {
     map.un?.('click', deleteClickHandler);
     deleteClickHandler = null;
   }
+}
+
+function releaseVertexDragGesture(): void {
+  releaseMapGesture?.();
+  releaseMapGesture = null;
 }
 
 function setMode(mode: ToolMode, force = false): void {
@@ -462,9 +477,17 @@ function setMode(mode: ToolMode, force = false): void {
       source: drawSource,
       insertVertexCondition: () => false,
     }) as IObservableInteraction;
+    // Пока Modify тащит вершину, жест принадлежит ему: без захвата
+    // singleFingerRotation примет то же движение пальца за поворот карты и
+    // будет крутить её под редактируемой линией.
+    modifyStartHandler = () => {
+      releaseMapGesture ??= lockMapGesture();
+    };
     modifyEndHandler = () => {
+      releaseVertexDragGesture();
       saveDrawItems();
     };
+    modifyInteraction.on?.('modifystart', modifyStartHandler);
     modifyInteraction.on?.('modifyend', modifyEndHandler);
     map.addInteraction?.(modifyInteraction);
     return;

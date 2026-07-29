@@ -16,6 +16,7 @@ jest.mock('../../core/olMap', () => {
 });
 
 import { getOlMap } from '../../core/olMap';
+import { isMapGestureLocked } from '../../core/mapGestureLock';
 import { drawTools } from './drawTools';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
@@ -1321,6 +1322,59 @@ describe('drawTools module', () => {
       void drawTools.disable();
 
       expect(document.querySelector('.svp-draw-tools-copy-modal-overlay')).toBeNull();
+    });
+  });
+
+  describe('map gesture lock during vertex drag', () => {
+    /*
+     * Пока пользователь тащит вершину, жест принадлежит Modify. Без захвата
+     * singleFingerRotation принимает то же движение пальца за поворот карты,
+     * и карта крутится под редактируемой линией.
+     */
+    function getModifyHandler(type: string): () => void {
+      if (!lastModifyInteraction) throw new Error('Modify interaction was not captured');
+      const calls = lastModifyInteraction.on.mock.calls as Array<[string, () => void]>;
+      const call = calls.find((item) => item[0] === type);
+      if (!call) throw new Error(`Modify handler ${type} was not registered`);
+      return call[1];
+    }
+
+    function startEditMode(): void {
+      const editButton = document.querySelectorAll<HTMLButtonElement>(
+        '.svp-draw-tools-tool-button',
+      )[2];
+      editButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
+
+    test('vertex drag locks the map gesture until it ends', async () => {
+      await drawTools.enable();
+      startEditMode();
+
+      getModifyHandler('modifystart')();
+      expect(isMapGestureLocked()).toBe(true);
+
+      getModifyHandler('modifyend')();
+      expect(isMapGestureLocked()).toBe(false);
+    });
+
+    test('leaving edit mode mid-drag releases the lock', async () => {
+      await drawTools.enable();
+      startEditMode();
+      getModifyHandler('modifystart')();
+
+      startEditMode();
+
+      expect(isMapGestureLocked()).toBe(false);
+    });
+
+    test('disable mid-drag releases the lock', async () => {
+      await drawTools.enable();
+      startEditMode();
+      getModifyHandler('modifystart')();
+
+      await drawTools.disable();
+
+      expect(isMapGestureLocked()).toBe(false);
     });
   });
 
