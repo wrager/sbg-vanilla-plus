@@ -318,13 +318,21 @@ function uninstallForEachFeatureAtPixelWrapper(): void {
  * восстанавливается нативный метод. Тот же приём - `olControlStack`.
  *
  * Если у карты нет `forEachFeatureAtPixel`, перехватчик не регистрируется и
- * `unregister` - no-op.
+ * `unregister` - no-op. То же самое для карты, отличной от той, на которой уже
+ * стоит обёртка: перехватчики реестра применяются к вызовам одной карты, и
+ * принять чужой перехватчик значило бы применять его к чужим вызовам. В SBG
+ * карта одна на страницу (`getOlMap` захватывает единственный экземпляр),
+ * поэтому ветка сигнализирует об ошибке вызывающей стороны.
  */
 export function registerForEachFeatureAtPixelInterceptor(
   map: IOlMap,
   interceptor: IForEachFeatureAtPixelInterceptor,
 ): () => void {
   if (!map.forEachFeatureAtPixel) return () => {};
+  if (interceptedMap && interceptedMap !== map) {
+    console.warn('[SVP] forEachFeatureAtPixel: перехватчик для другой карты не зарегистрирован');
+    return () => {};
+  }
   if (forEachFeatureInterceptors.length === 0) {
     installForEachFeatureAtPixelWrapper(map);
   }

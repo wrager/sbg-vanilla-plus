@@ -513,6 +513,41 @@ describe('registerForEachFeatureAtPixelInterceptor', () => {
     expect(native).toHaveBeenLastCalledWith([1, 1], callback);
   });
 
+  test('refuses to register an interceptor for a different map', async () => {
+    // Обёртка живёт на карте первого зарегистрировавшегося. Молча принять
+    // перехватчик для другой карты значит применять его к чужим вызовам.
+    const { registerForEachFeatureAtPixelInterceptor } = await import('./olMap');
+    const firstMap = createForEachMap();
+    const secondMap = createForEachMap();
+    const firstNative = firstMap.forEachFeatureAtPixel;
+    const secondNative = secondMap.forEachFeatureAtPixel;
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    registerForEachFeatureAtPixelInterceptor(firstMap, {});
+    const unregisterSecond = registerForEachFeatureAtPixelInterceptor(secondMap, {
+      filterHit: () => false,
+    });
+
+    expect(secondMap.forEachFeatureAtPixel).toBe(secondNative);
+    expect(warn).toHaveBeenCalled();
+
+    const callback = jest.fn();
+    const feature = makeFeature();
+    const layer = makeLayer('points');
+    firstNative.mockImplementation(
+      (_pixel: number[], cb: (feature: IOlFeature, layer: IOlLayer) => unknown) => {
+        cb(feature, layer);
+      },
+    );
+    firstMap.forEachFeatureAtPixel([0, 0], callback);
+
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(() => {
+      unregisterSecond();
+    }).not.toThrow();
+    warn.mockRestore();
+  });
+
   test('unregistering the last interceptor restores the prototype method', async () => {
     // Игровая карта держит forEachFeatureAtPixel на прототипе ol.Map. Если
     // снятие обёртки кладёт на экземпляр bound-копию, метод навсегда остаётся
