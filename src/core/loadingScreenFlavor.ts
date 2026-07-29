@@ -6,7 +6,7 @@ const VERSION_SELECTOR = '.loading-screen__version';
 
 /**
  * Дописывает идентификатор скрипта к версии игры на загрузочном экране:
- * `Stock/0.7.0 VanillaPlus/x.y.z`.
+ * `Stock/0.7.0, VanillaPlus/x.y.z`.
  *
  * Вызывается в document-start, до детекта версии игры: игра пишет свой flavor
  * в `.loading-screen__version` (refs/game/script.js:139) сразу после загрузки
@@ -19,7 +19,7 @@ const VERSION_SELECTOR = '.loading-screen__version';
  * текстовая запись была бы затёрта.
  */
 export function showLoadingScreenFlavor(): void {
-  injectStyles(`${VERSION_SELECTOR}::after { content: ' ${SVP_FLAVOR}'; }`, STYLE_ID);
+  injectStyles(`${VERSION_SELECTOR}::after { content: ', ${SVP_FLAVOR}'; }`, STYLE_ID);
 }
 
 /** Убирает метку, если скрипт не работает на этой версии игры. */

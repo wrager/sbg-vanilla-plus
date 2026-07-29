@@ -12,7 +12,7 @@ describe('showLoadingScreenFlavor', () => {
 
     const style = document.getElementById('svp-loading-screen-flavor');
     expect(style?.textContent).toBe(
-      `.loading-screen__version::after { content: ' VanillaPlus/${__SVP_VERSION__}'; }`,
+      `.loading-screen__version::after { content: ', VanillaPlus/${__SVP_VERSION__}'; }`,
     );
   });
 
