@@ -1014,11 +1014,19 @@ describe('drawTools module', () => {
       const clickHandler = clickCall?.[1];
       if (!clickHandler) throw new Error('click handler was not registered');
 
-      // forEachFeatureAtPixel должен передать клик-обработчику нашу фичу
-      forEachMock.mockImplementation((pixel: number[], callback: (f: IOlFeature) => void) => {
-        void pixel;
-        callback(feature);
-      });
+      // forEachFeatureAtPixel должен передать клик-обработчику нашу фичу.
+      // Слой передаётся вторым аргументом, как это делает OL: попадания без
+      // слоя перехватчик модуля прячет как чужие sketch-оверлеи.
+      const drawLayerStub: IOlLayer = {
+        get: (key: string) => (key === 'name' ? 'svp-draw-tools' : undefined),
+        getSource: () => makeVectorSource(),
+      };
+      forEachMock.mockImplementation(
+        (pixel: number[], callback: (f: IOlFeature, l: IOlLayer) => void) => {
+          void pixel;
+          callback(feature, drawLayerStub);
+        },
+      );
 
       clickHandler({ pixel: [50, 50], originalEvent: {}, type: 'click' });
 
@@ -1540,6 +1548,47 @@ describe('drawTools module', () => {
       currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
 
       expect(externalCb).toHaveBeenCalledWith(drawFeature, drawLayer);
+    });
+
+    test('line mode hides a hit that arrives without a layer', async () => {
+      // Draw держит sketch-оверлей unmanaged, и OL отдаёт попадание в него с
+      // layer === null. Игровой обработчик читает имя слоя безусловно, а
+      // рисуемая линия лежит там же, куда игрок целится инструментом.
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const sketchFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer | null) => void) => {
+          cb(sketchFeature, null);
+        },
+      );
+
+      await drawTools.enable();
+      clickToolButton(0);
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(externalCb).not.toHaveBeenCalled();
+    });
+
+    test('without active mode a hit without a layer reaches the caller callback', async () => {
+      // В режиме none модуль не трогает игровое поведение вообще.
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const sketchFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer | null) => void) => {
+          cb(sketchFeature, null);
+        },
+      );
+
+      await drawTools.enable();
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(externalCb).toHaveBeenCalledWith(sketchFeature, null);
     });
 
     test('collapsing the toolbar leaves the active mode', async () => {

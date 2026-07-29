@@ -354,8 +354,21 @@ function installPointHitFilter(olMap: IOlMap): void {
   // filterHit прячет features слоя 'points' от callback'а вызывающей стороны:
   // piv остаётся пустым - попап не открывается и near_points не обновляется.
   // Оба эффекта самовосстанавливаются по выходе из режима.
+  //
+  // Вместе с точками прячутся и попадания без слоя. Интеракции Draw и Modify
+  // держат свои sketch-оверлеи через layer.setMap(), то есть unmanaged, и OL
+  // отдаёт такое попадание с layer === null (refs/ol/ol.js:7691). Игровой
+  // обработчик читает имя слоя безусловно (script.js:540) и падает с
+  // TypeError, а рисуемая линия и подсвеченная вершина лежат ровно там, куда
+  // игрок целится инструментом.
   unregisterPointHitFilter = registerForEachFeatureAtPixelInterceptor(olMap, {
-    filterHit: (_feature, layer) => !(currentMode !== 'none' && layer?.get('name') === 'points'),
+    filterHit: (_feature, layer) => {
+      if (currentMode === 'none') return true;
+      // Отсутствующий слой - попадание в unmanaged-оверлей; вызывающая сторона
+      // может и вовсе не принять второй аргумент, поэтому проверка на truthy.
+      if (!layer) return false;
+      return layer.get('name') !== 'points';
+    },
   });
 }
 
