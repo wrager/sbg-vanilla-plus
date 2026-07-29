@@ -129,10 +129,17 @@ export interface IOlMap {
    * третьим аргументом геометрию попадания, его truthy-результат прекращает
    * обход и возвращается наружу как результат самого forEachFeatureAtPixel.
    * На этом построены `hasFeatureAtPixel` и интеракции Select / Translate.
+   *
+   * Второй аргумент - `null` для unmanaged-слоёв: слой, добавленный через
+   * `layer.setMap(map)` вместо `map.addLayer()`, попадает в layerStatesArray
+   * с `managed: false` (refs/ol/ol.js:4792), а callback получает его как
+   * `null` (refs/ol/ol.js:7691). Так живут sketch-оверлеи интеракций Draw и
+   * Modify, которые создаёт drawTools. `layerFilter` в options при этом
+   * получает сам слой, а не `null`.
    */
   forEachFeatureAtPixel?(
     pixel: number[],
-    callback: (feature: IOlFeature, layer: IOlLayer, geometry?: unknown) => unknown,
+    callback: (feature: IOlFeature, layer: IOlLayer | null, geometry?: unknown) => unknown,
     options?: IForEachFeatureAtPixelOptions,
   ): unknown;
 }

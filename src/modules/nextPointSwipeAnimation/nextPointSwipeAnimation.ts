@@ -70,8 +70,10 @@ function onMapSingleClick(event: IOlMapEvent): void {
   // Игра в singleclick собирает попадания в массив `piv` (refs/game/script.js:539)
   // и проверяет .length > 0; повторяем тот же паттерн.
   const hits: IOlFeature[] = [];
+  // `layer` приходит как null для unmanaged-слоёв - так OL отдаёт попадания в
+  // sketch-оверлеи интеракций Draw и Modify, которые создаёт drawTools.
   map.forEachFeatureAtPixel(event.pixel, (feature, layer) => {
-    if (layer.get('name') === 'points') hits.push(feature);
+    if (layer?.get('name') === 'points') hits.push(feature);
   });
   if (hits.length === 0) return;
   const playerCoords = getPlayerCoords();
