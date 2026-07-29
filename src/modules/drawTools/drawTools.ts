@@ -345,16 +345,14 @@ function installPointHitFilter(olMap: IOlMap): void {
   // собирает попадания по слою 'points' в массив piv. При непустом piv игра
   // не только вызывает showInfo(piv[0]), но и пересобирает near_points - набор
   // соседних точек для нативного свайпа между попапами (script.js:552-560).
-  // Пока активен режим рисования (line/polygon), клик возле точки должен
-  // добавлять вершину рисунка, а не открывать попап. filterHit прячет features
-  // слоя 'points' от callback'а вызывающей стороны: piv остаётся пустым -
-  // попап не открывается и near_points не обновляется. Оба эффекта
-  // самовосстанавливаются по выходе из режима рисования.
+  // Пока выбран любой инструмент, клик по карте принадлежит инструменту:
+  // line и polygon ставят вершину, delete снимает линию, edit тащит вершину
+  // (мелкий сдвиг вершины возле точки игра засчитала бы за клик по ней).
+  // filterHit прячет features слоя 'points' от callback'а вызывающей стороны:
+  // piv остаётся пустым - попап не открывается и near_points не обновляется.
+  // Оба эффекта самовосстанавливаются по выходе из режима.
   unregisterPointHitFilter = registerForEachFeatureAtPixelInterceptor(olMap, {
-    filterHit: (_feature, layer) => {
-      const drawing = currentMode === 'line' || currentMode === 'polygon';
-      return !(drawing && layer?.get('name') === 'points');
-    },
+    filterHit: (_feature, layer) => !(currentMode !== 'none' && layer?.get('name') === 'points'),
   });
 }
 

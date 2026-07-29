@@ -1426,7 +1426,7 @@ describe('drawTools module', () => {
       expect(externalCb).toHaveBeenCalledWith(pointFeature, pointsLayer);
     });
 
-    test('edit mode does not hide points-layer features', async () => {
+    test('edit mode hides points-layer features from the caller callback', async () => {
       if (!currentMap) throw new Error('Map was not captured');
       const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
       const pointsLayer = makeLayerStub('points');
@@ -1443,8 +1443,49 @@ describe('drawTools module', () => {
       const externalCb = jest.fn();
       currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
 
-      expect(externalCb).toHaveBeenCalledTimes(1);
-      expect(externalCb).toHaveBeenCalledWith(pointFeature, pointsLayer);
+      expect(externalCb).not.toHaveBeenCalled();
+    });
+
+    test('delete mode hides points-layer features from the caller callback', async () => {
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const pointsLayer = makeLayerStub('points');
+      const pointFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer) => void) => {
+          cb(pointFeature, pointsLayer);
+        },
+      );
+
+      await drawTools.enable();
+      clickToolButton(3);
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(externalCb).not.toHaveBeenCalled();
+    });
+
+    test('delete mode still sees features of the draw layer', async () => {
+      // Фильтр прячет только слой точек: собственный обработчик удаления
+      // должен по-прежнему находить линии схемы.
+      if (!currentMap) throw new Error('Map was not captured');
+      const forEachMock = currentMap.forEachFeatureAtPixel as unknown as jest.Mock;
+      const drawLayer = makeLayerStub('svp-draw-tools');
+      const drawFeature = new FakeFeature();
+      forEachMock.mockImplementation(
+        (_pixel: number[], cb: (f: IOlFeature, l: IOlLayer) => void) => {
+          cb(drawFeature, drawLayer);
+        },
+      );
+
+      await drawTools.enable();
+      clickToolButton(3);
+
+      const externalCb = jest.fn();
+      currentMap.forEachFeatureAtPixel?.([50, 50], externalCb);
+
+      expect(externalCb).toHaveBeenCalledWith(drawFeature, drawLayer);
     });
 
     test('leaving line mode (toggle off) re-enables point hits for the caller', async () => {
