@@ -249,7 +249,7 @@ describe('destroyXpPopupLayer', () => {
 });
 
 describe('разброс вокруг точки появления', () => {
-  const ALLOWED_SHIFTS = ['-12px', '-6px', '0px', '6px', '12px'];
+  const ALLOWED_SHIFTS = ['-24px', '-12px', '0px', '12px', '24px'];
 
   function shifts(): { x: string; y: string }[] {
     return Array.from(document.querySelectorAll<HTMLElement>(POPUP_SELECTOR)).map((node) => ({
@@ -275,7 +275,7 @@ describe('разброс вокруг точки появления', () => {
 
     showXpPopup(1);
 
-    expect(shifts()).toEqual([{ x: '-12px', y: '-12px' }]);
+    expect(shifts()).toEqual([{ x: '-24px', y: '-24px' }]);
   });
 
   test('верхняя граница набора достижима', () => {
@@ -285,7 +285,7 @@ describe('разброс вокруг точки появления', () => {
 
     showXpPopup(1);
 
-    expect(shifts()).toEqual([{ x: '12px', y: '12px' }]);
+    expect(shifts()).toEqual([{ x: '24px', y: '24px' }]);
   });
 
   test('оси выбираются независимо, а не одним значением на обе', () => {
@@ -295,7 +295,7 @@ describe('разброс вокруг точки появления', () => {
 
     showXpPopup(1);
 
-    expect(shifts()).toEqual([{ x: '0px', y: '-6px' }]);
+    expect(shifts()).toEqual([{ x: '0px', y: '-12px' }]);
   });
 
   test('подряд идущие значения не встают в одну точку', () => {
