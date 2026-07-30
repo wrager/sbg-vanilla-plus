@@ -309,8 +309,8 @@ function buildPanel(
     element.classList.remove('svp-open');
   });
 
-  footer.appendChild(cancelButton);
   footer.appendChild(saveButton);
+  footer.appendChild(cancelButton);
   element.appendChild(footer);
 
   return element;

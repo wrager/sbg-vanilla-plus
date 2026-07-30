@@ -1644,4 +1644,31 @@ describe('cleanupSettingsUi', () => {
     const configButton = document.querySelector('.svp-cleanup-configure-button');
     expect(configButton).not.toBeNull();
   });
+
+  test('в футере панели настроек основное действие (сохранение) стоит первым', () => {
+    const settingsPanel = document.createElement('div');
+    settingsPanel.id = 'svp-settings-panel';
+    const row = document.createElement('div');
+    row.className = 'svp-module-row';
+    const nameLine = document.createElement('div');
+    nameLine.className = 'svp-module-name-line';
+    const moduleId = document.createElement('div');
+    moduleId.className = 'svp-module-id';
+    moduleId.textContent = 'inventoryCleanup';
+    nameLine.appendChild(moduleId);
+    row.appendChild(nameLine);
+    settingsPanel.appendChild(row);
+    document.body.appendChild(settingsPanel);
+
+    initCleanupSettingsUi();
+    document.querySelector<HTMLElement>('.svp-cleanup-configure-button')?.click();
+
+    const footerButtons = document.querySelectorAll<HTMLElement>(
+      '.svp-cleanup-footer .svp-cleanup-button',
+    );
+    expect(footerButtons.length).toBe(2);
+    expect(footerButtons[0].classList.contains('svp-cleanup-button-primary')).toBe(true);
+    expect(footerButtons[0].textContent).toBe('Save');
+    expect(footerButtons[1].textContent).toBe('Cancel');
+  });
 });
