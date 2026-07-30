@@ -29,6 +29,7 @@ import { nextPointSwipeAnimation } from './modules/nextPointSwipeAnimation/nextP
 import { nextPointSwipeButtonsFix } from './modules/nextPointSwipeButtonsFix/nextPointSwipeButtonsFix';
 import { refsLayerSync } from './modules/refsLayerSync/refsLayerSync';
 import { swipeToClosePopup } from './modules/swipeToClosePopup/swipeToClosePopup';
+import { xpPopups } from './modules/xpPopups/xpPopups';
 
 if (!isDisabled()) {
   // Перехваты, которые должны быть установлены ДО парсинга DOM и
@@ -71,6 +72,7 @@ if (!isDisabled()) {
       groupErrorToasts,
       removeAttackCloseButton,
       nextPointSwipeAnimation,
+      xpPopups,
       // feature (favoritesMigration ПЕРЕД inventoryCleanup — зависимость init:
       // loadFavorites() в init модуля favoritesMigration грузит legacy IDB-снимок,
       // от которого зависит блок-логика inventoryCleanup)
