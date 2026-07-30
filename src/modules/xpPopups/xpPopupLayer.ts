@@ -1,4 +1,3 @@
-import { t } from '../../core/l10n';
 import { ANIMATION_SAFETY_MARGIN } from '../../core/popupSwipe';
 
 const LAYER_CLASS = 'svp-xp-popup-layer';
@@ -33,8 +32,8 @@ const TOP_PANEL_GAP_PX = 12;
 /** Позиция слоя, когда панели в DOM нет: её типовая нижняя кромка плюс отступ. */
 const FALLBACK_TOP_PX = 132;
 
-/** Подпись единицы опыта в разметке игры (refs/game/index.html:74). */
-const XP_UNIT_SELECTOR = '[data-i18n="units.pts-xp"]';
+/** Единица опыта в подписи. Одна на любой язык игры, как в CUI. */
+const XP_UNIT = 'xp';
 
 interface ILivePopup {
   element: HTMLElement;
@@ -46,7 +45,6 @@ interface ILivePopup {
 
 let layer: HTMLElement | null = null;
 const livePopups: ILivePopup[] = [];
-let cachedXpUnit: string | null = null;
 
 /**
  * Снимает попап: убирает из списка живых, гасит страховочный таймер, отписывает
@@ -101,39 +99,12 @@ function positionLayer(): void {
 }
 
 /**
- * Единица опыта берётся из уже переведённой игрой разметки: игра локализует её
- * один раз при старте (refs/game/script.js:135), в DOM лежит готовая подпись на
- * языке игрока. Тот же приём, что в removeAttackCloseButton, где подпись
- * "Закрыть" читается с самой кнопки.
- *
- * Через i18next.t не идём: на неизвестном ключе i18next возвращает сам ключ, и
- * в попапе оказалось бы "+130 units.pts-xp".
- *
- * Кэшируется только удачное чтение: enable может случиться раньше, чем игра
- * переведёт разметку.
- */
-function readXpUnit(): string {
-  if (cachedXpUnit !== null) return cachedXpUnit;
-
-  const unitElement = document.querySelector(XP_UNIT_SELECTOR);
-  const text = unitElement?.textContent.trim();
-  if (text) {
-    cachedXpUnit = text;
-    return text;
-  }
-
-  return t({ en: 'pts.', ru: 'очк.' });
-}
-
-/**
- * Формат повторяет нативную подпись (`+${diff} ${units.pts-xp}`,
- * refs/game/script.js:2772) - игрок видит ту же запись, только крупнее и по
- * центру. Знак ставится по значению: игра печатает "+" безусловно и на
- * отрицательном приросте нарисовала бы "+-5".
+ * Знак ставится по значению: игра печатает "+" безусловно
+ * (refs/game/script.js:2772) и на отрицательном приросте нарисовала бы "+-5".
  */
 function formatXpDiff(diff: number): string {
   const sign = diff > 0 ? '+' : '';
-  return `${sign}${diff} ${readXpUnit()}`;
+  return `${sign}${diff} ${XP_UNIT}`;
 }
 
 export function createXpPopupLayer(): void {
@@ -151,7 +122,6 @@ export function destroyXpPopupLayer(): void {
   finishAllPopups();
   layer?.remove();
   layer = null;
-  cachedXpUnit = null;
 }
 
 export function showXpPopup(diff: number): void {

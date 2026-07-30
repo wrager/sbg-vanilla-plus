@@ -94,49 +94,38 @@ describe('слой', () => {
 });
 
 describe('текст значения', () => {
-  test('единица опыта берётся из переведённой игрой разметки', () => {
-    addXpUnitLabel();
+  test('прирост со знаком и единицей', () => {
     createXpPopupLayer();
 
     showXpPopup(130);
 
-    expect(popupTexts()).toEqual(['+130 очк.']);
+    expect(popupTexts()).toEqual(['+130 xp']);
   });
 
-  test('без разметки игры - собственный перевод по локали игры (en)', () => {
-    createXpPopupLayer();
-
-    showXpPopup(130);
-
-    expect(popupTexts()).toEqual(['+130 pts.']);
-  });
-
-  test('без разметки игры и с русским языком игры - русская единица', () => {
+  test('единица одна на любой язык игры', () => {
     localStorage.setItem('settings', JSON.stringify({ lang: 'ru' }));
     createXpPopupLayer();
 
     showXpPopup(130);
 
-    expect(popupTexts()).toEqual(['+130 очк.']);
+    expect(popupTexts()).toEqual(['+130 xp']);
   });
 
-  test('скрытая строка панели (режим enhancedMainScreen) не мешает прочитать единицу', () => {
-    const entry = addXpUnitLabel();
-    entry.style.display = 'none';
+  test('игровая подпись единицы опыта на текст не влияет', () => {
+    addXpUnitLabel();
     createXpPopupLayer();
 
     showXpPopup(130);
 
-    expect(popupTexts()).toEqual(['+130 очк.']);
+    expect(popupTexts()).toEqual(['+130 xp']);
   });
 
   test('отрицательный прирост показывается со своим знаком, не "+-"', () => {
-    addXpUnitLabel();
     createXpPopupLayer();
 
     showXpPopup(-5);
 
-    expect(popupTexts()).toEqual(['-5 очк.']);
+    expect(popupTexts()).toEqual(['-5 xp']);
   });
 });
 
@@ -179,7 +168,6 @@ describe('снятие попапа', () => {
   });
 
   test('animationend снимает только свой узел', () => {
-    addXpUnitLabel();
     createXpPopupLayer();
     showXpPopup(1);
     showXpPopup(2);
@@ -188,7 +176,7 @@ describe('снятие попапа', () => {
     expect(popups).toHaveLength(2);
     endAnimation(popups[1]);
 
-    expect(popupTexts()).toEqual(['+1 очк.']);
+    expect(popupTexts()).toEqual(['+1 xp']);
   });
 
   test('без animationend узел держится до конца анимации', () => {
@@ -224,12 +212,11 @@ describe('снятие попапа', () => {
   });
 
   test('лимит живых попапов - самый старый вытесняется', () => {
-    addXpUnitLabel();
     createXpPopupLayer();
 
     for (let diff = 1; diff <= 6; diff++) showXpPopup(diff);
 
-    expect(popupTexts()).toEqual(['+2 очк.', '+3 очк.', '+4 очк.', '+5 очк.', '+6 очк.']);
+    expect(popupTexts()).toEqual(['+2 xp', '+3 xp', '+4 xp', '+5 xp', '+6 xp']);
   });
 });
 
