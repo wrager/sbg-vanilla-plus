@@ -717,6 +717,57 @@ describe('refsOnMap viewer', () => {
     expect(trash.style.display).toBe('none');
   });
 
+  test('viewer body-class ставится при открытии и снимается при закрытии', () => {
+    // body-class svp-refs-on-map-viewer-open включает CSS-правила, скрывающие
+    // .ol-rotate, .ol-scale-line, .region-picker и .svp-ol-stack-item на
+    // время работы viewer'а. Через class, а не inline-style, потому что
+    // .svp-ol-stack-item может появляться MID-viewer через MutationObserver
+    // в core/olControlStack - inline-style не покрыл бы future-кнопки.
+    setInventoryCache();
+    expect(document.body.classList.contains('svp-refs-on-map-viewer-open')).toBe(false);
+    clickShowButton();
+    expect(document.body.classList.contains('svp-refs-on-map-viewer-open')).toBe(true);
+    clickCloseButton();
+    expect(document.body.classList.contains('svp-refs-on-map-viewer-open')).toBe(false);
+  });
+
+  test('viewer скрывает игровые слои и svp-draw-tools', () => {
+    // Игровые слои points/lines/regions скрываются - наша карта точек
+    // подменяет визуал. svp-draw-tools (линии/полигоны drawTools) также
+    // скрываем, чтобы они не пересекались с кружками ключей.
+    const drawLayer = makeLayer('svp-draw-tools', makeSource());
+    map.getLayers().getArray().push(drawLayer);
+
+    setInventoryCache();
+    clickShowButton();
+
+    for (const layer of map.getLayers().getArray()) {
+      const name = layer.get('name');
+      if (
+        name === 'points' ||
+        name === 'lines' ||
+        name === 'regions' ||
+        name === 'svp-draw-tools'
+      ) {
+        expect((layer as IOlLayer & { _visible: boolean })._visible).toBe(false);
+      }
+    }
+
+    clickCloseButton();
+
+    for (const layer of map.getLayers().getArray()) {
+      const name = layer.get('name');
+      if (
+        name === 'points' ||
+        name === 'lines' ||
+        name === 'regions' ||
+        name === 'svp-draw-tools'
+      ) {
+        expect((layer as IOlLayer & { _visible: boolean })._visible).toBe(true);
+      }
+    }
+  });
+
   test('locked-note удалён: в DOM его нет', () => {
     setInventoryCache();
     clickShowButton();
@@ -766,6 +817,106 @@ describe('refsOnMap viewer', () => {
     // Повторный клик на ту же фичу остаётся isSelected=true.
     clickHandler({ pixel: [0, 0] });
     expect((allFeatures[0].getProperties?.() ?? {}).isSelected).toBe(true);
+  });
+
+  test('первый клик ставит cooldown на bottomStack, снимается через 400 мс', () => {
+    // Регрессия: click.target определяется браузером на момент dispatch'а
+    // click event, а не pointerup. Между OL pointerup и click handleMapClick
+    // успевает показать trash/cancel в нижнем правом углу - click уходит на
+    // свежепоявившуюся кнопку. CSS-класс с pointer-events:none на короткое
+    // окно блокирует это.
+    jest.useFakeTimers();
+    try {
+      setInventoryCache();
+      clickShowButton();
+      const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+        (r) => r.value as IOlFeature,
+      );
+      (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+        (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+          callback(allFeatures[0]);
+        },
+      );
+      const stack = document.querySelector<HTMLElement>('.svp-refs-on-map-bottom-stack');
+      expect(stack?.classList.contains('svp-refs-on-map-bottom-stack--cooldown')).toBe(false);
+
+      const clickHandler = map._clickListeners[0];
+      clickHandler({ pixel: [0, 0] });
+
+      expect(stack?.classList.contains('svp-refs-on-map-bottom-stack--cooldown')).toBe(true);
+
+      jest.advanceTimersByTime(399);
+      expect(stack?.classList.contains('svp-refs-on-map-bottom-stack--cooldown')).toBe(true);
+
+      jest.advanceTimersByTime(1);
+      expect(stack?.classList.contains('svp-refs-on-map-bottom-stack--cooldown')).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('повторный клик при уже непустом выборе НЕ ставит cooldown', () => {
+    // Cooldown нужен только в момент появления кнопок (0 selected -> >0).
+    // Если кнопки уже видны, повторный клик в их зону - обычный клик,
+    // блокировка не нужна.
+    jest.useFakeTimers();
+    try {
+      setInventoryCache();
+      clickShowButton();
+      const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+        (r) => r.value as IOlFeature,
+      );
+      // Первый клик на одну фичу - cooldown ставится.
+      (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+        (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+          callback(allFeatures[0]);
+        },
+      );
+      const stack = document.querySelector<HTMLElement>('.svp-refs-on-map-bottom-stack');
+      const clickHandler = map._clickListeners[0];
+      clickHandler({ pixel: [0, 0] });
+      expect(stack?.classList.contains('svp-refs-on-map-bottom-stack--cooldown')).toBe(true);
+
+      // Перематываем cooldown.
+      jest.advanceTimersByTime(400);
+      expect(stack?.classList.contains('svp-refs-on-map-bottom-stack--cooldown')).toBe(false);
+
+      // Второй клик на другую фичу - уже непустой выбор, cooldown НЕ ставится.
+      (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+        (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+          callback(allFeatures[1]);
+        },
+      );
+      clickHandler({ pixel: [0, 0] });
+      expect(stack?.classList.contains('svp-refs-on-map-bottom-stack--cooldown')).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('hideViewer сбрасывает pending cooldown', () => {
+    jest.useFakeTimers();
+    try {
+      setInventoryCache();
+      clickShowButton();
+      const allFeatures = (window.ol?.Feature as unknown as jest.Mock).mock.results.map(
+        (r) => r.value as IOlFeature,
+      );
+      (map.forEachFeatureAtPixel as jest.Mock).mockImplementation(
+        (_pixel: unknown, callback: (feature: IOlFeature) => void) => {
+          callback(allFeatures[0]);
+        },
+      );
+      const stack = document.querySelector<HTMLElement>('.svp-refs-on-map-bottom-stack');
+      const clickHandler = map._clickListeners[0];
+      clickHandler({ pixel: [0, 0] });
+      expect(stack?.classList.contains('svp-refs-on-map-bottom-stack--cooldown')).toBe(true);
+
+      clickCloseButton();
+      expect(stack?.classList.contains('svp-refs-on-map-bottom-stack--cooldown')).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
