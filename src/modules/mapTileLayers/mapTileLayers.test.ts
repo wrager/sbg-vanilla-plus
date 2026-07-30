@@ -128,6 +128,36 @@ function createLayersConfigPopupBeta(savedBaselayer = 'osm'): HTMLElement {
   return popup;
 }
 
+// Правило внедрённого фильтра целиком, а не его текст: проверять надо, к какому
+// элементу правило применится, а не какая строка попала в style.
+function tileFilterRule(): CSSStyleRule {
+  const style = document.getElementById('svp-mapTileLayersFilter');
+  if (!(style instanceof HTMLStyleElement)) throw new Error('Стиль фильтра тайлов не внедрён');
+  const rule = style.sheet?.cssRules[0];
+  if (!(rule instanceof CSSStyleRule)) throw new Error('В стиле фильтра тайлов нет правила');
+  return rule;
+}
+
+// Разметка слоёв OL: canvas лежит внутри div слоя (refs/game/dom/body.html).
+// data-code игра проставляет по своей настройке base (setBaselayer).
+function createOlLayersDom(dataCode: string): { base: HTMLElement; canvas: HTMLElement } {
+  const layers = document.createElement('div');
+  layers.className = 'ol-unselectable ol-layers';
+  const base = document.createElement('div');
+  base.className = 'ol-layer__base';
+  base.setAttribute('data-code', dataCode);
+  const canvas = document.createElement('canvas');
+  base.appendChild(canvas);
+  layers.appendChild(base);
+  document.body.appendChild(layers);
+  return { base, canvas };
+}
+
+// Игровое правило инверсии подложки (refs/game/css/variables.css). Взят
+// селектор, а не объявление: тесту нужно знать, попадает ли наш фильтр в тот же
+// элемент, что и игровой.
+const GAME_DARK_OSM_SELECTOR = ":root[data-theme='dark'] .ol-layer__base[data-code='osm']";
+
 // ── hasTileSource type guard ─────────────────────────────────────────────────
 
 describe('hasTileSource', () => {
@@ -579,28 +609,6 @@ describe('mapTileLayers popup injection', () => {
     expect(tileLayer.getSource()).toBe(sourceBeforeSave);
   });
 
-  test('dark variant injects CSS filter with invert', async () => {
-    localStorage.setItem('svp_mapTileLayerUrl', 'https://example.com/{z}/{x}/{y}.png');
-    localStorage.setItem('svp_mapTileLayer', 'svp-custom-dark');
-    await mapTileLayers.enable();
-
-    const filterStyle = document.getElementById('svp-mapTileLayersFilter');
-    expect(filterStyle).not.toBeNull();
-    expect(filterStyle?.textContent).toContain('invert(1)');
-    expect(filterStyle?.textContent).toContain('!important');
-  });
-
-  test('light variant injects CSS filter with none', async () => {
-    localStorage.setItem('svp_mapTileLayerUrl', 'https://example.com/{z}/{x}/{y}.png');
-    localStorage.setItem('svp_mapTileLayer', 'svp-custom');
-    await mapTileLayers.enable();
-
-    const filterStyle = document.getElementById('svp-mapTileLayersFilter');
-    expect(filterStyle).not.toBeNull();
-    expect(filterStyle?.textContent).toContain('filter: none');
-    expect(filterStyle?.textContent).toContain('!important');
-  });
-
   test('disable removes CSS filter', async () => {
     localStorage.setItem('svp_mapTileLayerUrl', 'https://example.com/{z}/{x}/{y}.png');
     localStorage.setItem('svp_mapTileLayer', 'svp-custom-dark');
@@ -798,5 +806,135 @@ describe('mapTileLayers persistence', () => {
 
     await mapTileLayers.disable();
     delete window.ol;
+  });
+});
+
+// ── фильтр подложки ──────────────────────────────────────────────────────────
+
+/*
+ * Наш фильтр обязан висеть на том же элементе, который фильтрует игра
+ * (GAME_DARK_OSM_SELECTOR): фильтры предка и потомка не отменяют друг друга, а
+ * перемножаются, поэтому фильтр на canvas игровую инверсию слоя не снимал.
+ *
+ * Проверки идут по селектору и объявлению правила, а не по getComputedStyle:
+ * каскад jsdom наивный (без специфичности и без !important, выигрывает
+ * последнее правило в порядке документа), и вычисленное значение про приоритет
+ * ничего бы не доказало.
+ */
+describe('mapTileLayers tile filter', () => {
+  const VARIANTS: [variant: string, filter: string][] = [
+    ['svp-custom', 'none'],
+    ['svp-custom-dark', 'invert(1) hue-rotate(180deg)'],
+  ];
+
+  beforeEach(() => {
+    localStorage.removeItem('svp_mapTileLayer');
+    localStorage.removeItem('svp_mapTileGameLayer');
+    localStorage.setItem('svp_mapTileLayerUrl', 'https://tiles.example.com/{z}/{x}/{y}.png');
+    mockGetOlMap.mockResolvedValue(makeMap([makeTileLayer('base'), makeVectorLayer('points')]));
+    mockOlWithXyz();
+  });
+
+  afterEach(async () => {
+    await mapTileLayers.disable();
+    delete window.ol;
+    localStorage.removeItem('svp_mapTileLayer');
+    localStorage.removeItem('svp_mapTileLayerUrl');
+    document.querySelectorAll('.ol-layers').forEach((element) => {
+      element.remove();
+    });
+    document.documentElement.removeAttribute('data-theme');
+  });
+
+  test.each(VARIANTS)(
+    'вариант %s фильтрует слой карты, а не его canvas',
+    async (variant, filter) => {
+      localStorage.setItem('svp_mapTileLayer', variant);
+      const { base, canvas } = createOlLayersDom('osm');
+
+      await mapTileLayers.enable();
+
+      const rule = tileFilterRule();
+      expect(base.matches(rule.selectorText)).toBe(true);
+      expect(canvas.matches(rule.selectorText)).toBe(false);
+      expect(rule.style.getPropertyValue('filter')).toBe(filter);
+      expect(rule.style.getPropertyPriority('filter')).toBe('important');
+    },
+  );
+
+  test('фильтр ложится на тот же элемент, который фильтрует игра', async () => {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('svp_mapTileLayer', 'svp-custom-dark');
+    const { base } = createOlLayersDom('osm');
+
+    await mapTileLayers.enable();
+
+    // Комбинация, в которой игровое правило включено.
+    expect(document.querySelector(GAME_DARK_OSM_SELECTOR)).toBe(base);
+    // Тот же элемент - объявления конкурируют, и !important побеждает. Разные
+    // элементы - фильтры перемножаются, и никакой !important этого не отменит.
+    expect(document.querySelector(tileFilterRule().selectorText)).toBe(base);
+  });
+
+  // Игровое правило включается по html[data-theme='dark'] И data-code='osm'.
+  // Тему игра пишет сырым значением настройки, prefers-color-scheme в её CSS
+  // нет, поэтому 'auto' при тёмной системе правило не включает. data-code
+  // остаётся от последнего выбранного игрового слоя: модуль его не меняет.
+  const THEME_BASE_MATRIX: [theme: string, dataCode: string, gameRuleApplies: boolean][] = [
+    ['light', 'osm', false],
+    ['light', 'cdb', false],
+    ['light', 'goo', false],
+    ['light', 'nil', false],
+    ['dark', 'osm', true],
+    ['dark', 'cdb', false],
+    ['dark', 'goo', false],
+    ['dark', 'nil', false],
+    ['auto', 'osm', false],
+    ['auto', 'cdb', false],
+    ['auto', 'goo', false],
+    ['auto', 'nil', false],
+  ];
+
+  describe.each(VARIANTS)('вариант %s', (variant, filter) => {
+    test.each(THEME_BASE_MATRIX)(
+      'тема %s, подложка %s: фильтр остаётся нашим',
+      async (theme, dataCode, gameRuleApplies) => {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('svp_mapTileLayer', variant);
+        const { base, canvas } = createOlLayersDom(dataCode);
+
+        await mapTileLayers.enable();
+
+        const rule = tileFilterRule();
+        expect(base.matches(rule.selectorText)).toBe(true);
+        expect(canvas.matches(rule.selectorText)).toBe(false);
+        expect(rule.style.getPropertyValue('filter')).toBe(filter);
+        // Источник недетерминированности: игровое правило включено ровно в
+        // одной комбинации из двенадцати, а наше - во всех.
+        expect(base.matches(GAME_DARK_OSM_SELECTOR)).toBe(gameRuleApplies);
+      },
+    );
+  });
+
+  test('выбор игрового слоя снимает наш фильтр', async () => {
+    localStorage.setItem('svp_mapTileLayer', 'svp-custom-dark');
+    createOlLayersDom('osm');
+    await mapTileLayers.enable();
+
+    const popup = createLayersConfigPopup();
+    document.body.appendChild(popup);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.getElementById('svp-mapTileLayersFilter')).not.toBeNull();
+
+    const osmRadio = popup.querySelector<HTMLInputElement>('input[name="baselayer"][value="osm"]');
+    if (osmRadio) {
+      osmRadio.checked = true;
+      osmRadio.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // Иначе наш !important продолжил бы подавлять уже нативный фильтр игры.
+    expect(document.getElementById('svp-mapTileLayersFilter')).toBeNull();
+
+    popup.remove();
   });
 });
