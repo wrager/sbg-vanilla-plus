@@ -30,6 +30,28 @@ const CORES_LABEL: ILocalizedString = { en: 'Cores', ru: 'Ядра' };
 const CATALYSERS_LABEL: ILocalizedString = { en: 'Catalysers', ru: 'Катализаторы' };
 const LEVEL_LABEL: ILocalizedString = { en: 'Level', ru: 'Ур.' };
 const UNLIMITED_HINT: ILocalizedString = { en: '-1 = unlimited', ru: '-1 = без лимита' };
+const DESCRIPTION_TITLE: ILocalizedString = {
+  en: 'How cleanup works',
+  ru: 'Как работает очистка',
+};
+const DESCRIPTION_POINTS: readonly ILocalizedString[] = [
+  {
+    en: 'Runs right after a point discovery',
+    ru: 'Запускается сразу после изучения точки',
+  },
+  {
+    en: 'Only when free inventory slots drop below the threshold below',
+    ru: 'Только если свободных слотов в инвентаре меньше указанного ниже порога',
+  },
+  {
+    en: 'Only what exceeds the limit you set is deleted',
+    ru: 'Удаляется только то, что превышает заданный лимит',
+  },
+  {
+    en: 'Keys of points marked with a lock or a star are never deleted',
+    ru: 'Ключи точек с замочком или звёздочкой не удаляются никогда',
+  },
+];
 const REFERENCES_LABEL: ILocalizedString = { en: 'Keys', ru: 'Ключи' };
 const REF_MODE_OFF_LABEL: ILocalizedString = { en: 'Off', ru: 'Не удалять' };
 const REF_MODE_FAST_LABEL: ILocalizedString = {
@@ -109,6 +131,32 @@ function createLevelInputs(
 
   section.appendChild(grid);
   container.appendChild(section);
+}
+
+/*
+ * Принцип работы автоочистки нигде в интерфейсе не описан: в панели была
+ * только подсказка про значение -1, а когда очистка стартует и что именно
+ * удаляет, приходилось выяснять по README проекта.
+ */
+function createDescription(): HTMLElement {
+  const description = document.createElement('div');
+  description.className = 'svp-cleanup-description';
+
+  const title = document.createElement('div');
+  title.className = 'svp-cleanup-description-title';
+  title.textContent = t(DESCRIPTION_TITLE);
+  description.appendChild(title);
+
+  const list = document.createElement('ul');
+  list.className = 'svp-cleanup-description-list';
+  for (const point of DESCRIPTION_POINTS) {
+    const item = document.createElement('li');
+    item.textContent = t(point);
+    list.appendChild(item);
+  }
+  description.appendChild(list);
+
+  return description;
 }
 
 function createNumberInput(
@@ -244,6 +292,8 @@ function buildPanel(
 
   const content = document.createElement('div');
   content.className = 'svp-cleanup-content';
+
+  content.appendChild(createDescription());
 
   const hint = document.createElement('div');
   hint.style.fontSize = '10px';

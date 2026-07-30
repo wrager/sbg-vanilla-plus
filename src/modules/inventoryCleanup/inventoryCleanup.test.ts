@@ -1645,6 +1645,35 @@ describe('cleanupSettingsUi', () => {
     expect(configButton).not.toBeNull();
   });
 
+  test('панель настроек объясняет принцип работы очистки', () => {
+    const settingsPanel = document.createElement('div');
+    settingsPanel.id = 'svp-settings-panel';
+    const row = document.createElement('div');
+    row.className = 'svp-module-row';
+    const nameLine = document.createElement('div');
+    nameLine.className = 'svp-module-name-line';
+    const moduleId = document.createElement('div');
+    moduleId.className = 'svp-module-id';
+    moduleId.textContent = 'inventoryCleanup';
+    nameLine.appendChild(moduleId);
+    row.appendChild(nameLine);
+    settingsPanel.appendChild(row);
+    document.body.appendChild(settingsPanel);
+
+    initCleanupSettingsUi();
+    document.querySelector<HTMLElement>('.svp-cleanup-configure-button')?.click();
+
+    const description = document.querySelector<HTMLElement>('.svp-cleanup-description');
+    if (!description) throw new Error('description not rendered');
+    const points = [...description.querySelectorAll('li')].map((item) => item.textContent);
+    expect(points).toEqual([
+      'Runs right after a point discovery',
+      'Only when free inventory slots drop below the threshold below',
+      'Only what exceeds the limit you set is deleted',
+      'Keys of points marked with a lock or a star are never deleted',
+    ]);
+  });
+
   test('в футере панели настроек основное действие (сохранение) стоит первым', () => {
     const settingsPanel = document.createElement('div');
     settingsPanel.id = 'svp-settings-panel';
