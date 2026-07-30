@@ -3,7 +3,8 @@ import { ANIMATION_SAFETY_MARGIN } from '../../core/popupSwipe';
 const LAYER_CLASS = 'svp-xp-popup-layer';
 const POPUP_CLASS = 'svp-xp-popup';
 const DURATION_PROPERTY = '--svp-xp-popup-duration';
-const OFFSET_PROPERTY = '--svp-xp-popup-offset';
+const SHIFT_X_PROPERTY = '--svp-xp-popup-shift-x';
+const SHIFT_Y_PROPERTY = '--svp-xp-popup-shift-y';
 
 /**
  * Длительность всплытия (мс). Единственный источник истины: CSS получает её
@@ -14,10 +15,12 @@ const OFFSET_PROPERTY = '--svp-xp-popup-offset';
 export const XP_POPUP_ANIMATION_MS = 1200;
 
 /**
- * Шаг стопки (px). Значения серии встают друг под другом, а не в одной точке:
- * иначе три действия подряд накладываются и не читаются вовсе.
+ * Допустимые смещения от точки появления (px), по горизонтали и по вертикали
+ * независимо. Значения серии выходят примерно из одного места, но не ложатся
+ * ровно друг на друга: набор симметричен нулю, поэтому центр разброса совпадает
+ * с самой точкой появления.
  */
-const STACK_STEP_PX = 26;
+const SHIFT_STEPS_PX = [-12, -6, 0, 6, 12];
 
 /**
  * Больше пяти значений разом на экране нечитаемо; самое старое вытесняется.
@@ -37,14 +40,14 @@ const XP_UNIT = 'xp';
 
 interface ILivePopup {
   element: HTMLElement;
-  /** Место в стопке: индекс от 0, умноженный на шаг, даёт смещение по вертикали. */
-  slot: number;
   fallbackTimer: ReturnType<typeof setTimeout>;
   onAnimationEnd: (event: AnimationEvent) => void;
 }
 
 let layer: HTMLElement | null = null;
 const livePopups: ILivePopup[] = [];
+/** Номер комбинации смещений у предыдущего значения; null - значений ещё не было. */
+let lastShiftIndex: number | null = null;
 
 /**
  * Снимает попап: убирает из списка живых, гасит страховочный таймер, отписывает
@@ -68,16 +71,26 @@ function finishAllPopups(): void {
 }
 
 /**
- * Наименьшее свободное место в стопке. Отсчёт по занятым, а не по количеству
- * живых: значение из середины серии могло уже улететь, и его место надо занять
- * заново, иначе новое значение встало бы поверх соседнего.
+ * Случайная пара смещений, заведомо не равная предыдущей: два значения подряд в
+ * одной точке выглядели бы как одно застрявшее.
+ *
+ * Выбор идёт по номеру комбинации среди всех допустимых, а из набора
+ * выбрасывается предыдущая. Перевыбор в цикле "пока не отличается" дал бы тот
+ * же результат, но с ненулевой вероятностью лишних итераций и без гарантии
+ * завершения.
  */
-function nextFreeSlot(): number {
-  const used = new Set(livePopups.map((popup) => popup.slot));
-  for (let slot = 0; slot < MAX_LIVE_POPUPS; slot++) {
-    if (!used.has(slot)) return slot;
-  }
-  return 0;
+function pickShift(): { x: number; y: number } {
+  const combinations = SHIFT_STEPS_PX.length * SHIFT_STEPS_PX.length;
+  const available = lastShiftIndex === null ? combinations : combinations - 1;
+  let index = Math.floor(Math.random() * available);
+  // Пропуск занятого номера сохраняет равномерность по оставшимся комбинациям.
+  if (lastShiftIndex !== null && index >= lastShiftIndex) index++;
+  lastShiftIndex = index;
+
+  return {
+    x: SHIFT_STEPS_PX[index % SHIFT_STEPS_PX.length],
+    y: SHIFT_STEPS_PX[Math.floor(index / SHIFT_STEPS_PX.length)],
+  };
 }
 
 /**
@@ -122,6 +135,7 @@ export function destroyXpPopupLayer(): void {
   finishAllPopups();
   layer?.remove();
   layer = null;
+  lastShiftIndex = null;
 }
 
 export function showXpPopup(diff: number): void {
@@ -142,15 +156,14 @@ export function showXpPopup(diff: number): void {
   const element = document.createElement('div');
   element.className = POPUP_CLASS;
   element.textContent = formatXpDiff(diff);
-  // Место закрепляется за значением на всю его жизнь: пересчитывать стопку при
-  // каждом уходе значило бы переписывать transform чужим узлам посреди их
-  // анимации, и вся серия дёргалась бы вверх на каждом снятии.
-  const slot = nextFreeSlot();
-  element.style.setProperty(OFFSET_PROPERTY, `${slot * STACK_STEP_PX}px`);
+  // Смещение выбирается один раз при вставке и дальше не меняется: правка
+  // transform у живого узла посреди анимации дёргала бы значение на месте.
+  const shift = pickShift();
+  element.style.setProperty(SHIFT_X_PROPERTY, `${shift.x}px`);
+  element.style.setProperty(SHIFT_Y_PROPERTY, `${shift.y}px`);
 
   const record: ILivePopup = {
     element,
-    slot,
     fallbackTimer: setTimeout(() => {
       finishPopup(record);
     }, XP_POPUP_ANIMATION_MS + ANIMATION_SAFETY_MARGIN),

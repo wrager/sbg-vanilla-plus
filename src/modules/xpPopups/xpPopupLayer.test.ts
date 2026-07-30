@@ -248,54 +248,95 @@ describe('destroyXpPopupLayer', () => {
   });
 });
 
-describe('стопка значений', () => {
-  function offsets(): (string | undefined)[] {
-    return Array.from(document.querySelectorAll<HTMLElement>(POPUP_SELECTOR)).map((node) =>
-      node.style.getPropertyValue('--svp-xp-popup-offset'),
-    );
+describe('разброс вокруг точки появления', () => {
+  const ALLOWED_SHIFTS = ['-12px', '-6px', '0px', '6px', '12px'];
+
+  function shifts(): { x: string; y: string }[] {
+    return Array.from(document.querySelectorAll<HTMLElement>(POPUP_SELECTOR)).map((node) => ({
+      x: node.style.getPropertyValue('--svp-xp-popup-shift-x'),
+      y: node.style.getPropertyValue('--svp-xp-popup-shift-y'),
+    }));
   }
 
-  test('серия действий встаёт ступенькой, а не в одну точку', () => {
+  test('смещения берутся из допустимого набора по обеим осям', () => {
+    createXpPopupLayer();
+
+    for (let diff = 1; diff <= 5; diff++) showXpPopup(diff);
+
+    for (const shift of shifts()) {
+      expect(ALLOWED_SHIFTS).toContain(shift.x);
+      expect(ALLOWED_SHIFTS).toContain(shift.y);
+    }
+  });
+
+  test('нижняя граница набора достижима', () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0);
+    createXpPopupLayer();
+
+    showXpPopup(1);
+
+    expect(shifts()).toEqual([{ x: '-12px', y: '-12px' }]);
+  });
+
+  test('верхняя граница набора достижима', () => {
+    // Последняя комбинация набора: обе оси на максимуме.
+    jest.spyOn(Math, 'random').mockReturnValue(0.999);
+    createXpPopupLayer();
+
+    showXpPopup(1);
+
+    expect(shifts()).toEqual([{ x: '12px', y: '12px' }]);
+  });
+
+  test('оси выбираются независимо, а не одним значением на обе', () => {
+    // Комбинация 7 из 25: по горизонтали третий шаг набора, по вертикали второй.
+    jest.spyOn(Math, 'random').mockReturnValue(7 / 25);
+    createXpPopupLayer();
+
+    showXpPopup(1);
+
+    expect(shifts()).toEqual([{ x: '0px', y: '-6px' }]);
+  });
+
+  test('подряд идущие значения не встают в одну точку', () => {
+    // Один и тот же бросок для обоих значений: без исключения предыдущей
+    // комбинации второе легло бы ровно на первое.
+    jest.spyOn(Math, 'random').mockReturnValue(0);
     createXpPopupLayer();
 
     showXpPopup(1);
     showXpPopup(2);
-    showXpPopup(3);
 
-    expect(offsets()).toEqual(['0px', '26px', '52px']);
+    const [first, second] = shifts();
+    expect(second).not.toEqual(first);
   });
 
-  test('после конца серии отсчёт начинается заново', () => {
+  test('не совпадает только с предыдущим - более ранние смещения снова доступны', () => {
+    const randomSpy = jest.spyOn(Math, 'random');
+    createXpPopupLayer();
+
+    randomSpy.mockReturnValue(0);
+    showXpPopup(1);
+    randomSpy.mockReturnValue(0.999);
+    showXpPopup(2);
+    randomSpy.mockReturnValue(0);
+    showXpPopup(3);
+
+    const [first, , third] = shifts();
+    expect(third).toEqual(first);
+  });
+
+  test('после пересоздания слоя запрет на повтор сбрасывается', () => {
+    jest.spyOn(Math, 'random').mockReturnValue(0);
     createXpPopupLayer();
     showXpPopup(1);
+    const [before] = shifts();
+
+    destroyXpPopupLayer();
+    createXpPopupLayer();
     showXpPopup(2);
 
-    for (const popup of Array.from(document.querySelectorAll(POPUP_SELECTOR))) endAnimation(popup);
-    showXpPopup(3);
-
-    expect(offsets()).toEqual(['0px']);
-  });
-
-  test('вытесненное значение освобождает своё место, новое его занимает', () => {
-    createXpPopupLayer();
-
-    for (let diff = 1; diff <= 6; diff++) showXpPopup(diff);
-
-    // Шестое вытеснило первое и встало на его место, а не поверх пятого.
-    expect(offsets()).toEqual(['26px', '52px', '78px', '104px', '0px']);
-  });
-
-  test('улетевшее из середины серии значение освобождает своё место', () => {
-    createXpPopupLayer();
-    showXpPopup(1);
-    showXpPopup(2);
-    showXpPopup(3);
-
-    const middle = document.querySelectorAll(POPUP_SELECTOR)[1];
-    endAnimation(middle);
-    showXpPopup(4);
-
-    expect(offsets()).toEqual(['0px', '52px', '26px']);
+    expect(shifts()).toEqual([before]);
   });
 });
 

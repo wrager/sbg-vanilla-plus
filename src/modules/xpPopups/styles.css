@@ -22,15 +22,16 @@
   position: absolute;
   top: 0;
   left: 50%;
-  /* Место значения в стопке. Ставится из JS на каждый узел, чтобы серия
-     действий не сложилась в одну нечитаемую кучу. Смещение живёт внутри
-     transform, а не в top: top - layout-свойство, и раскладка стопки заставляла
-     бы браузер считать позицию заново на каждой вставке. */
-  --svp-xp-popup-offset: 0px;
+  /* Случайный разброс вокруг точки появления. Ставится из JS на каждый узел,
+     чтобы серия действий не сложилась в одну нечитаемую кучу. Смещение живёт
+     внутри transform, а не в top/left: те - layout-свойства, и разброс
+     заставлял бы браузер считать позицию заново на каждой вставке. */
+  --svp-xp-popup-shift-x: 0px;
+  --svp-xp-popup-shift-y: 0px;
   /* Центрирование внутри transform, а не отдельным свойством translate:
-     keyframes ниже тоже пишут transform, и обе части обязаны жить в одной
-     функции, иначе анимация затрёт центрирование. */
-  transform: translate(-50%, var(--svp-xp-popup-offset));
+     keyframes ниже тоже пишут transform, и все части обязаны жить в одной
+     функции, иначе анимация затрёт и центрирование, и разброс. */
+  transform: translate(calc(-50% + var(--svp-xp-popup-shift-x)), var(--svp-xp-popup-shift-y));
   white-space: nowrap;
   font-size: 17px;
   font-weight: bold;
@@ -56,7 +57,10 @@
    плато, которое читается как подвисшее значение. */
 @keyframes svp-xp-popup-float {
   0% {
-    transform: translate(-50%, calc(var(--svp-xp-popup-offset) + 14px));
+    transform: translate(
+      calc(-50% + var(--svp-xp-popup-shift-x)),
+      calc(var(--svp-xp-popup-shift-y) + 14px)
+    );
     opacity: 0;
   }
   12% {
@@ -66,7 +70,10 @@
     opacity: 1;
   }
   100% {
-    transform: translate(-50%, calc(var(--svp-xp-popup-offset) - 38px));
+    transform: translate(
+      calc(-50% + var(--svp-xp-popup-shift-x)),
+      calc(var(--svp-xp-popup-shift-y) - 38px)
+    );
     opacity: 0;
   }
 }
