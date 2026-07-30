@@ -866,3 +866,63 @@ describe('initSettingsUI — уведомление при отказе saveSett
     setItemSpy.mockRestore();
   });
 });
+
+describe('initSettingsUI — сброс прокрутки при открытии панели', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('style[id^="svp-"]').forEach((node) => {
+      node.remove();
+    });
+    history.replaceState(null, '', location.pathname);
+  });
+
+  function getContent(): HTMLElement {
+    const content = document.querySelector<HTMLElement>('.svp-settings-content');
+    if (!content) throw new Error('svp-settings-content not rendered');
+    return content;
+  }
+
+  test('открытие из игровых настроек ставит прокрутку списка модулей в начало', () => {
+    document.body.innerHTML = '<div class="settings-content"></div>';
+    initSettingsUI([createMockModule({ id: 'alpha' })], new Map());
+
+    const content = getContent();
+    content.scrollTop = 120;
+
+    const openButton = document.querySelector<HTMLButtonElement>(
+      '#svp-game-settings-entry .settings-section__button',
+    );
+    if (!openButton) throw new Error('open button not rendered');
+    openButton.click();
+
+    expect(content.scrollTop).toBe(0);
+  });
+
+  test('панель, закрытая в прокрученном состоянии, открывается заново сверху', () => {
+    document.body.innerHTML = '<div class="settings-content"></div>';
+    initSettingsUI([createMockModule({ id: 'alpha' })], new Map());
+
+    const panel = document.getElementById('svp-settings-panel');
+    if (!panel) throw new Error('svp-settings-panel not rendered');
+    const content = getContent();
+    const openButton = document.querySelector<HTMLButtonElement>(
+      '#svp-game-settings-entry .settings-section__button',
+    );
+    if (!openButton) throw new Error('open button not rendered');
+
+    openButton.click();
+    content.scrollTop = 200;
+    panel.querySelector<HTMLButtonElement>('.svp-settings-close')?.click();
+    openButton.click();
+
+    expect(content.scrollTop).toBe(0);
+  });
+
+  test('открытие по хешу svp-settings ставит прокрутку в начало', () => {
+    history.replaceState(null, '', location.pathname + '#svp-settings');
+    initSettingsUI([createMockModule({ id: 'alpha' })], new Map());
+
+    expect(getContent().scrollTop).toBe(0);
+  });
+});
