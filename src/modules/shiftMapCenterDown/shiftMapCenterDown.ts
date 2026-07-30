@@ -113,7 +113,7 @@ function restoreCalculateExtentWrapper(): void {
 
 export const shiftMapCenterDown: IFeatureModule = {
   id: MODULE_ID,
-  name: { en: 'Shift Map Center Down', ru: 'Сдвиг центра карты вниз' },
+  name: { en: 'Shift map center down', ru: 'Сдвиг центра карты вниз' },
   description: {
     en: 'Moves map center down so you see more ahead while moving',
     ru: 'Сдвигает центр карты вниз, чтобы видеть больше карты впереди по ходу движения',

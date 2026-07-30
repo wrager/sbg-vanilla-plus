@@ -127,7 +127,7 @@ function installPatch(proto: IToastifyPrototype): () => void {
 
 export const groupErrorToasts: IFeatureModule = {
   id: MODULE_ID,
-  name: { en: 'Group Error Toasts', ru: 'Группировка тостов ошибок' },
+  name: { en: 'Group error toasts', ru: 'Группировка тостов ошибок' },
   description: {
     en: 'Groups identical error toasts into one with a counter instead of stacking',
     ru: 'Группирует одинаковые тосты ошибок в один со счётчиком вместо накопления',

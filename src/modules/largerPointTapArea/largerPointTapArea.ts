@@ -11,7 +11,7 @@ let enableToken = 0;
 
 export const largerPointTapArea: IFeatureModule = {
   id: MODULE_ID,
-  name: { en: 'Larger Point Tap Area', ru: 'Увеличенная область нажатия' },
+  name: { en: 'Larger point tap area', ru: 'Увеличенная область нажатия' },
   description: {
     en: 'Increases the tappable area of map points for easier selection on mobile',
     ru: 'Увеличивает кликабельную область точек на карте для удобства на мобильных',

@@ -240,7 +240,7 @@ async function setup(): Promise<() => void> {
 
 export const enhancedMainScreen: IFeatureModule = {
   id: MODULE_ID,
-  name: { en: 'Enhanced Main Screen', ru: 'Улучшенный главный экран' },
+  name: { en: 'Enhanced main screen', ru: 'Улучшенный главный экран' },
   description: {
     en: 'Compact top panel, attack button centered',
     ru: 'Компактная верхняя панель, кнопка атаки по центру',
