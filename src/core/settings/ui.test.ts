@@ -926,3 +926,36 @@ describe('initSettingsUI — сброс прокрутки при открыти
     expect(getContent().scrollTop).toBe(0);
   });
 });
+
+describe('initSettingsUI — расположение шапки настроек', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    document.head.querySelectorAll('style[id^="svp-"]').forEach((node) => {
+      node.remove();
+    });
+  });
+
+  function getHeader(): HTMLElement {
+    const header = document.querySelector<HTMLElement>('.svp-settings-header');
+    if (!header) throw new Error('svp-settings-header not rendered');
+    return header;
+  }
+
+  test('заголовок стоит перед мастер-чекбоксом', () => {
+    initSettingsUI([createMockModule({ id: 'alpha' })], new Map());
+
+    const header = getHeader();
+    const title = header.firstElementChild;
+    expect(title?.textContent).toContain('Vanilla+');
+    expect(header.lastElementChild?.classList.contains('svp-toggle-all')).toBe(true);
+  });
+
+  test('в подписи мастер-чекбокса сам чекбокс стоит справа от текста', () => {
+    initSettingsUI([createMockModule({ id: 'alpha' })], new Map());
+
+    const toggleAll = getHeader().querySelector<HTMLElement>('.svp-toggle-all');
+    if (!toggleAll) throw new Error('toggle-all label not rendered');
+    expect(toggleAll.lastElementChild?.classList.contains('svp-toggle-all-checkbox')).toBe(true);
+  });
+});

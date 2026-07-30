@@ -839,6 +839,15 @@ export function initSettingsUI(
   const header = document.createElement('div');
   header.className = 'svp-settings-header';
 
+  const titleSpan = document.createElement('span');
+  titleSpan.textContent = t(SETTINGS_TITLE);
+  header.appendChild(titleSpan);
+
+  /*
+   * Мастер-чекбокс идёт последним и внутри своей подписи стоит справа от
+   * текста: так он оказывается на одной вертикали с колонкой чекбоксов
+   * модулей (у header и списка модулей одинаковый горизонтальный padding).
+   */
   const toggleAllLabel = document.createElement('label');
   toggleAllLabel.className = 'svp-toggle-all';
   const toggleAllCheckbox = document.createElement('input');
@@ -846,13 +855,9 @@ export function initSettingsUI(
   toggleAllCheckbox.className = 'svp-toggle-all-checkbox';
   const toggleAllText = document.createElement('span');
   toggleAllText.textContent = t(TOGGLE_ALL_LABEL);
-  toggleAllLabel.appendChild(toggleAllCheckbox);
   toggleAllLabel.appendChild(toggleAllText);
+  toggleAllLabel.appendChild(toggleAllCheckbox);
   header.appendChild(toggleAllLabel);
-
-  const titleSpan = document.createElement('span');
-  titleSpan.textContent = t(SETTINGS_TITLE);
-  header.appendChild(titleSpan);
 
   panel.appendChild(header);
 
