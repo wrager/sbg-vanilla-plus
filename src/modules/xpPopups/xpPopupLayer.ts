@@ -4,6 +4,7 @@ import { ANIMATION_SAFETY_MARGIN } from '../../core/popupSwipe';
 const LAYER_CLASS = 'svp-xp-popup-layer';
 const POPUP_CLASS = 'svp-xp-popup';
 const DURATION_PROPERTY = '--svp-xp-popup-duration';
+const OFFSET_PROPERTY = '--svp-xp-popup-offset';
 
 /**
  * Длительность всплытия (мс). Единственный источник истины: CSS получает её
@@ -11,7 +12,13 @@ const DURATION_PROPERTY = '--svp-xp-popup-duration';
  * неё же. Второго объявления быть не должно - в CUI таймер на 3000мс не был
  * связан с длительностью перехода в стилях (refs/cui/index.js:2028-2029).
  */
-export const XP_POPUP_ANIMATION_MS = 1600;
+export const XP_POPUP_ANIMATION_MS = 1200;
+
+/**
+ * Шаг стопки (px). Значения серии встают друг под другом, а не в одной точке:
+ * иначе три действия подряд накладываются и не читаются вовсе.
+ */
+const STACK_STEP_PX = 26;
 
 /**
  * Больше пяти значений разом на экране нечитаемо; самое старое вытесняется.
@@ -31,6 +38,8 @@ const XP_UNIT_SELECTOR = '[data-i18n="units.pts-xp"]';
 
 interface ILivePopup {
   element: HTMLElement;
+  /** Место в стопке: индекс от 0, умноженный на шаг, даёт смещение по вертикали. */
+  slot: number;
   fallbackTimer: ReturnType<typeof setTimeout>;
   onAnimationEnd: (event: AnimationEvent) => void;
 }
@@ -58,6 +67,19 @@ function finishPopup(record: ILivePopup): void {
 
 function finishAllPopups(): void {
   while (livePopups.length > 0) finishPopup(livePopups[0]);
+}
+
+/**
+ * Наименьшее свободное место в стопке. Отсчёт по занятым, а не по количеству
+ * живых: значение из середины серии могло уже улететь, и его место надо занять
+ * заново, иначе новое значение встало бы поверх соседнего.
+ */
+function nextFreeSlot(): number {
+  const used = new Set(livePopups.map((popup) => popup.slot));
+  for (let slot = 0; slot < MAX_LIVE_POPUPS; slot++) {
+    if (!used.has(slot)) return slot;
+  }
+  return 0;
 }
 
 /**
@@ -150,9 +172,15 @@ export function showXpPopup(diff: number): void {
   const element = document.createElement('div');
   element.className = POPUP_CLASS;
   element.textContent = formatXpDiff(diff);
+  // Место закрепляется за значением на всю его жизнь: пересчитывать стопку при
+  // каждом уходе значило бы переписывать transform чужим узлам посреди их
+  // анимации, и вся серия дёргалась бы вверх на каждом снятии.
+  const slot = nextFreeSlot();
+  element.style.setProperty(OFFSET_PROPERTY, `${slot * STACK_STEP_PX}px`);
 
   const record: ILivePopup = {
     element,
+    slot,
     fallbackTimer: setTimeout(() => {
       finishPopup(record);
     }, XP_POPUP_ANIMATION_MS + ANIMATION_SAFETY_MARGIN),

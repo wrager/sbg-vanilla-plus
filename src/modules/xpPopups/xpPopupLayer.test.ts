@@ -261,6 +261,57 @@ describe('destroyXpPopupLayer', () => {
   });
 });
 
+describe('стопка значений', () => {
+  function offsets(): (string | undefined)[] {
+    return Array.from(document.querySelectorAll<HTMLElement>(POPUP_SELECTOR)).map((node) =>
+      node.style.getPropertyValue('--svp-xp-popup-offset'),
+    );
+  }
+
+  test('серия действий встаёт ступенькой, а не в одну точку', () => {
+    createXpPopupLayer();
+
+    showXpPopup(1);
+    showXpPopup(2);
+    showXpPopup(3);
+
+    expect(offsets()).toEqual(['0px', '26px', '52px']);
+  });
+
+  test('после конца серии отсчёт начинается заново', () => {
+    createXpPopupLayer();
+    showXpPopup(1);
+    showXpPopup(2);
+
+    for (const popup of Array.from(document.querySelectorAll(POPUP_SELECTOR))) endAnimation(popup);
+    showXpPopup(3);
+
+    expect(offsets()).toEqual(['0px']);
+  });
+
+  test('вытесненное значение освобождает своё место, новое его занимает', () => {
+    createXpPopupLayer();
+
+    for (let diff = 1; diff <= 6; diff++) showXpPopup(diff);
+
+    // Шестое вытеснило первое и встало на его место, а не поверх пятого.
+    expect(offsets()).toEqual(['26px', '52px', '78px', '104px', '0px']);
+  });
+
+  test('улетевшее из середины серии значение освобождает своё место', () => {
+    createXpPopupLayer();
+    showXpPopup(1);
+    showXpPopup(2);
+    showXpPopup(3);
+
+    const middle = document.querySelectorAll(POPUP_SELECTOR)[1];
+    endAnimation(middle);
+    showXpPopup(4);
+
+    expect(offsets()).toEqual(['0px', '52px', '26px']);
+  });
+});
+
 describe('позиция слоя', () => {
   test('без верхней панели - фолбэк', () => {
     createXpPopupLayer();
