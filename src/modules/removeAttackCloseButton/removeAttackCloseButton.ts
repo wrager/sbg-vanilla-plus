@@ -1,12 +1,6 @@
 import { injectStyles, removeStyles } from '../../core/dom';
 import type { IGameLabel } from '../../core/gameI18n';
-import {
-  captureGameLabel,
-  restoreGameLabel,
-  setGameLabel,
-  translateGameKey,
-} from '../../core/gameI18n';
-import { t } from '../../core/l10n';
+import { captureGameLabel, setGameLabel } from '../../core/gameI18n';
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import styles from './styles.css?inline';
 
@@ -17,12 +11,6 @@ const ATTACK_SLIDER_SELECTOR = '.attack-slider-wrp';
 const CLOSE_BUTTON_SELECTOR = '#attack-slider-close';
 const HIDDEN_CLASS = 'hidden';
 
-// Ключ игрового перевода кнопки «Закрыть» рядом с «Огонь!»
-// (refs/game/index.html:124). Перевод берём у игры, чтобы подпись совпадала
-// с остальным интерфейсом; свой текст - фолбэк на случай недоступного i18next.
-const CLOSE_LABEL_KEY = 'buttons.close';
-const CLOSE_LABEL_FALLBACK = { en: 'Close', ru: 'Закрыть' };
-
 let attackSlider: Element | null = null;
 let attackButton: HTMLElement | null = null;
 let attackLabel: IGameLabel | null = null;
@@ -32,15 +20,41 @@ function isAttackModeOpen(): boolean {
   return attackSlider !== null && !attackSlider.classList.contains(HIDDEN_CLASS);
 }
 
-function showCloseLabel(): void {
-  if (!attackButton || attackLabel) return;
-  attackLabel = captureGameLabel(attackButton);
-  setGameLabel(attackButton, translateGameKey(CLOSE_LABEL_KEY) ?? t(CLOSE_LABEL_FALLBACK));
+/*
+ * Подпись берём с самой скрытой кнопки «Закрыть»: игра перевела её при старте
+ * (refs/game/script.js:135), значит там уже готовый текст на языке игрока.
+ * Переводить ключ самим или держать свою пару en/ru не нужно.
+ */
+function readCloseButtonText(): string | null {
+  const closeButton = document.querySelector(CLOSE_BUTTON_SELECTOR);
+  const text = closeButton?.textContent.trim();
+  return text ? text : null;
 }
 
+function showCloseLabel(): void {
+  if (!attackButton || attackLabel) return;
+  const closeText = readCloseButtonText();
+  // Кнопки нет или она без текста (игра обновилась) - подпись не трогаем:
+  // «Атака» лучше пустой кнопки, а выход остаётся за нативным toggle.
+  if (closeText === null) return;
+  attackLabel = captureGameLabel(attackButton);
+  setGameLabel(attackButton, closeText);
+}
+
+/*
+ * Возврат из снимка, без обращения к переводам: игра переводит разметку один
+ * раз при старте, а смена языка в её настройках делает location.reload
+ * (refs/game/script.js:1958-1959), поэтому внутри сессии снятый текст совпадает
+ * с тем, что игрок видел до подмены.
+ */
 function showAttackLabel(): void {
   if (!attackButton || !attackLabel) return;
-  restoreGameLabel(attackButton, attackLabel);
+  if (attackLabel.text !== null) {
+    attackButton.textContent = attackLabel.text;
+  }
+  if (attackLabel.i18nKey !== null) {
+    attackButton.setAttribute('data-i18n', attackLabel.i18nKey);
+  }
   attackLabel = null;
 }
 

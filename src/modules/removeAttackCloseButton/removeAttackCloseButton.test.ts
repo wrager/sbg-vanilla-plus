@@ -36,15 +36,6 @@ function createAttackUi({ open = false, withCloseButton = true } = {}): IAttackU
   return { attackButton, slider, closeButton };
 }
 
-/** Игра переводит `buttons.close` / `menu.attack` через глобальный i18next */
-function mockGameI18next(): void {
-  const dictionary: Record<string, string> = {
-    'buttons.close': 'Закрыть',
-    'menu.attack': 'Атака',
-  };
-  globals.i18next = { t: (key: string) => dictionary[key] ?? '' };
-}
-
 /** Игровой обработчик клика на #attack-menu висит на самой кнопке */
 function attachGameHandler(button: HTMLElement): jest.Mock {
   const handler = jest.fn();
@@ -104,8 +95,7 @@ describe('removeAttackCloseButton', () => {
   });
 
   describe('подпись кнопки', () => {
-    test('режим атаки открыт - подпись игровая «Закрыть», data-i18n снят', async () => {
-      mockGameI18next();
+    test('режим атаки открыт - подпись с нативной «Закрыть», data-i18n снят', async () => {
       const { attackButton, slider } = createAttackUi();
       await removeAttackCloseButton.enable();
 
@@ -115,8 +105,10 @@ describe('removeAttackCloseButton', () => {
       expect(attackButton.hasAttribute('data-i18n')).toBe(false);
     });
 
-    test('i18next игры недоступен - подпись из своей локализации', async () => {
-      const { attackButton, slider } = createAttackUi();
+    test('подпись берётся с кнопки, а не из переводов игры', async () => {
+      const { attackButton, slider, closeButton } = createAttackUi();
+      closeButton?.replaceChildren('Close');
+      globals.i18next = { t: () => 'перевод по ключу' };
       await removeAttackCloseButton.enable();
 
       await openAttackMode(slider);
@@ -124,8 +116,27 @@ describe('removeAttackCloseButton', () => {
       expect(attackButton.textContent).toBe('Close');
     });
 
+    test('нативная «Закрыть» без текста - подпись остаётся «Атака»', async () => {
+      const { attackButton, slider, closeButton } = createAttackUi();
+      closeButton?.replaceChildren();
+      await removeAttackCloseButton.enable();
+
+      await openAttackMode(slider);
+
+      expect(attackButton.textContent).toBe('Атака');
+      expect(attackButton.getAttribute('data-i18n')).toBe('menu.attack');
+    });
+
+    test('нативной «Закрыть» в разметке нет - подпись остаётся «Атака»', async () => {
+      const { attackButton, slider } = createAttackUi({ withCloseButton: false });
+      await removeAttackCloseButton.enable();
+
+      await openAttackMode(slider);
+
+      expect(attackButton.textContent).toBe('Атака');
+    });
+
     test('режим атаки закрыт - подпись «Атака» и data-i18n на месте', async () => {
-      mockGameI18next();
       const { attackButton, slider } = createAttackUi();
       await removeAttackCloseButton.enable();
 
@@ -137,7 +148,6 @@ describe('removeAttackCloseButton', () => {
     });
 
     test('модуль включён при уже открытом режиме - подпись сразу «Закрыть»', async () => {
-      mockGameI18next();
       const { attackButton } = createAttackUi({ open: true });
 
       await removeAttackCloseButton.enable();
@@ -146,7 +156,6 @@ describe('removeAttackCloseButton', () => {
     });
 
     test('disable при открытом режиме возвращает подпись «Атака»', async () => {
-      mockGameI18next();
       const { attackButton, slider } = createAttackUi();
       await removeAttackCloseButton.enable();
       await openAttackMode(slider);
