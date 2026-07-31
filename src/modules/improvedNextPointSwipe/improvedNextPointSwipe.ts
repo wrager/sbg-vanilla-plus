@@ -83,23 +83,35 @@ function installHammerOverride(): void {
   }
   if (originalHammerEmit) return;
   // eslint-disable-next-line @typescript-eslint/unbound-method -- сохраняем оригинал для restore и call.apply через any-this
-  originalHammerEmit = proto.emit;
+  const nativeEmit = proto.emit;
+  originalHammerEmit = nativeEmit;
   proto.emit = function (this: unknown, name: string, data: unknown): void {
-    if (name === 'swipeleft' || name === 'swiperight') {
-      const eventData = data as { target?: Element | null } | undefined;
-      const target = eventData?.target;
-      if (
-        target instanceof Element &&
-        target.closest(POINT_POPUP_SELECTOR) !== null &&
-        target.closest('.splide') === null
-      ) {
-        if (!isModuleActive(ANIMATION_MODULE_ID)) {
-          navigateToNextPoint();
+    try {
+      if (name === 'swipeleft' || name === 'swiperight') {
+        const eventData = data as { target?: Element | null } | undefined;
+        const target = eventData?.target;
+        if (
+          target instanceof Element &&
+          target.closest(POINT_POPUP_SELECTOR) !== null &&
+          target.closest('.splide') === null
+        ) {
+          if (!isModuleActive(ANIMATION_MODULE_ID)) {
+            navigateToNextPoint();
+          }
+          return;
         }
-        return;
       }
+    } catch (error) {
+      // Через emit проходят ВСЕ жесты игры. Несовместимость с новой версией
+      // игры снимает наш перехват, а не ломает игроку карту: дальше событие
+      // уходит нативному обработчику.
+      console.error(`[SVP ${MODULE_ID}] перехват свайпа отключён после ошибки:`, error);
+      uninstallHammerOverride();
     }
-    originalHammerEmit?.call(this, name, data);
+
+    // Локальная ссылка, а не originalHammerEmit: снятие перехвата обнуляет
+    // модульную переменную, и событие не дошло бы до игры.
+    nativeEmit.call(this, name, data);
   };
 }
 

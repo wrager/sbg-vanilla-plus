@@ -174,6 +174,16 @@ async function filterDrawResponse(
   return modified;
 }
 
+/**
+ * Через патч проходит ВЕСЬ сетевой обмен игры, поэтому несовместимость с новой
+ * версией отключает фильтр, а не рвёт запрос: игре уходит либо промис нативного
+ * fetch, либо неотфильтрованный ответ сервера.
+ */
+function reportFilterFailure(error: unknown): void {
+  console.error('[SVP drawingRestrictions] фильтр целей рисования отключён после ошибки:', error);
+  drawFilterEnabled = false;
+}
+
 export function installDrawFilter(): void {
   drawFilterEnabled = true;
   if (fetchInstalled) return;
@@ -182,16 +192,28 @@ export function installDrawFilter(): void {
   originalFetchBeforePatch = native;
   window.fetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const promise = native.call(this, input, init);
-    if (!drawFilterEnabled) return promise;
-    const url = getUrl(input);
-    const method = getMethod(input, init);
-    if (!matchesDrawList(url, method)) return promise;
-    // Контекст попапа снапшотится В МОМЕНТ запроса, не на момент resolve'а
-    // ответа. Иначе при быстрой смене попапа (запрос ушёл из A, ответ пришёл
-    // когда уже открыт B) фильтр применит правила B к данным A, попап получит
-    // отфильтрованный список для чужого контекста.
-    const popupGuidAtRequest = getCurrentPopupGuid();
-    return promise.then((response) => filterDrawResponse(response, popupGuidAtRequest));
+    try {
+      if (!drawFilterEnabled) return promise;
+      const url = getUrl(input);
+      const method = getMethod(input, init);
+      if (!matchesDrawList(url, method)) return promise;
+      // Контекст попапа снапшотится В МОМЕНТ запроса, не на момент resolve'а
+      // ответа. Иначе при быстрой смене попапа (запрос ушёл из A, ответ пришёл
+      // когда уже открыт B) фильтр применит правила B к данным A, попап получит
+      // отфильтрованный список для чужого контекста.
+      const popupGuidAtRequest = getCurrentPopupGuid();
+      return promise.then((response) =>
+        // catch навешен на фильтр, а не на всю цепочку: сетевой сбой самого
+        // запроса игра должна получить как есть.
+        filterDrawResponse(response, popupGuidAtRequest).catch((error: unknown) => {
+          reportFilterFailure(error);
+          return response;
+        }),
+      );
+    } catch (error) {
+      reportFilterFailure(error);
+      return promise;
+    }
   };
 }
 
