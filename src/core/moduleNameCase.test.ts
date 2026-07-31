@@ -21,6 +21,7 @@ import { repairButtonFix } from '../modules/repairButtonFix/repairButtonFix';
 import { shiftMapCenterDown } from '../modules/shiftMapCenterDown/shiftMapCenterDown';
 import { singleFingerRotation } from '../modules/singleFingerRotation/singleFingerRotation';
 import { swipeToClosePopup } from '../modules/swipeToClosePopup/swipeToClosePopup';
+import { xpPopups } from '../modules/xpPopups/xpPopups';
 
 /*
  * Список повторяет набор модулей из entry.ts: собственного реестра «всех
@@ -50,10 +51,11 @@ const MODULES: readonly IFeatureModule[] = [
   shiftMapCenterDown,
   singleFingerRotation,
   swipeToClosePopup,
+  xpPopups,
 ];
 
 // Аббревиатуры остаются заглавными в любой позиции названия.
-const ABBREVIATIONS = new Set(['UI', 'API', 'GPS']);
+const ABBREVIATIONS = new Set(['UI', 'API', 'GPS', 'EXP']);
 
 function isAbbreviation(word: string): boolean {
   return ABBREVIATIONS.has(word);

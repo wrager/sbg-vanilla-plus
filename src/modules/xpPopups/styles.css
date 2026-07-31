@@ -1,0 +1,91 @@
+/* Слой всплывающих значений опыта. position: fixed + height: 0 + абсолютно
+   спозиционированные дети: появление и удаление попапа не трогают раскладку
+   игрового интерфейса. В CUI контейнер был обычным блоком в потоке body
+   (refs/cui/index.js:3933-3938), поэтому каждый append/remove давал reflow.
+   top выставляет JS по нижней кромке .topleft-container; значение здесь -
+   фолбэк для случая, когда панели в DOM нет. */
+.svp-xp-popup-layer {
+  position: fixed;
+  top: 132px;
+  left: 0;
+  right: 0;
+  height: 0;
+  /* Ниже всех оверлеев SVP (панель настроек 10000, тост 10002, модалки
+     10010-10011), выше игрового интерфейса (попап точки - z-index: 3). */
+  z-index: 9999;
+  /* Слой висит над центром верха экрана, где игра показывает свои тосты.
+     Ни один тап перехватывать нельзя. */
+  pointer-events: none;
+}
+
+.svp-xp-popup {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  /* Случайный разброс вокруг точки появления. Ставится из JS на каждый узел,
+     чтобы серия действий не сложилась в одну нечитаемую кучу. Смещение живёт
+     внутри transform, а не в top/left: те - layout-свойства, и разброс
+     заставлял бы браузер считать позицию заново на каждой вставке. */
+  --svp-xp-popup-shift-x: 0px;
+  --svp-xp-popup-shift-y: 0px;
+  /* Центрирование внутри transform, а не отдельным свойством translate:
+     keyframes ниже тоже пишут transform, и все части обязаны жить в одной
+     функции, иначе анимация затрёт и центрирование, и разброс. */
+  transform: translate(calc(-50% + var(--svp-xp-popup-shift-x)), var(--svp-xp-popup-shift-y));
+  white-space: nowrap;
+  font-size: 17px;
+  font-weight: bold;
+  /* Цвет опыта в игре - var(--progress): им же игра красит строку опыта в
+     тосте изучения (refs/game/script.js:837). Обводка цветом фона держит
+     число читаемым и на светлой, и на тёмной карте. Одна тень, а не пара:
+     каждая тень с размытием - отдельный проход при растеризации текста, и на
+     слабом WebView это самая дорогая часть кадра. */
+  color: var(--progress);
+  text-shadow: 0 0 3px var(--background);
+  /* Длительность приходит из XP_POPUP_ANIMATION_MS через custom property на
+     слое - единственный источник истины и для анимации, и для страховочного
+     таймера удаления узла. Расхождение этих двух чисел - ровно та ошибка CUI,
+     где таймер на 3000мс не был связан с длительностью перехода в CSS.
+     Анимируются только transform и opacity: composited-свойства, кадры идут
+     мимо main thread, без layout и paint. */
+  animation: svp-xp-popup-float var(--svp-xp-popup-duration, 1200ms) ease-out forwards;
+}
+
+/* Движение задано только крайними кадрами, поэтому смещение идёт непрерывно от
+   начала до конца. Промежуточные кадры трогают лишь прозрачность: стоит задать
+   в них transform - и участок между ними превращается в почти неподвижное
+   плато, которое читается как подвисшее значение. */
+@keyframes svp-xp-popup-float {
+  0% {
+    transform: translate(
+      calc(-50% + var(--svp-xp-popup-shift-x)),
+      calc(var(--svp-xp-popup-shift-y) + 14px)
+    );
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  65% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(
+      calc(-50% + var(--svp-xp-popup-shift-x)),
+      calc(var(--svp-xp-popup-shift-y) - 38px)
+    );
+    opacity: 0;
+  }
+}
+
+/* Нативная подпись прироста опыта в панели игрока (refs/game/index.html:74).
+   Пока модуль включён, её роль выполняет всплывающее значение.
+   visibility, а не display: none - span всегда занимает место в строке
+   .self-info__entry, и display: none изменил бы её ширину.
+   !important - полного игрового CSS в refs/ нет (fetchRefs забирает только
+   variables.css), специфичность игрового правила на .xp-diff.active
+   неизвестна. Тот же приём и то же обоснование, что в
+   removeAttackCloseButton/styles.css. */
+.xp-diff {
+  visibility: hidden !important;
+}
