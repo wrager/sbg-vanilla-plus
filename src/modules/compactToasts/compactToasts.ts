@@ -2,7 +2,7 @@ import { getToastifyFactory, isErrorToast } from '../../core/toastify';
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import type { IToastElement, IToastifyInstance, IToastifyPrototype } from '../../core/toastify';
 
-const MODULE_ID = 'groupErrorToasts';
+const MODULE_ID = 'compactToasts';
 
 interface ITrackedToast {
   instance: IToastifyInstance;
@@ -86,12 +86,12 @@ function installPatch(proto: IToastifyPrototype): () => void {
   };
 }
 
-export const groupErrorToasts: IFeatureModule = {
+export const compactToasts: IFeatureModule = {
   id: MODULE_ID,
-  name: { en: 'Group error toasts', ru: 'Группировка тостов ошибок' },
+  name: { en: 'Compact toasts', ru: 'Компактные тосты' },
   description: {
-    en: 'Groups identical error toasts into one with a counter instead of stacking',
-    ru: 'Группирует одинаковые тосты ошибок в один со счётчиком вместо накопления',
+    en: 'Repeated notifications merge into one with a counter instead of stacking up',
+    ru: 'Повторяющиеся уведомления объединяются в одно со счётчиком вместо накопления',
   },
   defaultEnabled: true,
   category: 'ui',

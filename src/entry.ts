@@ -13,7 +13,7 @@ import { enhancedPointPopupUi } from './modules/enhancedPointPopupUi/enhancedPoi
 import { shiftMapCenterDown } from './modules/shiftMapCenterDown/shiftMapCenterDown';
 import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
 import { repairButtonFix } from './modules/repairButtonFix/repairButtonFix';
-import { groupErrorToasts } from './modules/groupErrorToasts/groupErrorToasts';
+import { compactToasts } from './modules/compactToasts/compactToasts';
 import { removeAttackCloseButton } from './modules/removeAttackCloseButton/removeAttackCloseButton';
 import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
@@ -69,7 +69,7 @@ if (!isDisabled()) {
       // ui
       enhancedMainScreen,
       enhancedPointPopupUi,
-      groupErrorToasts,
+      compactToasts,
       removeAttackCloseButton,
       nextPointSwipeAnimation,
       xpPopups,
