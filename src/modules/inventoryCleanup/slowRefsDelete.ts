@@ -206,12 +206,16 @@ export function collectOverLimit(
 }
 
 // slowRefsDelete использует длинный duration (5 сек) — пользователь должен
-// успеть прочитать результат удаления. Обёртка не переименовывает showToast,
-// чтобы вызовы остались читаемыми.
+// успеть прочитать результат удаления. Тип сообщения задан именем обёртки, а не
+// параметром: параметр пришлось бы тянуть через все вызовы, включая нейтральные.
 const SLOW_TOAST_DURATION = 5000;
 
 function showSlowToast(message: string): void {
-  showCoreToast(message, SLOW_TOAST_DURATION);
+  showCoreToast(message, { duration: SLOW_TOAST_DURATION });
+}
+
+function showSlowErrorToast(message: string): void {
+  showCoreToast(message, { duration: SLOW_TOAST_DURATION, type: 'error' });
 }
 
 async function runSlowDelete(): Promise<void> {
@@ -221,7 +225,7 @@ async function runSlowDelete(): Promise<void> {
   try {
     const settings = loadCleanupSettings();
     if (settings.limits.referencesMode !== 'slow') {
-      showSlowToast(
+      showSlowErrorToast(
         t({ en: 'Key cleanup mode is not "Slow"', ru: 'Режим очистки ключей не «Медленно»' }),
       );
       return;
@@ -232,7 +236,7 @@ async function runSlowDelete(): Promise<void> {
     // См. комментарий в shouldShowButton и в inventoryCleanup.runCleanupImpl.
     const migrationBlockReason = getLegacyMigrationRefsDeletionBlockReason();
     if (migrationBlockReason !== null) {
-      showSlowToast(
+      showSlowErrorToast(
         t(
           migrationBlockReason === 'snapshot'
             ? {
@@ -249,13 +253,13 @@ async function runSlowDelete(): Promise<void> {
     }
     const { referencesAlliedLimit, referencesNotAlliedLimit } = settings.limits;
     if (referencesAlliedLimit === -1 && referencesNotAlliedLimit === -1) {
-      showSlowToast(t({ en: 'Limits not set', ru: 'Лимиты не заданы' }));
+      showSlowErrorToast(t({ en: 'Limits not set', ru: 'Лимиты не заданы' }));
       return;
     }
 
     const playerTeam = getPlayerTeam();
     if (playerTeam === null) {
-      showSlowToast(
+      showSlowErrorToast(
         t({ en: 'Could not determine player team', ru: 'Не удалось определить команду игрока' }),
       );
       return;
@@ -273,7 +277,7 @@ async function runSlowDelete(): Promise<void> {
     const cache = readInventoryCache();
     const protectedPointGuids = buildProtectedPointGuids(cache);
     if (!isProtectionFlagSupportAvailable(cache)) {
-      showSlowToast(
+      showSlowErrorToast(
         t({
           en: 'Native lock/favorite protection unavailable: server returned no f-flags. Cleanup blocked.',
           ru: 'Нативная защита (замочек или звёздочка) недоступна: сервер не отдал поле f. Очистка заблокирована.',
@@ -318,7 +322,7 @@ async function runSlowDelete(): Promise<void> {
     } catch (error) {
       progress.close();
       const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
-      showSlowToast(t({ en: 'Request error: ', ru: 'Ошибка запроса: ' }) + message);
+      showSlowErrorToast(t({ en: 'Request error: ', ru: 'Ошибка запроса: ' }) + message);
       return;
     }
 

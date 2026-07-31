@@ -1,3 +1,22 @@
+/*
+ * Размер текста уведомлений. Игра его не задаёт вовсе (refs/game/style.css:394
+ * ставит тостам только фон, рамку и padding), поэтому шрифт наследуется от
+ * страницы и на мобильном экране тост занимает заметную часть карты.
+ *
+ * Правило общее для игровых и наших тостов: они рисуются одним механизмом и
+ * стоят рядом, поэтому разный размер читался бы как сбой.
+ */
+.interaction-toast,
+.error-toast {
+  font-size: 0.67em;
+}
+
+/*
+ * Запасной вид тоста: применяется, только когда Toastify игры недоступен
+ * (см. showFallbackToast в core/toast.ts). Обычные тосты SVP рисует Toastify,
+ * и этот класс на них не попадает - фиксированный top сломал бы раскладку,
+ * которую библиотека считает сама.
+ */
 .svp-toast {
   position: fixed;
   top: 50px;
@@ -10,14 +29,8 @@
   padding: 6px 12px;
   font-size: 12px;
   z-index: 10002;
-  opacity: 1;
-  transition: opacity 0.3s ease;
   max-width: 90vw;
   text-align: center;
   box-sizing: border-box;
   cursor: pointer;
-}
-
-.svp-toast-hide {
-  opacity: 0;
 }

@@ -6,7 +6,7 @@ import { drawingRestrictions } from '../modules/drawingRestrictions/drawingRestr
 import { enhancedMainScreen } from '../modules/enhancedMainScreen/enhancedMainScreen';
 import { enhancedPointPopupUi } from '../modules/enhancedPointPopupUi/enhancedPointPopupUi';
 import { favoritesMigration } from '../modules/favoritesMigration/favoritesMigration';
-import { groupErrorToasts } from '../modules/groupErrorToasts/groupErrorToasts';
+import { compactToasts } from '../modules/compactToasts/compactToasts';
 import { improvedNextPointSwipe } from '../modules/improvedNextPointSwipe/improvedNextPointSwipe';
 import { inventoryCleanup } from '../modules/inventoryCleanup/inventoryCleanup';
 import { keepScreenOn } from '../modules/keepScreenOn/keepScreenOn';
@@ -36,7 +36,7 @@ const MODULES: readonly IFeatureModule[] = [
   enhancedMainScreen,
   enhancedPointPopupUi,
   favoritesMigration,
-  groupErrorToasts,
+  compactToasts,
   improvedNextPointSwipe,
   inventoryCleanup,
   keepScreenOn,

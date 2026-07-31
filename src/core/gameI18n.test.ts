@@ -24,6 +24,11 @@ describe('gameI18n', () => {
   });
 
   describe('translateGameKey', () => {
+    test('в window лежит не i18next - null', () => {
+      globals.i18next = { language: 'ru' };
+      expect(translateGameKey('buttons.close')).toBeNull();
+    });
+
     test('null-ключ - без обращения к i18next', () => {
       const translate = jest.fn();
       globals.i18next = { t: translate };

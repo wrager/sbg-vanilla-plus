@@ -154,7 +154,7 @@ async function filterDrawResponse(
     totalHidden: original.length - parsed.data.length,
     maxDistanceMeters: settings.maxDistanceMeters,
   });
-  if (message !== null) showToast(message, 4000);
+  if (message !== null) showToast(message, { duration: 4000 });
 
   // Headers оригинала копируем без content-length: после фильтрации длина body
   // меняется, и заголовок становится несоответствующим реальному размеру.

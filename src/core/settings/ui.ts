@@ -22,6 +22,7 @@ function persistOrNotify(settings: ReturnType<typeof loadSettings>): boolean {
       en: 'Failed to save settings (storage full or inaccessible)',
       ru: 'Не удалось сохранить настройки (хранилище заполнено или недоступно)',
     }),
+    { type: 'error' },
   );
   return false;
 }

@@ -14,15 +14,26 @@ export interface IGameLabel {
   i18nKey: string | null;
 }
 
-/** Перевод ключа через игровой i18next; null, если i18next недоступен. */
-export function translateGameKey(key: string | null): string | null {
-  if (key === null) return null;
+/** i18next игры. Перечислено только то, что читает SVP. */
+interface IGameI18n {
+  t(key: string): unknown;
+}
+
+/** i18next игры или null, если он недоступен или не похож на i18next. */
+function getGameI18n(): IGameI18n | null {
   const globals = window as unknown as Record<string, unknown>;
   const i18next = globals.i18next;
   if (typeof i18next !== 'object' || i18next === null) return null;
-  const translate = (i18next as Record<string, unknown>).t;
-  if (typeof translate !== 'function') return null;
-  const result = (translate as (k: string) => unknown).call(i18next, key);
+  const candidate = i18next as Partial<IGameI18n>;
+  return typeof candidate.t === 'function' ? (candidate as IGameI18n) : null;
+}
+
+/** Перевод ключа через игровой i18next; null, если i18next недоступен. */
+export function translateGameKey(key: string | null): string | null {
+  if (key === null) return null;
+  const i18n = getGameI18n();
+  if (i18n === null) return null;
+  const result = i18n.t(key);
   return typeof result === 'string' ? result : null;
 }
 
