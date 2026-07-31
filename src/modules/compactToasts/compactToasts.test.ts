@@ -30,13 +30,20 @@ let createToast: (options: Partial<IMockToastOptions>) => IMockToast;
 
 function setupMockToastify(): void {
   const proto = {
+    /** Повторяет Toastify: узел с таймером автоснятия на нём (toastify.js:105). */
     showToast(this: IMockToast) {
-      const element = document.createElement('div');
+      const element = document.createElement('div') as HTMLElement & {
+        timeOutValue?: ReturnType<typeof setTimeout>;
+      };
       element.className = 'toastify on';
       element.innerHTML = this.options.text;
       const container = (this.options.selector as HTMLElement | null) ?? document.body;
       container.appendChild(element);
       this.toastElement = element;
+      element.timeOutValue = setTimeout(() => {
+        element.remove();
+        this.options.callback?.();
+      }, this.options.duration);
     },
     hideToast: jest.fn(),
   };
@@ -49,7 +56,7 @@ function setupMockToastify(): void {
       selector: options.selector ?? null,
       id: Math.round(Math.random() * 1e5),
       callback: null,
-      duration: 3000,
+      duration: options.duration ?? 3000,
       position: options.position ?? 'center',
       escapeMarkup: options.escapeMarkup ?? false,
     };
@@ -77,6 +84,14 @@ function showNeutral(text: string, options: Partial<IMockToastOptions> = {}): IM
   return toast;
 }
 
+/**
+ * Текст живого блока в контейнере (по умолчанию - на уровне экрана). Только
+ * прямые дети: контейнеры вложены в body, и обычный поиск нашёл бы чужой узел.
+ */
+function blockText(container: HTMLElement = document.body): string {
+  return container.querySelector(':scope > .toastify')?.innerHTML ?? '';
+}
+
 function fireCallback(toast: IMockToast): void {
   toast.options.callback?.();
 }
@@ -89,276 +104,342 @@ function getToastifyPrototype(): IToastifyPrototype {
 
 describe('compactToasts', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     setupMockToastify();
   });
 
   afterEach(async () => {
     await compactToasts.disable();
     document.body.innerHTML = '';
+    jest.useRealTimers();
   });
 
-  test('toast anchored to a container is passed through untouched', async () => {
-    await compactToasts.enable();
-    const container = document.createElement('div');
-    container.className = 'info';
-    document.body.appendChild(container);
+  describe('охват', () => {
+    test('нейтральные сообщения не группируются', async () => {
+      await compactToasts.enable();
 
-    const toast = showNeutral('loot acquired', { selector: container });
+      showNeutral('draw plan copied');
+      showNeutral('draw plan copied');
 
-    expect(toast.options.text).toBe('loot acquired');
-    expect(toast.options.position).toBe('center');
-    expect(toast.toastElement?.parentNode).toBe(container);
+      expect(document.querySelectorAll('.toastify').length).toBe(2);
+    });
+
+    test('нейтральное сообщение не меняет позицию и разметку', async () => {
+      await compactToasts.enable();
+
+      const toast = showNeutral('import successful');
+
+      expect(toast.options.text).toBe('import successful');
+      expect(toast.options.position).toBe('center');
+    });
+
+    test('ошибки в попапе точки группируются, а не проходят мимо', async () => {
+      await compactToasts.enable();
+      const popup = document.createElement('div');
+      popup.className = 'info';
+      document.body.appendChild(popup);
+
+      showError('Point is out of range', { selector: popup });
+      showError('Point is out of range', { selector: popup });
+      showError('Point is out of range', { selector: popup });
+
+      expect(popup.querySelectorAll('.toastify').length).toBe(1);
+      expect(blockText(popup)).toBe('Point is out of range (×3)');
+    });
+
+    test('ошибки в разных контейнерах собираются в разные блоки', async () => {
+      await compactToasts.enable();
+      const popup = document.createElement('div');
+      popup.className = 'info';
+      document.body.appendChild(popup);
+
+      showError('screen error');
+      showError('popup error', { selector: popup });
+
+      expect(blockText()).toBe('screen error');
+      expect(blockText(popup)).toBe('popup error');
+    });
+
+    test('позиция, заданная игрой, не меняется', async () => {
+      await compactToasts.enable();
+
+      const toast = showError('network error', { position: 'right' });
+
+      expect(toast.options.position).toBe('right');
+    });
   });
 
-  test('toasts in different containers stay separate', async () => {
-    await compactToasts.enable();
-    const container1 = document.createElement('div');
-    container1.className = 'info';
-    const container2 = document.createElement('div');
-    container2.className = 'inventory';
-    document.body.append(container1, container2);
+  describe('сборка строк', () => {
+    test('первая ошибка показывается как есть', async () => {
+      await compactToasts.enable();
 
-    const toast1 = showError('error', { selector: container1 });
-    const toast2 = showError('error', { selector: container2 });
+      showError('network error');
 
-    expect(toast1.toastElement?.parentNode).toBe(container1);
-    expect(toast2.toastElement?.parentNode).toBe(container2);
-    expect(toast2.options.text).toBe('error');
+      expect(blockText()).toBe('network error');
+      expect(document.querySelectorAll('.toastify').length).toBe(1);
+    });
+
+    test('две разные ошибки собираются в один блок', async () => {
+      await compactToasts.enable();
+
+      showError('network error');
+      showError('out of range');
+
+      expect(blockText()).toBe('network error<br>out of range');
+      expect(document.querySelectorAll('.toastify').length).toBe(1);
+    });
+
+    test('повтор даёт счётчик и снимает прежний узел', async () => {
+      await compactToasts.enable();
+
+      const toast1 = showError('network error');
+      showError('network error');
+
+      expect(toast1.toastElement?.parentNode).toBeNull();
+      expect(blockText()).toBe('network error (×2)');
+      expect(document.querySelectorAll('.toastify').length).toBe(1);
+    });
+
+    test('третий повтор даёт счётчик ×3', async () => {
+      await compactToasts.enable();
+
+      showError('out of range');
+      showError('out of range');
+      showError('out of range');
+
+      expect(blockText()).toBe('out of range (×3)');
+    });
+
+    test('повтор не двигает строку с её места', async () => {
+      await compactToasts.enable();
+
+      showError('first');
+      showError('second');
+      showError('first');
+
+      expect(blockText()).toBe('first (×2)<br>second');
+    });
+
+    test('в блоке не больше пяти строк, самая старая вытесняется', async () => {
+      await compactToasts.enable();
+
+      ['one', 'two', 'three', 'four', 'five', 'six'].forEach((text) => showError(text));
+
+      expect(blockText()).toBe('two<br>three<br>four<br>five<br>six');
+    });
+
+    test('разметка в тексте ошибки не рендерится', async () => {
+      await compactToasts.enable();
+
+      showError('<b>boom</b>');
+
+      expect(blockText()).toBe('&lt;b&gt;boom&lt;/b&gt;');
+      expect(document.querySelector('.toastify b')).toBeNull();
+    });
+
+    test('прежний узел снимается мгновенно, без анимации hideToast', async () => {
+      await compactToasts.enable();
+
+      const toast1 = showError('error');
+      const oldElement = toast1.toastElement;
+
+      showError('error');
+
+      expect(oldElement?.parentNode).toBeNull();
+      expect(toast1.hideToast).not.toHaveBeenCalled();
+    });
+
+    test('класс ошибки опознаётся среди нескольких классов', async () => {
+      await compactToasts.enable();
+
+      const toast1 = createToast({ text: 'network error' });
+      toast1.options.className = 'error-toast toastify-custom';
+      toast1.showToast();
+      const toast2 = createToast({ text: 'network error' });
+      toast2.options.className = 'error-toast toastify-custom';
+      toast2.showToast();
+
+      expect(blockText()).toBe('network error (×2)');
+    });
   });
 
-  test('first screen toast shows as is and moves to the corner', async () => {
-    await compactToasts.enable();
+  describe('срок жизни строк', () => {
+    test('истёкшая строка уходит из блока, свежая остаётся', async () => {
+      await compactToasts.enable();
 
-    const toast = showError('network error');
+      showError('early');
+      jest.advanceTimersByTime(2000);
+      showError('late');
 
-    expect(toast.options.text).toBe('network error');
-    expect(toast.options.position).toBe('left');
-    expect(document.querySelectorAll('.toastify').length).toBe(1);
+      expect(blockText()).toBe('early<br>late');
+
+      // Через 3 с после первой строки её срок истёк, у второй остаётся ещё 2 с.
+      jest.advanceTimersByTime(1000);
+
+      expect(blockText()).toBe('late');
+    });
+
+    test('строки не копятся до конца серии', async () => {
+      await compactToasts.enable();
+
+      showError('X');
+      jest.advanceTimersByTime(3500);
+      showError('Y');
+
+      expect(blockText()).toBe('Y');
+    });
+
+    test('повтор продлевает срок своей строки', async () => {
+      await compactToasts.enable();
+
+      showError('X');
+      jest.advanceTimersByTime(2000);
+      showError('X');
+
+      jest.advanceTimersByTime(1500);
+
+      expect(blockText()).toBe('X (×2)');
+    });
+
+    test('узел живёт до самой поздней строки', async () => {
+      await compactToasts.enable();
+
+      showError('long', { duration: 5000 });
+      const toast2 = showError('short', { duration: 3000 });
+
+      expect(toast2.options.duration).toBe(5000);
+    });
+
+    test('после ухода блока следующая ошибка начинает его заново', async () => {
+      await compactToasts.enable();
+
+      const toast1 = showError('error');
+      fireCallback(toast1);
+
+      showError('error');
+
+      expect(blockText()).toBe('error');
+    });
+
+    test('поздний callback снятого тоста не сбрасывает блок', async () => {
+      await compactToasts.enable();
+
+      const toast1 = showError('error');
+      showError('error');
+
+      fireCallback(toast1);
+      showError('error');
+
+      expect(blockText()).toBe('error (×3)');
+      expect(document.querySelectorAll('.toastify').length).toBe(1);
+    });
   });
 
-  test('two different messages merge into one block with two lines', async () => {
-    await compactToasts.enable();
+  describe('короткая строка регионов', () => {
+    beforeEach(() => {
+      const globals = window as unknown as Record<string, unknown>;
+      globals['i18next'] = {
+        language: 'ru',
+        resolvedLanguage: 'ru',
+        t: (key: string) => (key === 'info.regions' ? 'Регионы' : key),
+        getResource: (_lng: string, _namespace: string, key: string) =>
+          key === 'popups.new-regions'
+            ? 'Новые регионы: {{count}}<br>Общая площадь: {{area}}<br>Макс. площадь: {{max}}'
+            : undefined,
+      };
+      resetRegionsTemplateCacheForTest();
+    });
 
-    showError('network error');
-    const toast2 = showError('out of range');
+    afterEach(() => {
+      const globals = window as unknown as Record<string, unknown>;
+      delete globals['i18next'];
+      resetRegionsTemplateCacheForTest();
+    });
 
-    expect(toast2.options.text).toBe('network error<br>out of range');
-    expect(document.querySelectorAll('.toastify').length).toBe(1);
+    test('тост про регионы сворачивается, оставаясь отдельным', async () => {
+      await compactToasts.enable();
+
+      const toast = showNeutral(
+        'Новые регионы: 2<br>Общая площадь: 1.4 км²<br>Макс. площадь: 0.7 км²',
+      );
+
+      expect(toast.options.text).toBe('Регионы: +2 (1.4 км²)');
+    });
+
+    test('свёрнутый тост регионов не попадает в блок ошибок', async () => {
+      await compactToasts.enable();
+
+      showNeutral('Новые регионы: 2<br>Общая площадь: 1.4 км²<br>Макс. площадь: 0.7 км²');
+      showError('Недостаточно ключей');
+
+      expect(document.querySelectorAll('.toastify').length).toBe(2);
+      expect(blockText()).toBe('Регионы: +2 (1.4 км²)');
+    });
   });
 
-  test('repeated message removes old element and gets a counter', async () => {
-    await compactToasts.enable();
+  describe('жизненный цикл модуля', () => {
+    test('enable без Toastify не бросает', () => {
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      delete window.Toastify;
 
-    const toast1 = showError('network error');
-    const toast2 = showError('network error');
+      expect(() => compactToasts.enable()).not.toThrow();
+      expect(() => compactToasts.disable()).not.toThrow();
 
-    expect(toast1.toastElement?.parentNode).toBeNull();
-    expect(toast2.options.text).toBe('network error (×2)');
-    expect(document.querySelectorAll('.toastify').length).toBe(1);
-  });
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
 
-  test('third repeat shows counter ×3', async () => {
-    await compactToasts.enable();
+    test('disable возвращает оригинальный showToast', async () => {
+      const prototype = getToastifyPrototype();
+      const originalShowToast = prototype.showToast;
+      await compactToasts.enable();
 
-    showError('out of range');
-    showError('out of range');
-    const toast3 = showError('out of range');
+      expect(prototype.showToast).not.toBe(originalShowToast);
 
-    expect(toast3.options.text).toBe('out of range (×3)');
-    expect(document.querySelectorAll('.toastify').length).toBe(1);
-  });
+      await compactToasts.disable();
 
-  test('repeat does not move the line it belongs to', async () => {
-    await compactToasts.enable();
+      expect(prototype.showToast).toBe(originalShowToast);
+    });
 
-    showError('first');
-    showError('second');
-    const toast3 = showError('first');
+    test('disable сбрасывает накопленные строки', async () => {
+      await compactToasts.enable();
+      showError('error');
 
-    expect(toast3.options.text).toBe('first (×2)<br>second');
-  });
+      await compactToasts.disable();
+      document.body.innerHTML = '';
+      await compactToasts.enable();
 
-  test('neutral toasts also merge into the block', async () => {
-    await compactToasts.enable();
+      showError('error');
 
-    showNeutral('draw plan copied');
-    const toast2 = showNeutral('import successful');
+      expect(blockText()).toBe('error');
+    });
 
-    expect(toast2.options.text).toBe('draw plan copied<br>import successful');
-    expect(toast2.options.className).toBe('interaction-toast');
-    expect(document.querySelectorAll('.toastify').length).toBe(1);
-  });
+    test('исходный callback игры сохраняется и вызывается', async () => {
+      await compactToasts.enable();
 
-  test('an error line makes the whole block an error', async () => {
-    await compactToasts.enable();
+      const toast = createToast({ text: 'error' });
+      toast.options.className = 'error-toast';
+      const originalCallback = jest.fn();
+      toast.options.callback = originalCallback;
+      toast.showToast();
 
-    showNeutral('new regions');
-    const toast2 = showError('not enough keys');
+      fireCallback(toast);
 
-    expect(toast2.options.className).toBe('error-toast');
-  });
+      expect(originalCallback).toHaveBeenCalled();
+    });
 
-  test('block stays an error even when a neutral message comes last', async () => {
-    await compactToasts.enable();
+    test('callback снятого тоста вызывается для уборки popup_toasts игры', async () => {
+      await compactToasts.enable();
 
-    showError('not enough keys');
-    const toast2 = showNeutral('new regions');
+      const toast1 = createToast({ text: 'error' });
+      toast1.options.className = 'error-toast';
+      const gameCallback = jest.fn();
+      toast1.options.callback = gameCallback;
+      toast1.showToast();
 
-    expect(toast2.options.className).toBe('error-toast');
-  });
+      showError('error');
 
-  test('block keeps at most five lines, the oldest is dropped', async () => {
-    await compactToasts.enable();
-
-    ['one', 'two', 'three', 'four', 'five'].forEach((text) => showError(text));
-    const toast6 = showError('six');
-
-    expect(toast6.options.text).toBe('two<br>three<br>four<br>five<br>six');
-  });
-
-  test('after the block expires, the next toast starts a new one', async () => {
-    await compactToasts.enable();
-
-    const toast1 = showError('error');
-    fireCallback(toast1);
-
-    const toast2 = showError('error');
-
-    expect(toast2.options.text).toBe('error');
-  });
-
-  test('late callback of a replaced toast does not reset the block', async () => {
-    await compactToasts.enable();
-
-    const toast1 = showError('error');
-    const toast2 = showError('error');
-
-    expect(toast2.options.text).toBe('error (×2)');
-
-    fireCallback(toast1);
-
-    const toast3 = showError('error');
-
-    expect(toast3.options.text).toBe('error (×3)');
-    expect(document.querySelectorAll('.toastify').length).toBe(1);
-  });
-
-  test('old element is removed instantly without hideToast animation', async () => {
-    await compactToasts.enable();
-
-    const toast1 = showError('error');
-    const oldElement = toast1.toastElement;
-    expect(oldElement?.parentNode).toBe(document.body);
-
-    showError('error');
-
-    expect(oldElement?.parentNode).toBeNull();
-    expect(toast1.hideToast).not.toHaveBeenCalled();
-  });
-
-  test('error class is recognised among several classes', async () => {
-    await compactToasts.enable();
-
-    const toast = createToast({ text: 'network error' });
-    toast.options.className = 'error-toast toastify-custom';
-    toast.showToast();
-
-    expect(toast.options.className).toBe('error-toast');
-  });
-
-  test('block markup is rendered, not escaped', async () => {
-    await compactToasts.enable();
-
-    showError('first');
-    const toast2 = showError('second');
-
-    expect(toast2.options.escapeMarkup).toBe(false);
-    expect(document.querySelectorAll('.toastify br').length).toBe(1);
-  });
-
-  test('game regions toast is shortened inside the block', async () => {
-    const globals = window as unknown as Record<string, unknown>;
-    globals['i18next'] = {
-      language: 'ru',
-      resolvedLanguage: 'ru',
-      t: (key: string) => (key === 'info.regions' ? 'Регионы' : key),
-      getResource: (_lng: string, _namespace: string, key: string) =>
-        key === 'popups.new-regions'
-          ? 'Новые регионы: {{count}}<br>Общая площадь: {{area}}<br>Макс. площадь: {{max}}'
-          : undefined,
-    };
-    resetRegionsTemplateCacheForTest();
-    await compactToasts.enable();
-
-    showNeutral('Новые регионы: 2<br>Общая площадь: 1.4 км²<br>Макс. площадь: 0.7 км²');
-    const toast2 = showError('Недостаточно ключей');
-
-    expect(toast2.options.text).toBe('Регионы: +2 (1.4 км²)<br>Недостаточно ключей');
-    delete globals['i18next'];
-    resetRegionsTemplateCacheForTest();
-  });
-
-  test('enable without Toastify does not throw', () => {
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    delete window.Toastify;
-
-    expect(() => compactToasts.enable()).not.toThrow();
-    expect(() => compactToasts.disable()).not.toThrow();
-
-    expect(warn).toHaveBeenCalled();
-    warn.mockRestore();
-  });
-
-  test('disable restores original showToast', async () => {
-    const prototype = getToastifyPrototype();
-    const originalShowToast = prototype.showToast;
-    await compactToasts.enable();
-
-    expect(prototype.showToast).not.toBe(originalShowToast);
-
-    await compactToasts.disable();
-
-    expect(prototype.showToast).toBe(originalShowToast);
-  });
-
-  test('disable drops collected lines', async () => {
-    await compactToasts.enable();
-    showError('error');
-
-    await compactToasts.disable();
-    document.body.innerHTML = '';
-    await compactToasts.enable();
-
-    const toast = showError('error');
-
-    expect(toast.options.text).toBe('error');
-  });
-
-  test('original callback is preserved and called', async () => {
-    await compactToasts.enable();
-
-    const toast = createToast({ text: 'error' });
-    toast.options.className = 'error-toast';
-    const originalCallback = jest.fn();
-    toast.options.callback = originalCallback;
-    toast.showToast();
-
-    fireCallback(toast);
-
-    expect(originalCallback).toHaveBeenCalled();
-  });
-
-  test('replaced toast callback fires for the game popup_toasts cleanup', async () => {
-    await compactToasts.enable();
-
-    const toast1 = createToast({ text: 'error' });
-    toast1.options.className = 'error-toast';
-    const gameCallback = jest.fn();
-    toast1.options.callback = gameCallback;
-    toast1.showToast();
-
-    showError('error');
-
-    expect(gameCallback).toHaveBeenCalled();
+      expect(gameCallback).toHaveBeenCalled();
+    });
   });
 });

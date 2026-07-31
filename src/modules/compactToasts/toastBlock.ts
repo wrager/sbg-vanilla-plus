@@ -1,37 +1,46 @@
-import { GAME_TOAST_CLASS, isErrorToast } from '../../core/toastify';
+import { isErrorToast } from '../../core/toastify';
 import type { IToastElement, IToastifyInstance, IToastifyPrototype } from '../../core/toastify';
 import { shortenRegionsText } from './regionsLine';
 
 /**
- * Сборка одновременных уведомлений в один блок.
+ * Сборка одновременных ошибок в один блок.
  *
- * Игра показывает каждое сообщение отдельным тостом, и серия действий (обычно
- * рисование линий: отказы сервера вперемешку с сообщениями о новых регионах)
- * засыпает экран стопкой. Живущие одновременно уведомления собираются в один
- * узел строками, повтор увеличивает счётчик.
+ * Игра показывает каждый отказ отдельным тостом, и серия действий (рисование
+ * линий, повторные попытки вне радиуса) засыпает экран стопкой. Ошибки,
+ * живущие одновременно, собираются в один узел строками; повтор увеличивает
+ * счётчик.
  *
- * Граница проходит по контейнеру тоста. Тосты, привязанные к элементу
- * (попап точки, инвентарь, профиль, уведомления), не трогаем: тост с добычей
- * игра создаёт пустым и дописывает содержимое уже после показа
- * (refs/game/script.js:830-845), поэтому подмена узла стёрла бы игроку список
- * добычи. Такие тосты и так стоят у своего места и в общую стопку не идут.
+ * Собираются только ошибки. Нейтральные сообщения игрок читает по одному, и
+ * склеивать их незачем; кроме того, тост с добычей игра создаёт пустым и
+ * дописывает содержимое уже после показа (refs/game/script.js:830-845) -
+ * подмена такого узла стёрла бы игроку список добычи.
+ *
+ * У каждой строки свой срок жизни, а не общий на блок: иначе строка из начала
+ * серии доживала бы до её конца, и блок только рос бы.
+ *
+ * Блок собирается отдельно для каждого контейнера. Ошибки действий игра вешает
+ * внутрь попапа точки (refs/game/script.js:807), и смешивать их с сообщениями
+ * уровня экрана нельзя - это разные места на экране. Позиция при этом остаётся
+ * та, которую задала игра.
  */
 
-/** Больше пяти строк в углу экрана не читаются; вытесняется самая старая. */
+/** Больше пяти строк подряд не читаются; вытесняется самая старая. */
 const MAX_LINES = 5;
-
-/** Блок уходит влево вверх: там его не перекрывают попапы игры. */
-const BLOCK_ALIGNMENT = 'left';
 
 interface IBlockLine {
   text: string;
   count: number;
-  isError: boolean;
+  expiresAt: number;
 }
 
 interface IBlockState {
   instance: IToastifyInstance | null;
   lines: IBlockLine[];
+  sweepTimer: ReturnType<typeof setTimeout> | null;
+}
+
+function createState(): IBlockState {
+  return { instance: null, lines: [], sweepTimer: null };
 }
 
 function removeToastElementImmediately(instance: IToastifyInstance): void {
@@ -52,15 +61,72 @@ function isBlockAlive(state: IBlockState): boolean {
   return state.instance?.toastElement?.parentNode != null;
 }
 
-function resetBlock(state: IBlockState): void {
-  state.instance = null;
-  state.lines = [];
+/**
+ * Строки соединяются разметкой, поэтому текст каждой экранируется. Сообщения
+ * приходят от сервера, и разметку в них рендерить нельзя.
+ */
+function escapeHtml(text: string): string {
+  const holder = document.createElement('div');
+  holder.textContent = text;
+  return holder.innerHTML;
 }
 
 function renderLines(lines: IBlockLine[]): string {
   return lines
-    .map((line) => (line.count > 1 ? `${line.text} (×${line.count})` : line.text))
+    .map((line) => escapeHtml(line.count > 1 ? `${line.text} (×${line.count})` : line.text))
     .join('<br>');
+}
+
+function dropExpiredLines(state: IBlockState, now: number): void {
+  state.lines = state.lines.filter((line) => line.expiresAt > now);
+}
+
+function addLine(lines: IBlockLine[], text: string, expiresAt: number): IBlockLine[] {
+  const existing = lines.find((line) => line.text === text);
+  if (existing) {
+    existing.count++;
+    existing.expiresAt = expiresAt;
+    return lines;
+  }
+
+  const next = [...lines, { text, count: 1, expiresAt }];
+  return next.length > MAX_LINES ? next.slice(next.length - MAX_LINES) : next;
+}
+
+/**
+ * Снимает истёкшие строки с живого узла, не пересоздавая его. Узел живёт до
+ * срока последней строки, поэтому пустым он здесь не остаётся - последнюю
+ * строку и сам узел снимает таймер Toastify.
+ */
+function scheduleSweep(state: IBlockState): void {
+  if (state.sweepTimer !== null) {
+    clearTimeout(state.sweepTimer);
+    state.sweepTimer = null;
+  }
+  if (state.lines.length === 0) return;
+
+  const nextExpiry = Math.min(...state.lines.map((line) => line.expiresAt));
+  state.sweepTimer = setTimeout(
+    () => {
+      state.sweepTimer = null;
+      dropExpiredLines(state, Date.now());
+      const element = state.instance?.toastElement;
+      if (element && state.lines.length > 0) {
+        element.innerHTML = renderLines(state.lines);
+      }
+      scheduleSweep(state);
+    },
+    Math.max(0, nextExpiry - Date.now()),
+  );
+}
+
+function resetState(state: IBlockState): void {
+  if (state.sweepTimer !== null) {
+    clearTimeout(state.sweepTimer);
+    state.sweepTimer = null;
+  }
+  state.instance = null;
+  state.lines = [];
 }
 
 /**
@@ -71,54 +137,46 @@ function renderLines(lines: IBlockLine[]): string {
 function wrapCallback(state: IBlockState, toast: IToastifyInstance): void {
   const previousCallback = toast.options.callback;
   toast.options.callback = () => {
-    if (state.instance === toast) resetBlock(state);
+    if (state.instance === toast) resetState(state);
     previousCallback?.();
   };
 }
 
-function addLine(lines: IBlockLine[], incoming: IBlockLine): IBlockLine[] {
-  const existing = lines.find((line) => line.text === incoming.text);
-  if (existing) {
-    existing.count++;
-    return lines;
-  }
-
-  const next = [...lines, incoming];
-  return next.length > MAX_LINES ? next.slice(next.length - MAX_LINES) : next;
-}
-
 export function installToastBlock(proto: IToastifyPrototype): () => void {
-  const state: IBlockState = { instance: null, lines: [] };
+  const states = new Map<Element | null, IBlockState>();
   // eslint-disable-next-line @typescript-eslint/unbound-method -- вызывается через .call(this)
   const original = proto.showToast;
 
   proto.showToast = function (this: IToastifyInstance) {
-    if (this.options.selector != null) {
+    if (!isErrorToast(this.options.className)) {
+      // Единственная правка нейтрального сообщения - длинный тост про новые
+      // регионы сворачивается в строку. Остальные проходят как есть.
+      this.options.text = shortenRegionsText(this.options.text);
       original.call(this);
       return;
     }
 
+    const container = this.options.selector ?? null;
+    const state = states.get(container) ?? createState();
+    states.set(container, state);
+
+    const now = Date.now();
     const alive = isBlockAlive(state);
+    if (!alive) resetState(state);
+    dropExpiredLines(state, now);
+
     const previous = alive ? state.instance : null;
-    const lines = addLine(alive ? state.lines : [], {
-      text: shortenRegionsText(this.options.text),
-      count: 1,
-      isError: isErrorToast(this.options.className),
-    });
-
-    this.options.text = renderLines(lines);
-    // Строки разделены <br>, поэтому текст уходит как разметка. Игра и так
-    // создаёт свои тосты с escapeMarkup: false (refs/game/script.js:4047).
-    this.options.escapeMarkup = false;
-    this.options.position = BLOCK_ALIGNMENT;
-    // Ошибка перевешивает: блок с отказом должен читаться как отказ, в каком бы
-    // порядке ни пришли сообщения.
-    this.options.className = lines.some((line) => line.isError)
-      ? GAME_TOAST_CLASS.error
-      : GAME_TOAST_CLASS.neutral;
-
+    state.lines = addLine(state.lines, this.options.text, now + this.options.duration);
     state.instance = this;
-    state.lines = lines;
+
+    this.options.text = renderLines(state.lines);
+    // Строки соединены <br>, поэтому текст уходит разметкой; сам текст строк
+    // при сборке экранирован.
+    this.options.escapeMarkup = false;
+    // Узел должен дожить до самой поздней строки: она могла прийти с большей
+    // длительностью, чем текущее сообщение.
+    this.options.duration = Math.max(...state.lines.map((line) => line.expiresAt)) - now;
+
     wrapCallback(state, this);
 
     if (previous) {
@@ -129,12 +187,13 @@ export function installToastBlock(proto: IToastifyPrototype): () => void {
       previous.options.callback?.();
     }
 
-    // Новый показ ставит свежий таймер - пока сообщения идут, блок живёт.
     original.call(this);
+    scheduleSweep(state);
   };
 
   return () => {
     proto.showToast = original;
-    resetBlock(state);
+    states.forEach(resetState);
+    states.clear();
   };
 }
