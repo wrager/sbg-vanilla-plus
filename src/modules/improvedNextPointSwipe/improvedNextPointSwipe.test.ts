@@ -217,6 +217,29 @@ describe('improvedNextPointSwipe behaviour', () => {
     expect(nativeHandlerCalls).toHaveLength(1);
   });
 
+  test('ошибка в перехвате снимает его, а жест доходит до игры', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockIsModuleActive.mockImplementationOnce(() => {
+      throw new Error('game changed');
+    });
+    await improvedNextPointSwipe.enable();
+    const emit = getOverriddenEmit();
+
+    expect(() => {
+      emit.call({}, 'swipeleft', { target: popup });
+    }).not.toThrow();
+    expect(nativeHandlerCalls).toHaveLength(1);
+
+    // Перехват снят с прототипа: свайп по попапу уходит игре, хотя наш патч
+    // такое событие перехватывал бы и до натива не пускал.
+    getOverriddenEmit().call({}, 'swipeleft', { target: popup });
+    expect(nativeHandlerCalls).toHaveLength(2);
+    expect(showInfoMock).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalled();
+
+    consoleError.mockRestore();
+  });
+
   test('другие event names прокидываются нативному handler-у', async () => {
     await improvedNextPointSwipe.enable();
     const emit = getOverriddenEmit();
