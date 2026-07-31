@@ -5,7 +5,6 @@ import type {
   IToastifyOptions,
   IToastifyPrototype,
 } from '../../core/toastify';
-import { shortenRegionsText } from './regionsLine';
 
 /**
  * Сборка одновременных ошибок в один блок.
@@ -167,12 +166,7 @@ function isBlockableLine(options: IToastifyOptions): boolean {
 
 /** Готовит входящий тост к показу: сворачивает регионы или собирает блок. */
 function prepareToast(states: Map<Element | null, IBlockState>, toast: IToastifyInstance): void {
-  if (!isErrorToast(toast.options.className)) {
-    // Единственная правка нейтрального сообщения - длинный тост про новые
-    // регионы сворачивается в строку. Остальные проходят как есть.
-    toast.options.text = shortenRegionsText(toast.options.text);
-    return;
-  }
+  if (!isErrorToast(toast.options.className)) return;
   if (!isBlockableLine(toast.options)) return;
 
   const container = toast.options.selector ?? null;

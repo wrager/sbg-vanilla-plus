@@ -1,6 +1,5 @@
 import {
   captureGameLabel,
-  getGameI18n,
   localizeGameElement,
   restoreGameLabel,
   setGameLabel,
@@ -24,24 +23,12 @@ describe('gameI18n', () => {
     document.body.innerHTML = '';
   });
 
-  describe('getGameI18n', () => {
-    test('i18next недоступен - null', () => {
-      expect(getGameI18n()).toBeNull();
-    });
-
+  describe('translateGameKey', () => {
     test('в window лежит не i18next - null', () => {
       globals.i18next = { language: 'ru' };
-      expect(getGameI18n()).toBeNull();
+      expect(translateGameKey('buttons.close')).toBeNull();
     });
 
-    test('i18next с t отдаётся как есть, даже без getResource', () => {
-      const i18next = { t: (key: string) => key };
-      globals.i18next = i18next;
-      expect(getGameI18n()).toBe(i18next);
-    });
-  });
-
-  describe('translateGameKey', () => {
     test('null-ключ - без обращения к i18next', () => {
       const translate = jest.fn();
       globals.i18next = { t: translate };

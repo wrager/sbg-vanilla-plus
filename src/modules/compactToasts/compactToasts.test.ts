@@ -334,46 +334,6 @@ describe('compactToasts', () => {
     });
   });
 
-  describe('короткая строка регионов', () => {
-    beforeEach(() => {
-      const globals = window as unknown as Record<string, unknown>;
-      globals['i18next'] = {
-        language: 'ru',
-        resolvedLanguage: 'ru',
-        t: (key: string) => (key === 'info.regions' ? 'Регионы' : key),
-        getResource: (_lng: string, _namespace: string, key: string) =>
-          key === 'popups.new-regions'
-            ? 'Новые регионы: {{count}}<br>Общая площадь: {{area}}<br>Макс. площадь: {{max}}'
-            : undefined,
-      };
-    });
-
-    afterEach(() => {
-      const globals = window as unknown as Record<string, unknown>;
-      delete globals['i18next'];
-    });
-
-    test('тост про регионы сворачивается, оставаясь отдельным', async () => {
-      await compactToasts.enable();
-
-      const toast = showNeutral(
-        'Новые регионы: 2<br>Общая площадь: 1.4 км²<br>Макс. площадь: 0.7 км²',
-      );
-
-      expect(toast.options.text).toBe('Регионы: +2 (1.4 км²)');
-    });
-
-    test('свёрнутый тост регионов не попадает в блок ошибок', async () => {
-      await compactToasts.enable();
-
-      showNeutral('Новые регионы: 2<br>Общая площадь: 1.4 км²<br>Макс. площадь: 0.7 км²');
-      showError('Недостаточно ключей');
-
-      expect(document.querySelectorAll('.toastify').length).toBe(2);
-      expect(blockText()).toBe('Регионы: +2 (1.4 км²)');
-    });
-  });
-
   describe('жизненный цикл модуля', () => {
     test('enable без Toastify не бросает', () => {
       const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});

@@ -15,20 +15,12 @@ export interface IGameLabel {
 }
 
 /** i18next игры. Перечислено только то, что читает SVP. */
-export interface IGameI18n {
-  language?: string;
-  resolvedLanguage?: string;
+interface IGameI18n {
   t(key: string): unknown;
-  /**
-   * Сырой шаблон перевода, без подстановки значений. Помечен опциональным:
-   * потребитель у него один, и требовать метод со всех потребителей i18next
-   * значило бы отключать перевод подписей на сборке, где его нет.
-   */
-  getResource?(language: string, namespace: string, key: string): unknown;
 }
 
 /** i18next игры или null, если он недоступен или не похож на i18next. */
-export function getGameI18n(): IGameI18n | null {
+function getGameI18n(): IGameI18n | null {
   const globals = window as unknown as Record<string, unknown>;
   const i18next = globals.i18next;
   if (typeof i18next !== 'object' || i18next === null) return null;
