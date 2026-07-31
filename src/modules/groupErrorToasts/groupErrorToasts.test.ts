@@ -1,4 +1,6 @@
 import { groupErrorToasts } from './groupErrorToasts';
+import { getToastifyFactory } from '../../core/toastify';
+import type { IToastifyPrototype } from '../../core/toastify';
 
 interface IMockToastOptions {
   text: string;
@@ -15,6 +17,13 @@ interface IMockToast {
   showToast(): void;
   hideToast: jest.Mock;
 }
+
+/**
+ * Фабрика установленного мока. Тесты зовут её напрямую, а не через
+ * `window.Toastify`: поле опционально (игра может не загрузить пакет), и в
+ * каждом тесте пришлось бы гасить проверку на undefined.
+ */
+let createToast: (options: Partial<IMockToastOptions>) => IMockToast;
 
 function setupMockToastify(): void {
   const proto = {
@@ -46,10 +55,17 @@ function setupMockToastify(): void {
   factory.prototype = proto;
 
   window.Toastify = factory as unknown as typeof window.Toastify;
+  createToast = factory;
 }
 
-function fireCallback(toast: ReturnType<typeof window.Toastify>): void {
-  (toast as unknown as IMockToast).options.callback?.();
+function fireCallback(toast: IMockToast): void {
+  toast.options.callback?.();
+}
+
+function getToastifyPrototype(): IToastifyPrototype {
+  const factory = getToastifyFactory();
+  if (factory === null) throw new Error('Мок Toastify не установлен');
+  return factory.prototype;
 }
 
 describe('groupErrorToasts', () => {
@@ -64,11 +80,11 @@ describe('groupErrorToasts', () => {
 
   test('non-error toasts pass through without deduplication', async () => {
     await groupErrorToasts.enable();
-    const toast = window.Toastify({ text: 'loot acquired' });
+    const toast = createToast({ text: 'loot acquired' });
     toast.options.className = 'interaction-toast';
     toast.showToast();
 
-    const toast2 = window.Toastify({ text: 'loot acquired' });
+    const toast2 = createToast({ text: 'loot acquired' });
     toast2.options.className = 'interaction-toast';
     toast2.showToast();
 
@@ -77,7 +93,7 @@ describe('groupErrorToasts', () => {
 
   test('first error toast shows normally', async () => {
     await groupErrorToasts.enable();
-    const toast = window.Toastify({ text: 'network error' });
+    const toast = createToast({ text: 'network error' });
     toast.options.className = 'error-toast';
     toast.showToast();
 
@@ -88,11 +104,11 @@ describe('groupErrorToasts', () => {
   test('duplicate error toast removes old element and shows new with counter', async () => {
     await groupErrorToasts.enable();
 
-    const toast1 = window.Toastify({ text: 'network error' });
+    const toast1 = createToast({ text: 'network error' });
     toast1.options.className = 'error-toast';
     toast1.showToast();
 
-    const toast2 = window.Toastify({ text: 'network error' });
+    const toast2 = createToast({ text: 'network error' });
     toast2.options.className = 'error-toast';
     toast2.showToast();
 
@@ -104,15 +120,15 @@ describe('groupErrorToasts', () => {
   test('triple duplicate shows counter ×3', async () => {
     await groupErrorToasts.enable();
 
-    const toast1 = window.Toastify({ text: 'out of range' });
+    const toast1 = createToast({ text: 'out of range' });
     toast1.options.className = 'error-toast';
     toast1.showToast();
 
-    const toast2 = window.Toastify({ text: 'out of range' });
+    const toast2 = createToast({ text: 'out of range' });
     toast2.options.className = 'error-toast';
     toast2.showToast();
 
-    const toast3 = window.Toastify({ text: 'out of range' });
+    const toast3 = createToast({ text: 'out of range' });
     toast3.options.className = 'error-toast';
     toast3.showToast();
 
@@ -123,11 +139,11 @@ describe('groupErrorToasts', () => {
   test('different error texts are not deduplicated', async () => {
     await groupErrorToasts.enable();
 
-    const toast1 = window.Toastify({ text: 'network error' });
+    const toast1 = createToast({ text: 'network error' });
     toast1.options.className = 'error-toast';
     toast1.showToast();
 
-    const toast2 = window.Toastify({ text: 'out of range' });
+    const toast2 = createToast({ text: 'out of range' });
     toast2.options.className = 'error-toast';
     toast2.showToast();
 
@@ -145,11 +161,11 @@ describe('groupErrorToasts', () => {
     container2.className = 'inventory';
     document.body.appendChild(container2);
 
-    const toast1 = window.Toastify({ text: 'error', selector: container1 });
+    const toast1 = createToast({ text: 'error', selector: container1 });
     toast1.options.className = 'error-toast';
     toast1.showToast();
 
-    const toast2 = window.Toastify({ text: 'error', selector: container2 });
+    const toast2 = createToast({ text: 'error', selector: container2 });
     toast2.options.className = 'error-toast';
     toast2.showToast();
 
@@ -160,13 +176,13 @@ describe('groupErrorToasts', () => {
   test('after toast expires, next one shows without counter', async () => {
     await groupErrorToasts.enable();
 
-    const toast1 = window.Toastify({ text: 'error' });
+    const toast1 = createToast({ text: 'error' });
     toast1.options.className = 'error-toast';
     toast1.showToast();
 
     fireCallback(toast1);
 
-    const toast2 = window.Toastify({ text: 'error' });
+    const toast2 = createToast({ text: 'error' });
     toast2.options.className = 'error-toast';
     toast2.showToast();
 
@@ -176,11 +192,11 @@ describe('groupErrorToasts', () => {
   test('async callback from old toast does not remove new toast from tracking', async () => {
     await groupErrorToasts.enable();
 
-    const toast1 = window.Toastify({ text: 'error' });
+    const toast1 = createToast({ text: 'error' });
     toast1.options.className = 'error-toast';
     toast1.showToast();
 
-    const toast2 = window.Toastify({ text: 'error' });
+    const toast2 = createToast({ text: 'error' });
     toast2.options.className = 'error-toast';
     toast2.showToast();
 
@@ -188,7 +204,7 @@ describe('groupErrorToasts', () => {
 
     fireCallback(toast1);
 
-    const toast3 = window.Toastify({ text: 'error' });
+    const toast3 = createToast({ text: 'error' });
     toast3.options.className = 'error-toast';
     toast3.showToast();
 
@@ -199,14 +215,14 @@ describe('groupErrorToasts', () => {
   test('old element is removed instantly without hideToast animation', async () => {
     await groupErrorToasts.enable();
 
-    const toast1 = window.Toastify({ text: 'error' });
+    const toast1 = createToast({ text: 'error' });
     toast1.options.className = 'error-toast';
     toast1.showToast();
 
     const oldElement = toast1.toastElement;
     expect(oldElement?.parentNode).toBe(document.body);
 
-    const toast2 = window.Toastify({ text: 'error' });
+    const toast2 = createToast({ text: 'error' });
     toast2.options.className = 'error-toast';
     toast2.showToast();
 
@@ -214,21 +230,48 @@ describe('groupErrorToasts', () => {
     expect((toast1 as unknown as IMockToast).hideToast).not.toHaveBeenCalled();
   });
 
-  test('disable restores original showToast', async () => {
-    const originalShowToast = window.Toastify.prototype.showToast;
+  test('error toast with an extra class is still deduplicated', async () => {
     await groupErrorToasts.enable();
 
-    expect(window.Toastify.prototype.showToast).not.toBe(originalShowToast);
+    const toast1 = createToast({ text: 'network error' });
+    toast1.options.className = 'error-toast toastify-custom';
+    toast1.showToast();
+
+    const toast2 = createToast({ text: 'network error' });
+    toast2.options.className = 'error-toast toastify-custom';
+    toast2.showToast();
+
+    expect(toast2.options.text).toBe('network error (×2)');
+    expect(document.querySelectorAll('.toastify').length).toBe(1);
+  });
+
+  test('enable without Toastify does not throw', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    delete window.Toastify;
+
+    expect(() => groupErrorToasts.enable()).not.toThrow();
+    expect(() => groupErrorToasts.disable()).not.toThrow();
+
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  test('disable restores original showToast', async () => {
+    const prototype = getToastifyPrototype();
+    const originalShowToast = prototype.showToast;
+    await groupErrorToasts.enable();
+
+    expect(prototype.showToast).not.toBe(originalShowToast);
 
     await groupErrorToasts.disable();
 
-    expect(window.Toastify.prototype.showToast).toBe(originalShowToast);
+    expect(prototype.showToast).toBe(originalShowToast);
   });
 
   test('original callback is preserved and called', async () => {
     await groupErrorToasts.enable();
 
-    const toast = window.Toastify({ text: 'error' });
+    const toast = createToast({ text: 'error' });
     toast.options.className = 'error-toast';
     const originalCallback = jest.fn();
     toast.options.callback = originalCallback;
@@ -242,13 +285,13 @@ describe('groupErrorToasts', () => {
   test('old toast callback fires on deduplication for popup_toasts cleanup', async () => {
     await groupErrorToasts.enable();
 
-    const toast1 = window.Toastify({ text: 'error' });
+    const toast1 = createToast({ text: 'error' });
     toast1.options.className = 'error-toast';
     const gameCallback = jest.fn();
     toast1.options.callback = gameCallback;
     toast1.showToast();
 
-    const toast2 = window.Toastify({ text: 'error' });
+    const toast2 = createToast({ text: 'error' });
     toast2.options.className = 'error-toast';
     toast2.showToast();
 

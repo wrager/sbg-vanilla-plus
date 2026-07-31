@@ -681,7 +681,9 @@ function snapAllToPortals(): void {
 
   const portalCoordinates = getPortalCoordinates();
   if (portalCoordinates.length === 0) {
-    showToast(t({ en: 'No visible portals for snap', ru: 'Нет видимых точек для привязки' }));
+    showToast(t({ en: 'No visible portals for snap', ru: 'Нет видимых точек для привязки' }), {
+      type: 'error',
+    });
     return;
   }
 
@@ -876,7 +878,9 @@ function pasteDrawPlan(): void {
     items = parseIitcDrawItems(raw.trim());
   } catch (error) {
     const detail = importErrorDetail(error);
-    showToast(t({ en: `Import failed: ${detail.en}`, ru: `Импорт не удался: ${detail.ru}` }));
+    showToast(t({ en: `Import failed: ${detail.en}`, ru: `Импорт не удался: ${detail.ru}` }), {
+      type: 'error',
+    });
     return;
   }
 

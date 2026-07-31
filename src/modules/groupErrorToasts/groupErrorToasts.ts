@@ -1,52 +1,13 @@
+import { getToastifyFactory, isErrorToast } from '../../core/toastify';
 import type { IFeatureModule } from '../../core/moduleRegistry';
+import type { IToastElement, IToastifyInstance, IToastifyPrototype } from '../../core/toastify';
 
 const MODULE_ID = 'groupErrorToasts';
-const ERROR_TOAST_CLASS = 'error-toast';
-
-interface IToastifyOptions {
-  text: string;
-  className: string;
-  selector: Element | null;
-  id: number;
-  duration: number;
-  callback: (() => void) | null;
-  onClick: (() => void) | null;
-  gravity: string;
-  position: string;
-  escapeMarkup: boolean;
-}
-
-interface IToastifyInstance {
-  options: IToastifyOptions;
-  toastElement: HTMLElement | null;
-  showToast(): void;
-  hideToast(): void;
-}
-
-interface IToastifyPrototype {
-  showToast(this: IToastifyInstance): void;
-  [key: string]: unknown;
-}
-
-interface IToastifyFactory {
-  (options: Partial<IToastifyOptions>): IToastifyInstance;
-  prototype: IToastifyPrototype;
-}
 
 interface ITrackedToast {
   instance: IToastifyInstance;
   count: number;
   originalText: string;
-}
-
-interface IToastElement extends HTMLElement {
-  timeOutValue?: ReturnType<typeof setTimeout>;
-}
-
-declare global {
-  interface Window {
-    Toastify: IToastifyFactory;
-  }
 }
 
 let restorePatch: (() => void) | null = null;
@@ -90,7 +51,7 @@ function installPatch(proto: IToastifyPrototype): () => void {
   const original = proto.showToast;
 
   proto.showToast = function (this: IToastifyInstance) {
-    if (this.options.className !== ERROR_TOAST_CLASS) {
+    if (!isErrorToast(this.options.className)) {
       original.call(this);
       return;
     }
@@ -136,7 +97,15 @@ export const groupErrorToasts: IFeatureModule = {
   category: 'ui',
   init() {},
   enable() {
-    restorePatch = installPatch(window.Toastify.prototype);
+    const factory = getToastifyFactory();
+    if (factory === null) {
+      // Игра без Toastify не стартует (refs/game/script.js:16-27), так что
+      // группировать нечего. Бросать нельзя: модуль ушёл бы в failed и повесил
+      // ошибку в настройках там, где не работает и сама игра.
+      console.warn('[SVP] Toastify недоступен, группировка тостов не включена');
+      return;
+    }
+    restorePatch = installPatch(factory.prototype);
   },
   disable() {
     restorePatch?.();

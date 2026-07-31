@@ -13,6 +13,7 @@ import {
 import { getPlayerTeam } from '../../core/playerTeam';
 import { syncRefsCountForPoints } from '../../core/refsHighlightSync';
 import { showToast as showCoreToast } from '../../core/toast';
+import type { ToastType } from '../../core/toast';
 import type { IDeletionEntry } from './cleanupCalculator';
 import { loadCleanupSettings } from './cleanupSettings';
 import {
@@ -210,8 +211,8 @@ export function collectOverLimit(
 // чтобы вызовы остались читаемыми.
 const SLOW_TOAST_DURATION = 5000;
 
-function showSlowToast(message: string): void {
-  showCoreToast(message, SLOW_TOAST_DURATION);
+function showSlowToast(message: string, type: ToastType = 'neutral'): void {
+  showCoreToast(message, { duration: SLOW_TOAST_DURATION, type });
 }
 
 async function runSlowDelete(): Promise<void> {
@@ -223,6 +224,7 @@ async function runSlowDelete(): Promise<void> {
     if (settings.limits.referencesMode !== 'slow') {
       showSlowToast(
         t({ en: 'Key cleanup mode is not "Slow"', ru: 'Режим очистки ключей не «Медленно»' }),
+        'error',
       );
       return;
     }
@@ -244,12 +246,13 @@ async function runSlowDelete(): Promise<void> {
                 ru: 'Сначала проведите миграцию избранного через модуль favoritesMigration, чтобы настроить удаление ключей',
               },
         ),
+        'error',
       );
       return;
     }
     const { referencesAlliedLimit, referencesNotAlliedLimit } = settings.limits;
     if (referencesAlliedLimit === -1 && referencesNotAlliedLimit === -1) {
-      showSlowToast(t({ en: 'Limits not set', ru: 'Лимиты не заданы' }));
+      showSlowToast(t({ en: 'Limits not set', ru: 'Лимиты не заданы' }), 'error');
       return;
     }
 
@@ -257,6 +260,7 @@ async function runSlowDelete(): Promise<void> {
     if (playerTeam === null) {
       showSlowToast(
         t({ en: 'Could not determine player team', ru: 'Не удалось определить команду игрока' }),
+        'error',
       );
       return;
     }
@@ -278,6 +282,7 @@ async function runSlowDelete(): Promise<void> {
           en: 'Native lock/favorite protection unavailable: server returned no f-flags. Cleanup blocked.',
           ru: 'Нативная защита (замочек или звёздочка) недоступна: сервер не отдал поле f. Очистка заблокирована.',
         }),
+        'error',
       );
       return;
     }
@@ -318,7 +323,7 @@ async function runSlowDelete(): Promise<void> {
     } catch (error) {
       progress.close();
       const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
-      showSlowToast(t({ en: 'Request error: ', ru: 'Ошибка запроса: ' }) + message);
+      showSlowToast(t({ en: 'Request error: ', ru: 'Ошибка запроса: ' }) + message, 'error');
       return;
     }
 
