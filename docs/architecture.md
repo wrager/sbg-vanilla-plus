@@ -124,23 +124,28 @@ interface IFeatureModule {
 
 **Автоматическое содержимое** (скачивается скриптом):
 
-| Что           | Расположение                | Описание                            |
-| ------------- | --------------------------- | ----------------------------------- |
-| EUI исходники | `refs/eui/src/`             | TypeScript-исходники из GitHub      |
-| CUI исходники | `refs/cui/`                 | `index.js` + `styles.css` из GitHub |
-| EUI релиз     | `refs/releases/eui.user.js` | Собранный бандл (beautified)        |
-| CUI релиз     | `refs/releases/cui.user.js` | Собранный бандл (beautified)        |
-| OpenLayers    | `refs/ol/ol.js`             | UMD-бандл v10.6.0 (beautified)      |
-| HTML игры     | `refs/game/index.html`      | Статический HTML страницы           |
-| Скрипт игры   | `refs/game/script.js`       | Основной скрипт (beautified)        |
+| Что           | Расположение                | Описание                                                                  |
+| ------------- | --------------------------- | ------------------------------------------------------------------------- |
+| EUI исходники | `refs/eui/src/`             | TypeScript-исходники из GitHub                                            |
+| CUI исходники | `refs/cui/`                 | `index.js` + `styles.css` из GitHub                                       |
+| EUI релиз     | `refs/releases/eui.user.js` | Собранный бандл (beautified)                                              |
+| CUI релиз     | `refs/releases/cui.user.js` | Собранный бандл (beautified)                                              |
+| OpenLayers    | `refs/ol/ol.js`             | UMD-бандл v10.6.0 (beautified)                                            |
+| Toastify      | `refs/toastify/`            | `toastify.js` (beautified) + `toastify.css` — библиотека уведомлений игры |
+| i18next       | `refs/i18next/i18next.js`   | Бандл i18n игры (beautified)                                              |
+| HTML игры     | `refs/game/index.html`      | Статический HTML страницы                                                 |
+| Скрипт игры   | `refs/game/script.js`       | Основной скрипт (beautified)                                              |
+| Стили игры    | `refs/game/style.css`       | Бандл `style@<версия>.<hash>.css`                                         |
+| Переводы игры | `refs/game/i18n/`           | `<lng>.json` по списку из `/i18n/meta.json`                               |
 
 **Ручное содержимое** (добавляет пользователь):
 
-| Что               | Расположение        | Описание                                        |
-| ----------------- | ------------------- | ----------------------------------------------- |
-| DOM после рендера | `refs/game/dom/`    | Дампы из DevTools (Copy outerHTML)              |
-| CSS-переменные    | `refs/game/css/`    | `:root` custom properties (экспорт из DevTools) |
-| Скриншоты UI      | `refs/screenshots/` | Визуальный контекст интерфейса                  |
+| Что                   | Расположение          | Описание                                        |
+| --------------------- | --------------------- | ----------------------------------------------- |
+| DOM после рендера     | `refs/game/dom/`      | Дампы из DevTools (Copy outerHTML)              |
+| CSS-переменные        | `refs/game/css/`      | `:root` custom properties (экспорт из DevTools) |
+| Снимок прошлой версии | `refs/game_<версия>/` | Сервер отдаёт только текущую версию игры        |
+| Скриншоты UI          | `refs/screenshots/`   | Визуальный контекст интерфейса                  |
 
 При повторном запуске `refs:fetch` ручное содержимое сохраняется.
 
