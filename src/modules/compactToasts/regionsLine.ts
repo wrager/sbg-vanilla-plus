@@ -16,18 +16,14 @@
  * совпадают с тем, что игрок видит в остальном интерфейсе.
  */
 
+import { getGameI18n } from '../../core/gameI18n';
+import type { IGameI18n } from '../../core/gameI18n';
+
 const REGIONS_TEMPLATE_KEY = 'popups.new-regions';
 const REGIONS_LABEL_KEY = 'info.regions';
 
 /** Namespace переводов игры (`defaultNs`, refs/game/script.js:41-52). */
 const GAME_I18N_NAMESPACE = 'main';
-
-interface IGameI18n {
-  language?: string;
-  resolvedLanguage?: string;
-  t(key: string): unknown;
-  getResource(language: string, namespace: string, key: string): unknown;
-}
 
 interface ITemplateCache {
   language: string;
@@ -35,16 +31,6 @@ interface ITemplateCache {
 }
 
 let cache: ITemplateCache | null = null;
-
-function getGameI18n(): IGameI18n | null {
-  const globals = window as unknown as Record<string, unknown>;
-  const i18next = globals['i18next'];
-  if (typeof i18next !== 'object' || i18next === null) return null;
-
-  const candidate = i18next as Partial<IGameI18n>;
-  if (typeof candidate.t !== 'function' || typeof candidate.getResource !== 'function') return null;
-  return candidate as IGameI18n;
-}
 
 function getLanguage(i18n: IGameI18n): string {
   return i18n.resolvedLanguage ?? i18n.language ?? '';
@@ -86,7 +72,7 @@ function getPattern(i18n: IGameI18n): RegExp | null {
   const language = getLanguage(i18n);
   if (cache !== null && cache.language === language) return cache.pattern;
 
-  const template = i18n.getResource(language, GAME_I18N_NAMESPACE, REGIONS_TEMPLATE_KEY);
+  const template = i18n.getResource?.(language, GAME_I18N_NAMESPACE, REGIONS_TEMPLATE_KEY);
   const pattern = typeof template === 'string' ? buildPattern(template) : null;
   cache = { language, pattern };
   return pattern;
