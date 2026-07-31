@@ -328,7 +328,7 @@ ${rows}
 
 ## Automatic content
 
-Everything except \`game/dom/\`, \`game/css/\`, \`screenshots/\` and \`scout/\` is downloaded automatically.
+Everything except \`game/dom/\`, \`game/css/\`, \`game_<version>/\`, \`screenshots/\` and \`scout/\` is downloaded automatically.
 Re-run \`npm run refs:fetch\` to update (manual content is preserved).
 
 ## Manual content
@@ -338,6 +338,7 @@ Open the stub file for details on how to populate it.
 
 - \`game/dom/body.html\` — rendered DOM (from DevTools)
 - \`game/css/variables.css\` — :root CSS custom properties (from DevTools)
+- \`game_<version>/\` — снимок предыдущей версии игры (сервер отдаёт только текущую)
 - \`screenshots/\` — UI screenshots
 - \`scout/\` — справочник по SBG Scout (хост-приложение Android)
 `;
@@ -350,12 +351,20 @@ Open the stub file for details on how to populate it.
 async function main() {
   console.log('Fetching references...\n');
 
-  // Preserve manual content directories
+  // Preserve manual content directories.
+  // game_<version>/ are hand-made snapshots of previous game releases: the game
+  // serves only the current version, so a wiped snapshot cannot be re-fetched.
+  const previousGameSnapshots = existsSync(REFS)
+    ? readdirSync(REFS)
+        .filter((entry) => entry.startsWith('game_'))
+        .map((entry) => join(REFS, entry))
+    : [];
   const manualDirs = [
     join(REFS, 'game', 'dom'),
     join(REFS, 'game', 'css'),
     join(REFS, 'screenshots'),
     join(REFS, 'scout'),
+    ...previousGameSnapshots,
   ];
   const preservedPaths = [];
   for (const dir of manualDirs) {
