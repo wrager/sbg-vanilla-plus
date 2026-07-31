@@ -6,30 +6,15 @@ const TOAST_HIDE_CLASS = 'svp-toast-hide';
 /** Длительность показа. Совпадает с игровой (refs/game/script.js:4049). */
 const DEFAULT_DURATION = 3000;
 
-/** Место показа по умолчанию. Тоже как у игры (refs/game/script.js:4043). */
-const DEFAULT_POSITION: ToastPosition = 'top center';
-
 /**
  * Тип сообщения. Ровно два, как у игры: нейтральное и ошибка
  * (см. GAME_TOAST_CLASS в core/toastify.ts).
  */
 export type ToastType = 'neutral' | 'error';
 
-/** Формат тот же, что у игрового createToast: "<вертикаль> <горизонталь>". */
-export type ToastPosition =
-  | 'top left'
-  | 'top center'
-  | 'top right'
-  | 'bottom left'
-  | 'bottom center'
-  | 'bottom right';
-
 export interface IToastOptions {
   duration?: number;
   type?: ToastType;
-  position?: ToastPosition;
-  /** Элемент-якорь; по умолчанию тост уходит в body. */
-  container?: HTMLElement | null;
 }
 
 /**
@@ -48,14 +33,15 @@ export function showToast(message: string, options: IToastOptions = {}): void {
     return;
   }
 
-  const [gravity, alignment] = (options.position ?? DEFAULT_POSITION).split(' ');
   const toast = factory({
     text: message,
     duration,
-    gravity,
-    position: alignment,
+    // Место показа то же, что у игровых сообщений (refs/game/script.js:4043).
+    // Задаётся явно: без позиции Toastify прижимает тост вправо (`position: ""`
+    // в defaults, refs/toastify/toastify.js:40).
+    gravity: 'top',
+    position: 'center',
     className: GAME_TOAST_CLASS[options.type ?? 'neutral'],
-    selector: options.container ?? null,
     // Все сообщения SVP - обычный текст, и в них попадают имена точек с
     // сервера: разметку в них рендерить нельзя.
     escapeMarkup: true,
@@ -74,7 +60,7 @@ export function showToast(message: string, options: IToastOptions = {}): void {
  * Запасной путь на случай, когда Toastify недоступен: собственный узел в
  * фиксированной точке экрана.
  *
- * Тип и позиция здесь не учитываются намеренно. Игра без Toastify не стартует
+ * Тип здесь не учитывается намеренно. Игра без Toastify не стартует
  * вовсе (refs/game/script.js:16-27 рисует фатальную ошибку и чистит страницу),
  * так что этот путь остаётся для тестов и нештатной загрузки SVP на чужой
  * странице - повторять в нём раскладку и цвета Toastify незачем.

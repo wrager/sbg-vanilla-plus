@@ -56,7 +56,6 @@ describe('showToast через Toastify игры', () => {
       gravity: 'top',
       position: 'center',
       className: 'interaction-toast',
-      selector: null,
       escapeMarkup: true,
     });
     expect(toastify.instances[0].showToast).toHaveBeenCalledTimes(1);
@@ -75,22 +74,6 @@ describe('showToast через Toastify игры', () => {
   test('явный нейтральный тип даёт класс interaction-toast', () => {
     showToast('fine', { type: 'neutral' });
     expect(lastCallOptions(toastify).className).toBe('interaction-toast');
-  });
-
-  test('позиция разбирается на gravity и выравнивание: top left', () => {
-    showToast('hello', { position: 'top left' });
-    expect(lastCallOptions(toastify)).toMatchObject({ gravity: 'top', position: 'left' });
-  });
-
-  test('позиция разбирается на gravity и выравнивание: bottom right', () => {
-    showToast('hello', { position: 'bottom right' });
-    expect(lastCallOptions(toastify)).toMatchObject({ gravity: 'bottom', position: 'right' });
-  });
-
-  test('контейнер уходит в selector', () => {
-    const container = document.createElement('div');
-    showToast('hello', { container });
-    expect(lastCallOptions(toastify).selector).toBe(container);
   });
 
   test('длительность пробрасывается как есть', () => {
@@ -190,8 +173,8 @@ describe('showToast без Toastify (запасной путь)', () => {
     expect(toast?.classList.contains('svp-toast-hide')).toBe(true);
   });
 
-  test('тип и позиция на запасном пути не меняют разметку', () => {
-    showToast('styled', { type: 'error', position: 'top left' });
+  test('тип на запасном пути не меняет разметку', () => {
+    showToast('styled', { type: 'error' });
     const toast = document.querySelector<HTMLDivElement>('.svp-toast');
 
     expect(toast?.className).toBe('svp-toast');
