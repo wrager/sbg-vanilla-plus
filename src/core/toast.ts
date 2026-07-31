@@ -1,7 +1,6 @@
 import { GAME_TOAST_CLASS, getToastifyFactory } from './toastify';
 
 const TOAST_CLASS = 'svp-toast';
-const TOAST_HIDE_CLASS = 'svp-toast-hide';
 
 /** Длительность показа. Совпадает с игровой (refs/game/script.js:4049). */
 const DEFAULT_DURATION = 3000;
@@ -70,16 +69,10 @@ function showFallbackToast(message: string, duration: number): void {
   toast.className = TOAST_CLASS;
   toast.textContent = message;
 
-  // Один путь скрытия для авто-таймера и клика: добавляем hide-класс (плавный
-  // fade-out через CSS-transition) и удаляем тост из DOM по завершении
-  // анимации. Повторный вызов — no-op, чтобы клик после старта авто-скрытия
-  // не приводил к двойной remove'е.
+  // Снятие без анимации: узел просто уходит из DOM. Повторное удаление
+  // безопасно, поэтому клик и таймер не согласуются между собой.
   const dismiss = (): void => {
-    if (toast.classList.contains(TOAST_HIDE_CLASS)) return;
-    toast.classList.add(TOAST_HIDE_CLASS);
-    toast.addEventListener('transitionend', () => {
-      toast.remove();
-    });
+    toast.remove();
   };
 
   toast.addEventListener('click', dismiss);

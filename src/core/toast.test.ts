@@ -122,55 +122,35 @@ describe('showToast без Toastify (запасной путь)', () => {
     expect(toast?.textContent).toBe('hello');
   });
 
-  test('auto-hides after duration: adds svp-toast-hide, removes from DOM on transitionend', () => {
+  test('уходит из DOM по истечении длительности', () => {
     showToast('bye', { duration: 3000 });
-    const toast = document.querySelector<HTMLDivElement>('.svp-toast');
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(false);
+    expect(document.querySelector('.svp-toast')).not.toBeNull();
 
     jest.advanceTimersByTime(3000);
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(true);
-    expect(document.querySelector('.svp-toast')).not.toBeNull(); // ещё в DOM до transitionend
-
-    toast?.dispatchEvent(new Event('transitionend'));
     expect(document.querySelector('.svp-toast')).toBeNull();
   });
 
-  test('click dismisses toast immediately (before timer fires)', () => {
+  test('клик убирает тост, не дожидаясь таймера', () => {
     showToast('click me', { duration: 3000 });
     const toast = document.querySelector<HTMLDivElement>('.svp-toast');
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(false);
 
     toast?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(true);
-
-    toast?.dispatchEvent(new Event('transitionend'));
     expect(document.querySelector('.svp-toast')).toBeNull();
-  });
 
-  test('click after auto-hide started does not remove toast twice', () => {
-    showToast('idempotent', { duration: 3000 });
-    const toast = document.querySelector<HTMLDivElement>('.svp-toast');
-
-    jest.advanceTimersByTime(3000);
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(true);
-
-    // Повторный клик после старта авто-скрытия — no-op (hide-класс уже стоит).
-    toast?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(true);
-
-    toast?.dispatchEvent(new Event('transitionend'));
-    expect(document.querySelector('.svp-toast')).toBeNull();
+    // Таймер по убранному тосту не должен ронять показ.
+    expect(() => {
+      jest.advanceTimersByTime(3000);
+    }).not.toThrow();
   });
 
   test('длительность по умолчанию - 3000', () => {
     showToast('default');
-    const toast = document.querySelector<HTMLDivElement>('.svp-toast');
 
     jest.advanceTimersByTime(2999);
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(false);
+    expect(document.querySelector('.svp-toast')).not.toBeNull();
 
     jest.advanceTimersByTime(1);
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(true);
+    expect(document.querySelector('.svp-toast')).toBeNull();
   });
 
   test('тип на запасном пути не меняет разметку', () => {
