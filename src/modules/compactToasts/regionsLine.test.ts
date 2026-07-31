@@ -1,4 +1,4 @@
-import { resetRegionsTemplateCacheForTest, shortenRegionsText } from './regionsLine';
+import { shortenRegionsText } from './regionsLine';
 
 /**
  * Шаблоны взяты дословно из переводов игры (refs/game/i18n/{ru,en}.json,
@@ -33,10 +33,6 @@ function removeGameI18n(): void {
 }
 
 describe('shortenRegionsText', () => {
-  beforeEach(() => {
-    resetRegionsTemplateCacheForTest();
-  });
-
   afterEach(() => {
     removeGameI18n();
   });

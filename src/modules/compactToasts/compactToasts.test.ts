@@ -1,5 +1,4 @@
 import { compactToasts } from './compactToasts';
-import { resetRegionsTemplateCacheForTest } from './regionsLine';
 import { getToastifyFactory } from '../../core/toastify';
 import type { IToastifyPrototype } from '../../core/toastify';
 
@@ -347,13 +346,11 @@ describe('compactToasts', () => {
             ? 'Новые регионы: {{count}}<br>Общая площадь: {{area}}<br>Макс. площадь: {{max}}'
             : undefined,
       };
-      resetRegionsTemplateCacheForTest();
     });
 
     afterEach(() => {
       const globals = window as unknown as Record<string, unknown>;
       delete globals['i18next'];
-      resetRegionsTemplateCacheForTest();
     });
 
     test('тост про регионы сворачивается, оставаясь отдельным', async () => {

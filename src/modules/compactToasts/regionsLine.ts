@@ -25,17 +25,6 @@ const REGIONS_LABEL_KEY = 'info.regions';
 /** Namespace переводов игры (`defaultNs`, refs/game/script.js:41-52). */
 const GAME_I18N_NAMESPACE = 'main';
 
-interface ITemplateCache {
-  language: string;
-  pattern: RegExp | null;
-}
-
-let cache: ITemplateCache | null = null;
-
-function getLanguage(i18n: IGameI18n): string {
-  return i18n.resolvedLanguage ?? i18n.language ?? '';
-}
-
 function escapeForRegExp(source: string): string {
   return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -65,22 +54,14 @@ function buildPattern(template: string): RegExp | null {
 }
 
 /**
- * Шаблон кэшируется вместе с языком: игрок может сменить язык игры, не
- * перезагружая страницу, и старая регулярка перестала бы совпадать.
+ * Шаблон читается на каждый тост, без кэша: язык игрок меняет без перезагрузки
+ * страницы, и кэш пришлось бы держать вместе с языком ради одной регулярки на
+ * сообщение.
  */
 function getPattern(i18n: IGameI18n): RegExp | null {
-  const language = getLanguage(i18n);
-  if (cache !== null && cache.language === language) return cache.pattern;
-
+  const language = i18n.resolvedLanguage ?? i18n.language ?? '';
   const template = i18n.getResource?.(language, GAME_I18N_NAMESPACE, REGIONS_TEMPLATE_KEY);
-  const pattern = typeof template === 'string' ? buildPattern(template) : null;
-  cache = { language, pattern };
-  return pattern;
-}
-
-/** Тестовый сброс кэша шаблона. Только для тестов. */
-export function resetRegionsTemplateCacheForTest(): void {
-  cache = null;
+  return typeof template === 'string' ? buildPattern(template) : null;
 }
 
 /**
