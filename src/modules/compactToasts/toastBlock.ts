@@ -1,5 +1,10 @@
 import { isErrorToast } from '../../core/toastify';
-import type { IToastElement, IToastifyInstance, IToastifyPrototype } from '../../core/toastify';
+import type {
+  IToastElement,
+  IToastifyInstance,
+  IToastifyOptions,
+  IToastifyPrototype,
+} from '../../core/toastify';
 import { shortenRegionsText } from './regionsLine';
 
 /**
@@ -142,58 +147,94 @@ function wrapCallback(state: IBlockState, toast: IToastifyInstance): void {
   };
 }
 
+/**
+ * Годится ли сообщение в строку блока. Значения читаются из инстанса, который
+ * создала игра, поэтому проверяются, несмотря на объявленные типы: пустой текст
+ * игра дописывает уже после показа, а нулевая длительность означает сообщение
+ * без автоснятия, которому нечем истечь в блоке.
+ */
+function isBlockableLine(options: IToastifyOptions): boolean {
+  const text: unknown = options.text;
+  const duration: unknown = options.duration;
+  return (
+    typeof text === 'string' &&
+    text !== '' &&
+    typeof duration === 'number' &&
+    Number.isFinite(duration) &&
+    duration > 0
+  );
+}
+
+/** Готовит входящий тост к показу: сворачивает регионы или собирает блок. */
+function prepareToast(states: Map<Element | null, IBlockState>, toast: IToastifyInstance): void {
+  if (!isErrorToast(toast.options.className)) {
+    // Единственная правка нейтрального сообщения - длинный тост про новые
+    // регионы сворачивается в строку. Остальные проходят как есть.
+    toast.options.text = shortenRegionsText(toast.options.text);
+    return;
+  }
+  if (!isBlockableLine(toast.options)) return;
+
+  const container = toast.options.selector ?? null;
+  const state = states.get(container) ?? createState();
+  states.set(container, state);
+
+  const now = Date.now();
+  const alive = isBlockAlive(state);
+  if (!alive) resetState(state);
+  dropExpiredLines(state, now);
+
+  const previous = alive ? state.instance : null;
+  state.lines = addLine(state.lines, toast.options.text, now + toast.options.duration);
+  state.instance = toast;
+
+  toast.options.text = renderLines(state.lines);
+  // Строки соединены <br>, поэтому текст уходит разметкой; сам текст строк
+  // при сборке экранирован.
+  toast.options.escapeMarkup = false;
+  // Узел должен дожить до самой поздней строки: она могла прийти с большей
+  // длительностью, чем текущее сообщение.
+  toast.options.duration = Math.max(...state.lines.map((line) => line.expiresAt)) - now;
+
+  wrapCallback(state, toast);
+
+  if (previous) {
+    // Снимаем прежний узел мгновенно, без hideToast: его анимация ухода
+    // длится 400 мс (refs/toastify/toastify.js:112), и всё это время на
+    // экране висели бы два блока.
+    removeToastElementImmediately(previous);
+    previous.options.callback?.();
+  }
+
+  scheduleSweep(state);
+}
+
 export function installToastBlock(proto: IToastifyPrototype): () => void {
   const states = new Map<Element | null, IBlockState>();
   // eslint-disable-next-line @typescript-eslint/unbound-method -- вызывается через .call(this)
   const original = proto.showToast;
 
-  proto.showToast = function (this: IToastifyInstance) {
-    if (!isErrorToast(this.options.className)) {
-      // Единственная правка нейтрального сообщения - длинный тост про новые
-      // регионы сворачивается в строку. Остальные проходят как есть.
-      this.options.text = shortenRegionsText(this.options.text);
-      original.call(this);
-      return;
-    }
-
-    const container = this.options.selector ?? null;
-    const state = states.get(container) ?? createState();
-    states.set(container, state);
-
-    const now = Date.now();
-    const alive = isBlockAlive(state);
-    if (!alive) resetState(state);
-    dropExpiredLines(state, now);
-
-    const previous = alive ? state.instance : null;
-    state.lines = addLine(state.lines, this.options.text, now + this.options.duration);
-    state.instance = this;
-
-    this.options.text = renderLines(state.lines);
-    // Строки соединены <br>, поэтому текст уходит разметкой; сам текст строк
-    // при сборке экранирован.
-    this.options.escapeMarkup = false;
-    // Узел должен дожить до самой поздней строки: она могла прийти с большей
-    // длительностью, чем текущее сообщение.
-    this.options.duration = Math.max(...state.lines.map((line) => line.expiresAt)) - now;
-
-    wrapCallback(state, this);
-
-    if (previous) {
-      // Снимаем прежний узел мгновенно, без hideToast: его анимация ухода
-      // длится 400 мс (refs/toastify/toastify.js:112), и всё это время на
-      // экране висели бы два блока.
-      removeToastElementImmediately(previous);
-      previous.options.callback?.();
-    }
-
-    original.call(this);
-    scheduleSweep(state);
-  };
-
-  return () => {
+  const restore = (): void => {
     proto.showToast = original;
     states.forEach(resetState);
     states.clear();
   };
+
+  proto.showToast = function (this: IToastifyInstance) {
+    try {
+      prepareToast(states, this);
+    } catch (error) {
+      // Через этот патч проходят ВСЕ уведомления игры, а не только наши.
+      // Несовместимость с новой версией игры или Toastify снимает сборку
+      // блоков и оставляет игре её собственный показ сообщений.
+      console.error('[SVP compactToasts] сборка тостов отключена после ошибки:', error);
+      restore();
+    }
+
+    // Вне try: ошибка самого Toastify пришла бы игре и без нас, глотать её
+    // нельзя.
+    original.call(this);
+  };
+
+  return restore;
 }

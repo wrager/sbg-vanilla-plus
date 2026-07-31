@@ -91,7 +91,11 @@ export function getToastifyFactory(): IToastifyFactory | null {
  * Ошибочный ли это тост. Сравнение по токену, а не по равенству всей строки:
  * className допускает несколько классов, и строгое равенство пропустило бы
  * тост с дополнительным классом.
+ *
+ * Аргумент принимается как unknown: значение читается из инстанса, который
+ * создала игра, и объявленный тип там - обещание Toastify, а не гарантия.
  */
-export function isErrorToast(className: string): boolean {
+export function isErrorToast(className: unknown): boolean {
+  if (typeof className !== 'string') return false;
   return className.trim().split(/\s+/).includes(GAME_TOAST_CLASS.error);
 }

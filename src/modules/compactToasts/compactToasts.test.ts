@@ -439,4 +439,74 @@ describe('compactToasts', () => {
       expect(gameCallback).toHaveBeenCalled();
     });
   });
+
+  describe('несовместимость с игрой', () => {
+    test('ошибка в сборке снимает патч, а сообщение игры доходит до экрана', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const originalShowToast = getToastifyPrototype().showToast;
+      await compactToasts.enable();
+      const prototype = getToastifyPrototype();
+
+      const broken = createToast({ text: 'boom' });
+      // Игра новой версии может отдать в опциях что угодно: читаем их первыми,
+      // поэтому падение здесь эмулирует любую несовместимость.
+      Object.defineProperty(broken.options, 'className', {
+        get() {
+          throw new Error('game changed');
+        },
+      });
+
+      expect(() => {
+        broken.showToast();
+      }).not.toThrow();
+      expect(document.querySelectorAll('.toastify').length).toBe(1);
+      expect(prototype.showToast).toBe(originalShowToast);
+      expect(consoleError).toHaveBeenCalled();
+
+      consoleError.mockRestore();
+    });
+
+    test('после снятия патча ошибки показываются игрой по одной', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      await compactToasts.enable();
+
+      const broken = createToast({ text: 'boom' });
+      Object.defineProperty(broken.options, 'className', {
+        get() {
+          throw new Error('game changed');
+        },
+      });
+      broken.showToast();
+
+      showError('network error');
+      showError('network error');
+
+      expect(document.querySelectorAll('.toastify').length).toBe(3);
+
+      consoleError.mockRestore();
+    });
+
+    test('сообщение без автоснятия не собирается в блок', async () => {
+      await compactToasts.enable();
+
+      showError('sticky error', { duration: 0 });
+      showError('sticky error', { duration: 0 });
+
+      expect(document.querySelectorAll('.toastify').length).toBe(2);
+    });
+
+    test('пустое сообщение не собирается в блок: игра дописывает его после показа', async () => {
+      await compactToasts.enable();
+
+      const toast = showError('');
+      const element = toast.toastElement;
+      if (element === null) throw new Error('тост не показан');
+      element.innerHTML = 'добыча';
+
+      showError('');
+
+      expect(document.querySelectorAll('.toastify').length).toBe(2);
+      expect(element.innerHTML).toBe('добыча');
+    });
+  });
 });

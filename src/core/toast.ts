@@ -32,27 +32,35 @@ export function showToast(message: string, options: IToastOptions = {}): void {
     return;
   }
 
-  const toast = factory({
-    text: message,
-    duration,
-    // Место показа то же, что у игровых сообщений (refs/game/script.js:4043).
-    // Задаётся явно: без позиции Toastify прижимает тост вправо (`position: ""`
-    // в defaults, refs/toastify/toastify.js:40).
-    gravity: 'top',
-    position: 'center',
-    className: GAME_TOAST_CLASS[options.type ?? 'neutral'],
-    // Все сообщения SVP - обычный текст, и в них попадают имена точек с
-    // сервера: разметку в них рендерить нельзя.
-    escapeMarkup: true,
-  });
+  try {
+    const toast = factory({
+      text: message,
+      duration,
+      // Место показа то же, что у игровых сообщений (refs/game/script.js:4043).
+      // Задаётся явно: без позиции Toastify прижимает тост вправо (`position: ""`
+      // в defaults, refs/toastify/toastify.js:40).
+      gravity: 'top',
+      position: 'center',
+      className: GAME_TOAST_CLASS[options.type ?? 'neutral'],
+      // Все сообщения SVP - обычный текст, и в них попадают имена точек с
+      // сервера: разметку в них рендерить нельзя.
+      escapeMarkup: true,
+    });
 
-  // Клик закрывает тост - то же поведение, что игра ставит своим
-  // (refs/game/script.js:4056).
-  toast.options.onClick = () => {
-    toast.hideToast();
-  };
+    // Клик закрывает тост - то же поведение, что игра ставит своим
+    // (refs/game/script.js:4056).
+    toast.options.onClick = () => {
+      toast.hideToast();
+    };
 
-  toast.showToast();
+    toast.showToast();
+  } catch (error) {
+    // Toastify в новой версии игры мог поменять API. showToast зовут из
+    // обработчиков удаления ключей, импорта схемы и прочих действий: упасть
+    // здесь значило бы оборвать действие на середине из-за уведомления о нём.
+    console.error('[SVP] Toastify не показал тост, показываю запасной:', error);
+    showFallbackToast(message, duration);
+  }
 }
 
 /**

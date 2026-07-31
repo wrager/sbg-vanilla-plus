@@ -161,6 +161,41 @@ describe('showToast без Toastify (запасной путь)', () => {
     expect(toast?.getAttribute('style')).toBeNull();
   });
 
+  test('отказ фабрики Toastify уводит на запасной путь', () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    window.Toastify = (() => {
+      throw new Error('api changed');
+    }) as unknown as typeof window.Toastify;
+
+    expect(() => {
+      showToast('fallback');
+    }).not.toThrow();
+    expect(document.querySelector('.svp-toast')?.textContent).toBe('fallback');
+    expect(consoleError).toHaveBeenCalled();
+
+    consoleError.mockRestore();
+  });
+
+  test('отказ показа тоста уводит на запасной путь', () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const factory = (): unknown => ({
+      options: {},
+      toastElement: null,
+      showToast: () => {
+        throw new Error('Root element is not defined');
+      },
+      hideToast: () => undefined,
+    });
+    window.Toastify = factory as unknown as typeof window.Toastify;
+
+    expect(() => {
+      showToast('fallback');
+    }).not.toThrow();
+    expect(document.querySelector('.svp-toast')?.textContent).toBe('fallback');
+
+    consoleError.mockRestore();
+  });
+
   test('не функция в window.Toastify уводит на запасной путь', () => {
     window.Toastify = null as unknown as typeof window.Toastify;
 
