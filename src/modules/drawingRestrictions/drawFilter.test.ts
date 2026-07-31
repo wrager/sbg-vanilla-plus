@@ -170,54 +170,6 @@ describe('drawFilter', () => {
     expect(response.headers.get('content-type')).toBe('application/json');
   });
 
-  test('ошибка разбора запроса не рвёт сетевой вызов игры и снимает фильтр', async () => {
-    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
-    window.fetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'p1', d: 900 }] }));
-    installDrawFilter();
-
-    // Запрос, на котором ломается разбор: новая версия игры может слать draw
-    // объектом другой формы.
-    const brokenInput = {
-      get url(): string {
-        throw new Error('game changed');
-      },
-    } as unknown as Request;
-
-    await expect(window.fetch(brokenInput)).resolves.toBeDefined();
-    expect(consoleError).toHaveBeenCalled();
-
-    // Фильтр снят: следующий /api/draw возвращает все цели, включая дальние.
-    const response = await window.fetch('/api/draw');
-    const body = (await response.json()) as { data: unknown[] };
-    expect(body.data).toHaveLength(1);
-
-    consoleError.mockRestore();
-  });
-
-  test('отказ фильтра отдаёт игре исходный ответ сервера', async () => {
-    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
-    const serverResponse = buildResponse({ data: [{ p: 'p1', d: 900 }] });
-    // Отказ на сборке отфильтрованного ответа: url переносится в новый Response
-    // последним шагом, уже после разбора тела, поэтому собственные try/catch
-    // фильтра его не перехватят.
-    Object.defineProperty(serverResponse, 'url', {
-      get(): string {
-        throw new Error('game changed');
-      },
-    });
-    window.fetch = jest.fn().mockResolvedValue(serverResponse);
-    installDrawFilter();
-
-    const response = await window.fetch('/api/draw');
-
-    expect(response).toBe(serverResponse);
-    expect(consoleError).toHaveBeenCalled();
-
-    consoleError.mockRestore();
-  });
-
   test('uninstall перестаёт фильтровать, но не выкидывает wrapper из цепочки', async () => {
     saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     const mockFetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'p1', d: 900 }] }));

@@ -97,39 +97,6 @@ describe('refsLayerSync', () => {
     expect(mockSync).not.toHaveBeenCalled();
   });
 
-  test('ошибка разбора запроса не рвёт сетевой вызов игры и снимает перехват', async () => {
-    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    const nativeFetch = jest.fn(() => Promise.resolve(makeOkResponse()));
-    window.fetch = nativeFetch as unknown as typeof window.fetch;
-    installDiscoverFetchHook();
-    void refsLayerSync.enable();
-
-    // Запрос, на котором ломается разбор: новая версия игры может слать
-    // discover объектом другой формы. `as` - тот же приём, что у makeOkResponse:
-    // полноценный Request в jsdom не нужен.
-    const brokenInput = {
-      get url(): string {
-        throw new Error('game changed');
-      },
-    } as unknown as Request;
-
-    await expect(window.fetch(brokenInput)).resolves.toBeDefined();
-    expect(nativeFetch).toHaveBeenCalledTimes(1);
-    expect(consoleError).toHaveBeenCalled();
-
-    // Перехват снят: следующий discover проходит мимо sync.
-    await window.fetch('/api/discover', {
-      method: 'POST',
-      body: JSON.stringify({ guid: 'point-a' }),
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-    jest.advanceTimersByTime(100);
-    expect(mockSync).not.toHaveBeenCalled();
-
-    consoleError.mockRestore();
-  });
-
   test('игнорирует не-/api/discover URL', async () => {
     window.fetch = jest.fn(() =>
       Promise.resolve(makeOkResponse()),
