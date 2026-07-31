@@ -14,6 +14,20 @@ const DETECTION_DELAY_MS = 100;
 let discoverHookEnabled = false;
 let discoverFetchInstalled = false;
 let originalFetchBeforePatch: typeof window.fetch | null = null;
+let syncFailureReported = false;
+
+/**
+ * Sync ходит в игровой OL-слой и в inventory-cache, поэтому смена версии игры
+ * отклоняет его промис. Игре этот отказ не виден - её fetch уже отдан, - но без
+ * catch он стал бы unhandled rejection. Запись делается один раз за включение
+ * модуля: discover приходит на каждое изучение точки, и повтор вытеснил бы
+ * полезные строки из core/errorLog (там хранятся последние 50).
+ */
+function reportSyncFailure(error: unknown): void {
+  if (syncFailureReported) return;
+  syncFailureReported = true;
+  console.error(`[SVP ${MODULE_ID}] счётчик ключей после discover не обновлён:`, error);
+}
 
 /**
  * Извлекает guid целевой точки из RequestInit body. /api/discover - POST
@@ -61,32 +75,24 @@ export function installDiscoverFetchHook(): void {
     ...args: Parameters<typeof window.fetch>
   ): Promise<Response> {
     const responsePromise = originalFetch.apply(this, args);
-    try {
-      if (!discoverHookEnabled) return responsePromise;
-      const url = extractUrl(args[0]);
-      if (!url || !DISCOVER_URL_PATTERN.test(url)) return responsePromise;
-      const targetGuid = extractDiscoverGuidFromInit(args[1]);
-      if (!targetGuid) return responsePromise;
-      void responsePromise.then(
-        (response) => {
-          if (!response.ok) return;
+    if (!discoverHookEnabled) return responsePromise;
+    const url = extractUrl(args[0]);
+    if (!url || !DISCOVER_URL_PATTERN.test(url)) return responsePromise;
+    const targetGuid = extractDiscoverGuidFromInit(args[1]);
+    if (!targetGuid) return responsePromise;
+    void responsePromise.then(
+      (response) => {
+        if (!response.ok) return;
+        if (!discoverHookEnabled) return;
+        setTimeout(() => {
           if (!discoverHookEnabled) return;
-          setTimeout(() => {
-            if (!discoverHookEnabled) return;
-            void syncRefsCountForPoints([targetGuid]);
-          }, DETECTION_DELAY_MS);
-        },
-        () => {
-          // Сетевой сбой - игре уже сообщено через rejection основного промиса.
-        },
-      );
-    } catch (error) {
-      // Через патч проходит ВЕСЬ сетевой обмен игры. Ошибка разбора запроса
-      // (новая версия игры шлёт discover иначе) не должна оборвать сам запрос:
-      // нативный fetch уже вызван, промис возвращается игре в любом случае.
-      console.error(`[SVP ${MODULE_ID}] sync счётчика ключей отключён после ошибки:`, error);
-      discoverHookEnabled = false;
-    }
+          void syncRefsCountForPoints([targetGuid]).catch(reportSyncFailure);
+        }, DETECTION_DELAY_MS);
+      },
+      () => {
+        // Сетевой сбой - игре уже сообщено через rejection основного промиса.
+      },
+    );
     return responsePromise;
   };
 }
@@ -97,6 +103,8 @@ export function uninstallDiscoverFetchHookForTest(): void {
   if (originalFetchBeforePatch) window.fetch = originalFetchBeforePatch;
   originalFetchBeforePatch = null;
   discoverFetchInstalled = false;
+  discoverHookEnabled = false;
+  syncFailureReported = false;
 }
 
 export const refsLayerSync: IFeatureModule = {
@@ -117,6 +125,7 @@ export const refsLayerSync: IFeatureModule = {
   enable(): void {
     installDiscoverFetchHook();
     discoverHookEnabled = true;
+    syncFailureReported = false;
   },
 
   disable(): void {
