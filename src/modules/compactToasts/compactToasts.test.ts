@@ -262,23 +262,33 @@ describe('compactToasts', () => {
     });
   });
 
-  describe('срок жизни строк', () => {
-    test('истёкшая строка уходит из блока, свежая остаётся', async () => {
+  describe('срок жизни блока', () => {
+    test('строка живёт, пока жив блок, и не уходит по своему сроку', async () => {
       await compactToasts.enable();
 
       showError('early');
       jest.advanceTimersByTime(2000);
       showError('late');
 
-      expect(blockText()).toBe('early<br>late');
-
-      // Через 3 с после первой строки её срок истёк, у второй остаётся ещё 2 с.
+      // Прошло 3 с с момента первой ошибки: её собственный тост уже ушёл бы.
       jest.advanceTimersByTime(1000);
 
-      expect(blockText()).toBe('late');
+      expect(blockText()).toBe('early<br>late');
     });
 
-    test('строки не копятся до конца серии', async () => {
+    test('блок уходит целиком по сроку последнего сообщения', async () => {
+      await compactToasts.enable();
+
+      showError('early');
+      jest.advanceTimersByTime(2000);
+      showError('late');
+
+      jest.advanceTimersByTime(3000);
+
+      expect(document.querySelectorAll('.toastify').length).toBe(0);
+    });
+
+    test('после истечения блока следующая ошибка начинает его заново', async () => {
       await compactToasts.enable();
 
       showError('X');
@@ -288,25 +298,25 @@ describe('compactToasts', () => {
       expect(blockText()).toBe('Y');
     });
 
-    test('повтор продлевает срок своей строки', async () => {
+    test('повтор продлевает срок блока', async () => {
       await compactToasts.enable();
 
       showError('X');
       jest.advanceTimersByTime(2000);
       showError('X');
 
-      jest.advanceTimersByTime(1500);
+      jest.advanceTimersByTime(2500);
 
       expect(blockText()).toBe('X (×2)');
     });
 
-    test('узел живёт до самой поздней строки', async () => {
+    test('длительность, заданная игрой, не подменяется', async () => {
       await compactToasts.enable();
 
       showError('long', { duration: 5000 });
       const toast2 = showError('short', { duration: 3000 });
 
-      expect(toast2.options.duration).toBe(5000);
+      expect(toast2.options.duration).toBe(3000);
     });
 
     test('после ухода блока следующая ошибка начинает его заново', async () => {

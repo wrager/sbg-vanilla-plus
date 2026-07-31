@@ -19,8 +19,9 @@ import type {
  * дописывает содержимое уже после показа (refs/game/script.js:830-845) -
  * подмена такого узла стёрла бы игроку список добычи.
  *
- * У каждой строки свой срок жизни, а не общий на блок: иначе строка из начала
- * серии доживала бы до её конца, и блок только рос бы.
+ * Срок жизни у блока общий и задаётся последним сообщением: каждая новая ошибка
+ * пересоздаёт узел, поэтому блок держится на экране столько же, сколько держался
+ * бы одиночный тост этой ошибки.
  *
  * Блок собирается отдельно для каждого контейнера. Ошибки действий игра вешает
  * внутрь попапа точки (refs/game/script.js:807), и смешивать их с сообщениями
@@ -34,17 +35,15 @@ const MAX_LINES = 5;
 interface IBlockLine {
   text: string;
   count: number;
-  expiresAt: number;
 }
 
 interface IBlockState {
   instance: IToastifyInstance | null;
   lines: IBlockLine[];
-  sweepTimer: ReturnType<typeof setTimeout> | null;
 }
 
 function createState(): IBlockState {
-  return { instance: null, lines: [], sweepTimer: null };
+  return { instance: null, lines: [] };
 }
 
 function removeToastElementImmediately(instance: IToastifyInstance): void {
@@ -81,54 +80,18 @@ function renderLines(lines: IBlockLine[]): string {
     .join('<br>');
 }
 
-function dropExpiredLines(state: IBlockState, now: number): void {
-  state.lines = state.lines.filter((line) => line.expiresAt > now);
-}
-
-function addLine(lines: IBlockLine[], text: string, expiresAt: number): IBlockLine[] {
+function addLine(lines: IBlockLine[], text: string): IBlockLine[] {
   const existing = lines.find((line) => line.text === text);
   if (existing) {
     existing.count++;
-    existing.expiresAt = expiresAt;
     return lines;
   }
 
-  const next = [...lines, { text, count: 1, expiresAt }];
+  const next = [...lines, { text, count: 1 }];
   return next.length > MAX_LINES ? next.slice(next.length - MAX_LINES) : next;
 }
 
-/**
- * Снимает истёкшие строки с живого узла, не пересоздавая его. Узел живёт до
- * срока последней строки, поэтому пустым он здесь не остаётся - последнюю
- * строку и сам узел снимает таймер Toastify.
- */
-function scheduleSweep(state: IBlockState): void {
-  if (state.sweepTimer !== null) {
-    clearTimeout(state.sweepTimer);
-    state.sweepTimer = null;
-  }
-  if (state.lines.length === 0) return;
-
-  const nextExpiry = Math.min(...state.lines.map((line) => line.expiresAt));
-  state.sweepTimer = setTimeout(
-    () => {
-      state.sweepTimer = null;
-      dropExpiredLines(state, Date.now());
-      const element = state.instance?.toastElement;
-      if (element && state.lines.length > 0) {
-        element.innerHTML = renderLines(state.lines);
-      }
-      scheduleSweep(state);
-    },
-    Math.max(0, nextExpiry - Date.now()),
-  );
-}
-
 function resetState(state: IBlockState): void {
-  if (state.sweepTimer !== null) {
-    clearTimeout(state.sweepTimer);
-    state.sweepTimer = null;
-  }
   state.instance = null;
   state.lines = [];
 }
@@ -150,7 +113,7 @@ function wrapCallback(state: IBlockState, toast: IToastifyInstance): void {
  * Годится ли сообщение в строку блока. Значения читаются из инстанса, который
  * создала игра, поэтому проверяются, несмотря на объявленные типы: пустой текст
  * игра дописывает уже после показа, а нулевая длительность означает сообщение
- * без автоснятия, которому нечем истечь в блоке.
+ * без автоснятия - в блоке его унесла бы следующая ошибка, пересоздающая узел.
  */
 function isBlockableLine(options: IToastifyOptions): boolean {
   const text: unknown = options.text;
@@ -173,22 +136,19 @@ function prepareToast(states: Map<Element | null, IBlockState>, toast: IToastify
   const state = states.get(container) ?? createState();
   states.set(container, state);
 
-  const now = Date.now();
   const alive = isBlockAlive(state);
   if (!alive) resetState(state);
-  dropExpiredLines(state, now);
 
   const previous = alive ? state.instance : null;
-  state.lines = addLine(state.lines, toast.options.text, now + toast.options.duration);
+  state.lines = addLine(state.lines, toast.options.text);
   state.instance = toast;
 
   toast.options.text = renderLines(state.lines);
   // Строки соединены <br>, поэтому текст уходит разметкой; сам текст строк
   // при сборке экранирован.
   toast.options.escapeMarkup = false;
-  // Узел должен дожить до самой поздней строки: она могла прийти с большей
-  // длительностью, чем текущее сообщение.
-  toast.options.duration = Math.max(...state.lines.map((line) => line.expiresAt)) - now;
+  // Длительность не трогаем: узел пересоздаётся на каждой ошибке, и блок живёт
+  // ровно столько, сколько игра отвела последнему сообщению.
 
   wrapCallback(state, toast);
 
@@ -199,8 +159,6 @@ function prepareToast(states: Map<Element | null, IBlockState>, toast: IToastify
     removeToastElementImmediately(previous);
     previous.options.callback?.();
   }
-
-  scheduleSweep(state);
 }
 
 export function installToastBlock(proto: IToastifyPrototype): () => void {
