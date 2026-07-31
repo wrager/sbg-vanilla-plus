@@ -1,4 +1,5 @@
 import { compactToasts } from './compactToasts';
+import { resetRegionsTemplateCacheForTest } from './regionsLine';
 import { getToastifyFactory } from '../../core/toastify';
 import type { IToastifyPrototype } from '../../core/toastify';
 
@@ -9,6 +10,8 @@ interface IMockToastOptions {
   id: number;
   callback: (() => void) | null;
   duration: number;
+  position: string;
+  escapeMarkup: boolean;
 }
 
 interface IMockToast {
@@ -47,6 +50,8 @@ function setupMockToastify(): void {
       id: Math.round(Math.random() * 1e5),
       callback: null,
       duration: 3000,
+      position: options.position ?? 'center',
+      escapeMarkup: options.escapeMarkup ?? false,
     };
     toast.toastElement = null;
     toast.hideToast = jest.fn();
@@ -56,6 +61,20 @@ function setupMockToastify(): void {
 
   window.Toastify = factory as unknown as typeof window.Toastify;
   createToast = factory;
+}
+
+function showError(text: string, options: Partial<IMockToastOptions> = {}): IMockToast {
+  const toast = createToast({ text, ...options });
+  toast.options.className = 'error-toast';
+  toast.showToast();
+  return toast;
+}
+
+function showNeutral(text: string, options: Partial<IMockToastOptions> = {}): IMockToast {
+  const toast = createToast({ text, ...options });
+  toast.options.className = 'interaction-toast';
+  toast.showToast();
+  return toast;
 }
 
 function fireCallback(toast: IMockToast): void {
@@ -78,135 +97,147 @@ describe('compactToasts', () => {
     document.body.innerHTML = '';
   });
 
-  test('non-error toasts pass through without deduplication', async () => {
+  test('toast anchored to a container is passed through untouched', async () => {
     await compactToasts.enable();
-    const toast = createToast({ text: 'loot acquired' });
-    toast.options.className = 'interaction-toast';
-    toast.showToast();
+    const container = document.createElement('div');
+    container.className = 'info';
+    document.body.appendChild(container);
 
-    const toast2 = createToast({ text: 'loot acquired' });
-    toast2.options.className = 'interaction-toast';
-    toast2.showToast();
+    const toast = showNeutral('loot acquired', { selector: container });
 
-    expect(document.querySelectorAll('.toastify').length).toBe(2);
+    expect(toast.options.text).toBe('loot acquired');
+    expect(toast.options.position).toBe('center');
+    expect(toast.toastElement?.parentNode).toBe(container);
   });
 
-  test('first error toast shows normally', async () => {
+  test('toasts in different containers stay separate', async () => {
     await compactToasts.enable();
-    const toast = createToast({ text: 'network error' });
-    toast.options.className = 'error-toast';
-    toast.showToast();
+    const container1 = document.createElement('div');
+    container1.className = 'info';
+    const container2 = document.createElement('div');
+    container2.className = 'inventory';
+    document.body.append(container1, container2);
+
+    const toast1 = showError('error', { selector: container1 });
+    const toast2 = showError('error', { selector: container2 });
+
+    expect(toast1.toastElement?.parentNode).toBe(container1);
+    expect(toast2.toastElement?.parentNode).toBe(container2);
+    expect(toast2.options.text).toBe('error');
+  });
+
+  test('first screen toast shows as is and moves to the corner', async () => {
+    await compactToasts.enable();
+
+    const toast = showError('network error');
 
     expect(toast.options.text).toBe('network error');
+    expect(toast.options.position).toBe('left');
     expect(document.querySelectorAll('.toastify').length).toBe(1);
   });
 
-  test('duplicate error toast removes old element and shows new with counter', async () => {
+  test('two different messages merge into one block with two lines', async () => {
     await compactToasts.enable();
 
-    const toast1 = createToast({ text: 'network error' });
-    toast1.options.className = 'error-toast';
-    toast1.showToast();
+    showError('network error');
+    const toast2 = showError('out of range');
 
-    const toast2 = createToast({ text: 'network error' });
-    toast2.options.className = 'error-toast';
-    toast2.showToast();
+    expect(toast2.options.text).toBe('network error<br>out of range');
+    expect(document.querySelectorAll('.toastify').length).toBe(1);
+  });
+
+  test('repeated message removes old element and gets a counter', async () => {
+    await compactToasts.enable();
+
+    const toast1 = showError('network error');
+    const toast2 = showError('network error');
 
     expect(toast1.toastElement?.parentNode).toBeNull();
     expect(toast2.options.text).toBe('network error (×2)');
     expect(document.querySelectorAll('.toastify').length).toBe(1);
   });
 
-  test('triple duplicate shows counter ×3', async () => {
+  test('third repeat shows counter ×3', async () => {
     await compactToasts.enable();
 
-    const toast1 = createToast({ text: 'out of range' });
-    toast1.options.className = 'error-toast';
-    toast1.showToast();
-
-    const toast2 = createToast({ text: 'out of range' });
-    toast2.options.className = 'error-toast';
-    toast2.showToast();
-
-    const toast3 = createToast({ text: 'out of range' });
-    toast3.options.className = 'error-toast';
-    toast3.showToast();
+    showError('out of range');
+    showError('out of range');
+    const toast3 = showError('out of range');
 
     expect(toast3.options.text).toBe('out of range (×3)');
     expect(document.querySelectorAll('.toastify').length).toBe(1);
   });
 
-  test('different error texts are not deduplicated', async () => {
+  test('repeat does not move the line it belongs to', async () => {
     await compactToasts.enable();
 
-    const toast1 = createToast({ text: 'network error' });
-    toast1.options.className = 'error-toast';
-    toast1.showToast();
+    showError('first');
+    showError('second');
+    const toast3 = showError('first');
 
-    const toast2 = createToast({ text: 'out of range' });
-    toast2.options.className = 'error-toast';
-    toast2.showToast();
-
-    expect(toast1.toastElement?.parentNode).toBe(document.body);
-    expect(toast2.options.text).toBe('out of range');
-    expect(document.querySelectorAll('.toastify').length).toBe(2);
+    expect(toast3.options.text).toBe('first (×2)<br>second');
   });
 
-  test('same text in different containers are not deduplicated', async () => {
+  test('neutral toasts also merge into the block', async () => {
     await compactToasts.enable();
-    const container1 = document.createElement('div');
-    container1.className = 'info';
-    document.body.appendChild(container1);
-    const container2 = document.createElement('div');
-    container2.className = 'inventory';
-    document.body.appendChild(container2);
 
-    const toast1 = createToast({ text: 'error', selector: container1 });
-    toast1.options.className = 'error-toast';
-    toast1.showToast();
+    showNeutral('draw plan copied');
+    const toast2 = showNeutral('import successful');
 
-    const toast2 = createToast({ text: 'error', selector: container2 });
-    toast2.options.className = 'error-toast';
-    toast2.showToast();
-
-    expect(toast1.toastElement?.parentNode).toBe(container1);
-    expect(toast2.options.text).toBe('error');
+    expect(toast2.options.text).toBe('draw plan copied<br>import successful');
+    expect(toast2.options.className).toBe('interaction-toast');
+    expect(document.querySelectorAll('.toastify').length).toBe(1);
   });
 
-  test('after toast expires, next one shows without counter', async () => {
+  test('an error line makes the whole block an error', async () => {
     await compactToasts.enable();
 
-    const toast1 = createToast({ text: 'error' });
-    toast1.options.className = 'error-toast';
-    toast1.showToast();
+    showNeutral('new regions');
+    const toast2 = showError('not enough keys');
 
+    expect(toast2.options.className).toBe('error-toast');
+  });
+
+  test('block stays an error even when a neutral message comes last', async () => {
+    await compactToasts.enable();
+
+    showError('not enough keys');
+    const toast2 = showNeutral('new regions');
+
+    expect(toast2.options.className).toBe('error-toast');
+  });
+
+  test('block keeps at most five lines, the oldest is dropped', async () => {
+    await compactToasts.enable();
+
+    ['one', 'two', 'three', 'four', 'five'].forEach((text) => showError(text));
+    const toast6 = showError('six');
+
+    expect(toast6.options.text).toBe('two<br>three<br>four<br>five<br>six');
+  });
+
+  test('after the block expires, the next toast starts a new one', async () => {
+    await compactToasts.enable();
+
+    const toast1 = showError('error');
     fireCallback(toast1);
 
-    const toast2 = createToast({ text: 'error' });
-    toast2.options.className = 'error-toast';
-    toast2.showToast();
+    const toast2 = showError('error');
 
     expect(toast2.options.text).toBe('error');
   });
 
-  test('async callback from old toast does not remove new toast from tracking', async () => {
+  test('late callback of a replaced toast does not reset the block', async () => {
     await compactToasts.enable();
 
-    const toast1 = createToast({ text: 'error' });
-    toast1.options.className = 'error-toast';
-    toast1.showToast();
-
-    const toast2 = createToast({ text: 'error' });
-    toast2.options.className = 'error-toast';
-    toast2.showToast();
+    const toast1 = showError('error');
+    const toast2 = showError('error');
 
     expect(toast2.options.text).toBe('error (×2)');
 
     fireCallback(toast1);
 
-    const toast3 = createToast({ text: 'error' });
-    toast3.options.className = 'error-toast';
-    toast3.showToast();
+    const toast3 = showError('error');
 
     expect(toast3.options.text).toBe('error (×3)');
     expect(document.querySelectorAll('.toastify').length).toBe(1);
@@ -215,34 +246,56 @@ describe('compactToasts', () => {
   test('old element is removed instantly without hideToast animation', async () => {
     await compactToasts.enable();
 
-    const toast1 = createToast({ text: 'error' });
-    toast1.options.className = 'error-toast';
-    toast1.showToast();
-
+    const toast1 = showError('error');
     const oldElement = toast1.toastElement;
     expect(oldElement?.parentNode).toBe(document.body);
 
-    const toast2 = createToast({ text: 'error' });
-    toast2.options.className = 'error-toast';
-    toast2.showToast();
+    showError('error');
 
     expect(oldElement?.parentNode).toBeNull();
-    expect((toast1 as unknown as IMockToast).hideToast).not.toHaveBeenCalled();
+    expect(toast1.hideToast).not.toHaveBeenCalled();
   });
 
-  test('error toast with an extra class is still deduplicated', async () => {
+  test('error class is recognised among several classes', async () => {
     await compactToasts.enable();
 
-    const toast1 = createToast({ text: 'network error' });
-    toast1.options.className = 'error-toast toastify-custom';
-    toast1.showToast();
+    const toast = createToast({ text: 'network error' });
+    toast.options.className = 'error-toast toastify-custom';
+    toast.showToast();
 
-    const toast2 = createToast({ text: 'network error' });
-    toast2.options.className = 'error-toast toastify-custom';
-    toast2.showToast();
+    expect(toast.options.className).toBe('error-toast');
+  });
 
-    expect(toast2.options.text).toBe('network error (×2)');
-    expect(document.querySelectorAll('.toastify').length).toBe(1);
+  test('block markup is rendered, not escaped', async () => {
+    await compactToasts.enable();
+
+    showError('first');
+    const toast2 = showError('second');
+
+    expect(toast2.options.escapeMarkup).toBe(false);
+    expect(document.querySelectorAll('.toastify br').length).toBe(1);
+  });
+
+  test('game regions toast is shortened inside the block', async () => {
+    const globals = window as unknown as Record<string, unknown>;
+    globals['i18next'] = {
+      language: 'ru',
+      resolvedLanguage: 'ru',
+      t: (key: string) => (key === 'info.regions' ? 'Регионы' : key),
+      getResource: (_lng: string, _namespace: string, key: string) =>
+        key === 'popups.new-regions'
+          ? 'Новые регионы: {{count}}<br>Общая площадь: {{area}}<br>Макс. площадь: {{max}}'
+          : undefined,
+    };
+    resetRegionsTemplateCacheForTest();
+    await compactToasts.enable();
+
+    showNeutral('Новые регионы: 2<br>Общая площадь: 1.4 км²<br>Макс. площадь: 0.7 км²');
+    const toast2 = showError('Недостаточно ключей');
+
+    expect(toast2.options.text).toBe('Регионы: +2 (1.4 км²)<br>Недостаточно ключей');
+    delete globals['i18next'];
+    resetRegionsTemplateCacheForTest();
   });
 
   test('enable without Toastify does not throw', () => {
@@ -268,6 +321,19 @@ describe('compactToasts', () => {
     expect(prototype.showToast).toBe(originalShowToast);
   });
 
+  test('disable drops collected lines', async () => {
+    await compactToasts.enable();
+    showError('error');
+
+    await compactToasts.disable();
+    document.body.innerHTML = '';
+    await compactToasts.enable();
+
+    const toast = showError('error');
+
+    expect(toast.options.text).toBe('error');
+  });
+
   test('original callback is preserved and called', async () => {
     await compactToasts.enable();
 
@@ -282,7 +348,7 @@ describe('compactToasts', () => {
     expect(originalCallback).toHaveBeenCalled();
   });
 
-  test('old toast callback fires on deduplication for popup_toasts cleanup', async () => {
+  test('replaced toast callback fires for the game popup_toasts cleanup', async () => {
     await compactToasts.enable();
 
     const toast1 = createToast({ text: 'error' });
@@ -291,9 +357,7 @@ describe('compactToasts', () => {
     toast1.options.callback = gameCallback;
     toast1.showToast();
 
-    const toast2 = createToast({ text: 'error' });
-    toast2.options.className = 'error-toast';
-    toast2.showToast();
+    showError('error');
 
     expect(gameCallback).toHaveBeenCalled();
   });

@@ -25,7 +25,11 @@
 export interface IToastifyOptions {
   text: string;
   className: string;
-  selector: Element | null;
+  /**
+   * Элемент-якорь. `undefined` штатен: Toastify подставляет его, когда опцию не
+   * передали (refs/toastify/toastify.js:59), и такой тост уходит в body.
+   */
+  selector: Element | null | undefined;
   id: number;
   duration: number;
   callback: (() => void) | null;
