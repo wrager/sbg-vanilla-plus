@@ -1,5 +1,5 @@
 import { compactToasts } from './compactToasts';
-import { getToastifyFactory } from '../../core/toastify';
+import { getToastifyPrototype } from '../../core/toastify';
 import type { IToastifyPrototype } from '../../core/toastify';
 
 interface IMockToastOptions {
@@ -95,10 +95,10 @@ function fireCallback(toast: IMockToast): void {
   toast.options.callback?.();
 }
 
-function getToastifyPrototype(): IToastifyPrototype {
-  const factory = getToastifyFactory();
-  if (factory === null) throw new Error('Мок Toastify не установлен');
-  return factory.prototype;
+function requireToastifyPrototype(): IToastifyPrototype {
+  const proto = getToastifyPrototype();
+  if (proto === null) throw new Error('Мок Toastify не установлен');
+  return proto;
 }
 
 describe('compactToasts', () => {
@@ -387,7 +387,7 @@ describe('compactToasts', () => {
     });
 
     test('disable возвращает оригинальный showToast', async () => {
-      const prototype = getToastifyPrototype();
+      const prototype = requireToastifyPrototype();
       const originalShowToast = prototype.showToast;
       await compactToasts.enable();
 
@@ -443,9 +443,9 @@ describe('compactToasts', () => {
   describe('несовместимость с игрой', () => {
     test('ошибка в сборке снимает патч, а сообщение игры доходит до экрана', async () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-      const originalShowToast = getToastifyPrototype().showToast;
+      const originalShowToast = requireToastifyPrototype().showToast;
       await compactToasts.enable();
-      const prototype = getToastifyPrototype();
+      const prototype = requireToastifyPrototype();
 
       const broken = createToast({ text: 'boom' });
       // Игра новой версии может отдать в опциях что угодно: читаем их первыми,
@@ -484,6 +484,23 @@ describe('compactToasts', () => {
       expect(document.querySelectorAll('.toastify').length).toBe(3);
 
       consoleError.mockRestore();
+    });
+
+    test('Toastify без showToast на прототипе не патчится', async () => {
+      const consoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const prototypeWithoutShowToast = { hideToast: () => undefined };
+      const factory = function (): unknown {
+        return null;
+      };
+      factory.prototype = prototypeWithoutShowToast;
+      window.Toastify = factory as unknown as typeof window.Toastify;
+
+      await compactToasts.enable();
+
+      expect(Object.keys(prototypeWithoutShowToast)).toEqual(['hideToast']);
+      expect(consoleWarn).toHaveBeenCalled();
+
+      consoleWarn.mockRestore();
     });
 
     test('сообщение без автоснятия не собирается в блок', async () => {

@@ -1,4 +1,4 @@
-import { getToastifyFactory } from '../../core/toastify';
+import { getToastifyPrototype } from '../../core/toastify';
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { installToastBlock } from './toastBlock';
 
@@ -17,15 +17,15 @@ export const compactToasts: IFeatureModule = {
   category: 'ui',
   init() {},
   enable() {
-    const factory = getToastifyFactory();
-    if (factory === null) {
+    const proto = getToastifyPrototype();
+    if (proto === null) {
       // Игра без Toastify не стартует (refs/game/script.js:16-27), так что
       // собирать нечего. Бросать нельзя: модуль ушёл бы в failed и повесил
       // ошибку в настройках там, где не работает и сама игра.
       console.warn('[SVP] Toastify недоступен, сборка тостов не включена');
       return;
     }
-    restorePatch = installToastBlock(factory.prototype);
+    restorePatch = installToastBlock(proto);
   },
   disable() {
     restorePatch?.();

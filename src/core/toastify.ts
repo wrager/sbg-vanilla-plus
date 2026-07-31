@@ -21,6 +21,8 @@
  * - `removeElement` откладывает удаление узла и вызов `callback` на 400 мс (:112).
  */
 
+import { isRecord } from './isRecord';
+
 /** Опции инстанса Toastify. Перечислены только те, что читает или пишет SVP. */
 export interface IToastifyOptions {
   text: string;
@@ -85,6 +87,23 @@ export const GAME_TOAST_CLASS = {
 export function getToastifyFactory(): IToastifyFactory | null {
   const factory = window.Toastify;
   return typeof factory === 'function' ? factory : null;
+}
+
+function isToastifyPrototype(value: unknown): value is IToastifyPrototype {
+  return isRecord(value) && typeof value.showToast === 'function';
+}
+
+/**
+ * Прототип Toastify, пригодный к подмене showToast, или null. Наличие метода
+ * проверяется, несмотря на объявленный тип: тип описывает 1.12.0, а патч,
+ * вставший на несуществующий оригинал, сломал бы игре все уведомления вместо
+ * своей сборки.
+ */
+export function getToastifyPrototype(): IToastifyPrototype | null {
+  const factory = getToastifyFactory();
+  if (factory === null) return null;
+  const proto: unknown = factory.prototype;
+  return isToastifyPrototype(proto) ? proto : null;
 }
 
 /**
