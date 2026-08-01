@@ -7,6 +7,7 @@ import {
   countHiddenByStar,
   type IDrawEntry,
 } from './filterRules';
+import { MODULE_ID } from './moduleId';
 import { loadDrawingRestrictionsSettings } from './settings';
 import { getActiveStarCenterGuid } from './starCenter';
 
@@ -28,6 +29,7 @@ interface IDrawResponseShape {
 let fetchInstalled = false;
 let drawFilterEnabled = false;
 let originalFetchBeforePatch: typeof window.fetch | null = null;
+let filterFailureReported = false;
 
 function matchesDrawList(url: string, method: string | undefined): boolean {
   if (!DRAW_URL_PATTERN.test(url)) return false;
@@ -148,14 +150,6 @@ async function filterDrawResponse(
   const original = parsed.data;
   parsed.data = applyPredicates(original, predicates);
 
-  const message = pickToastMessage({
-    hiddenByStar: countHiddenByStar(original, starCenterGuid, popupGuidAtRequest),
-    hiddenByDistance: countHiddenByDistance(original, settings.maxDistanceMeters),
-    totalHidden: original.length - parsed.data.length,
-    maxDistanceMeters: settings.maxDistanceMeters,
-  });
-  if (message !== null) showToast(message, { duration: 4000 });
-
   // Headers оригинала копируем без content-length: после фильтрации длина body
   // меняется, и заголовок становится несоответствующим реальному размеру.
   // Игровой код по чтению refs/game/script.js его на draw-response не проверяет,
@@ -171,11 +165,37 @@ async function filterDrawResponse(
   // Response.url - read-only, не передаётся через init. Восстанавливаем через
   // defineProperty, чтобы игровой код, проверяющий response.url, не сломался.
   Object.defineProperty(modified, 'url', { value: response.url });
+
+  // Тост показывается последним шагом, когда отфильтрованный ответ уже собран:
+  // иначе отказ на сборке оставил бы игроку сообщение о скрытых точках при
+  // полном списке целей на карте.
+  const message = pickToastMessage({
+    hiddenByStar: countHiddenByStar(original, starCenterGuid, popupGuidAtRequest),
+    hiddenByDistance: countHiddenByDistance(original, settings.maxDistanceMeters),
+    totalHidden: original.length - parsed.data.length,
+    maxDistanceMeters: settings.maxDistanceMeters,
+  });
+  if (message !== null) showToast(message, { duration: 4000 });
+
   return modified;
+}
+
+/**
+ * Разбор ответа читает данные сервера, поэтому смена их формата отклонила бы
+ * промис, который игра ждёт от своего fetch. Вместо этого игре уходит
+ * неотфильтрованный ответ сервера. Запись делается один раз за включение
+ * модуля: /api/draw приходит на каждое открытие попапа, и повтор вытеснил бы
+ * полезные строки из core/errorLog (там хранятся последние 50).
+ */
+function reportFilterFailure(error: unknown): void {
+  if (filterFailureReported) return;
+  filterFailureReported = true;
+  console.error(`[SVP ${MODULE_ID}] цели рисования не отфильтрованы:`, error);
 }
 
 export function installDrawFilter(): void {
   drawFilterEnabled = true;
+  filterFailureReported = false;
   if (fetchInstalled) return;
   fetchInstalled = true;
   const native = window.fetch;
@@ -191,7 +211,14 @@ export function installDrawFilter(): void {
     // когда уже открыт B) фильтр применит правила B к данным A, попап получит
     // отфильтрованный список для чужого контекста.
     const popupGuidAtRequest = getCurrentPopupGuid();
-    return promise.then((response) => filterDrawResponse(response, popupGuidAtRequest));
+    return promise.then((response) =>
+      // catch навешен на фильтр, а не на всю цепочку: сетевой сбой самого
+      // запроса игра должна получить как есть.
+      filterDrawResponse(response, popupGuidAtRequest).catch((error: unknown) => {
+        reportFilterFailure(error);
+        return response;
+      }),
+    );
   };
 }
 
@@ -206,4 +233,5 @@ export function uninstallDrawFilterForTest(): void {
   originalFetchBeforePatch = null;
   fetchInstalled = false;
   drawFilterEnabled = false;
+  filterFailureReported = false;
 }

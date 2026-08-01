@@ -21,6 +21,7 @@ let pointsSource: IOlVectorSource | null = null;
 let playerSource: IOlVectorSource | null = null;
 const rangeVisited = new Set<string | number>();
 let originalHammerEmit: ((this: unknown, name: string, data: unknown) => void) | null = null;
+let swipeFailureReported = false;
 // Защита от race-disable: enable содержит await getOlMap. Если disable
 // вызовется до резолва, текущий generation расходится с myGeneration -
 // выходим до установки override.
@@ -64,6 +65,17 @@ function navigateToNextPoint(): void {
 }
 
 /**
+ * Свайп по попапу приходит на каждом жесте, поэтому запись делается один раз за
+ * включение модуля: повтор вытеснил бы полезные строки из core/errorLog (там
+ * хранятся последние 50) и из баг-репорта.
+ */
+function reportSwipeFailure(error: unknown): void {
+  if (swipeFailureReported) return;
+  swipeFailureReported = true;
+  console.error(`[SVP ${MODULE_ID}] переход к следующей точке не выполнен:`, error);
+}
+
+/**
  * Runtime-override на Hammer.Manager.prototype.emit. На swipeleft/swiperight
  * с target внутри .info (но не внутри .splide-карусели ядер) - подавляем
  * нативный handler игры (он бы упёрся в проверку near_points.length <= 1
@@ -83,7 +95,8 @@ function installHammerOverride(): void {
   }
   if (originalHammerEmit) return;
   // eslint-disable-next-line @typescript-eslint/unbound-method -- сохраняем оригинал для restore и call.apply через any-this
-  originalHammerEmit = proto.emit;
+  const originalEmit = proto.emit;
+  originalHammerEmit = originalEmit;
   proto.emit = function (this: unknown, name: string, data: unknown): void {
     if (name === 'swipeleft' || name === 'swiperight') {
       const eventData = data as { target?: Element | null } | undefined;
@@ -93,13 +106,24 @@ function installHammerOverride(): void {
         target.closest(POINT_POPUP_SELECTOR) !== null &&
         target.closest('.splide') === null
       ) {
-        if (!isModuleActive(ANIMATION_MODULE_ID)) {
-          navigateToNextPoint();
+        try {
+          if (!isModuleActive(ANIMATION_MODULE_ID)) {
+            navigateToNextPoint();
+          }
+        } catch (error) {
+          // Через emit проходят ВСЕ жесты игры, а navigateToNextPoint читает
+          // геометрию игровых OL-фич без проверок (core/nextPointPicker) -
+          // после смены версии игры наш код упал бы прямо в игровом emit.
+          reportSwipeFailure(error);
         }
+        // Свайп уже признан нашим, поэтому нативному обработчику он не уходит
+        // и после ошибки: иначе игра переключила бы точку по своему порядку
+        // поверх нашего перехода.
         return;
       }
     }
-    originalHammerEmit?.call(this, name, data);
+
+    originalEmit.call(this, name, data);
   };
 }
 
@@ -125,6 +149,7 @@ export const improvedNextPointSwipe: IFeatureModule = {
   init() {},
   enable() {
     installGeneration++;
+    swipeFailureReported = false;
     const myGeneration = installGeneration;
     return getOlMap().then((olMap) => {
       if (myGeneration !== installGeneration) return;

@@ -14,6 +14,20 @@ const DETECTION_DELAY_MS = 100;
 let discoverHookEnabled = false;
 let discoverFetchInstalled = false;
 let originalFetchBeforePatch: typeof window.fetch | null = null;
+let syncFailureReported = false;
+
+/**
+ * Sync ходит в игровой OL-слой и в inventory-cache, поэтому смена версии игры
+ * отклоняет его промис. Игре этот отказ не виден - её fetch уже отдан, - но без
+ * catch он стал бы unhandled rejection. Запись делается один раз за включение
+ * модуля: discover приходит на каждое изучение точки, и повтор вытеснил бы
+ * полезные строки из core/errorLog (там хранятся последние 50).
+ */
+function reportSyncFailure(error: unknown): void {
+  if (syncFailureReported) return;
+  syncFailureReported = true;
+  console.error(`[SVP ${MODULE_ID}] счётчик ключей после discover не обновлён:`, error);
+}
 
 /**
  * Извлекает guid целевой точки из RequestInit body. /api/discover - POST
@@ -72,7 +86,7 @@ export function installDiscoverFetchHook(): void {
         if (!discoverHookEnabled) return;
         setTimeout(() => {
           if (!discoverHookEnabled) return;
-          void syncRefsCountForPoints([targetGuid]);
+          void syncRefsCountForPoints([targetGuid]).catch(reportSyncFailure);
         }, DETECTION_DELAY_MS);
       },
       () => {
@@ -89,6 +103,8 @@ export function uninstallDiscoverFetchHookForTest(): void {
   if (originalFetchBeforePatch) window.fetch = originalFetchBeforePatch;
   originalFetchBeforePatch = null;
   discoverFetchInstalled = false;
+  discoverHookEnabled = false;
+  syncFailureReported = false;
 }
 
 export const refsLayerSync: IFeatureModule = {
@@ -109,6 +125,7 @@ export const refsLayerSync: IFeatureModule = {
   enable(): void {
     installDiscoverFetchHook();
     discoverHookEnabled = true;
+    syncFailureReported = false;
   },
 
   disable(): void {

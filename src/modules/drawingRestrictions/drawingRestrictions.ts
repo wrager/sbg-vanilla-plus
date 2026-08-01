@@ -1,6 +1,7 @@
 import type { IFeatureModule } from '../../core/moduleRegistry';
 import { injectStyles, removeStyles } from '../../core/dom';
 import { installDrawFilter, uninstallDrawFilter } from './drawFilter';
+import { MODULE_ID } from './moduleId';
 import { refreshOpenPopup } from './refreshOpenPopup';
 import { migrateLegacyStarCenter } from './starCenter';
 import { installSettingsUi, uninstallSettingsUi } from './settingsUi';
@@ -8,8 +9,6 @@ import { installStarCenterButton, uninstallStarCenterButton } from './starCenter
 import { installStarCenterHighlight, uninstallStarCenterHighlight } from './starCenterHighlight';
 import { installStarCenterMapToggle, uninstallStarCenterMapToggle } from './starCenterMapToggle';
 import styles from './styles.css?inline';
-
-const MODULE_ID = 'drawingRestrictions';
 
 export const drawingRestrictions: IFeatureModule = {
   id: MODULE_ID,
