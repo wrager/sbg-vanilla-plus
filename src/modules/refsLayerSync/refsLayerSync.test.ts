@@ -137,6 +137,29 @@ describe('refsLayerSync', () => {
     expect(consoleError).toHaveBeenCalledTimes(1);
   });
 
+  test('повторное включение модуля снова разрешает запись об отказе', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockSync.mockRejectedValueOnce(new Error('game changed'));
+    window.fetch = jest.fn(() =>
+      Promise.resolve(makeOkResponse()),
+    ) as unknown as typeof window.fetch;
+    installDiscoverFetchHook();
+    void refsLayerSync.enable();
+
+    await discoverPoint('point-a');
+    expect(consoleError).toHaveBeenCalledTimes(1);
+
+    // Счётчик привязан к включению модуля, а не к жизни страницы: после
+    // re-enable отказ описывает уже новое состояние игры, и молчать о нём
+    // из-за записи, сделанной до выключения, нельзя.
+    void refsLayerSync.disable();
+    void refsLayerSync.enable();
+    mockSync.mockRejectedValueOnce(new Error('game changed'));
+
+    await discoverPoint('point-b');
+    expect(consoleError).toHaveBeenCalledTimes(2);
+  });
+
   test('игнорирует не-/api/discover URL', async () => {
     window.fetch = jest.fn(() =>
       Promise.resolve(makeOkResponse()),

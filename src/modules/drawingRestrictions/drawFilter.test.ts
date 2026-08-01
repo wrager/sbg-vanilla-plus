@@ -228,6 +228,25 @@ describe('drawFilter', () => {
     expect(body.data.map((entry) => entry.p)).toEqual(['p1']);
   });
 
+  test('повторное включение модуля снова разрешает запись об отказе', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
+    window.fetch = jest.fn().mockResolvedValue(buildBrokenResponse());
+    installDrawFilter();
+
+    await window.fetch('/api/draw');
+    expect(consoleError).toHaveBeenCalledTimes(1);
+
+    // Счётчик привязан к включению модуля, а не к жизни страницы: после
+    // re-enable отказ описывает уже новое состояние игры, и молчать о нём
+    // из-за записи, сделанной до выключения, нельзя.
+    uninstallDrawFilter();
+    installDrawFilter();
+
+    await window.fetch('/api/draw');
+    expect(consoleError).toHaveBeenCalledTimes(2);
+  });
+
   test('uninstall перестаёт фильтровать, но не выкидывает wrapper из цепочки', async () => {
     saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
     const mockFetch = jest.fn().mockResolvedValue(buildResponse({ data: [{ p: 'p1', d: 900 }] }));

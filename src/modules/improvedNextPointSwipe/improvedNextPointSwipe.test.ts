@@ -260,6 +260,25 @@ describe('improvedNextPointSwipe behaviour', () => {
     expect(nativeHandlerCalls.map((call) => call.name)).toEqual(['tap']);
   });
 
+  test('повторное включение модуля снова разрешает запись об отказе', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockIsModuleActive.mockImplementation(() => {
+      throw new Error('game changed');
+    });
+    await improvedNextPointSwipe.enable();
+    getOverriddenEmit().call({}, 'swipeleft', { target: popup });
+    expect(consoleError).toHaveBeenCalledTimes(1);
+
+    // Счётчик привязан к включению модуля, а не к жизни страницы: после
+    // re-enable отказ описывает уже новое состояние игры, и молчать о нём
+    // из-за записи, сделанной до выключения, нельзя.
+    await improvedNextPointSwipe.disable();
+    await improvedNextPointSwipe.enable();
+
+    getOverriddenEmit().call({}, 'swipeleft', { target: popup });
+    expect(consoleError).toHaveBeenCalledTimes(2);
+  });
+
   test('другие event names прокидываются нативному handler-у', async () => {
     await improvedNextPointSwipe.enable();
     const emit = getOverriddenEmit();
