@@ -21,6 +21,7 @@ import { refsOnMap } from './modules/refsOnMap/refsOnMap';
 import { singleFingerRotation } from './modules/singleFingerRotation/singleFingerRotation';
 import { mapTileLayers } from './modules/mapTileLayers/mapTileLayers';
 import { drawTools } from './modules/drawTools/drawTools';
+import { smoothPlayerMarker } from './modules/smoothPlayerMarker/smoothPlayerMarker';
 import { inventoryCleanup } from './modules/inventoryCleanup/inventoryCleanup';
 import { drawingRestrictions } from './modules/drawingRestrictions/drawingRestrictions';
 import { favoritesMigration } from './modules/favoritesMigration/favoritesMigration';
@@ -86,6 +87,7 @@ if (!isDisabled()) {
       singleFingerRotation,
       mapTileLayers,
       drawTools,
+      smoothPlayerMarker,
       // feature (map-зависимые)
       refsOnMap,
       improvedNextPointSwipe,

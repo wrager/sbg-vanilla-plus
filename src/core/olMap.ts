@@ -26,11 +26,40 @@ export interface IOlView {
   setResolution?(resolution: number): void;
   beginInteraction?(): void;
   endInteraction?(duration?: number): void;
+  // Истинно на время любого жеста пользователя, меняющего вид (DragPan,
+  // pinch-zoom, кинетическая инерция после флика). OL держит счётчик
+  // hint'ов INTERACTING между begin/endInteraction.
+  getInteracting?(): boolean;
   on?(type: string, listener: () => void): void;
   un?(type: string, listener: () => void): void;
 }
 
+export interface IOlPointGeometry {
+  getCoordinates(): number[];
+  setCoordinates(coordinates: number[]): void;
+}
+
+/** Геометрия `ol.geom.Circle` - в игре так заданы круги вокруг маркера игрока. */
+export interface IOlCircleGeometry {
+  getCenter(): number[];
+  setCenter(center: number[]): void;
+  getRadius?(): number;
+  setRadius?(radius: number): void;
+}
+
+/**
+ * `ol.style.Style` в объёме, нужном для подмены геометрии рендера.
+ * `setGeometry` принимает геометрию, функцию или строку; `undefined`
+ * возвращает стилю геометрию самой фичи (refs/ol/ol.js:6884).
+ */
+export interface IOlStyle {
+  getGeometry(): unknown;
+  setGeometry(geometry: unknown): void;
+}
+
 export interface IOlFeature {
+  // Геометрия объявлена только на чтение координат: у фичи игрока это позиция,
+  // которую игра отправляет на сервер, и записывать её нам нельзя.
   getGeometry(): { getCoordinates(): number[] };
   getId(): string | number | undefined;
   setId(id: string): void;
@@ -165,7 +194,7 @@ interface IOlGlobal {
   };
   Feature?: new (opts?: Record<string, unknown>) => IOlFeature;
   geom?: {
-    Point?: new (coords: number[]) => { getCoordinates(): number[] };
+    Point?: new (coords: number[]) => IOlPointGeometry;
     LineString?: new (coords: number[][]) => { getCoordinates(): number[][] };
     Polygon?: new (coords: number[][][]) => { getCoordinates(): number[][][] };
   };

@@ -4,7 +4,14 @@
  * глобальными объектами (OL map).
  */
 
-import type { IDragPanControl, IOlMap, IOlView, IOlInteraction } from './olMap';
+import type {
+  IDragPanControl,
+  IOlFeature,
+  IOlLayer,
+  IOlMap,
+  IOlView,
+  IOlInteraction,
+} from './olMap';
 
 jest.mock('./olMap', () => {
   const actual: Record<string, unknown> = jest.requireActual('./olMap');
@@ -23,6 +30,7 @@ jest.mock('./olMap', () => {
 import { getOlMap } from './olMap';
 import { shiftMapCenterDown } from '../modules/shiftMapCenterDown/shiftMapCenterDown';
 import { singleFingerRotation } from '../modules/singleFingerRotation/singleFingerRotation';
+import { smoothPlayerMarker } from '../modules/smoothPlayerMarker/smoothPlayerMarker';
 
 const mockGetOlMap = getOlMap as jest.MockedFunction<typeof getOlMap>;
 
@@ -41,15 +49,37 @@ function baselineCalculateExtent(size?: number[]): number[] {
   return [-size[0] / 2, -size[1] / 2, size[0] / 2, size[1] / 2];
 }
 
+function createPlayerLayer(): IOlLayer {
+  const feature = {
+    getGeometry: () => ({ getCoordinates: () => [0, 0] }),
+    getId: () => 'player',
+    setStyle: jest.fn(),
+    getStyle: () => [],
+    changed: jest.fn(),
+  } as unknown as IOlFeature;
+  return {
+    get: (key: string) => (key === 'name' ? 'player' : undefined),
+    getSource: () => ({
+      getFeatures: () => [feature],
+      addFeature: jest.fn(),
+      clear: jest.fn(),
+      on: jest.fn(),
+      un: jest.fn(),
+    }),
+  } as unknown as IOlLayer;
+}
+
 function createMockMap(): {
   map: IOlMap;
   view: IOlView;
   originalExtent: typeof baselineCalculateExtent;
+  originalSetCenter: IOlView['setCenter'];
 } {
+  const setCenter = jest.fn();
   const view: IOlView = {
     padding: [0, 0, 0, 0],
     getCenter: () => [0, 0],
-    setCenter: jest.fn(),
+    setCenter,
     calculateExtent: baselineCalculateExtent,
     changed: jest.fn(),
     getRotation: () => 0,
@@ -58,11 +88,12 @@ function createMockMap(): {
     setResolution: jest.fn(),
     beginInteraction: jest.fn(),
     endInteraction: jest.fn(),
+    getInteracting: () => false,
   };
   const map: IOlMap = {
     getView: () => view,
     getSize: () => [800, 600],
-    getLayers: jest.fn() as unknown as IOlMap['getLayers'],
+    getLayers: () => ({ getArray: () => [createPlayerLayer()] }),
     getInteractions: () => ({
       getArray: () => [new StubInteraction(), new StubInteraction()],
     }),
@@ -70,10 +101,11 @@ function createMockMap(): {
     removeLayer: jest.fn(),
     updateSize: jest.fn(),
   };
-  return { map, view, originalExtent: baselineCalculateExtent };
+  return { map, view, originalExtent: baselineCalculateExtent, originalSetCenter: setCenter };
 }
 
 let viewport: HTMLDivElement;
+let pointPopup: HTMLDivElement;
 
 beforeEach(() => {
   viewport = document.createElement('div');
@@ -81,6 +113,11 @@ beforeEach(() => {
   const canvas = document.createElement('canvas');
   viewport.appendChild(canvas);
   document.body.appendChild(viewport);
+
+  // Приёмник игрового события playermove, на него подписывается smoothPlayerMarker.
+  pointPopup = document.createElement('div');
+  pointPopup.classList.add('info', 'popup');
+  document.body.appendChild(pointPopup);
 
   window.ol = {
     Map: { prototype: { getView: jest.fn() } },
@@ -90,6 +127,7 @@ beforeEach(() => {
 
 afterEach(() => {
   viewport.remove();
+  pointPopup.remove();
   delete window.ol;
   jest.restoreAllMocks();
 });
@@ -183,5 +221,47 @@ describe('module contract: init() не должен навешивать side-ef
     }
 
     expect(view.calculateExtent).toBe(originalExtent);
+  });
+
+  // ── smoothPlayerMarker ────────────────────────────────────────────────────
+  test('smoothPlayerMarker.init() не должен оборачивать view.setCenter', async () => {
+    const { map, view, originalSetCenter } = createMockMap();
+    mockGetOlMap.mockResolvedValue(map);
+
+    await smoothPlayerMarker.init();
+
+    expect(view.setCenter).toBe(originalSetCenter);
+  });
+
+  test('smoothPlayerMarker.enable() оборачивает view.setCenter', async () => {
+    const { map, view, originalSetCenter } = createMockMap();
+    mockGetOlMap.mockResolvedValue(map);
+
+    await smoothPlayerMarker.enable();
+
+    expect(view.setCenter).not.toBe(originalSetCenter);
+    await smoothPlayerMarker.disable();
+  });
+
+  test('smoothPlayerMarker.disable() восстанавливает оригинальный setCenter', async () => {
+    const { map, view, originalSetCenter } = createMockMap();
+    mockGetOlMap.mockResolvedValue(map);
+
+    await smoothPlayerMarker.enable();
+    await smoothPlayerMarker.disable();
+
+    expect(view.setCenter).toBe(originalSetCenter);
+  });
+
+  test('smoothPlayerMarker переживает несколько enable/disable циклов', async () => {
+    const { map, view, originalSetCenter } = createMockMap();
+    mockGetOlMap.mockResolvedValue(map);
+
+    for (let i = 0; i < 3; i++) {
+      await smoothPlayerMarker.enable();
+      await smoothPlayerMarker.disable();
+    }
+
+    expect(view.setCenter).toBe(originalSetCenter);
   });
 });

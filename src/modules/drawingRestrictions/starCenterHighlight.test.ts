@@ -5,7 +5,13 @@ import {
   setStarCenter,
   setStarCenterActive,
 } from './starCenter';
-import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource } from '../../core/olMap';
+import type {
+  IOlFeature,
+  IOlLayer,
+  IOlMap,
+  IOlPointGeometry,
+  IOlVectorSource,
+} from '../../core/olMap';
 
 // ── тестовые helpers ─────────────────────────────────────────────────────────
 
@@ -124,7 +130,8 @@ function mockOl(): void {
     geom: {
       Point: jest.fn().mockImplementation((coords: number[]) => ({
         getCoordinates: () => coords,
-      })) as unknown as new (coords: number[]) => { getCoordinates(): number[] },
+        setCoordinates: jest.fn(),
+      })) as unknown as new (coords: number[]) => IOlPointGeometry,
     },
     style: {
       Style: jest

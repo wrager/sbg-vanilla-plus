@@ -20,6 +20,7 @@ import { removeAttackCloseButton } from '../modules/removeAttackCloseButton/remo
 import { repairButtonFix } from '../modules/repairButtonFix/repairButtonFix';
 import { shiftMapCenterDown } from '../modules/shiftMapCenterDown/shiftMapCenterDown';
 import { singleFingerRotation } from '../modules/singleFingerRotation/singleFingerRotation';
+import { smoothPlayerMarker } from '../modules/smoothPlayerMarker/smoothPlayerMarker';
 import { swipeToClosePopup } from '../modules/swipeToClosePopup/swipeToClosePopup';
 import { xpPopups } from '../modules/xpPopups/xpPopups';
 
@@ -50,6 +51,7 @@ const MODULES: readonly IFeatureModule[] = [
   repairButtonFix,
   shiftMapCenterDown,
   singleFingerRotation,
+  smoothPlayerMarker,
   swipeToClosePopup,
   xpPopups,
 ];

@@ -4,7 +4,14 @@ import {
   refsOnMap,
   uninstallInviewFetchHookForTest,
 } from './refsOnMap';
-import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
+import type {
+  IOlFeature,
+  IOlLayer,
+  IOlMap,
+  IOlPointGeometry,
+  IOlVectorSource,
+  IOlView,
+} from '../../core/olMap';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -197,7 +204,8 @@ function mockOl(): void {
     geom: {
       Point: jest.fn().mockImplementation((coords: number[]) => ({
         getCoordinates: () => coords,
-      })) as unknown as new (coords: number[]) => { getCoordinates(): number[] },
+        setCoordinates: jest.fn(),
+      })) as unknown as new (coords: number[]) => IOlPointGeometry,
     },
     proj: {
       fromLonLat: jest.fn((coords: number[]) => coords) as unknown as (
