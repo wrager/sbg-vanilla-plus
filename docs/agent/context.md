@@ -35,7 +35,7 @@
 - Bugfix = минимум 2 проверки: (1) воспроизведение бага, (2) корректное поведение после фикса (см. правило в [rules.md](rules.md)).
 - При изменениях lifecycle проверяй все фазы: `init`, `enable`, `disable`.
 - Локальный pre-commit прогон должен совпадать с CI (`.github/workflows/ci.yml`):
-  `npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build`
+  `npm run skills:check && npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build`
 - Если упал `format:check`: `npx prettier --write .`, затем повторить полный прогон.
 
 ## Практика изменений

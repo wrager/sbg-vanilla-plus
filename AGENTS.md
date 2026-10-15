@@ -1,5 +1,52 @@
-# AGENTS.md
+# Инструкции для агентов
 
-Контекст и архитектура проекта: [docs/agent/context.md](docs/agent/context.md)
+Общая точка входа для Codex и Claude Code. Отвечай пользователю по-русски.
 
-**В начале работы прочитай [docs/agent/context.md](docs/agent/context.md), затем [docs/agent/rules.md](docs/agent/rules.md).**
+В начале работы прочитай по порядку:
+
+1. [docs/agent/context.md](docs/agent/context.md) — контекст и карта проекта.
+2. [docs/agent/rules.md](docs/agent/rules.md) — канонические правила работы.
+
+Перед изменением кода также прочитай `docs/architecture.md`, `docs/dev-principles.md`,
+`docs/codestyle.md` и `docs/glossary.md`. Перед работой с игровым DOM/API исследуй `refs/`;
+если референсов нет, используй `npm run refs:fetch` согласно правилам проекта.
+
+Проект меняет UI/UX игры. Запрещены подмена GPS, автоматизация игровых действий,
+мультиаккаунт и модификация серверных запросов. CUI/EUI — альтернативные реализации для
+исследования в `refs/`, а не одновременно работающие со SVP скрипты.
+
+## Команды разработки
+
+Установка зависимостей: `npm ci` (Node.js 20+, как в CI). Проверки из корня репозитория:
+
+```text
+npm run skills:check
+npm run typecheck
+npm run lint
+npm run format:check
+npm run test
+npm run build
+```
+
+Запускай команды последовательно и останавливайся при ошибке. В Windows PowerShell 5.1
+`&&` недоступен: запускай команды отдельно и проверяй код завершения каждой.
+
+Если Jest в Windows-песочнице падает на `EPERM` при записи кэша в `%TEMP%`, используй
+`npm run test -- --runInBand --cacheDirectory node_modules/.cache/jest`.
+
+## Проектные скиллы
+
+Исходники скиллов: `.agents/skills/my-sbg-*/SKILL.md`. Codex читает их напрямую;
+для Claude Code отсюда создаются копии в `.claude/skills/` командой `npm run skills:sync`.
+Редактируй только исходники и общие сценарии в `docs/agent/`, затем синхронизируй копии.
+Обе папки скиллов хранятся в Git; `npm run skills:check` проверяет отсутствие расхождений.
+
+| Скилл               | Когда использовать                             |
+| ------------------- | ---------------------------------------------- |
+| `my-sbg-new-module` | Создание нового модуля SVP                     |
+| `my-sbg-release`    | Подготовка релиза с локальным коммитом и тегом |
+| `my-sbg-announce`   | Текст анонса изменений с указанной версии      |
+
+В Codex вызывай скилл через `$my-sbg-…`, в Claude Code — `/my-sbg-…`.
+Если скилл ещё не появился в текущей сессии, прочитай его `SKILL.md` по пути выше.
+Подробности и примеры: [docs/agent/README.md](docs/agent/README.md).

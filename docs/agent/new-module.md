@@ -1,4 +1,6 @@
-Создать новый модуль `$ARGUMENTS` (например: `/new-module keepScreenOn`).
+Создать новый модуль. Имя и желаемое поведение — из запроса пользователя или аргументов вызова скилла/команды. Если их не хватает, уточнить.
+
+Вызов: Codex — `$my-sbg-new-module keepScreenOn`, Claude Code — `/my-sbg-new-module keepScreenOn` (или `/new-module keepScreenOn`).
 
 ## Структура файлов
 

@@ -20,6 +20,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "jest",
+    "skills:sync": "node scripts/syncSkills.mjs --write",
+    "skills:check": "node scripts/syncSkills.mjs --check && node --test scripts/syncSkills.test.mjs",
     "refs:fetch": "node scripts/fetchRefs.mjs"
   },
   "devDependencies": {

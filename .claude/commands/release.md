@@ -1,3 +1,3 @@
 Выпустить релиз версии `$ARGUMENTS` (например: `/release 0.2.0`).
 
-**Прочитай и выполни [docs/agent/release.md](../../docs/agent/release.md).** Версия — из `$ARGUMENTS`.
+**Прочитай и выполни [my-sbg-release](../skills/my-sbg-release/SKILL.md).** Целевая версия — из `$ARGUMENTS` или сообщения пользователя.

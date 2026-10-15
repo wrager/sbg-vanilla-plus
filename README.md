@@ -81,15 +81,18 @@
 
 ## Разработка
 
-Правила и контекст для ИИ-агентов (Cursor, Claude Code и др.) лежат в **[docs/agent/](docs/agent/)** (`rules.md`, `context.md`, сценарии `new-module` / `release` / `announce`). В корне файлы `CLAUDE.md` и `AGENTS.md` — короткие входные точки со ссылками туда.
+Codex и Claude Code используют общую точку входа **[AGENTS.md](AGENTS.md)** и правила в **[docs/agent/](docs/agent/README.md)**. `CLAUDE.md` импортирует `AGENTS.md`; команды Cursor используют те же сценарии.
+
+Проектные скиллы `my-sbg-new-module`, `my-sbg-release` и `my-sbg-announce` доступны обоим агентам после клонирования. Вызывайте их через `$my-sbg-…` в Codex или `/my-sbg-…` в Claude Code. Исходники — `.agents/skills/`, копии для Claude — `.claude/skills/`; после правки исходников выполните `npm run skills:sync`. CI проверяет их соответствие. Примеры вызовов и порядок обновления — в [инструкции для агентов](docs/agent/README.md).
 
 ```bash
-npm install
+npm ci
 npm run dev        # Dev server
 npm run build      # Сборка скрипта в dist/
 npm run typecheck  # Проверка типов
 npm run lint       # ESLint
 npm run test       # Jest
+npm run skills:check # Проверка общих скиллов и тесты синхронизации
 ```
 
 ### Dev-сервер + менеджер юзерскриптов
