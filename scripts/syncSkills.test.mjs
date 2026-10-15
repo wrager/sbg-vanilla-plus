@@ -34,23 +34,23 @@ function fixture(t) {
   };
 }
 
-const SOURCE_SKILL = '.agents/skills/my-sbg-example/SKILL.md';
-const TARGET_SKILL = '.claude/skills/my-sbg-example/SKILL.md';
-const SKILL = '---\nname: my-sbg-example\ndescription: Fixture skill.\n---\n\nИнструкция.\n';
+const SOURCE_SKILL = '.agents/skills/sbg-example/SKILL.md';
+const TARGET_SKILL = '.claude/skills/sbg-example/SKILL.md';
+const SKILL = '---\nname: sbg-example\ndescription: Fixture skill.\n---\n\nИнструкция.\n';
 
 test('copies a skill and nested binary/empty resources; repeat sync leaves files untouched', (t) => {
   const project = fixture(t);
   project.write(SOURCE_SKILL, SKILL);
-  project.write('.agents/skills/my-sbg-example/assets/data.bin', Buffer.from([0, 255, 10]));
-  project.write('.agents/skills/my-sbg-example/references/empty.txt', '');
+  project.write('.agents/skills/sbg-example/assets/data.bin', Buffer.from([0, 255, 10]));
+  project.write('.agents/skills/sbg-example/references/empty.txt', '');
   assert.equal(project.run('--write').status, 0);
   assert.equal(readFileSync(project.path(TARGET_SKILL), 'utf8'), SKILL);
   assert.deepEqual(
-    readFileSync(project.path('.claude/skills/my-sbg-example/assets/data.bin')),
+    readFileSync(project.path('.claude/skills/sbg-example/assets/data.bin')),
     Buffer.from([0, 255, 10]),
   );
   assert.equal(
-    readFileSync(project.path('.claude/skills/my-sbg-example/references/empty.txt')).length,
+    readFileSync(project.path('.claude/skills/sbg-example/references/empty.txt')).length,
     0,
   );
   const modified = statSync(project.path(TARGET_SKILL)).mtimeMs;
@@ -82,7 +82,7 @@ test('stale or unknown target files stop both modes before any writes', (t) => {
   const project = fixture(t);
   project.write(SOURCE_SKILL, SKILL);
   project.write(TARGET_SKILL, 'keep until conflict is resolved');
-  const extra = '.claude/skills/my-old-skill/SKILL.md';
+  const extra = '.claude/skills/sbg-old-skill/SKILL.md';
   project.write(extra, 'work to preserve');
   for (const mode of ['--check', '--write']) {
     const result = project.run(mode);
@@ -107,10 +107,10 @@ test('missing source tree does not erase existing Claude skills', (t) => {
 
 test('resources without SKILL.md are rejected before creating copies', (t) => {
   const project = fixture(t);
-  project.write('.agents/skills/my-sbg-example/references/guide.md', 'guide');
+  project.write('.agents/skills/sbg-example/references/guide.md', 'guide');
   const result = project.run('--write');
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /Missing my-sbg-example\/SKILL.md/);
+  assert.match(result.stderr, /Missing sbg-example\/SKILL.md/);
   assert.equal(existsSync(project.path('.claude')), false);
 });
 

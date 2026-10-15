@@ -83,7 +83,7 @@
 
 Codex и Claude Code используют общую точку входа **[AGENTS.md](AGENTS.md)** и правила в **[docs/agent/](docs/agent/README.md)**. `CLAUDE.md` импортирует `AGENTS.md`; команды Cursor используют те же сценарии.
 
-Проектные скиллы `my-sbg-new-module`, `my-sbg-release` и `my-sbg-announce` доступны обоим агентам после клонирования. Вызывайте их через `$my-sbg-…` в Codex или `/my-sbg-…` в Claude Code. Исходники — `.agents/skills/`, копии для Claude — `.claude/skills/`; после правки исходников выполните `npm run skills:sync`. CI проверяет их соответствие. Примеры вызовов и порядок обновления — в [инструкции для агентов](docs/agent/README.md).
+Проектные скиллы `sbg-new-module`, `sbg-release` и `sbg-announce` доступны обоим агентам после клонирования. Вызывайте их через `$sbg-…` в Codex или `/sbg-…` в Claude Code. Исходники — `.agents/skills/`, копии для Claude — `.claude/skills/`; после правки исходников выполните `npm run skills:sync`. CI проверяет их соответствие. Примеры вызовов и порядок обновления — в [инструкции для агентов](docs/agent/README.md).
 
 ```bash
 npm ci

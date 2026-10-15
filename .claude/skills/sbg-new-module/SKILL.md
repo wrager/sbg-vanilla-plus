@@ -1,5 +1,5 @@
 ---
-name: my-sbg-new-module
+name: sbg-new-module
 description: Создание нового UI/UX-модуля SBG Vanilla Plus с lifecycle, тестами, регистрацией и документацией. Используй при запросе добавить новый модуль SVP.
 ---
 

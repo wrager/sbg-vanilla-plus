@@ -46,8 +46,8 @@ function main() {
 
   const skills = new Set([...source.keys()].map((path) => path.split('/')[0]));
   for (const skill of skills) {
-    if (!/^my-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(skill) || skill.length > 64) {
-      throw new Error(`Invalid skill folder name: ${skill}; expected my-<name>`);
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(skill) || skill.length > 64) {
+      throw new Error(`Invalid skill folder name: ${skill}; expected lowercase kebab-case`);
     }
     if (!source.has(`${skill}/SKILL.md`)) throw new Error(`Missing ${skill}/SKILL.md`);
   }
