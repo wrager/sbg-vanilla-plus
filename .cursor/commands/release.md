@@ -1,3 +1,3 @@
-Выпустить релиз. Версия (например `0.2.0`) — из сообщения пользователя.
+Подготовить существующий release PR от Release Please.
 
-**Выполни workflow из [docs/agent/release.md](docs/agent/release.md).**
+**Выполни сценарий из [docs/agent/release.md](docs/agent/release.md).**
