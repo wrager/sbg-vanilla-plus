@@ -1,3 +1,3 @@
-Подготовить или выпустить релиз по запросу пользователя. Версию вычисляет semantic-release.
+Подготовить существующий release PR от Release Please.
 
-**Выполни workflow из [docs/agent/release.md](docs/agent/release.md).**
+**Выполни сценарий из [docs/agent/release.md](docs/agent/release.md).**

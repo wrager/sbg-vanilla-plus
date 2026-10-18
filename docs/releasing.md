@@ -2,108 +2,124 @@
 
 ## Conventional Commits
 
-PR title проверяет `amannn/action-semantic-pull-request`. Примеры:
-`feat(map): добавить слой`, `fix(ui): исправить попап`, `feat!: изменить формат настроек`.
-Допустимы scope и русское описание. При squash заголовок PR становится заголовком
-коммита в main; промежуточные WIP-коммиты не проверяются.
+PR title проверяет `amannn/action-semantic-pull-request` со стандартными типами.
+Примеры: `feat(map): добавить слой`, `fix(ui): исправить попап`,
+`feat!: изменить формат настроек`. Scope и русское описание допустимы.
+В main попадает squash с заголовком PR и пустым телом.
 
-semantic-release использует preset `conventionalcommits` и теги `vX.Y.Z`:
+Release Please анализирует изменения после последнего стабильного тега:
 
-| Изменения после последнего тега                           | Результат из `0.15.1`               |
-| --------------------------------------------------------- | ----------------------------------- |
-| `fix`, `perf`                                             | `0.15.2` (patch)                    |
-| `feat`                                                    | `0.16.0` (minor)                    |
-| `!` или `BREAKING CHANGE:` в теле                         | `1.0.0` (major), в том числе до 1.0 |
-| Только `docs`, `chore`, `ci`, `build`, `test`, `refactor` | Нет выпуска                         |
+| Изменения                                                         | Результат из 0.15.1                  |
+| ----------------------------------------------------------------- | ------------------------------------ |
+| fix, perf                                                         | 0.15.2 (patch)                       |
+| feat                                                              | 0.16.0 (minor)                       |
+| ! в заголовке или BREAKING CHANGE в теле коммита                  | 1.0.0 (major), включая версии до 1.0 |
+| Только docs, chore, ci, build, test, refactor, style без breaking | Нет выпуска                          |
 
-Берётся наибольший bump за весь диапазон. Стандартный `revert` обрабатывает готовый
-анализатор; собственных правил поверх Conventional Commits нет.
-
-### Настройка GitHub после слияния workflow
-
-В Settings → General → Pull Requests оставить Squash merging, выключить merge/rebase.
-Для squash выбрать **Pull request title and description**. Это важно и для PR с одним
-коммитом: стандартная настройка GitHub может подставить его сообщение вместо PR title.
-В защите main требовать PR и успешные `check` (CI) и `Conventional PR title`.
-Проверки можно выбрать после их первого запуска. Эти настройки репозитория не
-применяются изменением YAML и должны быть включены сопровождающим.
+Выбирается максимальный bump диапазона. Обе настройки уменьшения bump до 1.0
+отключены. При пустом squash-теле footer из описания PR не переносится в коммит:
+breaking обозначать `!` в PR title.
 
 ## Тестовая сборка в PR
 
-CI проверяет merge commit PR с main. После всех проверок для внутренних веток
-собирается `dist/debug/sbg-vanilla-plus.user.js`. `actions/upload-artifact` сохраняет
-ровно этот файл в ZIP на 14 дней; отдельный job с `mshick/add-pr-comment` публикует
-ссылку, SHA ветки, SHA сборки и ссылку на run.
+После успешного `check` для внутренних PR, кроме Dependabot, CI собирает
+`dist/debug/sbg-vanilla-plus.user.js`. `actions/upload-artifact` сохраняет ровно
+этот файл в ZIP на 14 дней. Отдельный job `preview-comment` с
+`mshick/add-pr-comment` добавляет ссылку, SHA ветки, SHA merge commit и ссылку на run.
 
-Сборка имеет только `contents: read`. Право `pull-requests: write` есть у job комментария,
-который не делает checkout и не исполняет код PR. Используется обычный GITHUB_TOKEN;
-PAT, `pull_request_target`, сервер и техническая ветка не нужны.
-Форки и Dependabot не публикуют preview. Ошибка проверки не создаёт ссылку на новую
-сборку. ID artifact и комментария включают run/attempt, поэтому повторный запуск
-не заменяет ссылку старого запуска. Старые комментарии сохраняются как история;
-их ссылки перестают работать после удаления/истечения artifact.
+Сборка имеет только `contents: read`. Job комментария имеет
+`pull-requests: write`, не делает checkout, не скачивает и не исполняет код PR.
+ID artifact и комментария включают run/attempt: один комментарий на попытку.
+Ошибка новой сборки не добавляет комментарий; старые комментарии остаются историей.
+Rerun старого запуска сохраняет собственный SHA и не заменяет ссылку нового.
 
-Для установки нужно войти в GitHub, скачать и распаковать ZIP, импортировать `.user.js`
-в менеджер. `[DEBUG]` работает без сервера и имеет inline source map. Вложение не
-содержит `.local.user.js` с путём машины CI. Перед проверкой выключить stable, после
-проверки выключить debug и вернуть stable. Автообновлений и отдельных имён на каждый
-PR нет: новая debug-сборка заменяет предыдущую при импорте. Интерактивную проверку
-в игре выполняет пользователь.
+Для установки войти в GitHub, скачать и распаковать ZIP, импортировать
+`.user.js` в менеджер юзерскриптов. Выключить stable на время проверки,
+после неё выключить debug и вернуть stable. Debug работает без сервера,
+содержит inline source map и не обновляется автоматически.
+Ссылка действует 14 дней, если artifact или run не удалены раньше.
+Интерактивные проверки игры выполняет пользователь.
 
-## Стабильный выпуск
+## Подготовка и публикация
 
-1. Подготовить русские `RELEASE_NOTES.md` для всего диапазона после последнего
-   стабильного тега по [сценарию релиза](agent/release.md). Заголовок — `# Изменения`;
-   номер версии автоматически появится в GitHub Release. Файл сохраняет описание
-   предыдущего релиза до следующей подготовки: его обязательно актуализировать.
-2. Слить notes в main через PR. Перед выпуском проверить, не добавились ли изменения,
-   которые тоже должны попасть в описание.
-3. В Actions → Release → Run workflow выбрать main либо выполнить
-   `gh workflow run release.yml --ref main`.
-4. Дождаться успеха и проверить версию в теге, `.user.js` и `.meta.js`, содержимое
-   Release и имена обоих assets. Stable URLs остаются прежними.
+1. Обычные PR проходят проверки и squash merge в main. На push main workflow
+   Release создаёт или обновляет один release PR через Release Please.
+   Стратегия node обновляет `package.json`, `package-lock.json` (включая
+   `packages[""].version`) и `.release-please-manifest.json`.
+   `skip-changelog: true`: автоматический черновик остаётся в теле PR.
+2. Вызвать `$sbg-release` (Claude Code: `/sbg-release`) для существующего PR.
+   Агент проверяет все изменения после предыдущего опубликованного стабильного
+   релиза и готовит русские `RELEASE_NOTES.md` с первой строкой `# vX.Y.Z`.
+   Notes коммитятся в ту же ветку; служебное тело, заголовок и метки бота сохраняются.
+   Если бот обновил PR, повторно проверить диапазон и notes даже при прежней версии.
+3. Выполнить полный CI и review. `npm run release:check` сравнивает заголовок notes,
+   версии package/lockfile и manifest. Проверка заголовка не доказывает полноту
+   текста: её проверяет агент по diff, затем пользователь в PR.
+   Для PR от GITHUB_TOKEN может потребоваться **Approve workflows to run**,
+   в том числе после обновления ботом. Убедиться в наличии всех required checks.
+4. При отдельном запросе на выпуск squash merge подготовленного release PR
+   сохраняет версию и notes в main одной транзакцией. Release Please создаёт
+   `vX.Y.Z` и draft GitHub Release. Job publish получает SHA и тег из outputs,
+   делает checkout точного SHA, проверяет notes, собирает оба userscript-файла.
+   Проверяются версия тега, metadata обоих файлов и наличие исполняемого JS.
+   Полный lint/unit CI для тех же исходников в publish не повторяется.
+5. Softprops v3 загружает оба точных файла, затем публикует draft с
+   `RELEASE_NOTES.md`. `fail_on_unmatched_files: true`,
+   `overwrite_files: false`. Stable assets: `sbg-vanilla-plus.user.js` и
+   `sbg-vanilla-plus.meta.js`; прежние download/update URLs сохраняются.
 
-Release workflow выполняет проверки, затем semantic-release анализирует коммиты.
-Если нужен выпуск, npm-плагин обновляет package/lockfile только в checkout CI,
-exec-плагин читает notes, собирает и проверяет файлы, GitHub-плагин публикует релиз
-с assets. При ошибке подготовки тег и релиз не создаются. Запуски сериализованы;
-выбор другой ветки пропускает release job. Push тега сам по себе больше не выпускает релиз.
+Push тега и ручной workflow_dispatch выпуск не запускают.
+Ручной bump, локальный тег, отдельный PR notes и обратный version commit не нужны.
+Версия хранится в Git: например, после выпуска 0.16.0 main, тег v0.16.0,
+локальная сборка этого SHA и опубликованные файлы содержат 0.16.0.
+Между выпусками локальная сборка использует последнюю сохранённую версию.
 
-Публикация в npm отключена. Обратного коммита версии нет: теги — источник выпущенных
-версий. `package.json` в main и даже в checkout тега содержит development-версию;
-обычная локальная сборка использует именно её. Для воспроизведения release checkout
-нужного тега и `npm version <версия-без-v> --no-git-tag-version --ignore-scripts`
-перед сборкой, без коммита этих локальных изменений.
+## Настройки GitHub и миграция
 
-`npm run release -- --dry-run` предназначен для Linux runner/окружения с доступом
-к GitHub. Он проверяет версию и notes, но **пропускает prepare и publish** и не
-заменяет проверки готовых файлов. Обычные проверки проекта работают и в PowerShell.
+- Разрешить только squash merge, squash title = **PR title**, тело = **Blank**.
+- Защитить main: PR обязателен, enforce admins включён, required checks:
+  `check` и `pr-title`. Боту не нужен обход защиты main.
+- В Actions → General оставить default token permissions = read и разрешить
+  **Allow GitHub Actions to create and approve pull requests**.
+  Workflows выдают write только соответствующим jobs.
+
+Эти настройки меняются через GitHub Settings/API, а не YAML.
+GITHUB_TOKEN достаточно для release PR; App token/PAT для первого этапа не обязателен.
+Ожидающее разрешения CI нельзя считать успешным.
+
+Manifest начинается с 0.15.1; bootstrap SHA тега v0.15.1:
+`31400e9ce1542b51506d39fb36ea6d711c268525`.
+История до bootstrap не входит в новый выпуск. При подготовке первых notes
+проверить также все non-conventional изменения после этого тега:
+автоматический черновик может их пропустить.
+При необходимости иной первой версии одноразовый `Release-As: X.Y.Z`
+вручную добавить в тело итогового squash-коммита миграционного PR,
+затем вернуть пустое тело по умолчанию.
 
 ## Частичный сбой
 
-Сначала проверить лог semantic-release, теги и Releases, включая drafts.
-Если тег ещё не создан, после устранения причины можно повторить workflow.
-Если тег уже существует, повторный анализ может считать изменения выпущенными:
-нельзя рассчитывать на повторный запуск как на восстановление assets.
+Ошибка build/проверки/upload оставляет draft. После устранения причины выбрать
+**Re-run failed jobs** или повторить только publish исходного run: он использует
+сохранённые SHA и тег. Повтор всего workflow не равнозначен восстановлению:
+Release Please может уже не вернуть `release_created`.
 
-Для существующего тега собрать **тот же SHA и ту же версию** в чистом checkout:
-`npm ci`, `npm version <версия> --no-git-tag-version --ignore-scripts`, затем полный
-набор проверок из AGENTS.md. Проверить metadata обоих файлов. Завершить тот же
-GitHub Release через UI или `gh release upload <тег> <оба-файла>`; если Release не
-создан, создать draft на существующем теге, загрузить файлы и только потом опубликовать.
-Не перемещать опубликованный тег и не повышать версию ради повторной загрузки.
-Перед заменой существующего asset проверить его содержимое; `--clobber` не применять
-вслепую. Пользовательский запрос на подготовку PR не разрешает выпуск релиза.
+Перед ручным завершением проверить состав draft и уже загруженные assets.
+Не перезаписывать их вслепую и не применять `--clobber`. При необходимости
+собрать тот же SHA и ту же версию, проверить оба файла и завершить тот же draft.
+Не перемещать тег и не повышать версию ради восстановления.
 
-## Используемые инструменты
+Создание release PR ботом, разрешение CI, фактическую публикацию и восстановление
+publish проверять на GitHub при отдельно запрошенном выпуске.
+Локальная проверка конфигурации и файлов не подтверждает эти внешние переходы.
 
-- [semantic-release](https://github.com/semantic-release/semantic-release) и плагины
-  [commit-analyzer](https://github.com/semantic-release/commit-analyzer),
-  [npm](https://github.com/semantic-release/npm), [exec](https://github.com/semantic-release/exec),
-  [github](https://github.com/semantic-release/github).
-- [action-semantic-pull-request](https://github.com/amannn/action-semantic-pull-request).
-- [upload-artifact](https://github.com/actions/upload-artifact) и
+## Инструменты
+
+- [Release Please](https://github.com/googleapis/release-please) и
+  [Release Please Action](https://github.com/googleapis/release-please-action).
+- [Softprops v3](https://github.com/softprops/action-gh-release/tree/v3.0.3).
+- [PR title](https://github.com/amannn/action-semantic-pull-request),
+  [upload-artifact](https://github.com/actions/upload-artifact),
   [add-pr-comment](https://github.com/mshick/add-pr-comment).
 
-Дополнительные actions закреплены SHA; npm-пакеты — lockfile. Собственных скриптов
-для bump, загрузки, комментариев, хранения и очистки preview нет.
+Процесс, роли jobs и правила notes совпадают с SBG Scout.
+Android-специфичные version.txt, Gradle, подпись APK и README-скриншоты остаются в Scout.
