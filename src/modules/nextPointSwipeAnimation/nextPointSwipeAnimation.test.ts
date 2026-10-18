@@ -5,14 +5,7 @@ import {
   canStartForTest,
   dispatchSingleClickForTest,
 } from './nextPointSwipeAnimation';
-import type {
-  IOlFeature,
-  IOlLayer,
-  IOlMap,
-  IOlMapEvent,
-  IOlVectorSource,
-  IOlView,
-} from '../../core/olMap';
+import type { IOlFeature, IOlLayer, IOlMap, IOlVectorSource, IOlView } from '../../core/olMap';
 
 // ── OL mock ─────────────────────────────────────────────────────────────────
 
@@ -274,7 +267,7 @@ describe('nextPointSwipeAnimation behaviour', () => {
       type: 'singleclick',
       pixel: [400, 300],
       originalEvent: {},
-    } as IOlMapEvent);
+    });
   }
 
   test('decide возвращает dismiss без pendingNextGuid когда improvedNextPointSwipe выключен и >= 2 точек в снапшоте', async () => {

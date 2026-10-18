@@ -400,6 +400,7 @@ function extractUrl(input: RequestInfo | URL): string | null {
 export function installInviewFetchHook(): void {
   if (inviewHookInstalled) return;
   inviewHookInstalled = true;
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- The wrapper forwards this explicitly with apply below.
   const originalFetch = window.fetch;
   originalFetchBeforePatch = originalFetch;
   window.fetch = function patchedFetch(
@@ -2410,11 +2411,11 @@ function createRefsOnMapLayer(
   style: (feature: IOlFeature) => unknown[],
 ): IOlLayer {
   return new OlVectorLayer({
-    source: source as unknown as Record<string, unknown>,
+    source: source,
     name: 'svp-refs-on-map',
     zIndex: 8,
     minZoom: 0,
-    style: style as unknown as Record<string, unknown>,
+    style: style,
   });
 }
 

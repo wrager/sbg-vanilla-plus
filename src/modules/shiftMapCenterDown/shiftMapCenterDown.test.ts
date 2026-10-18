@@ -30,8 +30,8 @@ beforeEach(async () => {
   mockMap = {
     getView: () => mockView,
     getSize: () => [800, 600],
-    getLayers: jest.fn() as unknown as IOlMap['getLayers'],
-    getInteractions: jest.fn() as unknown as IOlMap['getInteractions'],
+    getLayers: jest.fn(),
+    getInteractions: jest.fn(),
     addLayer: jest.fn(),
     removeLayer: jest.fn(),
     updateSize: jest.fn(),
@@ -162,7 +162,7 @@ describe('action panel compensation', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
-      return setTimeout(callback, 0) as unknown as number;
+      return setTimeout(callback, 0);
     });
     jest.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
       clearTimeout(id);

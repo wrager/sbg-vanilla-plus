@@ -976,7 +976,7 @@ describe('refsOnMap lock protection', () => {
         ok: true,
         json: () => Promise.resolve({}),
       } as unknown as Response),
-    ) as unknown as typeof window.fetch;
+    );
     localStorage.setItem('auth', 'test-token');
     await refsOnMap.enable();
   });
@@ -1023,7 +1023,7 @@ describe('refsOnMap lock protection', () => {
     const fetchSpy = jest.fn(() =>
       Promise.resolve({ json: () => Promise.resolve({}) } as unknown as Response),
     );
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -1059,7 +1059,7 @@ describe('refsOnMap lock protection', () => {
     getLegacyMigrationBlockReasonSpy.mockReturnValueOnce('legacy');
     window.confirm = jest.fn(() => true);
     const fetchSpy = jest.fn();
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -1114,13 +1114,12 @@ describe('refsOnMap lock protection', () => {
     clickHandler({ pixel: [0, 0] });
 
     window.confirm = jest.fn(() => true);
-    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
-      void _args;
+    const fetchSpy = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(() => {
       return Promise.resolve({
         json: () => Promise.resolve({ count: { total: 90 } }),
       } as unknown as Response);
     });
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -1167,13 +1166,12 @@ describe('refsOnMap lock protection', () => {
     clickHandler({ pixel: [0, 0] });
 
     window.confirm = jest.fn(() => true);
-    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
-      void _args;
+    const fetchSpy = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(() => {
       return Promise.resolve({
         json: () => Promise.resolve({ count: { total: 90 } }),
       } as unknown as Response);
     });
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -1205,7 +1203,7 @@ describe('refsOnMap lock protection', () => {
 
     window.confirm = jest.fn(() => true);
     const fetchSpy = jest.fn();
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
     const errorSpy = jest.spyOn(console, 'error').mockImplementation();
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
@@ -1247,7 +1245,7 @@ describe('refsOnMap lock protection', () => {
         json: () => Promise.resolve({}),
       } as unknown as Response),
     );
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
     const errorSpy = jest.spyOn(console, 'error').mockImplementation();
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
@@ -1297,7 +1295,7 @@ describe('refsOnMap lock protection', () => {
           resolveResponse = resolve;
         }),
     );
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     trash.click();
@@ -1336,7 +1334,7 @@ describe('refsOnMap lock protection', () => {
     const confirmSpy = jest.fn(() => true);
     window.confirm = confirmSpy;
     const fetchSpy = jest.fn();
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     expect(trash.disabled).toBe(true);
@@ -1370,7 +1368,7 @@ describe('refsOnMap lock protection', () => {
     const confirmSpy = jest.fn(() => true);
     window.confirm = confirmSpy;
     const fetchSpy = jest.fn();
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -1407,7 +1405,7 @@ describe('refsOnMap lock protection', () => {
     const confirmSpy = jest.fn(() => true);
     window.confirm = confirmSpy;
     const fetchSpy = jest.fn();
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -1461,13 +1459,12 @@ describe('refsOnMap lock protection', () => {
       localStorage.setItem('inventory-cache', JSON.stringify(updated));
       return true;
     });
-    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
-      void _args;
+    const fetchSpy = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(() => {
       return Promise.resolve({
         json: () => Promise.resolve({ count: { total: 90 } }),
       } as unknown as Response);
     });
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -1519,7 +1516,7 @@ describe('refsOnMap lock protection', () => {
       return true;
     });
     const fetchSpy = jest.fn();
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -1560,7 +1557,7 @@ describe('refsOnMap lock protection', () => {
       return true;
     });
     const fetchSpy = jest.fn();
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -1590,8 +1587,7 @@ describe('refsOnMap lock protection', () => {
     const firstResponse = new Promise<Response>((resolve) => {
       releaseFirst = resolve;
     });
-    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
-      void _args;
+    const fetchSpy = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(() => {
       if (fetchSpy.mock.calls.length === 1) {
         return firstResponse;
       }
@@ -1599,7 +1595,7 @@ describe('refsOnMap lock protection', () => {
         json: () => Promise.resolve({ count: { total: 90 } }),
       } as unknown as Response);
     });
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -1665,7 +1661,7 @@ describe('refsOnMap lock protection', () => {
         json: () => Promise.resolve({ count: { total: 90 } }),
       } as unknown as Response),
     );
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -1758,7 +1754,7 @@ describe('refsOnMap own-team protection', () => {
         ok: true,
         json: () => Promise.resolve({}),
       } as unknown as Response),
-    ) as unknown as typeof window.fetch;
+    );
     localStorage.setItem('auth', 'test-token');
     setPlayerTeam(1);
     await refsOnMap.enable();
@@ -1811,14 +1807,13 @@ describe('refsOnMap own-team protection', () => {
     selectKeepModeRadio();
 
     window.confirm = jest.fn(() => true);
-    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
-      void _args;
+    const fetchSpy = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(() => {
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ count: { total: 90 } }),
       } as unknown as Response);
     });
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -1856,14 +1851,13 @@ describe('refsOnMap own-team protection', () => {
     clickHandler({ pixel: [0, 0] });
 
     window.confirm = jest.fn(() => true);
-    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
-      void _args;
+    const fetchSpy = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(() => {
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ count: { total: 90 } }),
       } as unknown as Response);
     });
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -1903,7 +1897,7 @@ describe('refsOnMap own-team protection', () => {
     const confirmSpy = jest.fn(() => true);
     window.confirm = confirmSpy;
     const fetchSpy = jest.fn();
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     expect(trash.disabled).toBe(true);
@@ -1985,14 +1979,13 @@ describe('refsOnMap own-team protection', () => {
     await flushAsync();
 
     window.confirm = jest.fn(() => true);
-    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
-      void _args;
+    const fetchSpy = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(() => {
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ count: { total: 90 } }),
       } as unknown as Response);
     });
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -2039,7 +2032,7 @@ describe('refsOnMap own-team protection', () => {
     const confirmSpy = jest.fn(() => true);
     window.confirm = confirmSpy;
     const fetchSpy = jest.fn();
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     expect(trash.disabled).toBe(true);
@@ -2079,7 +2072,7 @@ describe('refsOnMap own-team protection', () => {
     const confirmSpy = jest.fn(() => true);
     window.confirm = confirmSpy;
     const fetchSpy = jest.fn();
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLButtonElement;
     expect(trash.disabled).toBe(true);
@@ -2116,14 +2109,13 @@ describe('refsOnMap own-team protection', () => {
     selectKeepModeRadio();
 
     window.confirm = jest.fn(() => true);
-    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
-      void _args;
+    const fetchSpy = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(() => {
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ count: { total: 90 } }),
       } as unknown as Response);
     });
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -2181,14 +2173,13 @@ describe('refsOnMap own-team protection', () => {
       allFeatures[1].set?.('team', 1);
       return true;
     });
-    const fetchSpy = jest.fn((..._args: [RequestInfo | URL, RequestInit?]) => {
-      void _args;
+    const fetchSpy = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(() => {
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({ count: { total: 90 } }),
       } as unknown as Response);
     });
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -2254,7 +2245,7 @@ describe('refsOnMap /inview team load', () => {
         json: () => Promise.resolve({}),
       } as unknown as Response),
     );
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
     localStorage.setItem('auth', 'test-token');
     await refsOnMap.enable();
   });
@@ -2547,7 +2538,7 @@ describe('refsOnMap visible-only active pull', () => {
         json: () => Promise.resolve({ data: { te: 1 } }),
       } as unknown as Response),
     );
-    window.fetch = teamFetchSpy as unknown as typeof window.fetch;
+    window.fetch = teamFetchSpy;
     localStorage.setItem('auth', 'test-token');
     await refsOnMap.enable();
   });
@@ -2651,7 +2642,7 @@ describe('refsOnMap visible-only active pull', () => {
           } as unknown as Response);
         });
       });
-    }) as unknown as typeof window.fetch;
+    });
 
     setExtent([-1000, -1000, 1000, 1000]);
     clickShowButton();
@@ -2864,7 +2855,7 @@ describe('refsOnMap mode radio visibility', () => {
         ok: true,
         json: () => Promise.resolve({}),
       } as unknown as Response),
-    ) as unknown as typeof window.fetch;
+    );
     localStorage.setItem('auth', 'test-token');
     await refsOnMap.enable();
   });
@@ -3000,7 +2991,7 @@ describe('refsOnMap cancel button', () => {
         ok: true,
         json: () => Promise.resolve({}),
       } as unknown as Response),
-    ) as unknown as typeof window.fetch;
+    );
     localStorage.setItem('auth', 'test-token');
     await refsOnMap.enable();
   });
@@ -3125,7 +3116,7 @@ describe('refsOnMap ownTeamMode persistence', () => {
         ok: true,
         json: () => Promise.resolve({}),
       } as unknown as Response),
-    ) as unknown as typeof window.fetch;
+    );
     localStorage.setItem('auth', 'test-token');
     await refsOnMap.enable();
   });
@@ -3228,7 +3219,7 @@ describe('refsOnMap ownTeamMode persistence', () => {
         json: () => Promise.resolve({ count: { total: 90 } }),
       } as unknown as Response),
     );
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
 
     const trash = document.querySelector('.svp-refs-on-map-trash') as HTMLElement;
     trash.click();
@@ -3319,7 +3310,7 @@ describe('refsOnMap progress + interaction lock', () => {
         json: () => Promise.resolve({}),
       } as unknown as Response),
     );
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
     localStorage.setItem('auth', 'test-token');
     await refsOnMap.enable();
   });
@@ -3603,7 +3594,7 @@ describe('refsOnMap selection breakdown UI', () => {
         ok: true,
         json: () => Promise.resolve({}),
       } as unknown as Response),
-    ) as unknown as typeof window.fetch;
+    );
     localStorage.setItem('auth', 'test-token');
     mockGetPlayerTeam.mockReturnValue(1);
     await refsOnMap.enable();
@@ -4131,7 +4122,7 @@ describe('refsOnMap critical safety: protected NEVER in DELETE payload', () => {
         json: () => Promise.resolve({}),
       } as unknown as Response);
     });
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
     window.confirm = jest.fn(() => true);
     localStorage.setItem('auth', 'test-token');
     mockGetPlayerTeam.mockReturnValue(1);
@@ -4475,7 +4466,7 @@ describe('refsOnMap critical safety: mode=keepOne leaves >=1 key per point', () 
         json: () => Promise.resolve({ count: { total: 90 } }),
       } as unknown as Response),
     );
-    window.fetch = fetchSpy as unknown as typeof window.fetch;
+    window.fetch = fetchSpy;
     localStorage.setItem('auth', 'test-token');
     window.confirm = jest.fn(() => true);
     // Глобальный beforeEach ставит mode=delete. Блок весь про keepOne -
@@ -4879,7 +4870,7 @@ describe('refsOnMap critical safety: mode=keepOne leaves >=1 key per point', () 
           json: () => Promise.resolve({ count: { total: 0 } }),
         } as unknown as Response),
       );
-      window.fetch = fetchSpy as unknown as typeof window.fetch;
+      window.fetch = fetchSpy;
       localStorage.setItem('svp_refsOnMap', JSON.stringify({ ownTeamMode: 'keepOne' }));
       localStorage.setItem('inventory-cache', JSON.stringify(items));
       await refsOnMap.enable();
@@ -4968,7 +4959,7 @@ describe('refsOnMap Item 6 style function', () => {
     view.calculateExtent = (): number[] => [100, 100, 200, 200];
     window.fetch = jest.fn(() =>
       Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as unknown as Response),
-    ) as unknown as typeof window.fetch;
+    );
     localStorage.setItem('auth', 'test-token');
     mockGetPlayerTeam.mockReturnValue(2);
     await refsOnMap.enable();

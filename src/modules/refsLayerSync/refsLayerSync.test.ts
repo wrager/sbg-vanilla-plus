@@ -47,9 +47,7 @@ describe('refsLayerSync', () => {
   }
 
   test('happy path: discover -> setTimeout(100ms) -> syncRefsCountForPoints вызван с targetGuid', async () => {
-    window.fetch = jest.fn(() =>
-      Promise.resolve(makeOkResponse()),
-    ) as unknown as typeof window.fetch;
+    window.fetch = jest.fn(() => Promise.resolve(makeOkResponse()));
     installDiscoverFetchHook();
     void refsLayerSync.enable();
 
@@ -70,9 +68,7 @@ describe('refsLayerSync', () => {
   });
 
   test('disable между response и тиком таймера: sync не вызывается', async () => {
-    window.fetch = jest.fn(() =>
-      Promise.resolve(makeOkResponse()),
-    ) as unknown as typeof window.fetch;
+    window.fetch = jest.fn(() => Promise.resolve(makeOkResponse()));
     installDiscoverFetchHook();
     void refsLayerSync.enable();
 
@@ -91,9 +87,7 @@ describe('refsLayerSync', () => {
   });
 
   test('disable между fetch resolve и setTimeout: sync не запланирован', async () => {
-    window.fetch = jest.fn(() =>
-      Promise.resolve(makeOkResponse()),
-    ) as unknown as typeof window.fetch;
+    window.fetch = jest.fn(() => Promise.resolve(makeOkResponse()));
     installDiscoverFetchHook();
     void refsLayerSync.enable();
 
@@ -116,9 +110,7 @@ describe('refsLayerSync', () => {
     // Sync ходит в игровой OL-слой: после смены версии игры его промис
     // отклоняется, и без catch это стало бы unhandled rejection.
     mockSync.mockRejectedValueOnce(new Error('game changed'));
-    window.fetch = jest.fn(() =>
-      Promise.resolve(makeOkResponse()),
-    ) as unknown as typeof window.fetch;
+    window.fetch = jest.fn(() => Promise.resolve(makeOkResponse()));
     installDiscoverFetchHook();
     void refsLayerSync.enable();
 
@@ -140,9 +132,7 @@ describe('refsLayerSync', () => {
   test('повторное включение модуля снова разрешает запись об отказе', async () => {
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
     mockSync.mockRejectedValueOnce(new Error('game changed'));
-    window.fetch = jest.fn(() =>
-      Promise.resolve(makeOkResponse()),
-    ) as unknown as typeof window.fetch;
+    window.fetch = jest.fn(() => Promise.resolve(makeOkResponse()));
     installDiscoverFetchHook();
     void refsLayerSync.enable();
 
@@ -161,9 +151,7 @@ describe('refsLayerSync', () => {
   });
 
   test('игнорирует не-/api/discover URL', async () => {
-    window.fetch = jest.fn(() =>
-      Promise.resolve(makeOkResponse()),
-    ) as unknown as typeof window.fetch;
+    window.fetch = jest.fn(() => Promise.resolve(makeOkResponse()));
     installDiscoverFetchHook();
     void refsLayerSync.enable();
 
@@ -176,9 +164,7 @@ describe('refsLayerSync', () => {
   });
 
   test('discover без guid в body - sync не вызывается', async () => {
-    window.fetch = jest.fn(() =>
-      Promise.resolve(makeOkResponse()),
-    ) as unknown as typeof window.fetch;
+    window.fetch = jest.fn(() => Promise.resolve(makeOkResponse()));
     installDiscoverFetchHook();
     void refsLayerSync.enable();
 
@@ -192,7 +178,7 @@ describe('refsLayerSync', () => {
 
   test('discover с не-200 response - sync не вызывается', async () => {
     const badResponse = { ok: false, status: 500 } as unknown as Response;
-    window.fetch = jest.fn(() => Promise.resolve(badResponse)) as unknown as typeof window.fetch;
+    window.fetch = jest.fn(() => Promise.resolve(badResponse));
     installDiscoverFetchHook();
     void refsLayerSync.enable();
 

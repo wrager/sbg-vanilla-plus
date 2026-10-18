@@ -70,6 +70,7 @@ function isXpBearingRequest(input: RequestInfo | URL, init: RequestInit | undefi
 export function installXpFetchHook(): void {
   if (xpHookInstalled) return;
   xpHookInstalled = true;
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- The wrapper forwards this explicitly with apply below.
   const originalFetch = window.fetch;
   originalFetchBeforePatch = originalFetch;
   window.fetch = function patchedFetch(

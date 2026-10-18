@@ -326,12 +326,11 @@ describe('refreshOverlay', () => {
 
   // 7.C TRUE: guid === null → clear, выход.
   test('guid === null — overlay очищается и остаётся пустым', async () => {
-    const { map, pointsSource } = await setupInstalled([makeFeature('center')]);
+    const { map } = await setupInstalled([makeFeature('center')]);
     setStarCenter('center');
     expect(getOverlayFeatures(map).length).toBe(1);
 
     clearStarCenter();
-    void pointsSource; // для подавления unused
     expect(getOverlayFeatures(map).length).toBe(0);
   });
 

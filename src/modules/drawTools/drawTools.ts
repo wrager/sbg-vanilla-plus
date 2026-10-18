@@ -323,7 +323,7 @@ function createDrawLayer(olMap: IOlMap): void {
 
   const source = new OlVectorSource();
   const style = createStyleFunction();
-  drawSource = source as IVectorSourceWithRemove;
+  drawSource = source;
   drawLayer = new OlVectorLayer({
     source,
     name: DRAW_LAYER_NAME,
@@ -467,7 +467,7 @@ function setMode(mode: ToolMode, force = false): void {
       type: mode === 'line' ? 'LineString' : 'Polygon',
       maxPoints,
       style: createDrawInteractionStyle(currentColor),
-    }) as IObservableInteraction;
+    });
 
     drawEndHandler = (event: Record<string, unknown>) => {
       // OL Draw 'drawend' гарантирует event.feature: Feature
@@ -489,7 +489,7 @@ function setMode(mode: ToolMode, force = false): void {
     modifyInteraction = new ModifyCtor({
       source: drawSource,
       insertVertexCondition: () => false,
-    }) as IObservableInteraction;
+    });
     // Пока Modify тащит вершину, жест принадлежит ему: без захвата
     // singleFingerRotation примет то же движение пальца за поворот карты и
     // будет крутить её под редактируемой линией.

@@ -11,12 +11,10 @@ jest.mock('./olMap', () => {
   return {
     ...actual,
     getOlMap: jest.fn(),
-    createDragPanControl: jest.fn(
-      (): IDragPanControl => ({
-        disable: jest.fn(),
-        restore: jest.fn(),
-      }),
-    ),
+    createDragPanControl: jest.fn((): IDragPanControl => ({
+      disable: jest.fn(),
+      restore: jest.fn(),
+    })),
   };
 });
 
@@ -62,7 +60,7 @@ function createMockMap(): {
   const map: IOlMap = {
     getView: () => view,
     getSize: () => [800, 600],
-    getLayers: jest.fn() as unknown as IOlMap['getLayers'],
+    getLayers: jest.fn(),
     getInteractions: () => ({
       getArray: () => [new StubInteraction(), new StubInteraction()],
     }),
@@ -85,7 +83,7 @@ beforeEach(() => {
   window.ol = {
     Map: { prototype: { getView: jest.fn() } },
     interaction: { DoubleClickZoom: StubInteraction, DragPan: StubInteraction },
-  } as unknown as typeof window.ol;
+  };
 });
 
 afterEach(() => {

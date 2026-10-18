@@ -47,7 +47,7 @@ function createState(): IBlockState {
 }
 
 function removeToastElementImmediately(instance: IToastifyInstance): void {
-  const element = instance.toastElement as IToastElement | null;
+  const element: IToastElement | null = instance.toastElement;
   if (!element) return;
 
   if (element.timeOutValue) {
