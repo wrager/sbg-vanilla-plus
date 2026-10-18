@@ -17,9 +17,13 @@ const VERSION_SELECTOR = '.loading-screen__version';
  * Метка добавляется псевдоэлементом, а не записью в `textContent`: игра
  * перезаписывает содержимое элемента целиком и позже нашего старта, так что
  * текстовая запись была бы затёрта.
+ *
+ * `:not(:empty)` держит метку скрытой, пока игра не написала свою версию: в
+ * разметке элемент пустой (refs/game/index.html:68), и между нашим стартом и
+ * записью игры на экране висела бы одна наша версия с ведущей запятой.
  */
 export function showLoadingScreenFlavor(): void {
-  injectStyles(`${VERSION_SELECTOR}::after { content: ', ${SVP_FLAVOR}'; }`, STYLE_ID);
+  injectStyles(`${VERSION_SELECTOR}:not(:empty)::after { content: ', ${SVP_FLAVOR}'; }`, STYLE_ID);
 }
 
 /** Убирает метку, если скрипт не работает на этой версии игры. */

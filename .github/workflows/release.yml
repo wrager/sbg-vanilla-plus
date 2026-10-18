@@ -2,30 +2,68 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      sha: ${{ steps.release.outputs.sha }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
         with:
-          node-version: 20
+          token: ${{ secrets.GITHUB_TOKEN }}
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.release-please.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run test -- --passWithNoTests
-      - run: npm run build
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Check release notes
+        run: node scripts/checkRelease.mjs "$RELEASE_TAG"
+      - name: Build release assets
+        run: npm run build
+      - name: Verify release assets
+        run: node scripts/checkRelease.mjs "$RELEASE_TAG" dist/release
+      - name: Publish GitHub Release after uploading assets
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          files: |
-            dist/sbg-vanilla-plus.user.js
-            dist/sbg-vanilla-plus.meta.js
+          tag_name: ${{ needs.release-please.outputs.tag_name }}
+          target_commitish: ${{ needs.release-please.outputs.sha }}
           body_path: RELEASE_NOTES.md
+          files: |
+            dist/release/sbg-vanilla-plus.user.js
+            dist/release/sbg-vanilla-plus.meta.js
+          fail_on_unmatched_files: true
+          overwrite_files: false
+          draft: false
+          make_latest: true

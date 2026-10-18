@@ -19,7 +19,7 @@ function onVisibilityChange(): void {
 
 export const keepScreenOn: IFeatureModule = {
   id: MODULE_ID,
-  name: { en: 'Keep Screen On', ru: 'Экран не гаснет' },
+  name: { en: 'Keep screen on', ru: 'Экран не гаснет' },
   description: {
     en: 'Keeps screen awake during gameplay (Wake Lock API)',
     ru: 'Экран не гаснет во время игры (Wake Lock API)',

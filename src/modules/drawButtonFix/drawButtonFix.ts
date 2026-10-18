@@ -13,7 +13,7 @@ let drawDisabledObserver: MutationObserver | null = null;
 
 export const drawButtonFix: IFeatureModule = {
   id: MODULE_ID,
-  name: { en: 'Draw Button Fix', ru: 'Фикс кнопки рисования' },
+  name: { en: 'Draw button fix', ru: 'Фикс кнопки рисования' },
   description: {
     en: 'Keeps the Draw button clickable',
     ru: 'Кнопка «Рисовать» всегда активна',

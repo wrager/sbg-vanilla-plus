@@ -13,7 +13,7 @@ import { enhancedPointPopupUi } from './modules/enhancedPointPopupUi/enhancedPoi
 import { shiftMapCenterDown } from './modules/shiftMapCenterDown/shiftMapCenterDown';
 import { drawButtonFix } from './modules/drawButtonFix/drawButtonFix';
 import { repairButtonFix } from './modules/repairButtonFix/repairButtonFix';
-import { groupErrorToasts } from './modules/groupErrorToasts/groupErrorToasts';
+import { compactToasts } from './modules/compactToasts/compactToasts';
 import { removeAttackCloseButton } from './modules/removeAttackCloseButton/removeAttackCloseButton';
 import { keepScreenOn } from './modules/keepScreenOn/keepScreenOn';
 import { largerPointTapArea } from './modules/largerPointTapArea/largerPointTapArea';
@@ -29,6 +29,7 @@ import { nextPointSwipeAnimation } from './modules/nextPointSwipeAnimation/nextP
 import { nextPointSwipeButtonsFix } from './modules/nextPointSwipeButtonsFix/nextPointSwipeButtonsFix';
 import { refsLayerSync } from './modules/refsLayerSync/refsLayerSync';
 import { swipeToClosePopup } from './modules/swipeToClosePopup/swipeToClosePopup';
+import { xpPopups } from './modules/xpPopups/xpPopups';
 
 if (!isDisabled()) {
   // Перехваты, которые должны быть установлены ДО парсинга DOM и
@@ -68,9 +69,10 @@ if (!isDisabled()) {
       // ui
       enhancedMainScreen,
       enhancedPointPopupUi,
-      groupErrorToasts,
+      compactToasts,
       removeAttackCloseButton,
       nextPointSwipeAnimation,
+      xpPopups,
       // feature (favoritesMigration ПЕРЕД inventoryCleanup — зависимость init:
       // loadFavorites() в init модуля favoritesMigration грузит legacy IDB-снимок,
       // от которого зависит блок-логика inventoryCleanup)

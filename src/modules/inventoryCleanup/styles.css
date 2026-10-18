@@ -43,6 +43,21 @@
   box-sizing: border-box;
 }
 
+.svp-cleanup-description {
+  font-size: 11px;
+  color: var(--text);
+}
+
+.svp-cleanup-description-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.svp-cleanup-description-list {
+  margin: 0;
+  padding-left: 16px;
+}
+
 .svp-cleanup-section-title {
   font-size: 10px;
   font-weight: 600;

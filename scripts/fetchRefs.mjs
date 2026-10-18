@@ -3,8 +3,10 @@
  *
  * Usage: npm run refs:fetch
  *
- * Downloads EUI/CUI sources and releases, OpenLayers bundle, game script.
- * Manual content in refs/game/dom/, refs/game/css/ and refs/screenshots/ is preserved.
+ * Downloads EUI/CUI sources and releases, OpenLayers, Toastify and i18next
+ * bundles, game script, stylesheet and translations.
+ * Manual content in refs/game/dom/, refs/game/css/, refs/game_<version>/ and
+ * refs/screenshots/ is preserved.
  */
 
 import { execSync } from 'node:child_process';
@@ -26,6 +28,10 @@ const URLS = {
   euiRelease: 'https://github.com/egorantonov/sbg-enhanced/releases/latest/download/eui.user.js',
   cuiRelease: 'https://github.com/egorantonov/sbg-enhanced/releases/latest/download/cui.user.js',
   olBundle: 'https://sbg-game.ru/packages/js/ol@10.6.0.js',
+  toastifyBundle: 'https://sbg-game.ru/packages/js/toastify.js',
+  toastifyStyles: 'https://sbg-game.ru/packages/css/toastify.css',
+  i18nextBundle: 'https://sbg-game.ru/packages/js/i18next.js',
+  i18nMeta: 'https://sbg-game.ru/i18n/meta.json',
   gamePage: 'https://sbg-game.ru/app/',
 };
 
@@ -59,7 +65,7 @@ async function downloadFile(url, dest) {
   await pipeline(nodeStream, createWriteStream(dest));
 }
 
-/** @param {string} filePath @param {'babel' | 'html' | 'css'} parser */
+/** @param {string} filePath @param {'babel' | 'html' | 'css' | 'json'} parser */
 function prettify(filePath, parser = 'babel') {
   try {
     execSync(`npx prettier --write --parser ${parser} "${toSlash(filePath)}"`, {
@@ -182,6 +188,28 @@ function extractGameScriptUrl(html) {
   return null;
 }
 
+/**
+ * Extract the game stylesheet URL from the HTML page.
+ * The link is versioned the same way as the script: style@<version>.<hash>.css
+ * @param {string} html
+ * @returns {string | null}
+ */
+function extractGameStylesUrl(html) {
+  const match = html.match(/href="(style@[\d.]+\.[a-f0-9.]+\.css)"/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Extract the translation revision the game appends to i18n requests
+ * (window.I18NRV, used as ?rev= by i18next-http-backend).
+ * @param {string} html
+ * @returns {string | null}
+ */
+function extractI18nRevision(html) {
+  const match = html.match(/window\.I18NRV\s*=\s*(\d+)/);
+  return match ? match[1] : null;
+}
+
 /** @param {string} name @param {string} location @param {string} source */
 function ok(name, location, source) {
   manifest.push({ name, location, source, status: 'ok' });
@@ -232,6 +260,56 @@ async function fetchOlBundle() {
   ok('OpenLayers 10.6.0', 'ol/ol.js', URLS.olBundle);
 }
 
+/**
+ * Toastify-JS: the game shows every notification through it, and SVP patches its
+ * prototype, so its real API has to be readable locally.
+ */
+async function fetchToastify() {
+  const scriptDest = join(REFS, 'toastify', 'toastify.js');
+  await downloadFile(URLS.toastifyBundle, scriptDest);
+  beautify(scriptDest);
+  ok('Toastify script', 'toastify/toastify.js', URLS.toastifyBundle);
+
+  const stylesDest = join(REFS, 'toastify', 'toastify.css');
+  await downloadFile(URLS.toastifyStyles, stylesDest);
+  prettify(stylesDest, 'css');
+  ok('Toastify styles', 'toastify/toastify.css', URLS.toastifyStyles);
+}
+
+/** i18next: SVP reads game labels and message templates through it. */
+async function fetchI18next() {
+  const dest = join(REFS, 'i18next', 'i18next.js');
+  await downloadFile(URLS.i18nextBundle, dest);
+  beautify(dest);
+  ok('i18next', 'i18next/i18next.js', URLS.i18nextBundle);
+}
+
+/**
+ * Game translations. Languages come from /i18n/meta.json, the files themselves
+ * live next to the app (loadPath './i18n/{{lng}}.json', refs/game/script.js) and
+ * are versioned by window.I18NRV from the page.
+ * @param {string} html
+ */
+async function fetchGameTranslations(html) {
+  const response = await fetchUrl(URLS.i18nMeta);
+  const meta = await response.json();
+  const languages = meta.supported;
+  if (!Array.isArray(languages) || languages.length === 0) {
+    throw new Error(`No supported languages in ${URLS.i18nMeta}`);
+  }
+
+  const revision = extractI18nRevision(html);
+  const query = revision === null ? '' : `?rev=${revision}`;
+
+  for (const language of languages) {
+    const url = new URL(`i18n/${language}.json${query}`, URLS.gamePage).href;
+    const dest = join(REFS, 'game', 'i18n', `${language}.json`);
+    await downloadFile(url, dest);
+    prettify(dest, 'json');
+    ok(`Game translations (${language})`, `game/i18n/${language}.json`, url);
+  }
+}
+
 /** Fetch game page HTML + extract and download game script. */
 async function fetchGameAssets() {
   const response = await fetchUrl(URLS.gamePage);
@@ -262,6 +340,26 @@ async function fetchGameAssets() {
       `Could not extract script URL from HTML. Preview:\n${preview}`,
     );
   }
+
+  // Extract and download game stylesheet
+  const stylesRelativeUrl = extractGameStylesUrl(html);
+  if (stylesRelativeUrl) {
+    const stylesUrl = new URL(stylesRelativeUrl, URLS.gamePage).href;
+    const stylesDest = join(REFS, 'game', 'style.css');
+    try {
+      await downloadFile(stylesUrl, stylesDest);
+      prettify(stylesDest, 'css');
+      ok('Game styles', 'game/style.css', stylesUrl);
+    } catch (error) {
+      fail('Game styles', stylesUrl, error.message);
+    }
+  } else {
+    fail('Game styles', URLS.gamePage, 'Could not extract stylesheet URL from HTML');
+  }
+
+  await fetchGameTranslations(html).catch((error) =>
+    fail('Game translations', URLS.i18nMeta, error.message),
+  );
 }
 
 function generateScoutReadme() {
@@ -328,7 +426,7 @@ ${rows}
 
 ## Automatic content
 
-Everything except \`game/dom/\`, \`game/css/\`, \`screenshots/\` and \`scout/\` is downloaded automatically.
+Everything except \`game/dom/\`, \`game/css/\`, \`game_<version>/\`, \`screenshots/\` and \`scout/\` is downloaded automatically.
 Re-run \`npm run refs:fetch\` to update (manual content is preserved).
 
 ## Manual content
@@ -338,6 +436,7 @@ Open the stub file for details on how to populate it.
 
 - \`game/dom/body.html\` — rendered DOM (from DevTools)
 - \`game/css/variables.css\` — :root CSS custom properties (from DevTools)
+- \`game_<version>/\` — снимок предыдущей версии игры (сервер отдаёт только текущую)
 - \`screenshots/\` — UI screenshots
 - \`scout/\` — справочник по SBG Scout (хост-приложение Android)
 `;
@@ -350,12 +449,20 @@ Open the stub file for details on how to populate it.
 async function main() {
   console.log('Fetching references...\n');
 
-  // Preserve manual content directories
+  // Preserve manual content directories.
+  // game_<version>/ are hand-made snapshots of previous game releases: the game
+  // serves only the current version, so a wiped snapshot cannot be re-fetched.
+  const previousGameSnapshots = existsSync(REFS)
+    ? readdirSync(REFS)
+        .filter((entry) => entry.startsWith('game_'))
+        .map((entry) => join(REFS, entry))
+    : [];
   const manualDirs = [
     join(REFS, 'game', 'dom'),
     join(REFS, 'game', 'css'),
     join(REFS, 'screenshots'),
     join(REFS, 'scout'),
+    ...previousGameSnapshots,
   ];
   const preservedPaths = [];
   for (const dir of manualDirs) {
@@ -380,8 +487,11 @@ async function main() {
     join(REFS, 'eui'),
     join(REFS, 'cui'),
     join(REFS, 'ol'),
+    join(REFS, 'toastify'),
+    join(REFS, 'i18next'),
     join(REFS, 'game', 'dom'),
     join(REFS, 'game', 'css'),
+    join(REFS, 'game', 'i18n'),
     join(REFS, 'releases'),
     join(REFS, 'screenshots'),
     join(REFS, 'scout'),
@@ -445,6 +555,8 @@ async function main() {
     fetchEuiRelease().catch((error) => fail('EUI release', URLS.euiRelease, error.message)),
     fetchCuiRelease().catch((error) => fail('CUI release', URLS.cuiRelease, error.message)),
     fetchOlBundle().catch((error) => fail('OL bundle', URLS.olBundle, error.message)),
+    fetchToastify().catch((error) => fail('Toastify', URLS.toastifyBundle, error.message)),
+    fetchI18next().catch((error) => fail('i18next', URLS.i18nextBundle, error.message)),
     fetchGameAssets().catch((error) => fail('Game assets', URLS.gamePage, error.message)),
   ]);
 

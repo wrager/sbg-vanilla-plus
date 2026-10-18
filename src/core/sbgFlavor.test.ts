@@ -21,6 +21,7 @@ describe('installSbgFlavor', () => {
 
   afterEach(() => {
     window.fetch = originalFetch;
+    jest.restoreAllMocks();
   });
 
   it('should add x-sbg-flavor header to fetch requests', async () => {
@@ -73,5 +74,38 @@ describe('installSbgFlavor', () => {
     await window.fetch('/api/self');
 
     expect(getLastCallHeaders().get('x-sbg-flavor')).toBe(`VanillaPlus/${__SVP_VERSION__}`);
+  });
+
+  test('заголовок, который не принимает Headers, не обрывает запрос игры', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    installSbgFlavor();
+    const brokenInit = { headers: { 'x-sbg-flavor': 'bad\nvalue' } };
+
+    // Нативный fetch на таком заголовке отклоняет промис, а не бросает
+    // синхронно: игровой код с обработчиком на промисе увидел бы наш throw
+    // мимо своего catch.
+    await expect(window.fetch('/api/self', brokenInit)).resolves.toBeDefined();
+
+    // Оригиналу запрос уходит нетронутым: без нашего заголовка, но с init
+    // игры - решение о судьбе такого запроса остаётся за ней.
+    expect(mockFetch).toHaveBeenCalledWith('/api/self', brokenInit);
+    // Ошибку конструирует Headers из jsdom, поэтому она инстанс Error чужого
+    // realm - expect.any(Error) на ней не срабатывает.
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('[SVP]'), expect.anything());
+  });
+
+  test('отказ пишется в лог один раз', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    installSbgFlavor();
+
+    await window.fetch('/api/self', { headers: { 'x-sbg-flavor': 'bad\nvalue' } });
+    await window.fetch('/api/draw', { headers: { 'x-sbg-flavor': 'bad\nvalue' } });
+
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    // Перехват остаётся в цепочке: следующий корректный запрос снова получает
+    // наш заголовок.
+    await window.fetch('/api/self');
+    const [, init] = mockFetch.mock.calls[2];
+    expect(new Headers(init?.headers).get('x-sbg-flavor')).toBe(`VanillaPlus/${__SVP_VERSION__}`);
   });
 });

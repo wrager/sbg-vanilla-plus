@@ -22,6 +22,7 @@ function persistOrNotify(settings: ReturnType<typeof loadSettings>): boolean {
       en: 'Failed to save settings (storage full or inaccessible)',
       ru: 'Не удалось сохранить настройки (хранилище заполнено или недоступно)',
     }),
+    { type: 'error' },
   );
   return false;
 }
@@ -839,6 +840,15 @@ export function initSettingsUI(
   const header = document.createElement('div');
   header.className = 'svp-settings-header';
 
+  const titleSpan = document.createElement('span');
+  titleSpan.textContent = t(SETTINGS_TITLE);
+  header.appendChild(titleSpan);
+
+  /*
+   * Мастер-чекбокс идёт последним и внутри своей подписи стоит справа от
+   * текста: так он оказывается на одной вертикали с колонкой чекбоксов
+   * модулей (у header и списка модулей одинаковый горизонтальный padding).
+   */
   const toggleAllLabel = document.createElement('label');
   toggleAllLabel.className = 'svp-toggle-all';
   const toggleAllCheckbox = document.createElement('input');
@@ -846,13 +856,9 @@ export function initSettingsUI(
   toggleAllCheckbox.className = 'svp-toggle-all-checkbox';
   const toggleAllText = document.createElement('span');
   toggleAllText.textContent = t(TOGGLE_ALL_LABEL);
-  toggleAllLabel.appendChild(toggleAllCheckbox);
   toggleAllLabel.appendChild(toggleAllText);
+  toggleAllLabel.appendChild(toggleAllCheckbox);
   header.appendChild(toggleAllLabel);
-
-  const titleSpan = document.createElement('span');
-  titleSpan.textContent = t(SETTINGS_TITLE);
-  header.appendChild(titleSpan);
 
   panel.appendChild(header);
 
@@ -969,6 +975,18 @@ export function initSettingsUI(
     content.classList.toggle('svp-scroll-bottom', hasBottom);
   }
 
+  /*
+   * Панель живёт в DOM всё время работы скрипта и открывается добавлением
+   * класса, поэтому без явного сброса прокрутки она открывается там, где её
+   * закрыли: пользователь листает список модулей вниз, закрывает панель и при
+   * следующем открытии видит середину списка вместо его начала.
+   */
+  function openPanel(): void {
+    panel.classList.add('svp-open');
+    content.scrollTop = 0;
+    requestAnimationFrame(updateScrollIndicators);
+  }
+
   content.addEventListener('scroll', updateScrollIndicators);
   const observer = new MutationObserver(updateScrollIndicators);
   observer.observe(content, { childList: true, subtree: true });
@@ -988,10 +1006,7 @@ export function initSettingsUI(
     const openButton = document.createElement('button');
     openButton.className = 'settings-section__button';
     openButton.textContent = t(OPEN_LABEL);
-    openButton.addEventListener('click', () => {
-      panel.classList.add('svp-open');
-      requestAnimationFrame(updateScrollIndicators);
-    });
+    openButton.addEventListener('click', openPanel);
 
     item.appendChild(label);
     item.appendChild(openButton);
@@ -1013,8 +1028,7 @@ export function initSettingsUI(
   }
 
   if (location.hash.includes('svp-settings')) {
-    panel.classList.add('svp-open');
+    openPanel();
     history.replaceState(null, '', location.pathname + location.search);
-    requestAnimationFrame(updateScrollIndicators);
   }
 }

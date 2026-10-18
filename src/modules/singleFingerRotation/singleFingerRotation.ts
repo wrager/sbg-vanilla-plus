@@ -274,7 +274,7 @@ function restoreCalculateExtentWrapper(): void {
 export const singleFingerRotation: IFeatureModule = {
   id: MODULE_ID,
   name: {
-    en: 'Single-Finger Map Rotation',
+    en: 'Single-finger map rotation',
     ru: 'Вращение карты одним пальцем',
   },
   description: {

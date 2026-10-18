@@ -2,6 +2,9 @@ import { injectStyles, observeText, removeStyles, $, $$, waitForElement } from '
 
 describe('dom', () => {
   afterEach(() => {
+    // Стиль ложится в head или, пока тот не распарсен, в documentElement -
+    // чистка одного head оставляла бы стили второго случая следующим тестам.
+    for (const style of $$('style[id^="svp-"]')) style.remove();
     document.head.innerHTML = '';
     document.body.innerHTML = '';
   });
@@ -34,6 +37,70 @@ describe('dom', () => {
     expect(style?.parentElement).toBe(document.documentElement);
 
     document.documentElement.prepend(head);
+  });
+
+  describe('injectStyles before the root element exists', () => {
+    const flushMutations = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Самый ранний document-start: парсер ещё не создал <html>, вставлять
+    // стиль некуда. detachRoot воспроизводит это состояние, restoreRoot
+    // возвращает корневой элемент так же, как это делает парсер.
+    let detachedRoot: HTMLElement | null = null;
+
+    const detachRoot = (): void => {
+      detachedRoot = document.documentElement;
+      detachedRoot.remove();
+    };
+
+    const restoreRoot = async (): Promise<void> => {
+      if (!detachedRoot) return;
+      document.appendChild(detachedRoot);
+      detachedRoot = null;
+      await flushMutations();
+    };
+
+    // Возврат корня и в afterEach: упавший тест иначе оставит документ без
+    // <html>, и следующие тесты падают каскадом на не связанном с ними коде.
+    afterEach(async () => {
+      await restoreRoot();
+    });
+
+    test('injects the style once the root element appears', async () => {
+      detachRoot();
+
+      injectStyles('body { color: red; }', 'test');
+      expect(document.getElementById('svp-test')).toBeNull();
+
+      await restoreRoot();
+
+      const style = document.getElementById('svp-test');
+      expect(style?.textContent).toBe('body { color: red; }');
+      expect(style?.isConnected).toBe(true);
+    });
+
+    test('does not duplicate the style on repeated call', async () => {
+      detachRoot();
+
+      injectStyles('body { color: red; }', 'test');
+      injectStyles('body { color: blue; }', 'test');
+
+      await restoreRoot();
+
+      const styles = document.querySelectorAll('#svp-test');
+      expect(styles.length).toBe(1);
+      expect(styles[0].textContent).toBe('body { color: blue; }');
+    });
+
+    test('removeStyles cancels the pending injection', async () => {
+      detachRoot();
+
+      injectStyles('body { color: red; }', 'test');
+      removeStyles('test');
+
+      await restoreRoot();
+
+      expect(document.getElementById('svp-test')).toBeNull();
+    });
   });
 
   test('removeStyles removes the style element', () => {

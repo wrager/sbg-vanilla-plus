@@ -19,7 +19,7 @@ export function showCenterAssignedToast(pointTitle: string | null = null): void 
           en: 'Point selected as star center for drawing.',
           ru: 'Точка выбрана центром для рисования звезды.',
         });
-  showToast(message, 3000);
+  showToast(message);
 }
 
 /** Toast при включении режима через toggle (попап-кнопка или map-toggle). */
@@ -31,7 +31,7 @@ export function showStarModeEnabledToast(pointTitle: string | null = null): void
           ru: `Режим звезды включён: ${pointTitle}`,
         })
       : t({ en: 'Star mode enabled', ru: 'Режим звезды включён' });
-  showToast(message, 3000);
+  showToast(message);
 }
 
 /** Toast при выключении режима через toggle (попап-кнопка или map-toggle). */
@@ -43,7 +43,7 @@ export function showStarModeDisabledToast(pointTitle: string | null = null): voi
           ru: `Режим звезды выключен: ${pointTitle}`,
         })
       : t({ en: 'Star mode disabled', ru: 'Режим звезды выключен' });
-  showToast(message, 3000);
+  showToast(message);
 }
 
 /**
@@ -57,7 +57,7 @@ export function showCannotSetLockedCenterToast(): void {
       en: "Locked point can't be a star center.",
       ru: 'Точка с замочком не может быть центром звезды.',
     }),
-    4000,
+    { type: 'error', duration: 4000 },
   );
 }
 
@@ -73,6 +73,6 @@ export function showCenterClearedBecauseLockedToast(): void {
       en: 'Star center cleared: the point is now locked.',
       ru: 'Центр звезды снят: точка стала с замочком.',
     }),
-    4000,
+    { duration: 4000 },
   );
 }

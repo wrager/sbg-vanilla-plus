@@ -75,22 +75,73 @@ export function observeText(targets: Node | Node[], callback: () => void): Mutat
   return observer;
 }
 
+/*
+ * Стили, для которых на момент вызова не нашлось куда вставить, и наблюдатель
+ * за появлением корневого элемента. Общие на модуль: ожидающих может быть
+ * несколько, а наблюдатель нужен один.
+ */
+const pendingStyles: HTMLStyleElement[] = [];
+let styleRootObserver: MutationObserver | null = null;
+
+/**
+ * Узел для вставки <style>: head, если он уже распарсен, иначе documentElement.
+ * В самом раннем document-start нет ни того, ни другого - тогда null.
+ *
+ * Оба спрашиваются в обход document.head и напрямую: они типизированы как
+ * всегда существующие, и их отсутствие типам не видно.
+ */
+function findStyleRoot(): Element | null {
+  const head = $('head');
+  if (head) return head;
+  const root: Element | null = document.documentElement;
+  return root;
+}
+
+function flushPendingStyles(): void {
+  const root = findStyleRoot();
+  if (!root) return;
+  styleRootObserver?.disconnect();
+  styleRootObserver = null;
+  for (const style of pendingStyles.splice(0)) root.appendChild(style);
+}
+
+function appendStyle(style: HTMLStyleElement): void {
+  const root = findStyleRoot();
+  if (root) {
+    root.appendChild(style);
+    return;
+  }
+  /*
+   * Скрипт стартует на document-start, когда парсер ещё не дошёл до <html>:
+   * вставлять некуда, ждём появления корневого элемента. Ожидание короткое -
+   * корень создаётся на первом чанке разметки, задолго до загрузочного экрана
+   * игры.
+   */
+  pendingStyles.push(style);
+  if (!styleRootObserver) {
+    styleRootObserver = new MutationObserver(flushPendingStyles);
+    styleRootObserver.observe(document, { childList: true });
+  }
+}
+
+/**
+ * Вставляет <style> с нашим префиксом в id. Стиль ложится в head, а до его
+ * разбора - в documentElement: браузер применяет <style> и вне head, а при
+ * разборе head элемент остаётся на месте, переносить его потом не нужно.
+ */
 export function injectStyles(css: string, id: string): void {
   removeStyles(id);
   const style = document.createElement('style');
   style.id = `svp-${id}`;
   style.textContent = css;
-  /*
-   * Скрипт стартует на document-start, когда head ещё не распарсен: стили,
-   * которые нужны до готовности DOM, кладём в documentElement. Браузер
-   * применяет <style> и вне head, а при разборе head элемент остаётся на
-   * месте - переносить его потом не нужно. Спрашиваем head через
-   * querySelector, потому что document.head типизирован как всегда
-   * существующий и его отсутствие типам не видно.
-   */
-  ($('head') ?? document.documentElement).appendChild(style);
+  appendStyle(style);
 }
 
 export function removeStyles(id: string): void {
-  document.getElementById(`svp-${id}`)?.remove();
+  const elementId = `svp-${id}`;
+  // Стиль может ещё ждать корневого элемента - тогда удалять из документа
+  // нечего, надо снять его с очереди, иначе он вставится после удаления.
+  const pendingIndex = pendingStyles.findIndex((style) => style.id === elementId);
+  if (pendingIndex !== -1) pendingStyles.splice(pendingIndex, 1);
+  document.getElementById(elementId)?.remove();
 }

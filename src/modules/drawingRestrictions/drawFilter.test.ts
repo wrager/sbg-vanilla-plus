@@ -24,6 +24,20 @@ function buildResponse(body: unknown, status = 200): Response {
   });
 }
 
+/**
+ * Ответ, на котором отказывает сборка отфильтрованного: url переносится в новый
+ * Response последним шагом, уже после разбора тела и применения предикатов.
+ */
+function buildBrokenResponse(): Response {
+  const response = buildResponse({ data: [{ p: 'p1', d: 900 }] });
+  Object.defineProperty(response, 'url', {
+    get(): string {
+      throw new Error('game changed');
+    },
+  });
+  return response;
+}
+
 let originalFetch: typeof window.fetch;
 
 function createPopup(guid: string, hidden = false): HTMLElement {
@@ -48,6 +62,7 @@ afterEach(() => {
   window.fetch = originalFetch;
   localStorage.clear();
   document.body.innerHTML = '';
+  jest.restoreAllMocks();
 });
 
 describe('drawFilter', () => {
@@ -168,6 +183,68 @@ describe('drawFilter', () => {
     const response = await window.fetch('/api/draw');
     expect(response.headers.get('content-length')).toBeNull();
     expect(response.headers.get('content-type')).toBe('application/json');
+  });
+
+  test('отказ разбора ответа отдаёт игре ответ сервера без тоста о скрытии', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
+    const serverResponse = buildBrokenResponse();
+    window.fetch = jest.fn().mockResolvedValue(serverResponse);
+    installDrawFilter();
+
+    const response = await window.fetch('/api/draw');
+
+    // Без фильтрации игра получает полный список целей, поэтому сообщение о
+    // скрытых точках противоречило бы тому, что игрок видит на карте.
+    expect(response).toBe(serverResponse);
+    expect(showToastMock).not.toHaveBeenCalled();
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining('[SVP drawingRestrictions]'),
+      expect.any(Error),
+    );
+  });
+
+  test('после отказа фильтр продолжает работать, а в лог идёт одна запись', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
+    const mockFetch = jest.fn().mockResolvedValue(buildBrokenResponse());
+    window.fetch = mockFetch;
+    installDrawFilter();
+
+    await window.fetch('/api/draw');
+    await window.fetch('/api/draw');
+    expect(consoleError).toHaveBeenCalledTimes(1);
+
+    mockFetch.mockResolvedValue(
+      buildResponse({
+        data: [
+          { p: 'p1', d: 300 },
+          { p: 'p2', d: 800 },
+        ],
+      }),
+    );
+    const response = await window.fetch('/api/draw');
+    const body = (await response.json()) as { data: { p: string }[] };
+    expect(body.data.map((entry) => entry.p)).toEqual(['p1']);
+  });
+
+  test('повторное включение модуля снова разрешает запись об отказе', async () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    saveDrawingRestrictionsSettings({ version: 1, maxDistanceMeters: 500 });
+    window.fetch = jest.fn().mockResolvedValue(buildBrokenResponse());
+    installDrawFilter();
+
+    await window.fetch('/api/draw');
+    expect(consoleError).toHaveBeenCalledTimes(1);
+
+    // Счётчик привязан к включению модуля, а не к жизни страницы: после
+    // re-enable отказ описывает уже новое состояние игры, и молчать о нём
+    // из-за записи, сделанной до выключения, нельзя.
+    uninstallDrawFilter();
+    installDrawFilter();
+
+    await window.fetch('/api/draw');
+    expect(consoleError).toHaveBeenCalledTimes(2);
   });
 
   test('uninstall перестаёт фильтровать, но не выкидывает wrapper из цепочки', async () => {

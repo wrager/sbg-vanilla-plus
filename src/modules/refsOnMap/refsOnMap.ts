@@ -191,6 +191,7 @@ function maybeToastLegacyMigrationBlock(): boolean {
             ru: 'Сначала проведите миграцию избранного через модуль favoritesMigration, чтобы настроить удаление ключей',
           },
     ),
+    { type: 'error' },
   );
   return true;
 }
@@ -1521,6 +1522,7 @@ function validateDeleteAllowed(protectiveMode: boolean): boolean {
         en: 'Native lock/favorite protection unavailable: server returned no f-flags. Deletion blocked.',
         ru: 'Нативная защита замочком или звёздочкой недоступна: сервер не отдал поле f. Удаление заблокировано.',
       }),
+      { type: 'error' },
     );
     return false;
   }
@@ -1530,6 +1532,7 @@ function validateDeleteAllowed(protectiveMode: boolean): boolean {
         en: 'Cannot determine player team. Deletion blocked (switch to "Delete" mode to proceed).',
         ru: 'Не удалось определить команду игрока. Удаление заблокировано (переключите режим на "Удалять", чтобы продолжить).',
       }),
+      { type: 'error' },
     );
     return false;
   }
@@ -1625,6 +1628,7 @@ async function handleDeleteClick(): Promise<void> {
   if (payload.size === 0) {
     showToast(
       buildAllProtectedToast(lockBucket, favoriteBucket, ownBucket, unknownBucket, keepOneBucket),
+      { type: 'error' },
     );
     return;
   }
@@ -1655,6 +1659,7 @@ async function handleDeleteClick(): Promise<void> {
           en: 'Native lock/favorite protection unavailable: server returned no f-flags. Deletion blocked.',
           ru: 'Нативная защита замочком или звёздочкой недоступна: сервер не отдал поле f. Удаление заблокировано.',
         }),
+        { type: 'error' },
       );
       return;
     }
@@ -1690,6 +1695,7 @@ async function handleDeleteClick(): Promise<void> {
           en: 'All selected keys became protected before deletion - aborted',
           ru: 'Все выбранные ключи стали избранными или заблокированными до удаления - отменено',
         }),
+        { type: 'error' },
       );
       return;
     }
@@ -1699,6 +1705,7 @@ async function handleDeleteClick(): Promise<void> {
       console.error(`[SVP] ${MODULE_ID}: deletion error:`, response.error);
       showToast(
         buildPostDeleteToast(0, 0, freshPlan.overallToDelete, freshPlan.pointsInPayload.size),
+        { type: 'error' },
       );
       return;
     }
@@ -1709,7 +1716,9 @@ async function handleDeleteClick(): Promise<void> {
     updateSelectionUi();
   } catch (error) {
     console.error(`[SVP] ${MODULE_ID}: deletion failed:`, error);
-    showToast(buildPostDeleteToast(0, 0, plan.overallToDelete, plan.pointsInPayload.size));
+    showToast(buildPostDeleteToast(0, 0, plan.overallToDelete, plan.pointsInPayload.size), {
+      type: 'error',
+    });
   } finally {
     if (trashButton) trashButton.disabled = trashWasDisabled;
     // updateSelectionUi пересчитает disabled на основе нового selection

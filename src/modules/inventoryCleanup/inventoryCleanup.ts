@@ -136,7 +136,7 @@ async function runCleanupImpl(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
     console.error('[SVP inventoryCleanup] Ошибка удаления:', message);
-    showToast(`Ошибка очистки: ${message}`);
+    showToast(`Ошибка очистки: ${message}`, { type: 'error' });
   }
 }
 

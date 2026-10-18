@@ -42,6 +42,20 @@ const migrations: Migration[] = [
 
     return { ...s, modules, errors };
   },
+  // v4 → v5: переименование модуля groupErrorToasts → compactToasts
+  (s) => {
+    const modules = { ...s.modules };
+    if ('groupErrorToasts' in modules) {
+      modules['compactToasts'] = modules['groupErrorToasts'];
+      delete modules['groupErrorToasts'];
+    }
+    const errors = { ...s.errors };
+    if ('groupErrorToasts' in errors) {
+      errors['compactToasts'] = errors['groupErrorToasts'];
+      delete errors['groupErrorToasts'];
+    }
+    return { ...s, modules, errors };
+  },
 ];
 
 function isSvpSettings(val: unknown): val is ISvpSettings {

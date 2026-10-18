@@ -12,9 +12,19 @@ const STORAGE_KEY_GAME_LAYER = 'svp_mapTileGameLayer';
 const CUSTOM_VALUE = 'svp-custom';
 const CUSTOM_DARK_VALUE = 'svp-custom-dark';
 const TILE_FILTER_ID = 'mapTileLayersFilter';
-const LIGHT_FILTER_CSS = '.ol-layer__base canvas { filter: none !important; }';
-const DARK_FILTER_CSS =
-  '.ol-layer__base canvas { filter: invert(1) hue-rotate(180deg) !important; }';
+/*
+ * Фильтр вешается на сам слой .ol-layer__base, а не на его canvas: игра
+ * фильтрует этот же div правилом
+ * ":root[data-theme='dark'] .ol-layer__base[data-code='osm']"
+ * (refs/game/css/variables.css). Фильтры предка и потомка не отменяют друг
+ * друга, а перемножаются: "filter: none" на canvas не снимал игровую инверсию,
+ * а наша инверсия ложилась поверх игровой и давала двойную. На одном элементе
+ * !important-объявление автора выигрывает у обычного, поэтому наш фильтр
+ * побеждает игровой при любых data-theme и data-code - оба игра выставляет по
+ * своим настройкам, до которых модуль не дотягивается.
+ */
+const LIGHT_FILTER_CSS = '.ol-layer__base { filter: none !important; }';
+const DARK_FILTER_CSS = '.ol-layer__base { filter: invert(1) hue-rotate(180deg) !important; }';
 
 type TileLayer = IOlLayer & {
   setSource(source: unknown): void;

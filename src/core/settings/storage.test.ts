@@ -109,7 +109,7 @@ describe('settings/storage', () => {
   test('migration from v1 adds errors field', () => {
     localStorage.setItem('svp_settings', JSON.stringify({ version: 1, modules: { test: true } }));
     const settings = loadSettings();
-    expect(settings.version).toBe(4);
+    expect(settings.version).toBe(5);
     expect(settings.errors).toEqual({});
     expect(settings.modules.test).toBe(true);
   });
@@ -124,7 +124,7 @@ describe('settings/storage', () => {
       }),
     );
     const settings = loadSettings();
-    expect(settings.version).toBe(4);
+    expect(settings.version).toBe(5);
     expect(settings.modules['enhancedMainScreen']).toBe(false);
     expect(settings.modules['collapsibleTopPanel']).toBeUndefined();
     expect(settings.errors['enhancedMainScreen']).toBe('some error');
@@ -139,7 +139,7 @@ describe('settings/storage', () => {
 
     test('both flags true → ngrsZoom stays true, legacy key removed', () => {
       const s = loadV3({ ngrsZoom: true, disableDoubleTapZoom: true });
-      expect(s.version).toBe(4);
+      expect(s.version).toBe(5);
       expect(s.modules['ngrsZoom']).toBe(true);
       expect(s.modules).not.toHaveProperty('disableDoubleTapZoom');
     });
@@ -210,13 +210,13 @@ describe('settings/storage', () => {
       expect(s.errors['ngrsZoom']).toBe('pre-existing error');
     });
 
-    test('full chain v1 → v4 with disableDoubleTapZoom=true ends with ngrsZoom=true', () => {
+    test('full chain v1 → v5 with disableDoubleTapZoom=true ends with ngrsZoom=true', () => {
       localStorage.setItem(
         'svp_settings',
         JSON.stringify({ version: 1, modules: { disableDoubleTapZoom: true } }),
       );
       const s = loadSettings();
-      expect(s.version).toBe(4);
+      expect(s.version).toBe(5);
       expect(s.modules['ngrsZoom']).toBe(true);
       expect(s.modules).not.toHaveProperty('disableDoubleTapZoom');
     });
@@ -227,6 +227,70 @@ describe('settings/storage', () => {
       loadSettings();
       expect(hasBackup(3)).toBe(true);
       expect(localStorage.getItem('svp_settings_backup_v3')).toBe(JSON.stringify(v3));
+    });
+  });
+
+  describe('migration from v4 renames groupErrorToasts to compactToasts', () => {
+    function loadV4(modules: Record<string, boolean>, errors: Record<string, string> = {}) {
+      localStorage.setItem('svp_settings', JSON.stringify({ version: 4, modules, errors }));
+      return loadSettings();
+    }
+
+    test('enabled legacy module stays enabled under the new id', () => {
+      const s = loadV4({ groupErrorToasts: true });
+      expect(s.version).toBe(5);
+      expect(s.modules['compactToasts']).toBe(true);
+      expect(s.modules).not.toHaveProperty('groupErrorToasts');
+    });
+
+    test('disabled legacy module stays disabled under the new id', () => {
+      const s = loadV4({ groupErrorToasts: false });
+      expect(s.modules['compactToasts']).toBe(false);
+      expect(s.modules).not.toHaveProperty('groupErrorToasts');
+    });
+
+    test('module error moves to the new id', () => {
+      const s = loadV4({ groupErrorToasts: true }, { groupErrorToasts: 'boom' });
+      expect(s.errors['compactToasts']).toBe('boom');
+      expect(s.errors).not.toHaveProperty('groupErrorToasts');
+    });
+
+    test('no legacy key → no record created (defaultEnabled applies later)', () => {
+      const s = loadV4({});
+      expect(s.modules).not.toHaveProperty('compactToasts');
+    });
+
+    test('creates versioned backup before migrating', () => {
+      const v4 = { version: 4, modules: { groupErrorToasts: false }, errors: {} };
+      localStorage.setItem('svp_settings', JSON.stringify(v4));
+      loadSettings();
+      expect(hasBackup(4)).toBe(true);
+      expect(localStorage.getItem('svp_settings_backup_v4')).toBe(JSON.stringify(v4));
+    });
+
+    test('full chain v1 → v5 carries the legacy toast module over', () => {
+      localStorage.setItem(
+        'svp_settings',
+        JSON.stringify({
+          version: 1,
+          modules: { collapsibleTopPanel: true, groupErrorToasts: false },
+        }),
+      );
+      const s = loadSettings();
+      expect(s.version).toBe(5);
+      expect(s.modules['enhancedMainScreen']).toBe(true);
+      expect(s.modules['compactToasts']).toBe(false);
+      expect(s.modules).not.toHaveProperty('groupErrorToasts');
+    });
+
+    test('settings already on v5 are left untouched', () => {
+      localStorage.setItem(
+        'svp_settings',
+        JSON.stringify({ version: 5, modules: { compactToasts: false }, errors: {} }),
+      );
+      const s = loadSettings();
+      expect(s.modules['compactToasts']).toBe(false);
+      expect(hasBackup(5)).toBe(false);
     });
   });
 

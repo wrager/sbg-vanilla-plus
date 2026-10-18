@@ -1,9 +1,114 @@
 import { showToast } from './toast';
+import type { IToastifyInstance, IToastifyOptions } from './toastify';
 
-describe('showToast', () => {
+/**
+ * Мок Toastify: реальную библиотеку в тесты не подключаем. При
+ * `escapeMarkup: true` она пишет текст через `innerText`
+ * (refs/toastify/toastify.js:66), а jsdom его не реализует - проверять на ней
+ * было бы нечего.
+ */
+interface IMockToastify {
+  factory: jest.Mock<IToastifyInstance, [Partial<IToastifyOptions>]>;
+  instances: IToastifyInstance[];
+}
+
+function setupMockToastify(): IMockToastify {
+  const instances: IToastifyInstance[] = [];
+
+  const factory = jest.fn((options: Partial<IToastifyOptions>): IToastifyInstance => {
+    const instance = {
+      options: options as IToastifyOptions,
+      toastElement: null,
+      showToast: jest.fn(),
+      hideToast: jest.fn(),
+    };
+    instances.push(instance);
+    return instance;
+  });
+
+  window.Toastify = factory as unknown as typeof window.Toastify;
+  return { factory, instances };
+}
+
+function lastCallOptions(mock: IMockToastify): Partial<IToastifyOptions> {
+  return mock.factory.mock.calls[0][0];
+}
+
+describe('showToast через Toastify игры', () => {
+  let toastify: IMockToastify;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    toastify = setupMockToastify();
+  });
+
+  afterEach(() => {
+    delete window.Toastify;
+  });
+
+  test('передаёт в Toastify текст и игровые значения по умолчанию', () => {
+    showToast('hello');
+
+    expect(toastify.factory).toHaveBeenCalledTimes(1);
+    expect(lastCallOptions(toastify)).toMatchObject({
+      text: 'hello',
+      duration: 3000,
+      gravity: 'top',
+      position: 'center',
+      className: 'interaction-toast',
+      escapeMarkup: true,
+    });
+    expect(toastify.instances[0].showToast).toHaveBeenCalledTimes(1);
+  });
+
+  test('не создаёт собственный узел, пока Toastify доступен', () => {
+    showToast('hello');
+    expect(document.querySelector('.svp-toast')).toBeNull();
+  });
+
+  test('тип ошибки даёт игровой класс error-toast', () => {
+    showToast('boom', { type: 'error' });
+    expect(lastCallOptions(toastify).className).toBe('error-toast');
+  });
+
+  test('явный нейтральный тип даёт класс interaction-toast', () => {
+    showToast('fine', { type: 'neutral' });
+    expect(lastCallOptions(toastify).className).toBe('interaction-toast');
+  });
+
+  test('длительность пробрасывается как есть', () => {
+    showToast('hello', { duration: 5000 });
+    expect(lastCallOptions(toastify).duration).toBe(5000);
+  });
+
+  test('нулевая длительность не подменяется дефолтом', () => {
+    showToast('hello', { duration: 0 });
+    expect(lastCallOptions(toastify).duration).toBe(0);
+  });
+
+  test('клик закрывает тост', () => {
+    showToast('hello');
+    const instance = toastify.instances[0];
+
+    instance.options.onClick?.();
+
+    expect(instance.hideToast).toHaveBeenCalledTimes(1);
+  });
+
+  test('разметка в сообщении не рендерится: escapeMarkup включён', () => {
+    showToast('<b>hi</b>');
+    expect(lastCallOptions(toastify)).toMatchObject({
+      text: '<b>hi</b>',
+      escapeMarkup: true,
+    });
+  });
+});
+
+describe('showToast без Toastify (запасной путь)', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     document.body.innerHTML = '';
+    delete window.Toastify;
   });
 
   afterEach(() => {
@@ -17,43 +122,93 @@ describe('showToast', () => {
     expect(toast?.textContent).toBe('hello');
   });
 
-  test('auto-hides after duration: adds svp-toast-hide, removes from DOM on transitionend', () => {
-    showToast('bye', 3000);
-    const toast = document.querySelector<HTMLDivElement>('.svp-toast');
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(false);
+  test('уходит из DOM по истечении длительности', () => {
+    showToast('bye', { duration: 3000 });
+    expect(document.querySelector('.svp-toast')).not.toBeNull();
 
     jest.advanceTimersByTime(3000);
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(true);
-    expect(document.querySelector('.svp-toast')).not.toBeNull(); // ещё в DOM до transitionend
-
-    toast?.dispatchEvent(new Event('transitionend'));
     expect(document.querySelector('.svp-toast')).toBeNull();
   });
 
-  test('click dismisses toast immediately (before timer fires)', () => {
-    showToast('click me', 3000);
+  test('клик убирает тост, не дожидаясь таймера', () => {
+    showToast('click me', { duration: 3000 });
     const toast = document.querySelector<HTMLDivElement>('.svp-toast');
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(false);
 
     toast?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(true);
+    expect(document.querySelector('.svp-toast')).toBeNull();
 
-    toast?.dispatchEvent(new Event('transitionend'));
+    // Таймер по убранному тосту не должен ронять показ.
+    expect(() => {
+      jest.advanceTimersByTime(3000);
+    }).not.toThrow();
+  });
+
+  test('длительность по умолчанию - 3000', () => {
+    showToast('default');
+
+    jest.advanceTimersByTime(2999);
+    expect(document.querySelector('.svp-toast')).not.toBeNull();
+
+    jest.advanceTimersByTime(1);
     expect(document.querySelector('.svp-toast')).toBeNull();
   });
 
-  test('click after auto-hide started does not remove toast twice', () => {
-    showToast('idempotent', 3000);
+  test('тип на запасном пути не меняет разметку', () => {
+    showToast('styled', { type: 'error' });
     const toast = document.querySelector<HTMLDivElement>('.svp-toast');
 
-    jest.advanceTimersByTime(3000);
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(true);
+    expect(toast?.className).toBe('svp-toast');
+    expect(toast?.getAttribute('style')).toBeNull();
+  });
 
-    // Повторный клик после старта авто-скрытия — no-op (hide-класс уже стоит).
-    toast?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(toast?.classList.contains('svp-toast-hide')).toBe(true);
+  test('отказ фабрики Toastify уводит на запасной путь', () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    window.Toastify = (() => {
+      throw new Error('api changed');
+    }) as unknown as typeof window.Toastify;
 
-    toast?.dispatchEvent(new Event('transitionend'));
-    expect(document.querySelector('.svp-toast')).toBeNull();
+    expect(() => {
+      showToast('fallback');
+    }).not.toThrow();
+    expect(document.querySelector('.svp-toast')?.textContent).toBe('fallback');
+    expect(consoleError).toHaveBeenCalled();
+
+    consoleError.mockRestore();
+  });
+
+  test('отказ показа тоста уводит на запасной путь', () => {
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const factory = (): unknown => ({
+      options: {},
+      toastElement: null,
+      showToast: () => {
+        throw new Error('Root element is not defined');
+      },
+      hideToast: () => undefined,
+    });
+    window.Toastify = factory as unknown as typeof window.Toastify;
+
+    expect(() => {
+      showToast('fallback');
+    }).not.toThrow();
+    expect(document.querySelector('.svp-toast')?.textContent).toBe('fallback');
+
+    consoleError.mockRestore();
+  });
+
+  test('не функция в window.Toastify уводит на запасной путь', () => {
+    window.Toastify = null as unknown as typeof window.Toastify;
+
+    showToast('fallback');
+
+    expect(document.querySelector('.svp-toast')?.textContent).toBe('fallback');
+  });
+
+  test('разметка в сообщении не рендерится', () => {
+    showToast('<b>hi</b>');
+    const toast = document.querySelector<HTMLDivElement>('.svp-toast');
+
+    expect(toast?.textContent).toBe('<b>hi</b>');
+    expect(toast?.querySelector('b')).toBeNull();
   });
 });
