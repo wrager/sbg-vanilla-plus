@@ -83,6 +83,10 @@
 
 Codex и Claude Code используют общую точку входа **[AGENTS.md](AGENTS.md)** и правила в **[docs/agent/](docs/agent/README.md)**. `CLAUDE.md` импортирует `AGENTS.md`; команды Cursor используют те же сценарии.
 
+Агент может собирать скрипт и запускать тесты на локальных моках. В живой игре
+допустимо только пассивное наблюдение: перезагрузку, клики, жесты и другие игровые
+действия выполняет пользователь. Подробности — в [правилах](docs/agent/rules.md).
+
 Проектные скиллы `sbg-new-module`, `sbg-release` и `sbg-announce` доступны обоим агентам после клонирования. Вызывайте их через `$sbg-…` в Codex или `/sbg-…` в Claude Code. Исходники — `.agents/skills/`, копии для Claude — `.claude/skills/`; после правки исходников выполните `npm run skills:sync`. CI проверяет их соответствие. Примеры вызовов и порядок обновления — в [инструкции для агентов](docs/agent/README.md).
 
 ```bash
@@ -97,6 +101,10 @@ npm run lint       # ESLint
 npm run test       # Jest
 npm run skills:check # Проверка общих скиллов и тесты синхронизации
 ```
+
+### Обновление зависимостей
+
+[Renovate](renovate.json) настроен так же, как в [sbg-scout](https://github.com/wrager/sbg-scout/blob/main/renovate.json): рекомендуемый пресет `config:recommended`, группировка всех обновлений через `group:all` и semantic commits (`semanticCommits: enabled`).
 
 ### Dev-сервер + менеджер юзерскриптов
 
