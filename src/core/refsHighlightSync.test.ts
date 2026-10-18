@@ -199,9 +199,9 @@ describe('syncRefsCountForPoints', () => {
   });
 
   test('несколько точек: каждая получает feature.changed() при изменении', async () => {
-    const f1 = makeFeature({ highlight: { '7': 1 } as Record<string, unknown> });
-    const f2 = makeFeature({ highlight: { '7': 2 } as Record<string, unknown> });
-    const f3 = makeFeature({ highlight: { '7': 3 } as Record<string, unknown> });
+    const f1 = makeFeature({ highlight: { '7': 1 } });
+    const f2 = makeFeature({ highlight: { '7': 2 } });
+    const f3 = makeFeature({ highlight: { '7': 3 } });
     const olMap = makeMap([makeLayer('points', makeSource({ 'p-1': f1, 'p-2': f2, 'p-3': f3 }))]);
     mockGetOlMap.mockResolvedValue(olMap);
     setInventory([

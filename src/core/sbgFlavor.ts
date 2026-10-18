@@ -39,6 +39,7 @@ function buildFlavorInit(init: RequestInit | undefined): RequestInit {
 }
 
 export function installSbgFlavor(): void {
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- The wrapper forwards this explicitly with call below.
   const originalFetch = window.fetch;
   flavorFailureReported = false;
 

@@ -41,7 +41,7 @@ function extractDiscoverGuidFromInit(init: RequestInit | undefined): string | nu
   try {
     const parsed: unknown = JSON.parse(body);
     if (typeof parsed === 'object' && parsed !== null && 'guid' in parsed) {
-      const guid = (parsed as { guid: unknown }).guid;
+      const guid = parsed.guid;
       if (typeof guid === 'string') return guid;
     }
   } catch {
@@ -68,6 +68,7 @@ function extractUrl(input: RequestInfo | URL): string | null {
 export function installDiscoverFetchHook(): void {
   if (discoverFetchInstalled) return;
   discoverFetchInstalled = true;
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- The wrapper forwards this explicitly with apply below.
   const originalFetch = window.fetch;
   originalFetchBeforePatch = originalFetch;
   window.fetch = function patchedFetch(

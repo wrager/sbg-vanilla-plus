@@ -26,7 +26,7 @@ function setupMockToastify(): IMockToastify {
     return instance;
   });
 
-  window.Toastify = factory as unknown as typeof window.Toastify;
+  window.Toastify = factory;
   return { factory, instances };
 }
 
@@ -163,9 +163,9 @@ describe('showToast без Toastify (запасной путь)', () => {
 
   test('отказ фабрики Toastify уводит на запасной путь', () => {
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    window.Toastify = (() => {
+    window.Toastify = () => {
       throw new Error('api changed');
-    }) as unknown as typeof window.Toastify;
+    };
 
     expect(() => {
       showToast('fallback');

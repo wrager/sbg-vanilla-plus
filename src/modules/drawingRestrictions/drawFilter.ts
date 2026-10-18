@@ -198,6 +198,7 @@ export function installDrawFilter(): void {
   filterFailureReported = false;
   if (fetchInstalled) return;
   fetchInstalled = true;
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- The wrapper forwards this explicitly with call below.
   const native = window.fetch;
   originalFetchBeforePatch = native;
   window.fetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {

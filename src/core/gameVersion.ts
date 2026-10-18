@@ -49,6 +49,7 @@ function recordCapturedVersion(raw: string): void {
  * запросы, иначе первые ответы пролетят мимо.
  */
 export function installGameVersionCapture(): void {
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- The wrapper forwards this explicitly with apply below.
   const originalFetch = window.fetch;
   window.fetch = function patchedFetch(
     this: typeof window,

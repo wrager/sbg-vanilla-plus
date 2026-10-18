@@ -95,7 +95,7 @@ function validateDrawItem(item: unknown, index: number): IIitcDrawItem {
     type: item.type,
     latLngs: item.latLngs as IIitcLatLng[],
     ...(color !== undefined ? { color } : {}),
-  } as IIitcDrawItem;
+  };
 }
 
 /**

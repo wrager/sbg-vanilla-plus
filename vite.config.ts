@@ -30,8 +30,7 @@ function debugMetadata(metadata: Record<string, string | string[]>): Plugin {
     renderChunk: {
       order: 'post',
       handler(code) {
-        // A Rollup banner is stripped by Vite's final esbuild pass. Add it afterwards
-        // and return a map so Rollup composes its line offset with the TypeScript map.
+        // Add metadata after transforms and compose its line offset with the TypeScript map.
         const output = new MagicString(code);
         output.prepend(`${userscriptHeader(metadata)}\n`);
         return { code: output.toString(), map: output.generateMap({ hires: true }) };
@@ -101,8 +100,11 @@ export default defineConfig(({ command, mode }) => {
     build: {
       outDir: isDebug ? 'dist/debug' : 'dist/release',
       emptyOutDir: true,
-      minify: isRelease ? 'esbuild' : false,
+      minify: isRelease ? 'oxc' : false,
       sourcemap: isDebug ? 'inline' : false,
+      rolldownOptions: {
+        output: { keepNames: true },
+      },
       ...(isDebug
         ? {
             lib: {
@@ -114,11 +116,7 @@ export default defineConfig(({ command, mode }) => {
           }
         : {}),
     },
-    esbuild: {
-      keepNames: true,
-    },
-    // vite-plugin-monkey 5 disables source maps, including in its second bundling pass.
-    // Native library mode keeps debug maps accurate through the userscript banner.
+    // Native library mode keeps debug maps independent of the userscript plugin's bundling.
     plugins: isDebug
       ? [debugMetadata(userscript)]
       : [

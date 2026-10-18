@@ -64,10 +64,7 @@ export interface IInventoryBroom {
 }
 
 export type IInventoryItem =
-  | IInventoryCore
-  | IInventoryCatalyser
-  | IInventoryReference
-  | IInventoryBroom;
+  IInventoryCore | IInventoryCatalyser | IInventoryReference | IInventoryBroom;
 
 export function isInventoryCore(value: unknown): value is IInventoryCore {
   return (

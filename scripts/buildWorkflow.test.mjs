@@ -101,6 +101,27 @@ test('release/debug builds preserve each other and have the intended metadata an
   assert.equal(await readFile(resolve(releaseDirectory, FILENAME), 'utf8'), release);
 });
 
+test('minified output preserves function and class names for diagnostics', async (t) => {
+  const directory = await fixture(t);
+  const entryPath = resolve(directory, 'names.ts');
+  const outDir = resolve(directory, 'minified');
+  await writeFile(
+    entryPath,
+    'function diagnosticFunction() {}\nclass DiagnosticClass {}\nwindow.__svpProbe = { diagnosticFunction, DiagnosticClass };\n',
+  );
+  await build({
+    configFile: CONFIG,
+    mode: 'debug',
+    logLevel: 'silent',
+    build: { outDir, minify: 'oxc', lib: { entry: entryPath } },
+  });
+  const output = await readFile(resolve(outDir, FILENAME), 'utf8');
+  const browserWindow = {};
+  new Script(output).runInNewContext({ window: browserWindow });
+  assert.equal(browserWindow.__svpProbe.diagnosticFunction.name, 'diagnosticFunction');
+  assert.equal(browserWindow.__svpProbe.DiagnosticClass.name, 'DiagnosticClass');
+});
+
 test('dev config has no auto-open/reload and refuses an occupied port', async (t) => {
   const probe = createPortProbe();
   const port = await new Promise((done, reject) => {
