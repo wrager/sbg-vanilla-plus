@@ -95,6 +95,10 @@ npm run test       # Jest
 npm run skills:check # Проверка общих скиллов и тесты синхронизации
 ```
 
+### Обновление зависимостей
+
+[Renovate](renovate.json) настроен так же, как в [sbg-scout](https://github.com/wrager/sbg-scout/blob/main/renovate.json): рекомендуемый пресет `config:recommended`, группировка всех обновлений через `group:all` и semantic commits (`semanticCommits: enabled`).
+
 ### Dev-сервер + менеджер юзерскриптов
 
 1. Запустить `npm run dev`
