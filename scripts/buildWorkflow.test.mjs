@@ -122,6 +122,20 @@ test('minified output preserves function and class names for diagnostics', async
   assert.equal(browserWindow.__svpProbe.DiagnosticClass.name, 'DiagnosticClass');
 });
 
+test('Vite config supports native Node TypeScript loading', async () => {
+  const loaded = await loadConfigFromFile(
+    { command: 'build', mode: 'debug' },
+    CONFIG,
+    ROOT,
+    'silent',
+    undefined,
+    'native',
+  );
+  assert.ok(loaded);
+  assert.equal(loaded.config.build.outDir, 'dist/debug');
+  assert.equal(JSON.parse(loaded.config.define.__SVP_VERSION__), PACKAGE.version);
+});
+
 test('dev config has no auto-open/reload and refuses an occupied port', async (t) => {
   const probe = createPortProbe();
   const port = await new Promise((done, reject) => {

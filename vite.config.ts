@@ -3,8 +3,10 @@ import { pathToFileURL } from 'node:url';
 import MagicString from 'magic-string';
 import { defineConfig, type LibraryOptions, type Plugin } from 'vite';
 import monkey, { type MonkeyUserScript } from 'vite-plugin-monkey';
-import { version } from './package.json';
-import { SBG_COMPATIBLE_VERSIONS } from './src/core/gameVersion';
+import packageJson from './package.json' with { type: 'json' };
+import { SBG_COMPATIBLE_VERSIONS } from './src/core/gameVersion.ts';
+
+const { version } = packageJson;
 
 const NAMESPACE = 'https://github.com/wrager/sbg-vanilla-plus';
 const MATCHES = ['https://sbg-game.ru/app/*', 'https://beta.sbg-game.ru/app/*'];

@@ -635,6 +635,11 @@ function parseColorToRgb(color: string): { r: number; g: number; b: number } | n
   }
   const probe = document.createElement('div');
   probe.style.color = color;
+  // Invalid CSS is discarded; computed style would otherwise return an inherited color.
+  if (!probe.style.color) {
+    COLOR_RGB_CACHE.set(color, null);
+    return null;
+  }
   document.body.appendChild(probe);
   const computed = getComputedStyle(probe).color;
   probe.remove();

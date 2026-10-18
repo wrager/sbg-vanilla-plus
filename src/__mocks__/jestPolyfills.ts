@@ -67,7 +67,7 @@ if (typeof globalThis.matchMedia !== 'function') {
   });
 }
 
-// jsdom 20/jest-environment-jsdom@29 не имеет Response/Headers. Минимальная реализация
+// jsdom не предоставляет Response. Минимальная реализация Response/Headers
 // для тестов fetch-перехватчиков (lastRefProtection и т.п.).
 if (typeof globalThis.Response === 'undefined') {
   class MockHeaders {
