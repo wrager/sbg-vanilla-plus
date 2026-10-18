@@ -11,6 +11,7 @@ export default [
       parserOptions: {
         projectService: true,
         tsconfigRootDir: import.meta.dirname,
+        onUnsupportedTypeScriptVersion: 'error',
       },
     },
     rules: {
