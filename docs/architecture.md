@@ -165,14 +165,20 @@ interface IFeatureModule {
 
 ## Стек
 
-| Инструмент         | Назначение                        |
-| ------------------ | --------------------------------- |
-| TypeScript         | Типизация (strict: true)          |
-| Vite               | Бандлер (один entry, CSS inline)  |
-| vite-plugin-monkey | Tampermonkey-заголовки + .meta.js |
-| ESLint             | Линтинг (flat config)             |
-| Prettier           | Форматирование (endOfLine: lf)    |
-| Jest + ts-jest     | Тестирование (jsdom)              |
+| Инструмент         | Назначение                             |
+| ------------------ | -------------------------------------- |
+| TypeScript 7       | Нативная проверка типов (strict: true) |
+| Vite               | Бандлер (один entry, CSS inline)       |
+| vite-plugin-monkey | Tampermonkey-заголовки + .meta.js      |
+| ESLint             | Линтинг (flat config)                  |
+| Prettier           | Форматирование (endOfLine: lf)         |
+| Jest + ts-jest     | Тестирование (jsdom)                   |
+
+TypeScript установлен по официальной схеме совместной установки: `@typescript/native`
+предоставляет нативный TS 7 (`tsc`), alias `typescript` — API `@typescript/typescript6`
+для типозависимого ESLint и ts-jest (`tsc6`). Jest получает актуальный jsdom через
+`scripts/jestEnvironment.mjs` на основе `@jest/environment-jsdom-abstract`.
+Поддерживаемые версии и ограничения описаны в [toolchain.md](toolchain.md).
 
 ## Конвенции именования
 

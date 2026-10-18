@@ -306,6 +306,20 @@ describe('refsOnMap colorWithAlpha', () => {
   test('некорректный color -> возвращается as-is', () => {
     expect(colorWithAlpha('not-a-color-xyz', 0.5)).toBe('not-a-color-xyz');
   });
+
+  test('некорректный цвет не подменяется унаследованным цветом body', () => {
+    const originalColor = document.body.style.color;
+    document.body.style.color = 'rgb(17, 34, 51)';
+    try {
+      expect(colorWithAlpha('not-an-inherited-color', 0.5)).toBe('not-an-inherited-color');
+    } finally {
+      document.body.style.color = originalColor;
+    }
+  });
+
+  test('допустимый именованный цвет -> rgba', () => {
+    expect(colorWithAlpha('rebeccapurple', 0.5)).toBe('rgba(102, 51, 153, 0.5)');
+  });
 });
 
 describe('refsOnMap getTeamColor', () => {

@@ -4,9 +4,19 @@
   "semanticCommits": "enabled",
   "packageRules": [
     {
-      "description": "Stay within the TypeScript peer ranges supported by typescript-eslint and ts-jest",
-      "matchPackageNames": ["typescript"],
-      "allowedVersions": "<6.1.0"
+      "description": "Keep the compatibility API alias within typescript-eslint's supported range",
+      "matchDepNames": ["typescript"],
+      "allowedVersions": ">=6.0.2 <6.1.0"
+    },
+    {
+      "description": "Upgrade the native TypeScript 7 CLI independently of the compatibility API",
+      "matchDepNames": ["@typescript/native"],
+      "allowedVersions": ">=7.0.2 <8"
+    },
+    {
+      "description": "Match Node type definitions to the Node 24 LTS runtime",
+      "matchDepNames": ["@types/node"],
+      "allowedVersions": "<25"
     }
   ]
 }

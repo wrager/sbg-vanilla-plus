@@ -90,13 +90,13 @@ Codex и Claude Code используют общую точку входа **[AG
 Проектные скиллы `sbg-new-module`, `sbg-release` и `sbg-announce` доступны обоим агентам после клонирования. Вызывайте их через `$sbg-…` в Codex или `/sbg-…` в Claude Code. Исходники — `.agents/skills/`, копии для Claude — `.claude/skills/`; после правки исходников выполните `npm run skills:sync`. CI проверяет их соответствие. Примеры вызовов и порядок обновления — в [инструкции для агентов](docs/agent/README.md).
 
 ```bash
-npm ci             # Node.js 24 LTS (.node-version)
+npm ci             # Node.js 24 LTS >=24.15 (.node-version)
 npm run dev        # Dev server
 npm run dev:watch  # Пересборка debug при изменениях
 npm run build      # Стабильная сборка в dist/release/
 npm run build:debug # Самостоятельная debug-сборка в dist/debug/
 npm run test:build # Проверка metadata, source maps и watch
-npm run typecheck  # Проверка типов
+npm run typecheck  # Проверка типов нативным TypeScript 7
 npm run lint       # ESLint
 npm run test       # Jest
 npm run skills:check # Проверка общих скиллов и тесты синхронизации
@@ -106,12 +106,29 @@ npm run skills:check # Проверка общих скиллов и тесты 
 
 [Renovate](renovate.json) настроен так же, как в [sbg-scout](https://github.com/wrager/sbg-scout/blob/main/renovate.json): рекомендуемый пресет `config:recommended`, группировка всех обновлений через `group:all` и semantic commits (`semanticCommits: enabled`).
 
-TypeScript ограничен веткой 6.0: текущие `typescript-eslint` и `ts-jest`
-ещё не поддерживают TypeScript 7. Ограничение также задано в `renovate.json`;
-его следует пересматривать вместе с обновлением этих инструментов.
+Проверка типов использует нативный TypeScript 7.0.2. Для ESLint и ts-jest сохранён
+официальный compiler API TypeScript 6 через npm alias: `@typescript/native` указывает
+на `typescript@7`, а `typescript` — на `@typescript/typescript6@6.0.2`. Поэтому
+`npm run typecheck` явно запускает нативный CLI, `tsc6` — компилятор совместимости. Это
+[рекомендованная Microsoft схема](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-60):
+TS 7.0 не предоставляет прежний JavaScript API. Типозависимый строгий линтинг,
+Jest mock hoisting, диагностика и source maps сохранены. Основная проверка типов
+в локальной работе и CI — `npm run typecheck`; Jest использует API TS 6.
+Явный путь к CLI исключает коллизию `tsc` с транзитивным пакетом `@typescript/old`,
+который npm может поднять в корневой `node_modules/.bin`.
+
+Jest 30 использует jsdom 30 через официальный `@jest/environment-jsdom-abstract`
+(`scripts/jestEnvironment.mjs`), поскольку стандартный `jest-environment-jsdom`
+пока зависит от jsdom 26. Требование Node.js >=24.15 задано в `package.json`,
+типы Node соответствуют ветке 24 LTS. Renovate обновляет нативный TS 7 и API
+совместимости отдельно; ограничение `<6.1` относится только к API для
+typescript-eslint. Подробности версий, поддержки и проверок —
+[docs/toolchain.md](docs/toolchain.md).
 
 Сборка использует Vite 8 (Rolldown/Oxc). Имена функций сохраняются и при минификации;
 debug-сборка остаётся неминифицированной с inline source map.
+Обновление DOM-окружения также выявило ошибку разбора цветов «Ключей на карте»:
+некорректный CSS-цвет теперь сохраняется без подмены на унаследованный цвет страницы.
 
 ### Dev-сервер + менеджер юзерскриптов
 

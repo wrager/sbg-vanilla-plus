@@ -2,8 +2,10 @@ import packageJson from './package.json' with { type: 'json' };
 
 /** @type {import('jest').Config} */
 export default {
-  preset: 'ts-jest',
-  testEnvironment: 'jsdom',
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', { compiler: 'typescript', tsconfig: 'tsconfig.json' }],
+  },
+  testEnvironment: '<rootDir>/scripts/jestEnvironment.mjs',
   roots: ['<rootDir>/src'],
   moduleFileExtensions: ['ts', 'js'],
   setupFiles: ['<rootDir>/src/__mocks__/jestPolyfills.ts', 'fake-indexeddb/auto'],
