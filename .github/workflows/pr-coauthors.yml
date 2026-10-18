@@ -1,0 +1,146 @@
+name: PR co-authors
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+    paths: [.github/workflows/pr-coauthors.yml]
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number; leave empty to update every open PR in main'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-coauthors-${{ github.event.pull_request.number || inputs.pr_number || 'sweep' }}
+  cancel-in-progress: true
+
+jobs:
+  pr-coauthors:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const marker = '<!-- pr-coauthors:managed -->';
+            const authorLine = /^co-authored-by:\s*([^<>\r\n]+?)\s*<([^<>\s@]+@[^<>\s@]+)>\s*$/i;
+            const trailerLine = /^(?:[A-Za-z][A-Za-z0-9-]*|BREAKING CHANGE)(?::\s*\S|\s+#\d)/;
+            const knownTrailer = /^(?:co-authored-by|signed-off-by|reviewed-by|acked-by|tested-by|reported-by|suggested-by):/i;
+
+            function parseTrailers(text) {
+              const trimmed = text.trimEnd();
+              const boundaries = [...trimmed.matchAll(/\r?\n[ \t]*\r?\n/g)];
+              const last = boundaries.at(-1);
+              const offset = last ? last.index + last[0].length : 0;
+              const lines = trimmed.slice(offset).split(/\r?\n/);
+              if (!lines.some((line) => knownTrailer.test(line)) ||
+                  !lines.every((line) => trailerLine.test(line) || /^[ \t]+\S/.test(line))) {
+                return { body: text, authors: [], other: [] };
+              }
+              const authors = [];
+              const other = [];
+              for (const line of lines) {
+                if (/^co-authored-by:/i.test(line)) {
+                  const match = line.match(authorLine);
+                  if (!match) throw new Error('Malformed Co-authored-by trailer; no PR description was changed.');
+                  authors.push(`${match[1].trim()} <${match[2]}>`);
+                } else {
+                  other.push(line);
+                }
+              }
+              return { body: trimmed.slice(0, offset).trimEnd(), authors, other };
+            }
+
+            function composeBody(original, messages) {
+              const lines = original.split(/(?<=\n)/);
+              const positions = lines.flatMap((line, index) => line.trimEnd() === marker ? [index] : []);
+              if (positions.length > 1) throw new Error('Multiple coauthor markers; refusing an ambiguous description edit.');
+              let body = original;
+              let previous = { authors: [], other: [] };
+              if (positions.length === 1) {
+                const start = positions[0];
+                let end = start + 1;
+                while (end < lines.length && !lines[end].trim()) end += 1;
+                while (end < lines.length && (trailerLine.test(lines[end]) || /^[ \t]+\S/.test(lines[end]))) end += 1;
+                previous = parseTrailers(lines.slice(start + 1, end).join('').trimStart());
+                body = [...lines.slice(0, start), ...lines.slice(end)].join('');
+              }
+              const footer = parseTrailers(body);
+              const values = [...previous.authors, ...footer.authors];
+              for (const message of messages) values.push(...parseTrailers(message).authors);
+              const authors = new Map();
+              for (const value of values) authors.set(value.toLowerCase(), value);
+              if (!authors.size && !positions.length) return original;
+              const credits = [...authors.values()].sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
+              const other = [...new Set([...previous.other, ...footer.other])];
+              const trailers = [...other, ...credits.map((value) => `Co-authored-by: ${value}`)];
+              const prefix = footer.body.trimEnd();
+              const updated = trailers.length
+                ? `${prefix}${prefix ? '\n\n' : ''}${marker}\n\n${trailers.join('\n')}`
+                : prefix;
+              if (updated.length > 65536) throw new Error('The resulting PR description exceeds the GitHub limit; no text was truncated.');
+              return updated;
+            }
+
+            const { owner, repo } = context.repo;
+            const input = context.payload.pull_request?.number ?? context.payload.inputs?.pr_number;
+            let numbers;
+            if (input !== undefined && String(input).trim() !== '') {
+              if (!/^[1-9]\d*$/.test(String(input)) || !Number.isSafeInteger(Number(input)) || Number(input) > 2147483647) throw new Error('pr_number must be a positive integer.');
+              numbers = [Number(input)];
+            } else {
+              const pulls = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', base: 'main', per_page: 100 });
+              numbers = pulls.map((pull) => pull.number);
+            }
+
+            for (const number of numbers) {
+              const { data: initial } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+              if (initial.state !== 'open' || initial.base.ref !== 'main') continue;
+              const head = initial.head.sha;
+              const messages = [];
+              let cursor = null;
+              let total;
+              do {
+                const response = await github.graphql(`query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+                  repository(owner: $owner, name: $name) {
+                    pullRequest(number: $number) {
+                      headRefOid
+                      commits(first: 100, after: $cursor) {
+                        totalCount
+                        nodes { commit { message } }
+                        pageInfo { hasNextPage endCursor }
+                      }
+                    }
+                  }
+                }`, { owner, name: repo, number, cursor });
+                const pull = response.repository?.pullRequest;
+                if (!pull || pull.headRefOid !== head) throw new Error('PR head changed during pagination; retry against the latest head.');
+                if (total !== undefined && total !== pull.commits.totalCount) throw new Error('PR commit count changed during pagination.');
+                total = pull.commits.totalCount;
+                messages.push(...pull.commits.nodes.map((node) => node.commit.message));
+                const next = pull.commits.pageInfo;
+                if (next.hasNextPage && (!next.endCursor || next.endCursor === cursor)) throw new Error('Incomplete commit pagination; refusing partial credits.');
+                cursor = next.hasNextPage ? next.endCursor : null;
+              } while (cursor !== null);
+              if (messages.length !== total) throw new Error('Incomplete commit list; refusing partial credits.');
+
+              const { data: latest } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+              if (latest.state !== 'open') continue;
+              if (latest.head.sha !== head || latest.base.ref !== 'main') throw new Error('PR changed before the description update; retry against its latest state.');
+              const original = latest.body ?? '';
+              const body = composeBody(original, messages);
+              if (body !== original) await github.rest.pulls.update({ owner, repo, pull_number: number, body });
+              core.info(`PR #${number}: checked ${messages.length} commits; description ${body === original ? 'already current' : 'updated'}.`);
+            }
