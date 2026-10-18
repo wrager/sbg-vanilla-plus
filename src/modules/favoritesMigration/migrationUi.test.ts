@@ -310,7 +310,7 @@ describe('migrationUi: секции legacy / native', () => {
 
     Object.defineProperty(fileInput, 'files', {
       configurable: true,
-      get: () => [file] as unknown as FileList,
+      get: () => [file],
     });
     fileInput.dispatchEvent(new Event('change'));
 

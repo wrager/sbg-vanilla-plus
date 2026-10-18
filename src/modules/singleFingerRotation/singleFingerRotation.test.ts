@@ -92,7 +92,7 @@ beforeEach(async () => {
   mockMap = {
     getView: () => mockView,
     getSize: () => [800, 600],
-    getLayers: jest.fn() as unknown as IOlMap['getLayers'],
+    getLayers: jest.fn(),
     getInteractions: () => ({ getArray: () => [dragPan] }),
     addLayer: jest.fn(),
     removeLayer: jest.fn(),
@@ -108,7 +108,7 @@ beforeEach(async () => {
   window.ol = {
     Map: { prototype: { getView: jest.fn() } },
     interaction: { DragPan: MockDragPan },
-  } as unknown as typeof window.ol;
+  };
 
   mockGetOlMap.mockResolvedValue(mockMap);
 
@@ -119,7 +119,7 @@ beforeEach(async () => {
 
   jest.useFakeTimers();
   jest.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
-    return setTimeout(callback, 0) as unknown as number;
+    return setTimeout(callback, 0);
   });
   jest.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
     clearTimeout(id);

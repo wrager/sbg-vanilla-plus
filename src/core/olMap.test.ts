@@ -296,7 +296,7 @@ describe('createDragPanControl', () => {
       interaction: {
         DragPan: FakeDragPan as unknown as new () => IOlInteraction,
       },
-    } as typeof window.ol;
+    };
 
     // Make interactions instances of FakeDragPan
     for (const interaction of interactions) {

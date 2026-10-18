@@ -1022,8 +1022,7 @@ describe('drawTools module', () => {
         getSource: () => makeVectorSource(),
       };
       forEachMock.mockImplementation(
-        (pixel: number[], callback: (f: IOlFeature, l: IOlLayer) => void) => {
-          void pixel;
+        (_pixel: number[], callback: (f: IOlFeature, l: IOlLayer) => void) => {
           callback(feature, drawLayerStub);
         },
       );

@@ -3,10 +3,7 @@ import { isDisabled } from './killswitch';
 describe('killswitch', () => {
   beforeEach(() => {
     sessionStorage.clear();
-    Object.defineProperty(window, 'location', {
-      writable: true,
-      value: { hash: '' },
-    });
+    window.history.replaceState(null, '', '/');
   });
 
   test('returns false when no hash and no sessionStorage', () => {

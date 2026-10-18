@@ -119,8 +119,7 @@ export function installStarCenterHighlight(): void {
       // через addfeature после remove, не через мутацию).
       featureLifecycleHandler = (...args: unknown[]): void => {
         const event = args[0] as
-          | { feature?: { getId?(): string | number | undefined } }
-          | undefined;
+          { feature?: { getId?(): string | number | undefined } } | undefined;
         const featureGuid = event?.feature?.getId?.();
         // Перерисовываем только если событие касается текущего центра звезды.
         // Любая другая feature не влияет на наш overlay.

@@ -106,6 +106,13 @@ npm run skills:check # Проверка общих скиллов и тесты 
 
 [Renovate](renovate.json) настроен так же, как в [sbg-scout](https://github.com/wrager/sbg-scout/blob/main/renovate.json): рекомендуемый пресет `config:recommended`, группировка всех обновлений через `group:all` и semantic commits (`semanticCommits: enabled`).
 
+TypeScript ограничен веткой 6.0: текущие `typescript-eslint` и `ts-jest`
+ещё не поддерживают TypeScript 7. Ограничение также задано в `renovate.json`;
+его следует пересматривать вместе с обновлением этих инструментов.
+
+Сборка использует Vite 8 (Rolldown/Oxc). Имена функций сохраняются и при минификации;
+debug-сборка остаётся неминифицированной с inline source map.
+
 ### Dev-сервер + менеджер юзерскриптов
 
 1. Запустить `npm run dev`
