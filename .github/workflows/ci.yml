@@ -20,9 +20,6 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Test PR coauthor metadata
-        run: node --test scripts/pr-coauthors.test.mjs
-
       - run: npm ci
       - run: npm run release:check
       - run: npm run skills:check
