@@ -21,4 +21,5 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run test -- --passWithNoTests
+      - run: npm run test:local-server
       - run: npm run build

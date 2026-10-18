@@ -34,6 +34,8 @@ npm run build
 Если Jest в Windows-песочнице падает на `EPERM` при записи кэша в `%TEMP%`, используй
 `npm run test -- --runInBand --cacheDirectory node_modules/.cache/jest`.
 
+Локальная установка сборок через `npm run local:serve`: [docs/local-development.md](docs/local-development.md).
+
 ## Проектные скиллы
 
 Исходники скиллов: `.agents/skills/sbg-*/SKILL.md`. Codex читает их напрямую;
