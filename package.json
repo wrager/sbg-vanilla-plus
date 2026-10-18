@@ -14,7 +14,10 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite",
+    "dev:watch": "vite build --mode debug --watch",
     "build": "vite build",
+    "build:debug": "vite build --mode debug",
+    "test:build": "node --test scripts/buildWorkflow.test.mjs scripts/checkRelease.test.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -22,7 +25,8 @@
     "test": "jest",
     "skills:sync": "node scripts/syncSkills.mjs --write",
     "skills:check": "node scripts/syncSkills.mjs --check && node --test scripts/syncSkills.test.mjs",
-    "refs:fetch": "node scripts/fetchRefs.mjs"
+    "refs:fetch": "node scripts/fetchRefs.mjs",
+    "release:check": "node scripts/checkRelease.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
@@ -34,6 +38,7 @@
     "fake-indexeddb": "^6.2.5",
     "jest": "^29.0.0",
     "jest-environment-jsdom": "^29.0.0",
+    "magic-string": "^0.30.21",
     "prettier": "^3.0.0",
     "ts-jest": "^29.0.0",
     "typescript": "^5.5.0",

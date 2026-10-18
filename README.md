@@ -86,9 +86,12 @@ Codex и Claude Code используют общую точку входа **[AG
 Проектные скиллы `sbg-new-module`, `sbg-release` и `sbg-announce` доступны обоим агентам после клонирования. Вызывайте их через `$sbg-…` в Codex или `/sbg-…` в Claude Code. Исходники — `.agents/skills/`, копии для Claude — `.claude/skills/`; после правки исходников выполните `npm run skills:sync`. CI проверяет их соответствие. Примеры вызовов и порядок обновления — в [инструкции для агентов](docs/agent/README.md).
 
 ```bash
-npm ci
+npm ci             # Node.js 24 LTS (.node-version)
 npm run dev        # Dev server
-npm run build      # Сборка скрипта в dist/
+npm run dev:watch  # Пересборка debug при изменениях
+npm run build      # Стабильная сборка в dist/release/
+npm run build:debug # Самостоятельная debug-сборка в dist/debug/
+npm run test:build # Проверка metadata, source maps и watch
 npm run typecheck  # Проверка типов
 npm run lint       # ESLint
 npm run test       # Jest
@@ -98,11 +101,32 @@ npm run skills:check # Проверка общих скиллов и тесты 
 ### Dev-сервер + менеджер юзерскриптов
 
 1. Запустить `npm run dev`
-2. vite-plugin-monkey откроет страницу с прокси-скриптом — установить его в менеджере юзерскриптов
+2. Открыть `http://127.0.0.1:5174/` и установить прокси-скрипт в менеджере юзерскриптов
 3. Открыть `sbg-game.ru/app/` — скрипт загружается с localhost
 4. При изменении кода dev-сервер пересобирает — обновить страницу игры для применения
 
 Dev-скрипт имеет пометку `[DEV]` в названии. Продакшн `downloadURL`/`updateURL` не включаются в dev-режиме.
+
+`npm run build:debug` создаёт неминифицированный `dist/debug/sbg-vanilla-plus.user.js`
+с inline source map и именем `[DEBUG]`. Его можно импортировать в менеджер без
+dev-сервера. Для локальной работы `npm run dev:watch` пересобирает файл; сгенерированный
+`.local.user.js` загружает его через `file:` (менеджеру нужен доступ к файлам).
+После изменения кода обновляйте страницу вручную. Перед проверкой отключайте другие
+версии SVP; после проверки возвращайтесь на stable.
+
+### Pull requests и релизы
+
+Заголовки PR соответствуют Conventional Commits: например, `feat(map): добавить…`
+или `fix(ui): исправить…`. Используем squash merge с заголовком PR. После успешного CI
+в PR из ветки этого репозитория появляется комментарий со сборкой `[DEBUG]` и SHA.
+Для скачивания ZIP нужен вход в GitHub; внутри — самостоятельный `.user.js` без
+автообновления. Artifact хранится 14 дней, форки не публикуют preview.
+
+Release Please создаёт release PR с версией в package/lockfile и manifest.
+Агент готовит русские RELEASE_NOTES.md с заголовком # vX.Y.Z в той же ветке.
+После проверок и review squash merge release PR создаёт тег и draft; workflow
+собирает, проверяет и публикует оба файла. Версия сохраняется в Git.
+Подготовка PR сама по себе не разрешает выпуск. [Процесс релизов и восстановление](docs/releasing.md).
 
 ## Добавление фичи
 
