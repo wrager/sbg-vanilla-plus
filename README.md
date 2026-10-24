@@ -155,7 +155,7 @@ dev-сервера. Для локальной работы `npm run dev:watch` �
 автообновления. Artifact хранится 14 дней, форки не публикуют preview.
 
 Release Please создаёт release PR с версией в package/lockfile и manifest.
-Агент готовит русские RELEASE_NOTES.md с заголовком # vX.Y.Z в той же ветке.
+Русские notes редактируются в комментарии release PR. Общая команда или Actions / Prepare release формирует файл notes и выполняет проверки.
 После проверок и review squash merge release PR создаёт тег и draft; workflow
 собирает, проверяет и публикует оба файла. Версия сохраняется в Git.
 Подготовка PR сама по себе не разрешает выпуск. [Процесс релизов и восстановление](docs/releasing.md).
@@ -193,3 +193,5 @@ MIT
 [downloads-latest-badge]: https://img.shields.io/github/downloads/wrager/sbg-vanilla-plus/latest/total?style=flat-square&cacheSeconds=3600&label=downloads%40latest
 [license-badge]: https://img.shields.io/github/license/wrager/sbg-vanilla-plus?style=flat-square
 [sbg-badge]: https://img.shields.io/website?label=sbg-game.ru/app&style=flat-square&url=https%3A%2F%2Fsbg-game.ru/app
+
+🤖 Generated with GPT-6.1 Sol
