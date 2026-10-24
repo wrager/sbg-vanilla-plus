@@ -20,7 +20,7 @@
     "dev:watch": "vite build --mode debug --watch",
     "build": "vite build",
     "build:debug": "vite build --mode debug",
-    "test:build": "node --test scripts/buildWorkflow.test.mjs scripts/checkRelease.test.mjs scripts/toolchain.test.mjs",
+    "test:build": "node --test scripts/buildWorkflow.test.mjs scripts/checkRelease.test.mjs scripts/toolchain.test.mjs scripts/releaseNotes.test.mjs",
     "typecheck": "node node_modules/@typescript/native/bin/tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -29,7 +29,10 @@
     "skills:sync": "node scripts/syncSkills.mjs --write",
     "skills:check": "node scripts/syncSkills.mjs --check && node --test scripts/syncSkills.test.mjs",
     "refs:fetch": "node scripts/fetchRefs.mjs",
-    "release:check": "node scripts/checkRelease.mjs"
+    "release:check": "node scripts/checkRelease.mjs",
+    "release:inspect": "node scripts/releaseNotes.mjs inspect",
+    "release:prepare": "node scripts/prepareRelease.mjs",
+    "test:release-notes": "node --test scripts/releaseNotes.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
