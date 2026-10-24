@@ -411,7 +411,13 @@ for (const field of ['head', 'base', 'comment']) {
   });
 }
 
-for (const scenario of ['success', 'wrong checkout', 'edited comment', 'failed checks']) {
+for (const scenario of [
+  'success',
+  'materials ready',
+  'wrong checkout',
+  'edited comment',
+  'failed checks',
+]) {
   test(`preparation coordinates generation, rendering and checks: ${scenario}`, async (t) => {
     const directory = mkdtempSync(join(tmpdir(), 'release-prepare-'));
     t.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -462,6 +468,7 @@ for (const scenario of ['success', 'wrong checkout', 'edited comment', 'failed c
     const preparing = prepareRelease(60, {
       directory,
       environment: {},
+      materialsReady: scenario === 'materials ready',
       fetcher: api.fetcher,
       runner: (_program, args, options) => {
         assert.equal(options.cwd, directory);
@@ -471,7 +478,11 @@ for (const scenario of ['success', 'wrong checkout', 'edited comment', 'failed c
         return { status: scenario === 'failed checks' && args[0] === 'verify' ? 1 : 0 };
       },
     });
-    if (scenario === 'success') {
+    if (scenario === 'materials ready') {
+      await preparing;
+      assert.deepEqual(commands, ['verify', 'later']);
+      assert.equal(git('show', ':materials.txt'), 'old');
+    } else if (scenario === 'success') {
       await preparing;
       assert.deepEqual(commands, ['generate', 'verify', 'later']);
       assert.equal(git('show', ':materials.txt'), 'new');

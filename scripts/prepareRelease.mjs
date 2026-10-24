@@ -43,6 +43,7 @@ export async function prepareRelease(
     environment = process.env,
     runner = spawnReleaseCommand,
     fetcher = fetch,
+    materialsReady = false,
   } = {},
 ) {
   const config = JSON.parse(readFileSync(resolve(directory, '.github/release-notes.json'), 'utf8'));
@@ -58,7 +59,8 @@ export async function prepareRelease(
       environment.ANDROID_SERIAL,
       'Set ANDROID_SERIAL to a dedicated API 33 / WebView 101 emulator',
     );
-  runCommands(config.beforeNotes, runner, { cwd: directory, env: environment });
+  if (!materialsReady)
+    runCommands(config.beforeNotes, runner, { cwd: directory, env: environment });
   const current = await client.state(await client.find(pull.number));
   assert.equal(current.pull.head.sha, original.pull.head.sha, 'PR changed during preparation');
   assert.equal(current.pull.base.sha, original.pull.base.sha, 'Main changed during preparation');
@@ -72,7 +74,13 @@ export async function prepareRelease(
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  prepareRelease(process.argv[2] ? Number(process.argv[2]) : undefined).catch((error) => {
+  assert.ok(
+    process.argv[3] === undefined || process.argv[3] === '--materials-ready',
+    'Unknown preparation option',
+  );
+  prepareRelease(process.argv[2] ? Number(process.argv[2]) : undefined, {
+    materialsReady: process.argv[3] === '--materials-ready',
+  }).catch((error) => {
     console.error(error.message);
     process.exitCode = 1;
   });
