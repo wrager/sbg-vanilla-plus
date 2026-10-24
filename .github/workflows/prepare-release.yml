@@ -1,0 +1,89 @@
+name: Prepare release
+
+on:
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Release PR number (empty selects the single open release PR)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    outputs:
+      number: ${{ steps.inspect.outputs.number }}
+      head: ${{ steps.inspect.outputs.head }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24
+      - id: inspect
+        run: node scripts/releaseNotes.mjs inspect "$RELEASE_PR"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PR: ${{ inputs.pull_request }}
+
+  materials:
+    needs: inspect
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_PR: ${{ needs.inspect.outputs.number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.inspect.outputs.head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: node scripts/prepareRelease.mjs "$RELEASE_PR"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-materials
+          include-hidden-files: true
+          if-no-files-found: error
+          path: |
+            RELEASE_NOTES.md
+            .release-notes.json
+
+  apply:
+    needs: [inspect, materials]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-materials
+          path: release-materials
+      - run: node scripts/releaseNotes.mjs apply "$RELEASE_PR"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PR: ${{ needs.inspect.outputs.number }}
+          RELEASE_MATERIALS: release-materials

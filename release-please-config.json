@@ -10,7 +10,8 @@
       "draft": true,
       "force-tag-creation": true,
       "bump-minor-pre-major": false,
-      "bump-patch-for-minor-pre-major": false
+      "bump-patch-for-minor-pre-major": false,
+      "pull-request-header": ":robot: I have created a release *beep* *boop*\n\nРучные release notes редактируются в комментарии \"Релизные заметки\" этого PR. Подтверждённые пользовательские изменения добавляйте туда сразу. Один включённый PR - один пункт с прямой ссылкой на PR и всеми его пользовательскими изменениями. Подготовка: Actions / Prepare release. [Порядок работы](https://github.com/wrager/sbg-vanilla-plus/blob/main/docs/releasing.md).\n\n🤖 Generated with GPT-6.1 Sol"
     }
   }
 }
