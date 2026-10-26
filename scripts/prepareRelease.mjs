@@ -64,11 +64,7 @@ export async function prepareRelease(
   const current = await client.state(await client.find(pull.number));
   assert.equal(current.pull.head.sha, original.pull.head.sha, 'PR changed during preparation');
   assert.equal(current.pull.base.sha, original.pull.base.sha, 'Main changed during preparation');
-  assert.equal(
-    digest(current.comment.body),
-    digest(original.comment.body),
-    'Comment changed during preparation',
-  );
+  assert.equal(digest(current.notes), digest(original.notes), 'Notes changed during preparation');
   renderLocal(client, current, directory, config.artifacts);
   runCommands(config.checks, runner, { cwd: directory, env: environment });
 }

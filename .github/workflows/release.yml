@@ -36,7 +36,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 24
-      - name: Preserve manual release notes
+      - name: Ensure release notes draft
         run: node scripts/releaseNotes.mjs ensure
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -60,7 +60,7 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - run: npm ci
-      - name: Verify prepared release against its comment
+      - name: Verify prepared release against its PR description
         run: node scripts/releaseNotes.mjs publish-check "$RELEASE_SHA"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

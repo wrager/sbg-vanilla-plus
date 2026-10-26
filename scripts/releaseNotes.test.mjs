@@ -23,8 +23,10 @@ const head = 'a'.repeat(40);
 const base = 'b'.repeat(40);
 const repository = 'wrager/example';
 const body = `${COMMENT_MARKER}\n${NOTES_START}\n## Исправления\n\n- Исправлена читаемость панели.\n${NOTES_END}\nПодтверждено пользователем.`;
+const description = `Release Please\n---\n\n## [1.3.0]\n\n${body.replace(COMMENT_MARKER, '').trim()}\n\n---\nRelease Please footer`;
 const pull = {
   number: 60,
+  body: description,
   title: 'chore(main): release 1.3.0',
   state: 'open',
   merged_at: null,
@@ -130,20 +132,20 @@ test('rendering outputs are excluded from the source fingerprint', () => {
   );
   assert.throws(() => fingerprint({ ...tree, truncated: true }), /truncated/);
 });
-test('validates a prepared release against its comment and source tree', () => {
+test('validates a prepared release against its final notes and source tree', () => {
   client().validate(client().snapshot(state), state, text);
   client().validate(client().snapshot(state), state, text.replaceAll('\n', '\r\n'));
 });
 for (const [field, value] of [
   ['baseSha', head],
   ['version', '1.4.0'],
-  ['commentId', 456],
-  ['commentSha256', digest('edited')],
+  ['notesSha256', digest('edited')],
+  ['notesSha256', 'invalid'],
   ['contentSha256', digest('changed')],
   ['repository', 'another/repo'],
   ['pullRequest', 61],
   ['sourceHeadSha', 'invalid'],
-  ['schema', 2],
+  ['schema', 3],
 ]) {
   test(`invalidates preparation after ${field} changes`, () => {
     assert.throws(() =>
@@ -196,6 +198,76 @@ function apiFixture(routes) {
   });
   return { api, requests };
 }
+
+function releaseStateRoutes() {
+  const encodedFile = (content) => ({
+    type: 'file',
+    encoding: 'base64',
+    content: Buffer.from(content).toString('base64'),
+  });
+  return {
+    '/issues/60/comments?per_page=100&page=1': [comment],
+    [`/contents/.release-please-manifest.json?ref=${head}`]: encodedFile('{".":"1.3.0"}'),
+    [`/git/trees/${head}?recursive=1`]: tree,
+  };
+}
+
+test('reads final notes from the release PR description instead of the draft comment', async () => {
+  const finalDescription = description.replace(
+    'Исправлена читаемость панели.',
+    'Добавлен ручной текст.',
+  );
+  const { api, requests } = apiFixture(releaseStateRoutes());
+  const current = await api.state({ ...pull, body: finalDescription });
+  assert.equal(current.notes, '## Исправления\n\n- Добавлен ручной текст.');
+  assert.ok(requests.every((request) => !request.path.startsWith('/issues/')));
+});
+
+test('final notes remain usable when the draft comment is missing or incomplete', async () => {
+  for (const comments of [[], [{ ...comment, body: `${COMMENT_MARKER}\nTODO: черновик` }]]) {
+    const routes = releaseStateRoutes();
+    routes['/issues/60/comments?per_page=100&page=1'] = comments;
+    const { api } = apiFixture(routes);
+    assert.equal((await api.state(pull)).notes, state.notes);
+  }
+});
+
+for (const finalDescription of [
+  'Release Please\n---\n\n## [1.3.0]\n\nAutomatic notes\n\n---\nFooter',
+  description.replace(state.notes, ''),
+  description.replace(state.notes, 'TODO: редактируется пользователем'),
+  description.replace(NOTES_START, `${NOTES_START}\n${NOTES_START}`),
+]) {
+  test(`draft notes cannot replace an incomplete final description ${finalDescription.length}`, async () => {
+    const { api } = apiFixture(releaseStateRoutes());
+    await assert.rejects(api.state({ ...pull, body: finalDescription }));
+  });
+}
+
+test('draft edits and evidence outside final notes do not invalidate preparation', () => {
+  const prepared = client().snapshot(state);
+  const changed = structuredClone(state);
+  changed.comment.body += '\nИзменён черновик.';
+  changed.pull.body += '\nДополнительное подтверждение.';
+  assert.doesNotThrow(() => client().validate(prepared, changed, text));
+});
+
+test('editing final notes invalidates preparation even when the draft is unchanged', () => {
+  const prepared = client().snapshot(state);
+  const changed = { ...state, notes: `${state.notes}\n- Новый пункт.` };
+  assert.throws(() => client().validate(prepared, changed, text), /notes.*changed/i);
+});
+
+test('preparation from the comment-based process requires regeneration', () => {
+  const prepared = {
+    ...client().snapshot(state),
+    schema: 1,
+    commentId: comment.id,
+    commentSha256: digest(body),
+  };
+  assert.throws(() => client().validate(prepared, state, text), /schema/);
+});
+
 test('inspection discovers the release PR without writes', async () => {
   const { api, requests } = apiFixture({
     '/pulls?state=open&base=main&per_page=100&page=1': [pull],
@@ -299,7 +371,7 @@ test('renders staged generated materials and rejects unexpected local changes', 
   assert.throws(() => renderLocal(client(), localState, directory, []), /Unexpected local/);
 });
 
-test('publish checks the merged SHA, squash parent and live comment', async () => {
+test('publish checks the merged SHA, squash parent and live final notes', async () => {
   const mergedSha = 'c'.repeat(40);
   const mergedPull = {
     ...pull,
@@ -329,18 +401,24 @@ test('publish checks the merged SHA, squash parent and live comment', async () =
   routes['/issues/60/comments?per_page=100&page=1'] = [
     { ...comment, body: body + 'Edited evidence' },
   ];
-  await assert.rejects(api.publishCheck(mergedSha), /comment changed/);
-  routes['/issues/60/comments?per_page=100&page=1'] = [comment];
+  await api.publishCheck(mergedSha);
+  routes['/pulls/60'] = { ...mergedPull, body: description.replace(state.notes, 'Другой текст.') };
+  await assert.rejects(api.publishCheck(mergedSha), /notes changed/);
+  routes['/pulls/60'] = mergedPull;
   routes[`/git/commits/${mergedSha}`] = { parents: [{ sha: head }] };
   await assert.rejects(api.publishCheck(mergedSha), /Main changed/);
+  routes[`/git/commits/${mergedSha}`] = { parents: [{ sha: base }, { sha: head }] };
+  await assert.rejects(api.publishCheck(mergedSha), /squash merge/);
+  routes['/pulls/60'] = { ...mergedPull, merge_commit_sha: head };
+  await assert.rejects(api.publishCheck(mergedSha), /does not belong/);
 });
 
-test('comment edits set a failing required status instead of leaving a green check', async () => {
+test('final notes edits set a failing required status instead of leaving a green check', async () => {
   const { api, requests } = apiFixture({ [`/statuses/${head}`]: {} });
   api.check = async () => {
-    throw new Error('Comment changed');
+    throw new Error('Notes changed');
   };
-  await assert.rejects(api.status(pull), /Comment changed/);
+  await assert.rejects(api.status(pull), /Notes changed/);
   const sent = JSON.parse(requests[0].body);
   assert.equal(sent.context, 'check');
   assert.equal(sent.state, 'failure');
@@ -383,7 +461,7 @@ test('apply accepts only generated files and uses a non-forced branch update', a
   assert.equal(requests.length, count);
 });
 
-for (const field of ['head', 'base', 'comment']) {
+for (const field of ['head', 'base', 'notes']) {
   test(`does not update the branch when ${field} changes during preparation`, async (t) => {
     const directory = mkdtempSync(join(tmpdir(), 'release-race-'));
     t.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -396,7 +474,7 @@ for (const field of ['head', 'base', 'comment']) {
       [`/git/trees/${head}?recursive=1`]: tree,
     });
     const changed = structuredClone(state);
-    if (field === 'comment') changed.comment.body += 'Changed';
+    if (field === 'notes') changed.notes += 'Changed';
     else changed.pull[field].sha = 'c'.repeat(40);
     let reads = 0;
     api.state = async () => (reads++ ? changed : state);
@@ -415,7 +493,8 @@ for (const scenario of [
   'success',
   'materials ready',
   'wrong checkout',
-  'edited comment',
+  'edited draft',
+  'edited notes',
   'failed checks',
 ]) {
   test(`preparation coordinates generation, rendering and checks: ${scenario}`, async (t) => {
@@ -450,11 +529,17 @@ for (const scenario of [
     };
     const commands = [];
     const routes = {
-      '/pulls/60': releasePull,
+      '/pulls/60': () => ({
+        ...releasePull,
+        body:
+          scenario === 'edited notes' && commands.length
+            ? description.replace(state.notes, 'Изменённые заметки.')
+            : description,
+      }),
       '/issues/60/comments?per_page=100&page=1': () => [
         {
           ...comment,
-          body: scenario === 'edited comment' && commands.length ? `${body}Changed` : body,
+          body: scenario === 'edited draft' && commands.length ? `${body}Changed` : body,
         },
       ],
       [`/contents/.release-please-manifest.json?ref=${releasePull.head.sha}`]: {
@@ -482,7 +567,7 @@ for (const scenario of [
       await preparing;
       assert.deepEqual(commands, ['verify', 'later']);
       assert.equal(git('show', ':materials.txt'), 'old');
-    } else if (scenario === 'success') {
+    } else if (scenario === 'success' || scenario === 'edited draft') {
       await preparing;
       assert.deepEqual(commands, ['generate', 'verify', 'later']);
       assert.equal(git('show', ':materials.txt'), 'new');
@@ -491,15 +576,15 @@ for (const scenario of [
         preparing,
         scenario === 'wrong checkout'
           ? /release PR head/
-          : scenario === 'edited comment'
-            ? /Comment changed/
+          : scenario === 'edited notes'
+            ? /Notes changed/
             : /preparation failed/,
       );
       assert.deepEqual(
         commands,
         scenario === 'wrong checkout'
           ? []
-          : scenario === 'edited comment'
+          : scenario === 'edited notes'
             ? ['generate']
             : ['generate', 'verify'],
       );
