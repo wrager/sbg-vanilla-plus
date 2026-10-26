@@ -173,6 +173,9 @@ for (const mutate of [
     value.head.ref = 'feature';
   },
   (value) => {
+    value.head.ref = 'release-please--branches--main--components--another-package';
+  },
+  (value) => {
     value.title = 'release 1.3.0';
   },
 ]) {
@@ -275,6 +278,29 @@ test('inspection discovers the release PR without writes', async () => {
   assert.equal((await api.find()).number, 60);
   assert.ok(requests.every((request) => request.method === 'GET'));
 });
+
+for (const [selection, number] of [
+  ['automatically', undefined],
+  ['by number', 69],
+]) {
+  test(`discovers the Vanilla+ component release PR ${selection}`, async () => {
+    const releasePull = {
+      ...pull,
+      number: 69,
+      title: 'chore(main): release 0.15.2',
+      head: {
+        ...pull.head,
+        ref: 'release-please--branches--main--components--sbg-vanilla-plus',
+      },
+    };
+    const { api, requests } = apiFixture({
+      '/pulls?state=open&base=main&per_page=100&page=1': [releasePull],
+      '/pulls/69': releasePull,
+    });
+    assert.equal(await api.find(number), releasePull);
+    assert.ok(requests.every((request) => request.method === 'GET'));
+  });
+}
 test('does not create a replacement PR when none exists', async () => {
   const { api, requests } = apiFixture({ '/pulls?state=open&base=main&per_page=100&page=1': [] });
   await assert.rejects(api.find(), /exactly one/);
@@ -447,6 +473,10 @@ test('apply accepts only generated files and uses a non-forced branch update', a
     newCommit,
   );
   const update = requests.find((request) => request.method === 'PATCH');
+  assert.equal(
+    update.path,
+    '/git/refs/heads/release-please--branches--main--components--sbg-vanilla-plus',
+  );
   assert.deepEqual(JSON.parse(update.body), { sha: newCommit, force: false });
   assert.equal(
     JSON.parse(requests.find((request) => request.path === '/git/trees').body).base_tree,

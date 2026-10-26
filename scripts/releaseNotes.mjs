@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 export const COMMENT_MARKER = '<!-- release-notes:v1 -->';
 export const NOTES_START = '<!-- release-notes:start -->';
 export const NOTES_END = '<!-- release-notes:end -->';
-export const RELEASE_BRANCH = 'release-please--branches--main';
+export const RELEASE_BRANCH = 'release-please--branches--main--components--sbg-vanilla-plus';
 export const SNAPSHOT_PATH = '.release-notes.json';
 export const NOTES_PATH = 'RELEASE_NOTES.md';
 const SHA = /^[a-f0-9]{40}$/;
