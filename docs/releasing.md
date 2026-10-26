@@ -168,6 +168,9 @@ notes не разрешает эти действия автоматически
    Release создаёт или обновляет один release PR через Release Please.
    Стратегия node обновляет `package.json`, `package-lock.json` (включая
    `packages[""].version`) и `.release-please-manifest.json`.
+   Ветка release PR - `release-please--branches--main--components--sbg-vanilla-plus`.
+   Поиск PR, обработка событий и запись материалов используют это точное имя;
+   отсутствие компонента в теге не убирает компонент из имени ветки.
    `skip-changelog: true`: автоматический черновик остаётся в теле PR.
 2. Собрать черновик в комментарии "Релизные заметки" существующего release PR.
    Сверить диапазон изменений и итоговый код по [правилам текста](agent/release.md).
