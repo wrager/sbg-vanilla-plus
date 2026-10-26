@@ -272,7 +272,10 @@ export class ReleaseNotes {
       method: 'PATCH',
       body: { sha: commit.sha, force: false },
     });
-    await this.status(await this.find(pull.number));
+    /* После записи ref GitHub может ещё вернуть прежний head PR.
+       🤖 Generated with GPT-6.1 Sol */
+    const refreshedPull = await this.find(pull.number);
+    await this.status({ ...refreshedPull, head: { ...refreshedPull.head, sha: commit.sha } });
     return commit.sha;
   }
 }
