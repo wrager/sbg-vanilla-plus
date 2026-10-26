@@ -461,6 +461,69 @@ test('apply accepts only generated files and uses a non-forced branch update', a
   assert.equal(requests.length, count);
 });
 
+for (const response of ['fresh', 'stale', 'changed notes', 'changed base']) {
+  test(`apply validates its created commit after a ${response} PR response`, async (t) => {
+    const directory = mkdtempSync(join(tmpdir(), 'release-status-'));
+    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    const snapshot = client().snapshot(state);
+    writeFileSync(join(directory, 'RELEASE_NOTES.md'), text);
+    writeFileSync(join(directory, '.release-notes.json'), JSON.stringify(snapshot));
+    const newTree = 'd'.repeat(40);
+    const newCommit = 'e'.repeat(40);
+    let updated = false;
+    const routes = {
+      ...releaseStateRoutes(),
+      '/pulls/60': () => {
+        if (!updated || response === 'stale') return pull;
+        const current = structuredClone(pull);
+        current.head.sha = newCommit;
+        if (response === 'changed notes')
+          current.body = description.replace(state.notes, 'Changed');
+        if (response === 'changed base') current.base.sha = 'c'.repeat(40);
+        return current;
+      },
+      '/git/blobs': { sha: head },
+      [`/git/commits/${head}`]: { tree: { sha: base } },
+      '/git/trees': { sha: newTree },
+      [`/git/trees/${newTree}?recursive=1`]: tree,
+      '/git/commits': { sha: newCommit },
+      [`/git/refs/heads/${RELEASE_BRANCH}`]: () => {
+        updated = true;
+        return {};
+      },
+      [`/git/trees/${newCommit}?recursive=1`]: tree,
+      [`/statuses/${head}`]: {},
+      [`/statuses/${newCommit}`]: {},
+    };
+    const preparedFiles = {
+      '.release-please-manifest.json': '{".":"1.3.0"}',
+      '.release-notes.json': JSON.stringify(snapshot),
+      'RELEASE_NOTES.md': text,
+    };
+    for (const [path, content] of Object.entries(preparedFiles)) {
+      routes[`/contents/${encodeURIComponent(path)}?ref=${newCommit}`] = {
+        type: 'file',
+        encoding: 'base64',
+        content: Buffer.from(content).toString('base64'),
+      };
+    }
+    const { api, requests } = apiFixture(routes);
+    const fetcher = api.fetcher;
+    api.fetcher = async (url, options) =>
+      url.endsWith(`/contents/.release-notes.json?ref=${head}`)
+        ? { ok: false, status: 404 }
+        : fetcher(url, options);
+    const applying = api.apply(pull, directory, ['RELEASE_NOTES.md', '.release-notes.json']);
+    const invalid = response.startsWith('changed');
+    if (invalid) await assert.rejects(applying, /Release notes changed|Main changed/);
+    else assert.equal(await applying, newCommit);
+    const statuses = requests.filter((request) => request.path.startsWith('/statuses/'));
+    assert.equal(statuses.length, 1);
+    assert.equal(statuses[0].path, `/statuses/${newCommit}`);
+    assert.equal(JSON.parse(statuses[0].body).state, invalid ? 'failure' : 'success');
+  });
+}
+
 for (const field of ['head', 'base', 'notes']) {
   test(`does not update the branch when ${field} changes during preparation`, async (t) => {
     const directory = mkdtempSync(join(tmpdir(), 'release-race-'));

@@ -11,7 +11,7 @@
       "force-tag-creation": true,
       "bump-minor-pre-major": false,
       "bump-patch-for-minor-pre-major": false,
-      "pull-request-header": ":robot: I have created a release *beep* *boop*\n\nЧерновые release notes собираются в комментарии \"Релизные заметки\" этого PR. После редактуры пользователя и согласования финальный текст помещается между маркерами notes в описание PR с сохранением служебной структуры бота. Похожие PR объединяются в один пункт: одна очень короткая фраза со ссылками на все PR группы и существенными условиями исправлений. Проверяется каждый PR диапазона. Подготовка: Actions / Prepare release. [Порядок работы](https://github.com/wrager/sbg-vanilla-plus/blob/main/docs/releasing.md).\n\n🤖 Generated with GPT-6.1 Sol"
+      "pull-request-header": ":robot: I have created a release *beep* *boop*\n\nЧерновые release notes собираются в комментарии \"Релизные заметки\" этого PR. После редактуры пользователя и согласования финальный текст помещается между маркерами notes в описание PR с сохранением служебной структуры бота. Финальные notes делятся на разделы \"Возможности\" и \"Исправления\"; пустые разделы не выводятся. Похожие PR объединяются в один пункт: одна очень короткая фраза со ссылками на все PR группы и существенными условиями исправлений. Проверяется каждый PR диапазона. Подготовка: Actions / Prepare release. [Порядок работы](https://github.com/wrager/sbg-vanilla-plus/blob/main/docs/releasing.md).\n\n🤖 Generated with GPT-6.1 Sol"
     }
   }
 }
