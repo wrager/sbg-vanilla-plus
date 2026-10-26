@@ -155,7 +155,7 @@ dev-сервера. Для локальной работы `npm run dev:watch` �
 автообновления. Artifact хранится 14 дней, форки не публикуют preview.
 
 Release Please создаёт release PR с версией в package/lockfile и manifest.
-Русские notes редактируются в комментарии release PR. Общая команда или Actions / Prepare release формирует файл notes и выполняет проверки.
+Черновые notes собираются в комментарии release PR; после редактуры пользователя финальный текст помещается в описание PR. Общая команда или Actions / Prepare release формирует файл notes и выполняет проверки.
 После проверок и review squash merge release PR создаёт тег и draft; workflow
 собирает, проверяет и публикует оба файла. Версия сохраняется в Git.
 Подготовка PR сама по себе не разрешает выпуск. [Процесс релизов и восстановление](docs/releasing.md).

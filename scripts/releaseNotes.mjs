@@ -17,7 +17,7 @@ const normalize = (text) => text.replace(/\r\n/g, '\n');
 export const digest = (text) => createHash('sha256').update(text).digest('hex');
 
 export function extractNotes(body) {
-  assert.ok(body.startsWith(COMMENT_MARKER), 'Missing release notes comment marker');
+  assert.equal(typeof body, 'string', 'Missing release PR description');
   assert.equal(body.split(NOTES_START).length, 2, 'Expected one notes start marker');
   assert.equal(body.split(NOTES_END).length, 2, 'Expected one notes end marker');
   const start = body.indexOf(NOTES_START) + NOTES_START.length;
@@ -132,9 +132,7 @@ export class ReleaseNotes {
   }
 
   async state(pull) {
-    const comment = await this.comment(pull);
-    assert.ok(comment, 'Create the release notes comment first (ensure)');
-    const notes = extractNotes(comment.body);
+    const notes = extractNotes(pull.body);
     const manifest = JSON.parse(await this.file('.release-please-manifest.json', pull.head.sha));
     const version = manifest['.'];
     assert.match(version, /^\d+\.\d+\.\d+$/, 'Invalid release version');
@@ -144,7 +142,7 @@ export class ReleaseNotes {
       'PR title differs from release version',
     );
     const tree = await this.request(`/git/trees/${pull.head.sha}?recursive=1`);
-    return { pull, comment, notes, version, contentSha256: fingerprint(tree) };
+    return { pull, notes, version, contentSha256: fingerprint(tree) };
   }
 
   async ensure(pull, template) {
@@ -159,37 +157,31 @@ export class ReleaseNotes {
 
   snapshot(state, contentSha256 = state.contentSha256) {
     return {
-      schema: 1,
+      schema: 2,
       repository: this.repository,
       pullRequest: state.pull.number,
       sourceHeadSha: state.pull.head.sha,
       baseSha: state.pull.base.sha,
       version: state.version,
-      commentId: state.comment.id,
-      commentSha256: digest(normalize(state.comment.body)),
+      notesSha256: digest(state.notes),
       contentSha256,
     };
   }
 
   validate(snapshot, state, text, baseSha = state.pull.base.sha) {
-    assert.equal(snapshot.schema, 1, 'Unknown preparation schema');
+    assert.equal(snapshot.schema, 2, 'Unknown preparation schema; prepare the release again');
     assert.equal(snapshot.repository, this.repository, 'Snapshot belongs to another repository');
     assert.equal(snapshot.pullRequest, state.pull.number, 'Snapshot belongs to another PR');
     assert.match(snapshot.sourceHeadSha, SHA, 'Invalid preparation head');
-    assert.match(snapshot.commentSha256, SHA256, 'Invalid comment fingerprint');
+    assert.match(snapshot.notesSha256, SHA256, 'Invalid notes fingerprint');
     assert.equal(snapshot.baseSha, baseSha, 'Main changed; prepare the release again');
     assert.equal(snapshot.version, state.version, 'Release version changed');
-    assert.equal(snapshot.commentId, state.comment.id, 'Release notes comment was replaced');
-    assert.equal(
-      snapshot.commentSha256,
-      digest(normalize(state.comment.body)),
-      'Release notes comment changed',
-    );
+    assert.equal(snapshot.notesSha256, digest(state.notes), 'Release notes changed');
     assert.equal(snapshot.contentSha256, state.contentSha256, 'Release contents changed');
     assert.equal(
       normalize(text),
       `# v${state.version}\n\n${state.notes}\n`,
-      'Release notes differ from the comment',
+      'Release notes differ from the PR description',
     );
   }
 
@@ -267,11 +259,7 @@ export class ReleaseNotes {
     const latest = await this.state(await this.find(pull.number));
     assert.equal(latest.pull.head.sha, pull.head.sha, 'PR changed during preparation');
     assert.equal(latest.pull.base.sha, pull.base.sha, 'Main changed during preparation');
-    assert.equal(
-      digest(normalize(latest.comment.body)),
-      snapshot.commentSha256,
-      'Comment changed during preparation',
-    );
+    assert.equal(digest(latest.notes), snapshot.notesSha256, 'Notes changed during preparation');
     const commit = await this.request('/git/commits', {
       method: 'POST',
       body: {
