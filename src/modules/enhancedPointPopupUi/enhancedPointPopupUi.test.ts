@@ -3,10 +3,9 @@ import { join } from 'node:path';
 import { enhancedPointPopupUi } from './enhancedPointPopupUi';
 
 /**
- * Селекторы, чью изоляцию от нативных блоков стережёт этот файл. Записаны так
- * же, как в styles.css модуля, включая кавычки: тест ниже сверяет каждый с
- * разобранной таблицей стилей, и правка правила без правки константы красит
- * сверку.
+ * Селекторы, чью изоляцию от нативных блоков стережёт этот файл. Тест ниже
+ * сверяет их с таблицей стилей, чтобы правка только констант не скрыла
+ * регрессию в styles.css.
  */
 const ACTION_BUTTONS_SELECTOR = '.info.popup .i-buttons button';
 const META_ENTRY_SELECTOR = '.i-stat__entry:not(.i-stat__cores)';
@@ -213,11 +212,20 @@ describe('enhancedPointPopupUi — селекторы изолированы о�
         .flatMap((rule) => rule.selectorText.split(',').map((selector) => selector.trim())),
     );
 
-    expect(selectors).toContain(ACTION_BUTTONS_SELECTOR);
-    expect(selectors).toContain(META_ENTRY_SELECTOR);
-    expect(selectors).toContain(CORES_LEVEL_SELECTOR);
-    expect(selectors).toContain(ACTIVE_FAVORITE_TINT_SELECTOR);
-    expect(selectors).toContain(ACTIVE_LOCKED_TINT_SELECTOR);
+    // CSSOM нормализует кавычки: ожидаемые селекторы проходят тот же парсер.
+    const expectedSheet = new CSSStyleSheet();
+    for (const selector of [
+      ACTION_BUTTONS_SELECTOR,
+      META_ENTRY_SELECTOR,
+      CORES_LEVEL_SELECTOR,
+      ACTIVE_FAVORITE_TINT_SELECTOR,
+      ACTIVE_LOCKED_TINT_SELECTOR,
+    ]) {
+      const index = expectedSheet.insertRule(`${selector} {}`);
+      const rule = expectedSheet.cssRules[index];
+      if (!(rule instanceof CSSStyleRule)) throw new Error(`${selector} не разобрался в CSSOM`);
+      expect(selectors).toContain(rule.selectorText);
+    }
   });
 
   test('нативные .i-flag-btn не попадают под селектор для игровых кнопок i-buttons', () => {
